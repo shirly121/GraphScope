@@ -23,7 +23,7 @@ use vec_map::VecMap;
 
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{PatternDirection, PatternId, PatternLabelId, PatternRankId};
+use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::IrError;
 
 #[derive(Debug, Clone)]
@@ -84,16 +84,20 @@ impl PatternVertex {
     /// Given a edge id, get the vertex connected to the current vertex through the edge with the connect direction
     pub fn get_connect_vertex_by_edge_id(
         &self, edge_id: PatternId,
-    ) -> Option<&(PatternId, PatternDirection)> {
-        self.adjacent_edges.get(&edge_id)
+    ) -> Option<(PatternId, PatternDirection)> {
+        self.adjacent_edges.get(&edge_id).cloned()
     }
 
     /// Given a vertex id, get all the edges connecting the given vertex and current vertex with the connect direction
     pub fn get_connect_edges_by_vertex_id<'a>(
         &'a self, vertex_id: PatternId,
-    ) -> Box<dyn Iterator<Item = &'a (PatternId, PatternDirection)> + 'a> {
+    ) -> DynIter<(PatternId, PatternDirection)> {
         match self.adjacent_vertices.get(&vertex_id) {
-            Some(connect_edges) => Box::new(connect_edges.iter()),
+            Some(connect_edges) => Box::new(
+                connect_edges
+                    .iter()
+                    .map(|connect_edge| *connect_edge),
+            ),
             None => Box::new(std::iter::empty()),
         }
     }
@@ -317,7 +321,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                             return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                         }
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
-                            if let Some(&edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
+                            if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
                                 let src_dst_vertex_pairs =
                                     pattern_meta.get_associated_vlabels(edge_label_id);
                                 if i == 0 {
@@ -1041,7 +1045,7 @@ impl Pattern {
         // Get all vertex labels from pattern meta as the possible extend target vertex
         let target_v_labels = pattern_meta.get_all_vertex_label_ids();
         // For every possible extend target vertex label, find its all connect edges to the current pattern
-        for &target_v_label in target_v_labels {
+        for target_v_label in target_v_labels {
             // The collection of (the collection of extend edges)
             let mut extend_edgess = vec![];
             // The collection of extend edges with a source vertex id
