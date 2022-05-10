@@ -16,6 +16,7 @@
 type PatternId = usize;
 type PatternLabelId = ir_common::KeyId;
 type PatternRankId = i32;
+type DynIter<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PatternDirection {

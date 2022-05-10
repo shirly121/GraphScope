@@ -84,17 +84,17 @@ impl PatternVertex {
     /// Given a edge id, get the vertex connected to the current vertex through the edge with the connect direction
     pub fn get_connect_vertex_by_edge_id(
         &self, edge_id: PatternId,
-    ) -> Option<(PatternId, PatternDirection)> {
-        self.adjacent_edges.get(&edge_id).cloned()
+    ) -> Option<&(PatternId, PatternDirection)> {
+        self.adjacent_edges.get(&edge_id)
     }
 
     /// Given a vertex id, get all the edges connecting the given vertex and current vertex with the connect direction
-    pub fn get_connect_edges_by_vertex_id(
-        &self, vertex_id: PatternId,
-    ) -> Vec<(PatternId, PatternDirection)> {
+    pub fn get_connect_edges_by_vertex_id<'a>(
+        &'a self, vertex_id: PatternId,
+    ) -> Box<dyn Iterator<Item = &'a (PatternId, PatternDirection)> + 'a> {
         match self.adjacent_vertices.get(&vertex_id) {
-            Some(connect_edges) => connect_edges.clone(),
-            None => vec![],
+            Some(connect_edges) => Box::new(connect_edges.iter()),
+            None => Box::new(std::iter::empty()),
         }
     }
 

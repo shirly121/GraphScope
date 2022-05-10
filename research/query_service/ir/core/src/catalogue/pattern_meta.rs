@@ -15,7 +15,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::catalogue::{PatternDirection, PatternLabelId};
+use crate::catalogue::{PatternDirection, PatternLabelId, DynIter};
 use crate::plan::meta::Schema;
 
 #[derive(Debug)]
