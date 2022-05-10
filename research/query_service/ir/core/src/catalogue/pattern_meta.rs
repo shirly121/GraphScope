@@ -34,10 +34,9 @@ pub struct PatternMeta {
     ///        find all its possible (src vertex label id, dst vertex label id) pairs
     e2vertices_meta: BTreeMap<PatternLabelId, Vec<(PatternLabelId, PatternLabelId)>>,
     /// Key: (src vertex label id, dst vertex label id), Value: Vec<(edge label id, direction)>
-    /// Usage: given a (src vertex label id, dst vertex label id) pair: 
+    /// Usage: given a (src vertex label id, dst vertex label id) pair:
     ///        find all possible edges(label id) between them
-    vv2edges_meta:
-        BTreeMap<(PatternLabelId, PatternLabelId), Vec<(PatternLabelId, PatternDirection)>>,
+    vv2edges_meta: BTreeMap<(PatternLabelId, PatternLabelId), Vec<(PatternLabelId, PatternDirection)>>,
 }
 
 /// Initializer of PatternMeta
@@ -56,7 +55,9 @@ impl From<Schema> for PatternMeta {
             match relation_labels.get(name) {
                 // Case that this is an edge label
                 Some(connections) => {
-                    pattern_meta.edge_label_map.insert(name.clone(), *id);
+                    pattern_meta
+                        .edge_label_map
+                        .insert(name.clone(), *id);
                     for (start_v_meta, end_v_meta) in connections {
                         let start_v_name = start_v_meta.get_name();
                         let end_v_name = end_v_meta.get_name();
@@ -321,8 +322,7 @@ mod tests {
             }
         }
         for ((start_v_id, end_v_id), mut connections) in vertex_vertex_edges {
-            let mut edges_between_vertices =
-                ldbc_pattern_meta.get_associated_elabels(start_v_id, end_v_id);
+            let mut edges_between_vertices = ldbc_pattern_meta.get_associated_elabels(start_v_id, end_v_id);
             assert_eq!(connections.len(), edges_between_vertices.len());
             connections.sort();
             edges_between_vertices.sort();
@@ -353,8 +353,7 @@ mod tests {
             }
         }
         for ((start_v_id, end_v_id), mut connections) in vertex_vertex_edges {
-            let mut edges_between_vertices =
-                ldbc_pattern_meta.get_associated_elabels(start_v_id, end_v_id);
+            let mut edges_between_vertices = ldbc_pattern_meta.get_associated_elabels(start_v_id, end_v_id);
             assert_eq!(connections.len(), edges_between_vertices.len());
             connections.sort();
             edges_between_vertices.sort();

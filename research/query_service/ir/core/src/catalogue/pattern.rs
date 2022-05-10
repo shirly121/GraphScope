@@ -329,7 +329,9 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                 assign_vertex_id += 1;
                                 assign_edge_id += 1;
                             } else {
-                                return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                                return Err(IrError::Unsupported(
+                                    "FuzzyPattern is not supported".to_string(),
+                                ));
                             }
                         } else {
                             return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
@@ -453,11 +455,7 @@ impl Pattern {
     /// At least 1 bit
     pub fn get_min_edge_label_bit_num(&self) -> usize {
         if let Some(max_edge_label) = self.get_max_edge_label() {
-            let mut min_bit = 1;
-            while max_edge_label >> min_bit > 0 {
-                min_bit += 1
-            }
-            min_bit
+            std::cmp::max((32 - max_edge_label.leading_zeros()) as usize, 1)
         } else {
             1
         }
@@ -467,11 +465,7 @@ impl Pattern {
     /// At least 1 bit
     pub fn get_min_vertex_label_bit_num(&self) -> usize {
         if let Some(max_vertex_label) = self.get_max_vertex_label() {
-            let mut min_bit = 1;
-            while max_vertex_label >> min_bit > 0 {
-                min_bit += 1
-            }
-            min_bit
+            std::cmp::max((32 - max_vertex_label.leading_zeros()) as usize, 1)
         } else {
             1
         }
@@ -484,13 +478,8 @@ impl Pattern {
         let mut min_rank_bit_num: usize = 1;
         for (_, value) in self.vertex_label_map.iter() {
             let same_label_vertex_num = value.len() as u64;
-            let mut rank_bit_num = 1;
-            while same_label_vertex_num >> rank_bit_num > 0 {
-                rank_bit_num += 1;
-            }
-            if rank_bit_num > min_rank_bit_num {
-                min_rank_bit_num = rank_bit_num;
-            }
+            min_rank_bit_num =
+                std::cmp::max((64 - same_label_vertex_num.leading_zeros()) as usize, min_rank_bit_num);
         }
         min_rank_bit_num
     }
@@ -563,17 +552,18 @@ impl Pattern {
 /// Methods of Index Ranking
 impl Pattern {
     /// Index Ranking Is Done In Four Steps:
-    /// 
+    ///
     /// Step-1: Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
-    /// 
+    ///
     /// Step-2: Set Initial Index Based on Local Information of Vertices (labels, in/out degree, neighboring edges info)
-    /// 
+    ///
     /// Step-3: Update the Neighbor Edges for All Vertices, Sorted now with Initial Indices
-    /// 
+    ///
     /// Step-4: Set Accurate Index Based on Iterative Traversal
     pub fn rank_ranking(&mut self) {
         // Step-1: Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
-        let mut vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId)>> = self.get_vertex_neighbor_edges();
+        let mut vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId)>> =
+            self.get_vertex_neighbor_edges();
         // Step-2: Set Initial Index Based on Local Information of Vertices (labels, in/out degree, neighboring edges info)
         self.set_initial_rank(&vertex_neighbor_edges_map);
         // Step-3: Update the Neighbor Edges for All Vertices, Sorted now with Initial Indices
@@ -583,19 +573,21 @@ impl Pattern {
     }
 
     /// Get a vector of neighboring edges of each vertex
-    /// 
+    ///
     /// Used for Comparing Vertices when Setting Initial Indices
-    /// 
+    ///
     /// The vector contains of two parts: outgoing edges and incoming edges
-    /// 
+    ///
     /// i.e. [ sorted outgoing edges | sorted incoming edges ]
-    /// 
+    ///
     /// The Edge info is a 4-element tuple: (edge_id, edge_label, end_v_id, end_v_label)
     fn get_vertex_neighbor_edges(&self) -> HashMap<PatternId, Vec<(PatternId, PatternId)>> {
         let mut vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId)>> = HashMap::new();
         for (v_id, vertex) in self.get_vertices() {
-            let mut outgoing_edges: Vec<(PatternId, PatternId)> = Vec::with_capacity(vertex.get_out_degree());
-            let mut incoming_edges: Vec<(PatternId, PatternId)> = Vec::with_capacity(vertex.get_in_degree());
+            let mut outgoing_edges: Vec<(PatternId, PatternId)> =
+                Vec::with_capacity(vertex.get_out_degree());
+            let mut incoming_edges: Vec<(PatternId, PatternId)> =
+                Vec::with_capacity(vertex.get_in_degree());
             for (e_id, (end_v_id, edge_dir)) in vertex.get_connected_edges().iter() {
                 match edge_dir {
                     PatternDirection::Out => outgoing_edges.push((*e_id, *end_v_id)),
@@ -616,8 +608,7 @@ impl Pattern {
 
     /// Set Initial Vertex Index Based on Comparison of Labels and In/Out Degrees
     fn set_initial_rank(
-        &mut self,
-        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>
+        &mut self, vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>,
     ) {
         for (_, vertex_set) in self.vertex_label_map.iter() {
             let mut vertex_vec = Vec::with_capacity(vertex_set.len());
@@ -625,7 +616,9 @@ impl Pattern {
                 vertex_vec.push(*v_id);
             }
             // Sort vertices from small to large
-            vertex_vec.sort_by(|v1_id, v2_id| self.cmp_vertices_for_initial_rank(*v1_id, *v2_id, vertex_neighbor_edges_map));
+            vertex_vec.sort_by(|v1_id, v2_id| {
+                self.cmp_vertices_for_initial_rank(*v1_id, *v2_id, vertex_neighbor_edges_map)
+            });
             // Vertex Index is the value to be set to vertices.
             // Isomorphic Vertices may share the same vertex rank
             let mut vertex_rank = 0;
@@ -656,10 +649,8 @@ impl Pattern {
 
     /// Get the Order of two PatternVertices of a Pattern
     fn cmp_vertices_for_initial_rank(
-        &self,
-        v1_id: PatternId,
-        v2_id: PatternId,
-        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>
+        &self, v1_id: PatternId, v2_id: PatternId,
+        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>,
     ) -> Ordering {
         if v1_id == v2_id {
             return Ordering::Equal;
@@ -688,10 +679,22 @@ impl Pattern {
         let v2_connected_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap();
         for i in 0..v1_connected_edges.len() {
             // Compare Edge Label
-            let v1_connected_edge_label = self.get_edge_from_id(v1_connected_edges[i].0).unwrap().get_label();
-            let v1_connected_edge_end_v_label = self.get_vertex_from_id(v1_connected_edges[i].1).unwrap().get_label();
-            let v2_connected_edge_label = self.get_edge_from_id(v2_connected_edges[i].0).unwrap().get_label();
-            let v2_connected_edge_end_v_label = self.get_vertex_from_id(v2_connected_edges[i].1).unwrap().get_label();
+            let v1_connected_edge_label = self
+                .get_edge_from_id(v1_connected_edges[i].0)
+                .unwrap()
+                .get_label();
+            let v1_connected_edge_end_v_label = self
+                .get_vertex_from_id(v1_connected_edges[i].1)
+                .unwrap()
+                .get_label();
+            let v2_connected_edge_label = self
+                .get_edge_from_id(v2_connected_edges[i].0)
+                .unwrap()
+                .get_label();
+            let v2_connected_edge_end_v_label = self
+                .get_vertex_from_id(v2_connected_edges[i].1)
+                .unwrap()
+                .get_label();
             match v1_connected_edge_label.cmp(&v2_connected_edge_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
@@ -708,21 +711,22 @@ impl Pattern {
     }
 
     /// Update the Vertex Neighbor Edges Map
-    /// 
+    ///
     /// The reason is that after setting initial indices for each vertex, we have more information to sort the edges and vertices
     fn update_vertex_neighbor_edges_map(
-        &self,
-        vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId)>>
+        &self, vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId)>>,
     ) {
         for (v_id, _) in self.get_vertices().iter() {
-            vertex_neighbor_edges_map.get_mut(&v_id).unwrap().sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
+            vertex_neighbor_edges_map
+                .get_mut(&v_id)
+                .unwrap()
+                .sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
         }
     }
 
     /// Set Accurate Indices According to the Initial Indices Set in Step-1
     fn set_accurate_rank(
-        &mut self,
-        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>
+        &mut self, vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>,
     ) {
         // Initializde a HashSet Indicating Whether Vertices Has Been Visited
         let mut visited_vertex_set: HashSet<PatternId> = HashSet::new();
@@ -769,9 +773,9 @@ impl Pattern {
     }
 
     /// Get all the vertex groups that share the same initial indices
-    /// 
+    ///
     /// Only these groups are considered when setting accurate indices
-    /// 
+    ///
     /// Return: A vector of vertex groups sharing the same initial indices
     fn get_same_rank_vertex_groups(&mut self) -> Vec<Vec<PatternId>> {
         let mut same_rank_vertex_groups: Vec<Vec<PatternId>> = Vec::new();
@@ -820,9 +824,7 @@ impl Pattern {
     }
 
     fn cmp_vertices_for_accurate_rank(
-        &mut self,
-        v1_id: PatternId,
-        v2_id: PatternId,
+        &mut self, v1_id: PatternId, v2_id: PatternId,
         vertex_neighbor_info_map: &HashMap<PatternId, Vec<(PatternId, PatternId)>>,
         visited_vertex_set: &mut HashSet<PatternId>,
     ) -> Ordering {
@@ -862,7 +864,9 @@ impl Pattern {
             let v1_neighbor_vertex_id = v1_neighbor_info[i].1;
             let v2_neighbor_vertex_id = v2_neighbor_info[i].1;
             // Skip the steps below if the two neighbor vertices are visited
-            if visited_vertex_set.contains(&v1_neighbor_vertex_id) && visited_vertex_set.contains(&v2_neighbor_vertex_id) {
+            if visited_vertex_set.contains(&v1_neighbor_vertex_id)
+                && visited_vertex_set.contains(&v2_neighbor_vertex_id)
+            {
                 continue;
             }
             let order: Ordering = self.cmp_vertices_for_accurate_rank(
@@ -1045,8 +1049,7 @@ impl Pattern {
             let mut extend_edges_with_src_id = Vec::new();
             for (_, src_vertex) in &self.vertices {
                 // check whether there are some edges between the target vertex and the current source vertex
-                let connect_edges =
-                    pattern_meta.get_associated_elabels(src_vertex.label, target_v_label);
+                let connect_edges = pattern_meta.get_associated_elabels(src_vertex.label, target_v_label);
                 // Transform all the connect edges to ExtendEdge and add to extend_edges_with_src_id
                 for connect_edge in connect_edges {
                     let extend_edge =
