@@ -321,7 +321,7 @@ impl EncodeUnit {
 
     pub fn from_pattern(pattern: &Pattern, encoder: &Encoder) -> Self {
         let mut pattern_encode_unit =
-            EncodeUnit { values: Vec::new(), heads: Vec::new(), tails: Vec::new() };
+            EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
         let ordered_edges_id = pattern.get_ordered_edges();
         for edge_id in ordered_edges_id {
             let edge = pattern.get_edge_from_id(edge_id).unwrap();
@@ -362,7 +362,7 @@ impl EncodeUnit {
 
     pub fn from_extend_step(extend_step: &ExtendStep, encoder: &Encoder) -> Self {
         let mut extend_step_encode_unit =
-            EncodeUnit { values: Vec::new(), heads: Vec::new(), tails: Vec::new() };
+            EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
         for (_, extend_edges) in extend_step.iter() {
             for extend_edge in extend_edges {
                 let extend_edge_encode_unit = EncodeUnit::from_extend_edge(extend_edge, encoder);
@@ -543,7 +543,7 @@ impl DecodeUnit {
 impl DecodeUnit {
     /// Decode a &[u8] source code to the Vec<i32> decode value
     pub fn decode_to_vec_i32(&self, src_code: &[u8], storage_unit_bit_num: usize) -> Vec<i32> {
-        let mut decoded_vec = Vec::new();
+        let mut decoded_vec = vec![];
         let bit_per_extend_edge: usize = self.unit_bits.iter().sum();
         // - 1 means delete tbe bit indicating the end of the code
         let src_code_bit_sum = Encoder::get_src_code_effective_bit_num(&src_code, storage_unit_bit_num) - 1;

@@ -94,7 +94,7 @@ impl PatternVertex {
     ) -> Vec<(PatternId, PatternDirection)> {
         match self.adjacent_vertices.get(&vertex_id) {
             Some(connect_edges) => connect_edges.clone(),
-            None => Vec::new(),
+            None => vec![],
         }
     }
 
@@ -231,7 +231,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                 start_vertex
                     .adjacent_vertices
                     .entry(edge.end_v_id)
-                    .or_insert(Vec::new())
+                    .or_insert(vec![])
                     .push((edge.id, PatternDirection::Out));
                 start_vertex.out_degree += 1;
                 new_pattern
@@ -258,7 +258,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                 end_vertex
                     .adjacent_vertices
                     .entry(edge.start_v_id)
-                    .or_insert(Vec::new())
+                    .or_insert(vec![])
                     .push((edge.id, PatternDirection::In));
                 end_vertex.in_degree += 1;
                 new_pattern
@@ -284,7 +284,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
 
         let mut assign_vertex_id = 0;
         let mut assign_edge_id = 0;
-        let mut pattern_edges = Vec::new();
+        let mut pattern_edges = vec![];
         let mut tag_id_map: HashMap<String, PatternId> = HashMap::new();
         for sentence in &pattern_message.sentences {
             if sentence.binders.is_empty() {
@@ -393,7 +393,7 @@ impl Pattern {
         self.vertices.get(v_id).unwrap().rank
     }
 
-    /// Get the order of both start and end vertices of an edge
+    /// Get the rank of both start and end vertices of an edge
     pub fn get_edge_vertices_rank(&self, edge_id: PatternId) -> Option<(PatternRankId, PatternRankId)> {
         if let Some(edge) = self.get_edge_from_id(edge_id) {
             let start_v_rank = self.get_vertex_rank(edge.start_v_id);
@@ -778,9 +778,9 @@ impl Pattern {
     ///
     /// Return: A vector of vertex groups sharing the same initial indices
     fn get_same_rank_vertex_groups(&mut self) -> Vec<Vec<PatternId>> {
-        let mut same_rank_vertex_groups: Vec<Vec<PatternId>> = Vec::new();
+        let mut same_rank_vertex_groups: Vec<Vec<PatternId>> = vec![];
         for (_, vertex_set) in self.get_vertex_label_map().iter() {
-            let mut vertex_vec: Vec<PatternId> = Vec::new();
+            let mut vertex_vec: Vec<PatternId> = vec![];
             // Push all the vertices with the same label into a vector
             for v_id in vertex_set.iter() {
                 vertex_vec.push(*v_id);
@@ -899,7 +899,7 @@ impl Pattern {
     /// Get all the vertices(id) with the same vertex label and vertex rank
     /// These vertices are equivalent in the Pattern
     fn get_equivalent_vertices(&self, v_label: PatternLabelId, v_rank: PatternRankId) -> Vec<PatternId> {
-        let mut equivalent_vertices = Vec::new();
+        let mut equivalent_vertices = vec![];
         if let Some(vs_with_same_label) = self.vertex_label_map.get(&v_label) {
             for v_id in vs_with_same_label {
                 if let Some(vertex) = self.vertices.get(*v_id) {
@@ -1037,16 +1037,16 @@ impl Pattern {
 
     /// Find all possible ExtendSteps of current pattern based on the given Pattern Meta
     pub fn get_extend_steps(&self, pattern_meta: &PatternMeta) -> Vec<ExtendStep> {
-        let mut extend_steps = Vec::new();
+        let mut extend_steps = vec![];
         // Get all vertex labels from pattern meta as the possible extend target vertex
         let target_v_labels = pattern_meta.get_all_vertex_label_ids();
         // For every possible extend target vertex label, find its all connect edges to the current pattern
         for target_v_label in target_v_labels {
             // The collection of (the collection of extend edges)
-            let mut extend_edgess = Vec::new();
+            let mut extend_edgess = vec![];
             // The collection of extend edges with a source vertex id
             // The source vertex id is used to specify the extend edge is from which vertex of the pattern
-            let mut extend_edges_with_src_id = Vec::new();
+            let mut extend_edges_with_src_id = vec![];
             for (_, src_vertex) in &self.vertices {
                 // check whether there are some edges between the target vertex and the current source vertex
                 let connect_edges = pattern_meta.get_associated_elabels(src_vertex.label, target_v_label);

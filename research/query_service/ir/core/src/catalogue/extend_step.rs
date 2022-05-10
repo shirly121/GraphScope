@@ -74,7 +74,7 @@ impl From<(PatternLabelId, Vec<ExtendEdge>)> for ExtendStep {
             let edge_vec = new_extend_step
                 .extend_edges
                 .entry((edge.start_v_label, edge.start_v_rank))
-                .or_insert(Vec::new());
+                .or_insert(vec![]);
             edge_vec.push(edge);
         }
         new_extend_step

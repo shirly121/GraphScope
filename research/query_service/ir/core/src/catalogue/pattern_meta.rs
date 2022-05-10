@@ -77,17 +77,17 @@ impl From<Schema> for PatternMeta {
                         pattern_meta
                             .e2vertices_meta
                             .entry(*id)
-                            .or_insert(Vec::new())
+                            .or_insert(vec![])
                             .push((start_v_id, end_v_id));
                         pattern_meta
                             .vv2edges_meta
                             .entry((start_v_id, end_v_id))
-                            .or_insert(Vec::new())
+                            .or_insert(vec![])
                             .push((*id, PatternDirection::Out));
                         pattern_meta
                             .vv2edges_meta
                             .entry((end_v_id, start_v_id))
-                            .or_insert(Vec::new())
+                            .or_insert(vec![])
                             .push((*id, PatternDirection::In));
                     }
                 }
@@ -178,13 +178,13 @@ impl PatternMeta {
     ) -> Vec<(PatternLabelId, PatternDirection)> {
         match self.v2edges_meta.get(&src_v_label) {
             Some(connections) => {
-                let mut connections_vec = Vec::new();
+                let mut connections_vec = vec![];
                 for (edge_id, dir) in connections {
                     connections_vec.push((*edge_id, *dir));
                 }
                 connections_vec
             }
-            None => Vec::new(),
+            None => vec![],
         }
     }
 
@@ -194,7 +194,7 @@ impl PatternMeta {
     ) -> Vec<(PatternLabelId, PatternLabelId)> {
         match self.e2vertices_meta.get(&src_e_label) {
             Some(connections) => connections.clone(),
-            None => Vec::new(),
+            None => vec![],
         }
     }
 
@@ -207,7 +207,7 @@ impl PatternMeta {
             .get(&(src_v_label, dst_v_label))
         {
             Some(edges) => edges.clone(),
-            None => Vec::new(),
+            None => vec![],
         }
     }
 }
@@ -313,11 +313,11 @@ mod tests {
             for (start_v_id, end_v_id) in edge_connect_vertices {
                 vertex_vertex_edges
                     .entry((start_v_id, end_v_id))
-                    .or_insert(Vec::new())
+                    .or_insert(vec![])
                     .push((edge_id, PatternDirection::Out));
                 vertex_vertex_edges
                     .entry((end_v_id, start_v_id))
-                    .or_insert(Vec::new())
+                    .or_insert(vec![])
                     .push((edge_id, PatternDirection::In));
             }
         }
@@ -340,13 +340,13 @@ mod tests {
                     if start_v_id == vertex_id && dir == PatternDirection::Out {
                         vertex_vertex_edges
                             .entry((start_v_id, end_v_id))
-                            .or_insert(Vec::new())
+                            .or_insert(vec![])
                             .push((edge_id, PatternDirection::Out));
                     }
                     if end_v_id == vertex_id && dir == PatternDirection::In {
                         vertex_vertex_edges
                             .entry((end_v_id, start_v_id))
-                            .or_insert(Vec::new())
+                            .or_insert(vec![])
                             .push((edge_id, PatternDirection::In));
                     }
                 }
