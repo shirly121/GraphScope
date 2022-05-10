@@ -320,8 +320,7 @@ impl EncodeUnit {
     }
 
     pub fn from_pattern(pattern: &Pattern, encoder: &Encoder) -> Self {
-        let mut pattern_encode_unit =
-            EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
+        let mut pattern_encode_unit = EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
         let ordered_edges_id = pattern.get_ordered_edges();
         for edge_id in ordered_edges_id {
             let edge = pattern.get_edge_from_id(edge_id).unwrap();
@@ -361,8 +360,7 @@ impl EncodeUnit {
     }
 
     pub fn from_extend_step(extend_step: &ExtendStep, encoder: &Encoder) -> Self {
-        let mut extend_step_encode_unit =
-            EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
+        let mut extend_step_encode_unit = EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
         for (_, extend_edges) in extend_step.iter() {
             for extend_edge in extend_edges {
                 let extend_edge_encode_unit = EncodeUnit::from_extend_edge(extend_edge, encoder);
