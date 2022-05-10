@@ -33,9 +33,13 @@ pub struct PatternVertex {
     /// Used to Identify vertices with same label
     rank: PatternRankId,
     /// Key: edge id, Value: (vertex id, direction)
-    connect_edges: BTreeMap<PatternId, (PatternId, PatternDirection)>,
+    /// Usage: 1. this map stores all adjacent edges of this vertex
+    ///        2. given an adjacent edge id, find the adjacent vertex id through this edge with direction
+    adjacent_edges: BTreeMap<PatternId, (PatternId, PatternDirection)>,
     /// Key: vertex id, Value: Vec<(edge id, direction)>
-    connect_vertices: BTreeMap<PatternId, Vec<(PatternId, PatternDirection)>>,
+    /// Usage: 1. this mao stores all adjacent vertices of this vertex
+    ///        2. given an adjacent vertex id, find all possible edges connecting two vertices with direction
+    adjacent_vertices: BTreeMap<PatternId, Vec<(PatternId, PatternDirection)>>,
     /// How many out edges connected to this vertex
     out_degree: usize,
     /// How many in edges connected to this vertex
@@ -57,11 +61,11 @@ impl PatternVertex {
     }
 
     pub fn get_connected_edges(&self) -> &BTreeMap<PatternId, (PatternId, PatternDirection)> {
-        &self.connect_edges
+        &self.adjacent_edges
     }
 
     pub fn get_connected_vertices(&self) -> &BTreeMap<PatternId, Vec<(PatternId, PatternDirection)>> {
-        &self.connect_vertices
+        &self.adjacent_vertices
     }
 
     pub fn get_out_degree(&self) -> usize {
@@ -74,21 +78,21 @@ impl PatternVertex {
 
     /// Get how many connections(both out and in) the current pattern vertex has
     pub fn get_connect_num(&self) -> usize {
-        self.connect_edges.len()
+        self.adjacent_edges.len()
     }
 
     /// Given a edge id, get the vertex connected to the current vertex through the edge with the connect direction
     pub fn get_connect_vertex_by_edge_id(
         &self, edge_id: PatternId,
     ) -> Option<(PatternId, PatternDirection)> {
-        self.connect_edges.get(&edge_id).cloned()
+        self.adjacent_edges.get(&edge_id).cloned()
     }
 
     /// Given a vertex id, get all the edges connecting the given vertex and current vertex with the connect direction
     pub fn get_connect_edges_by_vertex_id(
         &self, vertex_id: PatternId,
     ) -> Vec<(PatternId, PatternDirection)> {
-        match self.connect_vertices.get(&vertex_id) {
+        match self.adjacent_vertices.get(&vertex_id) {
             Some(connect_edges) => connect_edges.clone(),
             None => Vec::new(),
         }
@@ -168,8 +172,8 @@ impl From<(PatternId, PatternLabelId)> for Pattern {
             id: vertex_id,
             label: vertex_label,
             rank: 0,
-            connect_edges: BTreeMap::new(),
-            connect_vertices: BTreeMap::new(),
+            adjacent_edges: BTreeMap::new(),
+            adjacent_vertices: BTreeMap::new(),
             out_degree: 0,
             in_degree: 0,
         };
@@ -216,16 +220,16 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                         id: edge.start_v_id,
                         label: edge.start_v_label,
                         rank: 0,
-                        connect_edges: BTreeMap::new(),
-                        connect_vertices: BTreeMap::new(),
+                        adjacent_edges: BTreeMap::new(),
+                        adjacent_vertices: BTreeMap::new(),
                         out_degree: 0,
                         in_degree: 0,
                     });
                 start_vertex
-                    .connect_edges
+                    .adjacent_edges
                     .insert(edge.id, (edge.end_v_id, PatternDirection::Out));
                 start_vertex
-                    .connect_vertices
+                    .adjacent_vertices
                     .entry(edge.end_v_id)
                     .or_insert(Vec::new())
                     .push((edge.id, PatternDirection::Out));
@@ -243,16 +247,16 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                         id: edge.end_v_id,
                         label: edge.end_v_label,
                         rank: 0,
-                        connect_edges: BTreeMap::new(),
-                        connect_vertices: BTreeMap::new(),
+                        adjacent_edges: BTreeMap::new(),
+                        adjacent_vertices: BTreeMap::new(),
                         out_degree: 0,
                         in_degree: 0,
                     });
                 end_vertex
-                    .connect_edges
+                    .adjacent_edges
                     .insert(edge.id, (edge.start_v_id, PatternDirection::In));
                 end_vertex
-                    .connect_vertices
+                    .adjacent_vertices
                     .entry(edge.start_v_id)
                     .or_insert(Vec::new())
                     .push((edge.id, PatternDirection::In));
@@ -932,8 +936,8 @@ impl Pattern {
             id: new_pattern.get_next_pattern_vertex_id(),
             label: target_v_label,
             rank: 0,
-            connect_edges: BTreeMap::new(),
-            connect_vertices: BTreeMap::new(),
+            adjacent_edges: BTreeMap::new(),
+            adjacent_vertices: BTreeMap::new(),
             out_degree: 0,
             in_degree: 0,
         };
@@ -964,9 +968,9 @@ impl Pattern {
                         };
                         // update newly extended pattern vertex's connection info
                         new_pattern_vertex
-                            .connect_edges
+                            .adjacent_edges
                             .insert(new_pattern_edge.id, (vertices_can_use[i], PatternDirection::In));
-                        new_pattern_vertex.connect_vertices.insert(
+                        new_pattern_vertex.adjacent_vertices.insert(
                             vertices_can_use[i],
                             vec![(new_pattern_edge.id, PatternDirection::Out)],
                         );
@@ -996,10 +1000,10 @@ impl Pattern {
                                 .label,
                         };
                         new_pattern_vertex
-                            .connect_edges
+                            .adjacent_edges
                             .insert(new_pattern_edge.id, (vertices_can_use[i], PatternDirection::Out));
                         new_pattern_vertex
-                            .connect_vertices
+                            .adjacent_vertices
                             .insert(vertices_can_use[i], vec![(new_pattern_edge.id, PatternDirection::In)]);
                         new_pattern_vertex.out_degree += 1;
                         new_pattern
@@ -1129,8 +1133,8 @@ mod tests {
         let vertex_0 = pattern_case1.vertices.get(0).unwrap();
         assert_eq!(vertex_0.id, 0);
         assert_eq!(vertex_0.label, 0);
-        assert_eq!(vertex_0.connect_edges.len(), 2);
-        let mut vertex_0_connect_edges_iter = vertex_0.connect_edges.iter();
+        assert_eq!(vertex_0.adjacent_edges.len(), 2);
+        let mut vertex_0_connect_edges_iter = vertex_0.adjacent_edges.iter();
         let (v0_e0, (v0_v0, v0_d0)) = vertex_0_connect_edges_iter.next().unwrap();
         assert_eq!(*v0_e0, 0);
         assert_eq!(*v0_v0, 1);
@@ -1139,8 +1143,8 @@ mod tests {
         assert_eq!(*v0_e1, 1);
         assert_eq!(*v0_v1, 1);
         assert_eq!(*v0_d1, PatternDirection::In);
-        assert_eq!(vertex_0.connect_vertices.len(), 1);
-        let v0_v1_connected_edges = vertex_0.connect_vertices.get(&1).unwrap();
+        assert_eq!(vertex_0.adjacent_vertices.len(), 1);
+        let v0_v1_connected_edges = vertex_0.adjacent_vertices.get(&1).unwrap();
         assert_eq!(v0_v1_connected_edges.len(), 2);
         let mut v0_v1_connected_edges_iter = v0_v1_connected_edges.iter();
         assert_eq!(*v0_v1_connected_edges_iter.next().unwrap(), (0, PatternDirection::Out));
@@ -1148,8 +1152,8 @@ mod tests {
         let vertex_1 = pattern_case1.vertices.get(1).unwrap();
         assert_eq!(vertex_1.id, 1);
         assert_eq!(vertex_1.label, 0);
-        assert_eq!(vertex_1.connect_edges.len(), 2);
-        let mut vertex_1_connect_edges_iter = vertex_1.connect_edges.iter();
+        assert_eq!(vertex_1.adjacent_edges.len(), 2);
+        let mut vertex_1_connect_edges_iter = vertex_1.adjacent_edges.iter();
         let (v1_e0, (v1_v0, v1_d0)) = vertex_1_connect_edges_iter.next().unwrap();
         assert_eq!(*v1_e0, 0);
         assert_eq!(*v1_v0, 0);
@@ -1158,8 +1162,8 @@ mod tests {
         assert_eq!(*v1_e1, 1);
         assert_eq!(*v1_v1, 0);
         assert_eq!(*v1_d1, PatternDirection::Out);
-        assert_eq!(vertex_1.connect_vertices.len(), 1);
-        let v1_v0_connected_edges = vertex_1.connect_vertices.get(&0).unwrap();
+        assert_eq!(vertex_1.adjacent_vertices.len(), 1);
+        let v1_v0_connected_edges = vertex_1.adjacent_vertices.get(&0).unwrap();
         assert_eq!(v1_v0_connected_edges.len(), 2);
         let mut v1_v0_connected_edges_iter = v1_v0_connected_edges.iter();
         assert_eq!(*v1_v0_connected_edges_iter.next().unwrap(), (0, PatternDirection::In));
@@ -1196,19 +1200,19 @@ mod tests {
             assert_eq!(vertex1.rank, vertex2.rank);
             assert_eq!(vertex1.in_degree, vertex2.in_degree);
             assert_eq!(vertex1.out_degree, vertex2.out_degree);
-            assert_eq!(vertex1.connect_edges.len(), vertex2.connect_edges.len());
-            assert_eq!(vertex1.connect_vertices.len(), vertex2.connect_vertices.len());
-            for (connect_edge1_id, (connect_vertex1_id, dir1)) in &vertex1.connect_edges {
+            assert_eq!(vertex1.adjacent_edges.len(), vertex2.adjacent_edges.len());
+            assert_eq!(vertex1.adjacent_vertices.len(), vertex2.adjacent_vertices.len());
+            for (connect_edge1_id, (connect_vertex1_id, dir1)) in &vertex1.adjacent_edges {
                 let (connect_vertex2_id, dir2) = vertex2
-                    .connect_edges
+                    .adjacent_edges
                     .get(connect_edge1_id)
                     .unwrap();
                 assert_eq!(*connect_vertex1_id, *connect_vertex2_id);
                 assert_eq!(*dir1, *dir2);
             }
-            for (connect_vertex1_id, edge_connections1) in &vertex1.connect_vertices {
+            for (connect_vertex1_id, edge_connections1) in &vertex1.adjacent_vertices {
                 let edge_connections2 = vertex2
-                    .connect_vertices
+                    .adjacent_vertices
                     .get(connect_vertex1_id)
                     .unwrap();
                 let (connect_edge1_id, dir1) = edge_connections1[0];
