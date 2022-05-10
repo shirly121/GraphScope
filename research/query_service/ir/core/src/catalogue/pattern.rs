@@ -269,7 +269,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
             }
             Ok(new_pattern)
         } else {
-            Err(IrError::EmptyPattern)
+            Err(IrError::InvalidPattern("Empty pattern".to_string()))
         }
     }
 }
@@ -288,33 +288,33 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         let mut tag_id_map: HashMap<String, PatternId> = HashMap::new();
         for sentence in &pattern_message.sentences {
             if sentence.binders.is_empty() {
-                return Err(IrError::FuzzyPattern);
+                return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
             }
             let start_tag = sentence
                 .start
                 .as_ref()
-                .ok_or(IrError::FuzzyPattern)?
+                .ok_or(IrError::Unsupported("FuzzyPattern is not supported".to_string()))?
                 .item
                 .as_ref()
-                .ok_or(IrError::FuzzyPattern)?;
+                .ok_or(IrError::Unsupported("FuzzyPattern is not supported".to_string()))?;
             if let TagItem::Name(start_tag_name) = start_tag {
                 if !tag_id_map.contains_key(start_tag_name) {
                     tag_id_map.insert(start_tag_name.clone(), assign_vertex_id);
                 }
             } else {
-                return Err(IrError::FuzzyPattern);
+                return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
             }
             for (i, binder) in sentence.binders.iter().enumerate() {
                 if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
                     if edge_expand.is_edge {
-                        return Err(IrError::FuzzyPattern);
+                        return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                     }
                     if let Some(params) = edge_expand.params.as_ref() {
                         if params.tables.len() != 1 {
-                            return Err(IrError::FuzzyPattern);
+                            return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                         }
                         if !params.columns.is_empty() {
-                            return Err(IrError::FuzzyPattern);
+                            return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                         }
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
                             if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
@@ -329,16 +329,16 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                 assign_vertex_id += 1;
                                 assign_edge_id += 1;
                             } else {
-                                return Err(IrError::FuzzyPattern);
+                                return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                             }
                         } else {
-                            return Err(IrError::FuzzyPattern);
+                            return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                         }
                     } else {
-                        return Err(IrError::FuzzyPattern);
+                        return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                     }
                 } else {
-                    return Err(IrError::FuzzyPattern);
+                    return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                 }
             }
         }
