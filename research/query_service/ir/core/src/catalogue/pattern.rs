@@ -313,9 +313,9 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                             return Err(IrError::FuzzyPattern);
                         }
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
-                            if let Some(edge_label_id) = pattern_meta.get_edge_id(edge_label_name) {
+                            if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
                                 let src_dst_vertex_pairs =
-                                    pattern_meta.get_connect_vertices_of_e(edge_label_id);
+                                    pattern_meta.get_associated_vlabels(edge_label_id);
                                 if i == 0 {
                                 } else if i == sentence.binders.len() - 1 {
                                 }
@@ -1042,7 +1042,7 @@ impl Pattern {
             for (_, src_vertex) in &self.vertices {
                 // check whether there are some edges between the target vertex and the current source vertex
                 let connect_edges =
-                    pattern_meta.get_edges_between_vertices(src_vertex.label, target_v_label);
+                    pattern_meta.get_associated_elabels(src_vertex.label, target_v_label);
                 // Transform all the connect edges to ExtendEdge and add to extend_edges_with_src_id
                 for connect_edge in connect_edges {
                     let extend_edge =

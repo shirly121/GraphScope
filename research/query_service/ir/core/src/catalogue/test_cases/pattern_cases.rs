@@ -1287,14 +1287,12 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, H
     let edge_label_map: HashMap<String, PatternLabelId> =
         gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
     vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(5);
     vertex_id_map.insert(String::from("A0"), 2);
     vertex_id_map.insert(String::from("A1"), 5);
     vertex_id_map.insert(String::from("A2"), 3);
     vertex_id_map.insert(String::from("A3"), 0);
     vertex_id_map.insert(String::from("A4"), 1);
     vertex_id_map.insert(String::from("A5"), 4);
-    let edge_ids = gen_group_ids(4);
     let pattern_vec = vec![
         PatternEdge::new(
             2,
@@ -1346,14 +1344,12 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, H
     let edge_label_map: HashMap<String, PatternLabelId> =
         gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
     vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(5);
     vertex_id_map.insert(String::from("A0"), 2);
     vertex_id_map.insert(String::from("A1"), 1);
     vertex_id_map.insert(String::from("A2"), 3);
     vertex_id_map.insert(String::from("A3"), 0);
     vertex_id_map.insert(String::from("A4"), 4);
     vertex_id_map.insert(String::from("A5"), 5);
-    let edge_ids = gen_group_ids(4);
     let pattern_vec = vec![
         PatternEdge::new(
             0,
