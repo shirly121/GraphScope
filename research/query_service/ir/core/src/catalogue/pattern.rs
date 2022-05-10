@@ -366,12 +366,16 @@ impl Pattern {
 
     /// Get Edge Labels with Edges has this Label by Iterator
     pub fn get_edge_label_map(&self) -> impl Iterator<Item = (PatternLabelId, &BTreeSet<PatternId>)> {
-        self.edge_label_map.iter().map(|(edge_label, edges)| (*edge_label, edges))
+        self.edge_label_map
+            .iter()
+            .map(|(edge_label, edges)| (*edge_label, edges))
     }
 
     /// Get Vertex Labels with Vertices has this Label by Iterator
     pub fn get_vertex_label_map(&self) -> impl Iterator<Item = (PatternLabelId, &BTreeSet<PatternId>)> {
-        self.vertex_label_map.iter().map(|(vertex_label, vertices)| (*vertex_label, vertices))
+        self.vertex_label_map
+            .iter()
+            .map(|(vertex_label, vertices)| (*vertex_label, vertices))
     }
 
     /// Get PatternEdge Reference from Edge ID
