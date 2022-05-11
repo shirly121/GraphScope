@@ -376,7 +376,7 @@ impl LogicalPlan {
                         is_semi_apply = true;
                     }
                 }
-                Opr::Union(_) => {
+                Opr::Union(_) | Opr::Intersect(_) => {
                     let mut curr_nodes = vec![];
                     for p in &parent_ids {
                         curr_nodes.extend(self.meta.get_referred_nodes(*p));
