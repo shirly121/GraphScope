@@ -113,26 +113,32 @@ impl PatternMeta {
         self.edge_label_map.len()
     }
 
-    pub fn get_all_vertex_label_names(&self) -> impl Iterator<Item = &String> {
-        self.vertex_label_map
-            .iter()
-            .map(|(name, _)| name)
+    pub fn get_all_vertex_label_names(&self) -> DynIter<&String> {
+        Box::new(
+            self.vertex_label_map
+                .iter()
+                .map(|(name, _)| name),
+        )
     }
 
-    pub fn get_all_edge_label_names(&self) -> impl Iterator<Item = &String> {
-        self.edge_label_map.iter().map(|(name, _)| name)
+    pub fn get_all_edge_label_names(&self) -> DynIter<&String> {
+        Box::new(self.edge_label_map.iter().map(|(name, _)| name))
     }
 
-    pub fn get_all_vertex_label_ids(&self) -> impl Iterator<Item = PatternLabelId> + '_ {
-        self.vertex_label_map
-            .iter()
-            .map(|(_, vertex_id)| *vertex_id)
+    pub fn get_all_vertex_label_ids(&self) -> DynIter<PatternLabelId> {
+        Box::new(
+            self.vertex_label_map
+                .iter()
+                .map(|(_, vertex_id)| *vertex_id),
+        )
     }
 
-    pub fn get_all_edge_label_ids(&self) -> impl Iterator<Item = PatternLabelId> + '_ {
-        self.edge_label_map
-            .iter()
-            .map(|(_, edge_id)| *edge_id)
+    pub fn get_all_edge_label_ids(&self) -> DynIter<PatternLabelId> {
+        Box::new(
+            self.edge_label_map
+                .iter()
+                .map(|(_, edge_id)| *edge_id),
+        )
     }
 
     pub fn get_vertex_label_id(&self, label_name: &str) -> Option<PatternLabelId> {
@@ -170,7 +176,7 @@ impl PatternMeta {
         &self, src_v_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternDirection)> {
         match self.v2edges_meta.get(&src_v_label) {
-            Some(connections) => Box::new(connections.iter().map(|connection| *connection)),
+            Some(connections) => Box::new(connections.iter().cloned()),
             None => Box::new(std::iter::empty()),
         }
     }
@@ -180,7 +186,7 @@ impl PatternMeta {
         &self, src_e_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternLabelId)> {
         match self.e2vertices_meta.get(&src_e_label) {
-            Some(connections) => Box::new(connections.iter().map(|connection| *connection)),
+            Some(connections) => Box::new(connections.iter().cloned()),
             None => Box::new(std::iter::empty()),
         }
     }
@@ -192,7 +198,7 @@ impl PatternMeta {
             .vv2edges_meta
             .get(&(src_v_label, dst_v_label))
         {
-            Some(edges) => Box::new(edges.iter().map(|edge| *edge)),
+            Some(edges) => Box::new(edges.iter().cloned()),
             None => Box::new(std::iter::empty()),
         }
     }

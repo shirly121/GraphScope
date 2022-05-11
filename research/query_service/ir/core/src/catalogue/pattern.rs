@@ -60,12 +60,12 @@ impl PatternVertex {
         self.rank
     }
 
-    pub fn get_adjacent_edges_vertices_dirs(
-        &self,
-    ) -> impl Iterator<Item = (PatternId, PatternId, PatternDirection)> + '_ {
-        self.adjacent_edges
-            .iter()
-            .map(|(e, (v, dir))| (*e, *v, *dir))
+    pub fn get_adjacent_edges_vertices_dirs(&self) -> DynIter<(PatternId, PatternId, PatternDirection)> {
+        Box::new(
+            self.adjacent_edges
+                .iter()
+                .map(|(e, (v, dir))| (*e, *v, *dir)),
+        )
     }
 
     pub fn get_out_degree(&self) -> usize {
@@ -355,27 +355,31 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
 /// Methods to access the fields of a Pattern or get some info from Pattern
 impl Pattern {
     /// Get Edges by Iterator
-    pub fn get_edges(&self) -> impl Iterator<Item = &PatternEdge> {
-        self.edges.iter().map(|(_, edge)| edge)
+    pub fn get_edges(&self) -> DynIter<&PatternEdge> {
+        Box::new(self.edges.iter().map(|(_, edge)| edge))
     }
 
     /// Get Vertices by Iterator
-    pub fn get_vertices(&self) -> impl Iterator<Item = &PatternVertex> {
-        self.vertices.iter().map(|(_, vertex)| vertex)
+    pub fn get_vertices(&self) -> DynIter<&PatternVertex> {
+        Box::new(self.vertices.iter().map(|(_, vertex)| vertex))
     }
 
     /// Get Edge Labels with Edges has this Label by Iterator
-    pub fn get_edge_label_map(&self) -> impl Iterator<Item = (PatternLabelId, &BTreeSet<PatternId>)> {
-        self.edge_label_map
-            .iter()
-            .map(|(edge_label, edges)| (*edge_label, edges))
+    pub fn get_edge_label_map(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
+        Box::new(
+            self.edge_label_map
+                .iter()
+                .map(|(edge_label, edges)| (*edge_label, edges)),
+        )
     }
 
     /// Get Vertex Labels with Vertices has this Label by Iterator
-    pub fn get_vertex_label_map(&self) -> impl Iterator<Item = (PatternLabelId, &BTreeSet<PatternId>)> {
-        self.vertex_label_map
-            .iter()
-            .map(|(vertex_label, vertices)| (*vertex_label, vertices))
+    pub fn get_vertex_label_map(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
+        Box::new(
+            self.vertex_label_map
+                .iter()
+                .map(|(vertex_label, vertices)| (*vertex_label, vertices)),
+        )
     }
 
     /// Get PatternEdge Reference from Edge ID
