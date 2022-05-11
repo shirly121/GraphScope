@@ -152,20 +152,20 @@ impl PatternMeta {
     /// Given a soruce vertex label, iterate over all its neighboring adjacent vertices(label)
     pub fn iter_adjacent_vlabels(&self, src_v_label: PatternLabelId) -> DynIter<PatternLabelId> {
         match self.v2edges_meta.get(&src_v_label) {
-            Some(connections) => {
-                let mut connect_vertices = BTreeSet::new();
-                for (edge_id, dir) in connections {
+            Some(adjacencies) => {
+                let mut adjacent_vertices = BTreeSet::new();
+                for (edge_id, dir) in adjacencies {
                     let possible_edges = self.e2vertices_meta.get(edge_id).unwrap();
                     for (start_v_id, end_v_id) in possible_edges {
                         if *start_v_id == src_v_label && *dir == PatternDirection::Out {
-                            connect_vertices.insert(*end_v_id);
+                            adjacent_vertices.insert(*end_v_id);
                         }
                         if *end_v_id == src_v_label && *dir == PatternDirection::In {
-                            connect_vertices.insert(*start_v_id);
+                            adjacent_vertices.insert(*start_v_id);
                         }
                     }
                 }
-                Box::new(connect_vertices.into_iter())
+                Box::new(adjacent_vertices.into_iter())
             }
             None => Box::new(std::iter::empty()),
         }
@@ -176,7 +176,7 @@ impl PatternMeta {
         &self, src_v_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternDirection)> {
         match self.v2edges_meta.get(&src_v_label) {
-            Some(connections) => Box::new(connections.iter().cloned()),
+            Some(adjacencies) => Box::new(adjacencies.iter().cloned()),
             None => Box::new(std::iter::empty()),
         }
     }
@@ -186,7 +186,7 @@ impl PatternMeta {
         &self, src_e_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternLabelId)> {
         match self.e2vertices_meta.get(&src_e_label) {
-            Some(connections) => Box::new(connections.iter().cloned()),
+            Some(associations) => Box::new(associations.iter().cloned()),
             None => Box::new(std::iter::empty()),
         }
     }
@@ -312,8 +312,8 @@ mod tests {
         let all_edge_ids = ldbc_pattern_meta.iter_edge_label_ids();
         let mut vertex_vertex_edges = BTreeMap::new();
         for edge_id in all_edge_ids {
-            let edge_connect_vertices = ldbc_pattern_meta.iter_associated_vlabels(edge_id);
-            for (start_v_id, end_v_id) in edge_connect_vertices {
+            let edge_associate_vertices = ldbc_pattern_meta.iter_associated_vlabels(edge_id);
+            for (start_v_id, end_v_id) in edge_associate_vertices {
                 vertex_vertex_edges
                     .entry((start_v_id, end_v_id))
                     .or_insert(vec![])
@@ -338,10 +338,10 @@ mod tests {
         let all_vertex_ids = ldbc_pattern_meta.iter_vertex_label_ids();
         let mut vertex_vertex_edges = BTreeMap::new();
         for vertex_id in all_vertex_ids {
-            let connect_edges = ldbc_pattern_meta.iter_adjacent_elabels(vertex_id);
-            for (edge_id, dir) in connect_edges {
-                let edge_connections = ldbc_pattern_meta.iter_associated_vlabels(edge_id);
-                for (start_v_id, end_v_id) in edge_connections {
+            let adjacent_edges = ldbc_pattern_meta.iter_adjacent_elabels(vertex_id);
+            for (edge_id, dir) in adjacent_edges {
+                let edges_with_dirs = ldbc_pattern_meta.iter_associated_vlabels(edge_id);
+                for (start_v_id, end_v_id) in edges_with_dirs {
                     if start_v_id == vertex_id && dir == PatternDirection::Out {
                         vertex_vertex_edges
                             .entry((start_v_id, end_v_id))

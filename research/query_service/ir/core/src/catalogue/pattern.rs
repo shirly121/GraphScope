@@ -37,12 +37,12 @@ pub struct PatternVertex {
     ///        2. given an adjacent edge id, find the adjacent vertex id through this edge with direction
     adjacent_edges: BTreeMap<PatternId, (PatternId, PatternDirection)>,
     /// Key: vertex id, Value: Vec<(edge id, direction)>
-    /// Usage: 1. this mao stores all adjacent vertices of this vertex
+    /// Usage: 1. this map stores all adjacent vertices of this vertex
     ///        2. given an adjacent vertex id, find all possible edges connecting two vertices with direction
     adjacent_vertices: BTreeMap<PatternId, Vec<(PatternId, PatternDirection)>>,
-    /// How many out edges connected to this vertex
+    /// How many out edges adjacent to this vertex
     out_degree: usize,
-    /// How many in edges connected to this vertex
+    /// How many in edges adjacent to this vertex
     in_degree: usize,
 }
 
@@ -85,26 +85,26 @@ impl PatternVertex {
     }
 
     /// Get how many connections(both out and in) the current pattern vertex has
-    pub fn get_connect_num(&self) -> usize {
-        self.adjacent_edges.len()
+    pub fn get_degree(&self) -> usize {
+        self.out_degree + self.in_degree
     }
 
-    /// Given a edge id, get the vertex connected to the current vertex through the edge with the connect direction
-    pub fn get_connect_vertex_by_edge_id(
+    /// Given a edge id, get the vertex adjacent to the current vertex through the edge with the direction
+    pub fn get_adjacent_vertex_by_edge_id(
         &self, edge_id: PatternId,
     ) -> Option<(PatternId, PatternDirection)> {
         self.adjacent_edges.get(&edge_id).cloned()
     }
 
-    /// Given a vertex id, iterate all the edges connecting the given vertex and current vertex with the connect direction
-    pub fn iter_connect_edges_by_vertex_id(
+    /// Given a vertex id, iterate all the edges connecting the given vertex and current vertex with the direction
+    pub fn iter_adjacent_edges_by_vertex_id(
         &self, vertex_id: PatternId,
     ) -> DynIter<(PatternId, PatternDirection)> {
         match self.adjacent_vertices.get(&vertex_id) {
-            Some(connect_edges) => Box::new(
-                connect_edges
+            Some(adjacent_edges) => Box::new(
+                adjacent_edges
                     .iter()
-                    .map(|connect_edge| *connect_edge),
+                    .map(|adjacent_edge| *adjacent_edge),
             ),
             None => Box::new(std::iter::empty()),
         }
@@ -695,32 +695,32 @@ impl Pattern {
             _ => (),
         }
 
-        let v1_connected_edges = vertex_neighbor_edges_map.get(&v1_id).unwrap();
-        let v2_connected_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap();
-        for i in 0..v1_connected_edges.len() {
+        let v1_adjacent_edges = vertex_neighbor_edges_map.get(&v1_id).unwrap();
+        let v2_adjacent_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap();
+        for i in 0..v1_adjacent_edges.len() {
             // Compare Edge Label
-            let v1_connected_edge_label = self
-                .get_edge_from_id(v1_connected_edges[i].0)
+            let v1_adjacent_edge_label = self
+                .get_edge_from_id(v1_adjacent_edges[i].0)
                 .unwrap()
                 .get_label();
-            let v1_connected_edge_end_v_label = self
-                .get_vertex_from_id(v1_connected_edges[i].1)
+            let v1_adjacent_edge_end_v_label = self
+                .get_vertex_from_id(v1_adjacent_edges[i].1)
                 .unwrap()
                 .get_label();
-            let v2_connected_edge_label = self
-                .get_edge_from_id(v2_connected_edges[i].0)
+            let v2_adjacent_edge_label = self
+                .get_edge_from_id(v2_adjacent_edges[i].0)
                 .unwrap()
                 .get_label();
-            let v2_connected_edge_end_v_label = self
-                .get_vertex_from_id(v2_connected_edges[i].1)
+            let v2_adjacent_edge_end_v_label = self
+                .get_vertex_from_id(v2_adjacent_edges[i].1)
                 .unwrap()
                 .get_label();
-            match v1_connected_edge_label.cmp(&v2_connected_edge_label) {
+            match v1_adjacent_edge_label.cmp(&v2_adjacent_edge_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
                 _ => (),
             }
-            match v1_connected_edge_end_v_label.cmp(&v2_connected_edge_end_v_label) {
+            match v1_adjacent_edge_end_v_label.cmp(&v2_adjacent_edge_end_v_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
                 _ => (),
@@ -990,7 +990,7 @@ impl Pattern {
                                 .label,
                             end_v_label: new_pattern_vertex.label,
                         };
-                        // update newly extended pattern vertex's connection info
+                        // update newly extended pattern vertex's adjacency info
                         new_pattern_vertex
                             .adjacent_edges
                             .insert(new_pattern_edge.id, (vertices_can_use[i], PatternDirection::In));
@@ -1060,7 +1060,7 @@ impl Pattern {
         let mut extend_steps = vec![];
         // Get all vertex labels from pattern meta as the possible extend target vertex
         let target_v_labels = pattern_meta.iter_vertex_label_ids();
-        // For every possible extend target vertex label, find its all connect edges to the current pattern
+        // For every possible extend target vertex label, find its all adjacent edges to the current pattern
         for target_v_label in target_v_labels {
             // The collection of (the collection of extend edges)
             let mut extend_edgess = vec![];
@@ -1069,11 +1069,15 @@ impl Pattern {
             let mut extend_edges_with_src_id = vec![];
             for (_, src_vertex) in &self.vertices {
                 // check whether there are some edges between the target vertex and the current source vertex
-                let connect_edges = pattern_meta.iter_associated_elabels(src_vertex.label, target_v_label);
-                // Transform all the connect edges to ExtendEdge and add to extend_edges_with_src_id
-                for connect_edge in connect_edges {
-                    let extend_edge =
-                        ExtendEdge::new(src_vertex.label, src_vertex.rank, connect_edge.0, connect_edge.1);
+                let adjacent_edges = pattern_meta.iter_associated_elabels(src_vertex.label, target_v_label);
+                // Transform all the adjacent edges to ExtendEdge and add to extend_edges_with_src_id
+                for adjacent_edge in adjacent_edges {
+                    let extend_edge = ExtendEdge::new(
+                        src_vertex.label,
+                        src_vertex.rank,
+                        adjacent_edge.0,
+                        adjacent_edge.1,
+                    );
                     extend_edges_with_src_id.push((extend_edge, src_vertex.id));
                 }
             }
@@ -1160,40 +1164,40 @@ mod tests {
         assert_eq!(vertex_0.id, 0);
         assert_eq!(vertex_0.label, 0);
         assert_eq!(vertex_0.adjacent_edges.len(), 2);
-        let mut vertex_0_connect_edges_iter = vertex_0.adjacent_edges.iter();
-        let (v0_e0, (v0_v0, v0_d0)) = vertex_0_connect_edges_iter.next().unwrap();
+        let mut vertex_0_adjacent_edges_iter = vertex_0.adjacent_edges.iter();
+        let (v0_e0, (v0_v0, v0_d0)) = vertex_0_adjacent_edges_iter.next().unwrap();
         assert_eq!(*v0_e0, 0);
         assert_eq!(*v0_v0, 1);
         assert_eq!(*v0_d0, PatternDirection::Out);
-        let (v0_e1, (v0_v1, v0_d1)) = vertex_0_connect_edges_iter.next().unwrap();
+        let (v0_e1, (v0_v1, v0_d1)) = vertex_0_adjacent_edges_iter.next().unwrap();
         assert_eq!(*v0_e1, 1);
         assert_eq!(*v0_v1, 1);
         assert_eq!(*v0_d1, PatternDirection::In);
         assert_eq!(vertex_0.adjacent_vertices.len(), 1);
-        let v0_v1_connected_edges = vertex_0.adjacent_vertices.get(&1).unwrap();
-        assert_eq!(v0_v1_connected_edges.len(), 2);
-        let mut v0_v1_connected_edges_iter = v0_v1_connected_edges.iter();
-        assert_eq!(*v0_v1_connected_edges_iter.next().unwrap(), (0, PatternDirection::Out));
-        assert_eq!(*v0_v1_connected_edges_iter.next().unwrap(), (1, PatternDirection::In));
+        let edges_connect_v0_v1 = vertex_0.adjacent_vertices.get(&1).unwrap();
+        assert_eq!(edges_connect_v0_v1.len(), 2);
+        let mut edges_connect_v0_v1_iter = edges_connect_v0_v1.iter();
+        assert_eq!(*edges_connect_v0_v1_iter.next().unwrap(), (0, PatternDirection::Out));
+        assert_eq!(*edges_connect_v0_v1_iter.next().unwrap(), (1, PatternDirection::In));
         let vertex_1 = pattern_case1.vertices.get(1).unwrap();
         assert_eq!(vertex_1.id, 1);
         assert_eq!(vertex_1.label, 0);
         assert_eq!(vertex_1.adjacent_edges.len(), 2);
-        let mut vertex_1_connect_edges_iter = vertex_1.adjacent_edges.iter();
-        let (v1_e0, (v1_v0, v1_d0)) = vertex_1_connect_edges_iter.next().unwrap();
+        let mut vertex_1_adjacent_edges_iter = vertex_1.adjacent_edges.iter();
+        let (v1_e0, (v1_v0, v1_d0)) = vertex_1_adjacent_edges_iter.next().unwrap();
         assert_eq!(*v1_e0, 0);
         assert_eq!(*v1_v0, 0);
         assert_eq!(*v1_d0, PatternDirection::In);
-        let (v1_e1, (v1_v1, v1_d1)) = vertex_1_connect_edges_iter.next().unwrap();
+        let (v1_e1, (v1_v1, v1_d1)) = vertex_1_adjacent_edges_iter.next().unwrap();
         assert_eq!(*v1_e1, 1);
         assert_eq!(*v1_v1, 0);
         assert_eq!(*v1_d1, PatternDirection::Out);
         assert_eq!(vertex_1.adjacent_vertices.len(), 1);
-        let v1_v0_connected_edges = vertex_1.adjacent_vertices.get(&0).unwrap();
-        assert_eq!(v1_v0_connected_edges.len(), 2);
-        let mut v1_v0_connected_edges_iter = v1_v0_connected_edges.iter();
-        assert_eq!(*v1_v0_connected_edges_iter.next().unwrap(), (0, PatternDirection::In));
-        assert_eq!(*v1_v0_connected_edges_iter.next().unwrap(), (1, PatternDirection::Out));
+        let edges_connect_v1_v0 = vertex_1.adjacent_vertices.get(&0).unwrap();
+        assert_eq!(edges_connect_v1_v0.len(), 2);
+        let mut edges_connect_v1_v0_iter = edges_connect_v1_v0.iter();
+        assert_eq!(*edges_connect_v1_v0_iter.next().unwrap(), (0, PatternDirection::In));
+        assert_eq!(*edges_connect_v1_v0_iter.next().unwrap(), (1, PatternDirection::Out));
     }
 
     /// Test whether pattern_case1 + extend_step_case1 = pattern_case2
@@ -1228,22 +1232,22 @@ mod tests {
             assert_eq!(vertex1.out_degree, vertex2.out_degree);
             assert_eq!(vertex1.adjacent_edges.len(), vertex2.adjacent_edges.len());
             assert_eq!(vertex1.adjacent_vertices.len(), vertex2.adjacent_vertices.len());
-            for (connect_edge1_id, (connect_vertex1_id, dir1)) in &vertex1.adjacent_edges {
-                let (connect_vertex2_id, dir2) = vertex2
+            for (adjacent_edge1_id, (adjacent_vertex1_id, dir1)) in &vertex1.adjacent_edges {
+                let (adjacent_vertex2_id, dir2) = vertex2
                     .adjacent_edges
-                    .get(connect_edge1_id)
+                    .get(adjacent_edge1_id)
                     .unwrap();
-                assert_eq!(*connect_vertex1_id, *connect_vertex2_id);
+                assert_eq!(*adjacent_vertex1_id, *adjacent_vertex2_id);
                 assert_eq!(*dir1, *dir2);
             }
-            for (connect_vertex1_id, edge_connections1) in &vertex1.adjacent_vertices {
-                let edge_connections2 = vertex2
+            for (adjacent_vertex1_id, edges_with_dirs1) in &vertex1.adjacent_vertices {
+                let edges_with_dirs2 = vertex2
                     .adjacent_vertices
-                    .get(connect_vertex1_id)
+                    .get(adjacent_vertex1_id)
                     .unwrap();
-                let (connect_edge1_id, dir1) = edge_connections1[0];
-                let (connect_edge2_id, dir2) = edge_connections2[0];
-                assert_eq!(connect_edge1_id, connect_edge2_id);
+                let (adjacent_edge1_id, dir1) = edges_with_dirs1[0];
+                let (adjacent_edge2_id, dir2) = edges_with_dirs2[0];
+                assert_eq!(adjacent_edge1_id, adjacent_edge2_id);
                 assert_eq!(dir1, dir2);
             }
         }
