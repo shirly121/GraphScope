@@ -113,7 +113,7 @@ impl PatternMeta {
         self.edge_label_map.len()
     }
 
-    pub fn iter_vertex_label_names(&self) -> DynIter<&String> {
+    pub fn vertex_label_names_iter(&self) -> DynIter<&String> {
         Box::new(
             self.vertex_label_map
                 .iter()
@@ -121,11 +121,11 @@ impl PatternMeta {
         )
     }
 
-    pub fn iter_edge_label_names(&self) -> DynIter<&String> {
+    pub fn edge_label_names_iter(&self) -> DynIter<&String> {
         Box::new(self.edge_label_map.iter().map(|(name, _)| name))
     }
 
-    pub fn iter_vertex_label_ids(&self) -> DynIter<PatternLabelId> {
+    pub fn vertex_label_ids_iter(&self) -> DynIter<PatternLabelId> {
         Box::new(
             self.vertex_label_map
                 .iter()
@@ -133,7 +133,7 @@ impl PatternMeta {
         )
     }
 
-    pub fn iter_edge_label_ids(&self) -> DynIter<PatternLabelId> {
+    pub fn edge_label_ids_iter(&self) -> DynIter<PatternLabelId> {
         Box::new(
             self.edge_label_map
                 .iter()
@@ -150,7 +150,7 @@ impl PatternMeta {
     }
 
     /// Given a soruce vertex label, iterate over all its neighboring adjacent vertices(label)
-    pub fn iter_adjacent_vlabels(&self, src_v_label: PatternLabelId) -> DynIter<PatternLabelId> {
+    pub fn adjacent_vlabels_iter(&self, src_v_label: PatternLabelId) -> DynIter<PatternLabelId> {
         match self.v2edges_meta.get(&src_v_label) {
             Some(adjacencies) => {
                 let mut adjacent_vertices = BTreeSet::new();
@@ -172,7 +172,7 @@ impl PatternMeta {
     }
 
     /// Given a source vertex label, iterate over all its neiboring adjacent edges(label)
-    pub fn iter_adjacent_elabels(
+    pub fn adjacent_elabels_iter(
         &self, src_v_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternDirection)> {
         match self.v2edges_meta.get(&src_v_label) {
@@ -182,7 +182,7 @@ impl PatternMeta {
     }
 
     /// Given a source edge label, iterate over all possible pairs of its (src vertex label, dst vertex label)
-    pub fn iter_associated_vlabels(
+    pub fn associated_vlabels_iter_by_elabel(
         &self, src_e_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternLabelId)> {
         match self.e2vertices_meta.get(&src_e_label) {
@@ -191,7 +191,7 @@ impl PatternMeta {
         }
     }
     /// Given a src vertex label and a dst vertex label, iterate over all possible edges(label) between them with directions
-    pub fn iter_associated_elabels(
+    pub fn associated_elabels_iter_by_vlabel(
         &self, src_v_label: PatternLabelId, dst_v_label: PatternLabelId,
     ) -> DynIter<(PatternLabelId, PatternDirection)> {
         match self
@@ -221,49 +221,49 @@ mod tests {
         assert_eq!(modern_pattern_meta.get_vertex_types_num(), 2);
         assert_eq!(
             modern_pattern_meta
-                .iter_adjacent_elabels(0)
+                .adjacent_elabels_iter(0)
                 .collect::<Vec<(PatternLabelId, PatternDirection)>>()
                 .len(),
             3
         );
         assert_eq!(
             modern_pattern_meta
-                .iter_adjacent_elabels(1)
+                .adjacent_elabels_iter(1)
                 .collect::<Vec<(PatternLabelId, PatternDirection)>>()
                 .len(),
             1
         );
         assert_eq!(
             modern_pattern_meta
-                .iter_adjacent_vlabels(0)
+                .adjacent_vlabels_iter(0)
                 .collect::<Vec<PatternLabelId>>()
                 .len(),
             2
         );
         assert_eq!(
             modern_pattern_meta
-                .iter_adjacent_vlabels(1)
+                .adjacent_vlabels_iter(1)
                 .collect::<Vec<PatternLabelId>>()
                 .len(),
             1
         );
         assert_eq!(
             modern_pattern_meta
-                .iter_associated_elabels(0, 0)
+                .associated_elabels_iter_by_vlabel(0, 0)
                 .collect::<Vec<(PatternLabelId, PatternDirection)>>()
                 .len(),
             2
         );
         assert_eq!(
             modern_pattern_meta
-                .iter_associated_elabels(0, 1)
+                .associated_elabels_iter_by_vlabel(0, 1)
                 .collect::<Vec<(PatternLabelId, PatternDirection)>>()
                 .len(),
             1
         );
         assert_eq!(
             modern_pattern_meta
-                .iter_associated_elabels(1, 0)
+                .associated_elabels_iter_by_vlabel(1, 0)
                 .collect::<Vec<(PatternLabelId, PatternDirection)>>()
                 .len(),
             1
@@ -277,11 +277,11 @@ mod tests {
         let ldbc_pattern_meta = PatternMeta::from(ldbc_graph_schema.clone());
         assert_eq!(
             ldbc_pattern_meta
-                .iter_edge_label_ids()
+                .edge_label_ids_iter()
                 .collect::<Vec<PatternLabelId>>()
                 .len()
                 + ldbc_pattern_meta
-                    .iter_vertex_label_ids()
+                    .vertex_label_ids_iter()
                     .collect::<Vec<PatternLabelId>>()
                     .len(),
             ldbc_graph_schema
@@ -289,7 +289,7 @@ mod tests {
                 .0
                 .len()
         );
-        let all_vertex_names = ldbc_pattern_meta.iter_vertex_label_names();
+        let all_vertex_names = ldbc_pattern_meta.vertex_label_names_iter();
         for vertex_name in all_vertex_names {
             let v_id_from_schema = ldbc_graph_schema
                 .get_table_id(vertex_name)
@@ -299,7 +299,7 @@ mod tests {
                 .unwrap();
             assert_eq!(v_id_from_schema, v_id_from_pattern_meta);
         }
-        let all_edge_names = ldbc_pattern_meta.iter_edge_label_names();
+        let all_edge_names = ldbc_pattern_meta.edge_label_names_iter();
         for edge_name in all_edge_names {
             let e_id_from_schema = ldbc_graph_schema
                 .get_table_id(edge_name)
@@ -309,10 +309,10 @@ mod tests {
                 .unwrap();
             assert_eq!(e_id_from_schema, e_id_from_pattern_meta);
         }
-        let all_edge_ids = ldbc_pattern_meta.iter_edge_label_ids();
+        let all_edge_ids = ldbc_pattern_meta.edge_label_ids_iter();
         let mut vertex_vertex_edges = BTreeMap::new();
         for edge_id in all_edge_ids {
-            let edge_associate_vertices = ldbc_pattern_meta.iter_associated_vlabels(edge_id);
+            let edge_associate_vertices = ldbc_pattern_meta.associated_vlabels_iter_by_elabel(edge_id);
             for (start_v_id, end_v_id) in edge_associate_vertices {
                 vertex_vertex_edges
                     .entry((start_v_id, end_v_id))
@@ -326,7 +326,7 @@ mod tests {
         }
         for ((start_v_id, end_v_id), mut connections) in vertex_vertex_edges {
             let mut edges_between_vertices: Vec<(PatternLabelId, PatternDirection)> = ldbc_pattern_meta
-                .iter_associated_elabels(start_v_id, end_v_id)
+                .associated_elabels_iter_by_vlabel(start_v_id, end_v_id)
                 .collect();
             assert_eq!(connections.len(), edges_between_vertices.len());
             connections.sort();
@@ -335,12 +335,12 @@ mod tests {
                 assert_eq!(connections[i], edges_between_vertices[i]);
             }
         }
-        let all_vertex_ids = ldbc_pattern_meta.iter_vertex_label_ids();
+        let all_vertex_ids = ldbc_pattern_meta.vertex_label_ids_iter();
         let mut vertex_vertex_edges = BTreeMap::new();
         for vertex_id in all_vertex_ids {
-            let adjacent_edges = ldbc_pattern_meta.iter_adjacent_elabels(vertex_id);
+            let adjacent_edges = ldbc_pattern_meta.adjacent_elabels_iter(vertex_id);
             for (edge_id, dir) in adjacent_edges {
-                let edges_with_dirs = ldbc_pattern_meta.iter_associated_vlabels(edge_id);
+                let edges_with_dirs = ldbc_pattern_meta.associated_vlabels_iter_by_elabel(edge_id);
                 for (start_v_id, end_v_id) in edges_with_dirs {
                     if start_v_id == vertex_id && dir == PatternDirection::Out {
                         vertex_vertex_edges
@@ -359,7 +359,7 @@ mod tests {
         }
         for ((start_v_id, end_v_id), mut connections) in vertex_vertex_edges {
             let mut edges_between_vertices: Vec<(PatternLabelId, PatternDirection)> = ldbc_pattern_meta
-                .iter_associated_elabels(start_v_id, end_v_id)
+                .associated_elabels_iter_by_vlabel(start_v_id, end_v_id)
                 .map(|(edge_label, dir)| (edge_label, dir))
                 .collect();
             assert_eq!(connections.len(), edges_between_vertices.len());

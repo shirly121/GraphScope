@@ -60,7 +60,7 @@ impl PatternVertex {
         self.rank
     }
 
-    pub fn iter_adjacent_edges(&self) -> DynIter<(PatternId, PatternId, PatternDirection)> {
+    pub fn adjacent_edges_iter(&self) -> DynIter<(PatternId, PatternId, PatternDirection)> {
         Box::new(
             self.adjacent_edges
                 .iter()
@@ -68,7 +68,7 @@ impl PatternVertex {
         )
     }
 
-    pub fn iter_adjacent_vertices(&self) -> DynIter<(PatternId, &Vec<(PatternId, PatternDirection)>)> {
+    pub fn adjacent_vertices_iter(&self) -> DynIter<(PatternId, &Vec<(PatternId, PatternDirection)>)> {
         Box::new(
             self.adjacent_vertices
                 .iter()
@@ -97,7 +97,7 @@ impl PatternVertex {
     }
 
     /// Given a vertex id, iterate all the edges connecting the given vertex and current vertex with the direction
-    pub fn iter_adjacent_edges_by_vertex_id(
+    pub fn adjacent_edges_iter_by_vertex_id(
         &self, vertex_id: PatternId,
     ) -> DynIter<(PatternId, PatternDirection)> {
         match self.adjacent_vertices.get(&vertex_id) {
@@ -331,7 +331,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
                             if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
                                 let src_dst_vertex_pairs =
-                                    pattern_meta.iter_associated_vlabels(edge_label_id);
+                                    pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id);
                                 if i == 0 {
                                 } else if i == sentence.binders.len() - 1 {
                                 }
@@ -363,17 +363,17 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
 /// Methods to access the fields of a Pattern or get some info from Pattern
 impl Pattern {
     /// Iterate Edges
-    pub fn iter_edges(&self) -> DynIter<&PatternEdge> {
+    pub fn edges_iter(&self) -> DynIter<&PatternEdge> {
         Box::new(self.edges.iter().map(|(_, edge)| edge))
     }
 
     /// Iterate Vertices
-    pub fn iter_vertices(&self) -> DynIter<&PatternVertex> {
+    pub fn vertices_iter(&self) -> DynIter<&PatternVertex> {
         Box::new(self.vertices.iter().map(|(_, vertex)| vertex))
     }
 
     /// Iterate Edge Labels with Edges has this Label
-    pub fn iter_edge_label_map(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
+    pub fn edge_label_map_iter(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
         Box::new(
             self.edge_label_map
                 .iter()
@@ -382,7 +382,7 @@ impl Pattern {
     }
 
     /// Iterate Vertex Labels with Vertices has this Label
-    pub fn iter_vertex_label_map(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
+    pub fn vertex_label_map_iter(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
         Box::new(
             self.vertex_label_map
                 .iter()
@@ -603,12 +603,12 @@ impl Pattern {
     /// The Edge info is a 4-element tuple: (edge_id, edge_label, end_v_id, end_v_label)
     fn get_vertex_neighbor_edges(&self) -> HashMap<PatternId, Vec<(PatternId, PatternId)>> {
         let mut vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId)>> = HashMap::new();
-        for vertex in self.iter_vertices() {
+        for vertex in self.vertices_iter() {
             let mut outgoing_edges: Vec<(PatternId, PatternId)> =
                 Vec::with_capacity(vertex.get_out_degree());
             let mut incoming_edges: Vec<(PatternId, PatternId)> =
                 Vec::with_capacity(vertex.get_in_degree());
-            for (e_id, end_v_id, edge_dir) in vertex.iter_adjacent_edges() {
+            for (e_id, end_v_id, edge_dir) in vertex.adjacent_edges_iter() {
                 match edge_dir {
                     PatternDirection::Out => outgoing_edges.push((e_id, end_v_id)),
                     PatternDirection::In => incoming_edges.push((e_id, end_v_id)),
@@ -736,7 +736,7 @@ impl Pattern {
     fn update_vertex_neighbor_edges_map(
         &self, vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId)>>,
     ) {
-        for vertex in self.iter_vertices() {
+        for vertex in self.vertices_iter() {
             vertex_neighbor_edges_map
                 .get_mut(&vertex.get_id())
                 .unwrap()
@@ -799,7 +799,7 @@ impl Pattern {
     /// Return: A vector of vertex groups sharing the same initial indices
     fn get_same_rank_vertex_groups(&mut self) -> Vec<Vec<PatternId>> {
         let mut same_rank_vertex_groups: Vec<Vec<PatternId>> = vec![];
-        for (_, vertex_set) in self.iter_vertex_label_map() {
+        for (_, vertex_set) in self.vertex_label_map_iter() {
             let mut vertex_vec: Vec<PatternId> = vec![];
             // Push all the vertices with the same label into a vector
             for v_id in vertex_set.iter() {
@@ -1059,7 +1059,7 @@ impl Pattern {
     pub fn get_extend_steps(&self, pattern_meta: &PatternMeta) -> Vec<ExtendStep> {
         let mut extend_steps = vec![];
         // Get all vertex labels from pattern meta as the possible extend target vertex
-        let target_v_labels = pattern_meta.iter_vertex_label_ids();
+        let target_v_labels = pattern_meta.vertex_label_ids_iter();
         // For every possible extend target vertex label, find its all adjacent edges to the current pattern
         for target_v_label in target_v_labels {
             // The collection of (the collection of extend edges)
@@ -1069,7 +1069,8 @@ impl Pattern {
             let mut extend_edges_with_src_id = vec![];
             for (_, src_vertex) in &self.vertices {
                 // check whether there are some edges between the target vertex and the current source vertex
-                let adjacent_edges = pattern_meta.iter_associated_elabels(src_vertex.label, target_v_label);
+                let adjacent_edges =
+                    pattern_meta.associated_elabels_iter_by_vlabel(src_vertex.label, target_v_label);
                 // Transform all the adjacent edges to ExtendEdge and add to extend_edges_with_src_id
                 for adjacent_edge in adjacent_edges {
                     let extend_edge = ExtendEdge::new(
@@ -1709,7 +1710,7 @@ mod tests {
         let mut pattern = build_pattern_case1();
         let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
         pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
+        let vertices: VecMap<&PatternVertex> = pattern.vertices_iter().enumerate().collect();
         assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
     }
@@ -1719,7 +1720,7 @@ mod tests {
         let mut pattern = build_pattern_case2();
         let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
         pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
+        let vertices: VecMap<&PatternVertex> = pattern.vertices_iter().enumerate().collect();
         assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(2).unwrap().get_rank(), 0);
@@ -1730,7 +1731,7 @@ mod tests {
         let mut pattern = build_pattern_case3();
         let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
         pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
+        let vertices: VecMap<&PatternVertex> = pattern.vertices_iter().enumerate().collect();
         assert_eq!(vertices.get(0).unwrap().get_rank(), 1);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(2).unwrap().get_rank(), 1);
@@ -1780,7 +1781,7 @@ mod tests {
     fn set_accurate_rank_case1() {
         let mut pattern = build_pattern_case1();
         pattern.rank_ranking();
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
+        let vertices: VecMap<&PatternVertex> = pattern.vertices_iter().enumerate().collect();
         assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
     }
