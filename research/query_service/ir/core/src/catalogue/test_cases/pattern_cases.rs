@@ -1637,8 +1637,13 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
 pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternId>) {
     let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
     let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("A->C"), String::from("A->D"), String::from("A->E")]);
+    let edge_label_map: HashMap<String, PatternLabelId> = gen_edge_label_map(vec![
+        String::from("A->A"),
+        String::from("A->B"),
+        String::from("A->C"),
+        String::from("A->D"),
+        String::from("A->E"),
+    ]);
     vertex_label_map.insert(String::from("A"), 1);
     vertex_label_map.insert(String::from("B"), 2);
     vertex_label_map.insert(String::from("C"), 3);

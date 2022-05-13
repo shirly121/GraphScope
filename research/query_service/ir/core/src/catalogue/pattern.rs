@@ -24,7 +24,7 @@ use vec_map::VecMap;
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
-use crate::error::IrError;
+use crate::error::{IrError, IrResult};
 
 #[derive(Debug, Clone)]
 pub struct PatternVertex {
@@ -569,26 +569,29 @@ impl Pattern {
     }
 }
 
-/// Methods of Index Ranking
+/// Naive Rank Ranking Method
 impl Pattern {
-    /// Index Ranking Is Done In Four Steps:
+    /// Set Rank for Every Vertex within the Pattern
     ///
-    /// Step-1: Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
-    ///
-    /// Step-2: Set Initial Index Based on Local Information of Vertices (labels, in/out degree, neighboring edges info)
-    /// 
-    /// Step-3: Update the Order of Neighbor Vertices Based on the Initial Indices
-    /// 
-    /// Step-4: Set Accurate Index Based on Iterative Traversal
+    /// Basic Idea: Iteratively update the rank locally (neighbor edges vertices) and update the order of neighbor edges
     pub fn rank_ranking(&mut self) {
         // Step-1: Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
-        let mut vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> = self.get_vertex_neighbor_edges();
-        // Step-2: Set Initial Index Based on Local Information of Vertices (labels, in/out degree, neighboring edges info)
-        self.set_initial_rank(&vertex_neighbor_edges_map);
-        // Step-3: Update the Order of Neighbor Vertices Based on the Initial Indices
-        self.update_neighbor_edges_map(&mut vertex_neighbor_edges_map);
-        // Step-4: Set Accurate Index Based on Iterative Traversal
-        self.set_accurate_rank(&mut vertex_neighbor_edges_map);
+        let mut vertex_neighbor_edges_map: HashMap<
+            PatternId,
+            Vec<(PatternId, PatternId, PatternDirection)>,
+        > = self.get_vertex_neighbor_edges();
+        loop {
+            // Step-2: Set Initial Index Based on Local Information of Vertices (labels, in/out degree, neighboring edges info)
+            let is_rank_changed: bool = self
+                .update_rank(&vertex_neighbor_edges_map)
+                .unwrap();
+            if !is_rank_changed {
+                break;
+            }
+
+            // Step-3: Update the Order of Neighbor Vertices Based on the Initial Indices
+            self.update_neighbor_edges_map(&mut vertex_neighbor_edges_map);
+        }
     }
 
     /// Get a vector of neighboring edges of each vertex
@@ -600,11 +603,19 @@ impl Pattern {
     /// i.e. [ sorted outgoing edges | sorted incoming edges ]
     ///
     /// The Edge info is a 4-element tuple: (edge_id, edge_label, end_v_id, end_v_label)
-    fn get_vertex_neighbor_edges(&self) -> HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> {
-        let mut vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> = HashMap::new();
+    fn get_vertex_neighbor_edges(
+        &self,
+    ) -> HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> {
+        let mut vertex_neighbor_edges_map: HashMap<
+            PatternId,
+            Vec<(PatternId, PatternId, PatternDirection)>,
+        > = HashMap::new();
         for vertex in self.iter_vertices() {
-            let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> = Vec::with_capacity(vertex.get_out_degree());
-            let mut incoming_edges: Vec<(PatternId, PatternId, PatternDirection)> = Vec::with_capacity(vertex.get_in_degree());
+            let v_id: PatternId = vertex.get_id();
+            let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> =
+                Vec::with_capacity(vertex.get_out_degree());
+            let mut incoming_edges: Vec<(PatternId, PatternId, PatternDirection)> =
+                Vec::with_capacity(vertex.get_in_degree());
             for (e_id, end_v_id, edge_dir) in vertex.iter_adjacent_edges() {
                 match edge_dir {
                     PatternDirection::Out => outgoing_edges.push((e_id, end_v_id, edge_dir)),
@@ -617,25 +628,31 @@ impl Pattern {
             // Concat two edge info vector
             outgoing_edges.append(&mut incoming_edges);
             // Store in the Hashmap
-            vertex_neighbor_edges_map.insert(vertex.get_id(), outgoing_edges);
+            vertex_neighbor_edges_map.insert(v_id, outgoing_edges);
         }
 
         vertex_neighbor_edges_map
     }
 
     /// Set Initial Vertex Index Based on Comparison of Labels and In/Out Degrees
-    fn set_initial_rank(
+    ///
+    /// Return a bool indicating whether the ranks has changed for this initial rank iteration
+    ///
+    /// If nothing changed, we conclude that the ranks of all vertices have been set and are stable
+    fn update_rank(
         &mut self,
-        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>
-    ) {
-        for (_, vertex_set) in self.vertex_label_map.iter() {
+        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
+    ) -> IrResult<bool> {
+        let mut is_rank_changed: bool = false;
+        let mut vertex_rank_map: HashMap<PatternId, PatternRankId> = HashMap::new();
+        for (_, vertex_set) in self.iter_vertex_label_map() {
             let mut vertex_vec: Vec<PatternId> = Vec::with_capacity(vertex_set.len());
             for v_id in vertex_set.iter() {
                 vertex_vec.push(*v_id);
             }
             // Sort vertices from small to large
             vertex_vec.sort_by(|v1_id, v2_id| {
-                self.cmp_vertices_for_initial_rank(*v1_id, *v2_id, vertex_neighbor_edges_map)
+                self.cmp_vertices_for_rank(*v1_id, *v2_id, vertex_neighbor_edges_map)
             });
             // Vertex Index is the value to be set to vertices.
             // Isomorphic Vertices may share the same vertex rank
@@ -645,32 +662,55 @@ impl Pattern {
             let mut vertex_rank_implicit = 0;
             let mut max_v_id = vertex_vec[0];
             for v_id in vertex_vec {
-                let order = self.cmp_vertices_for_initial_rank(v_id, max_v_id, vertex_neighbor_edges_map);
-                let vertex: &mut PatternVertex = self.vertices.get_mut(v_id).unwrap();
+                let old_rank: PatternRankId = self
+                    .get_vertex_from_id(v_id)
+                    .unwrap()
+                    .get_rank();
+                let order = self.cmp_vertices_for_rank(v_id, max_v_id, vertex_neighbor_edges_map);
+                // let vertex: &mut PatternVertex = self.get_vertex_mut_from_id(v_id).unwrap();
                 match order {
                     Ordering::Greater => {
                         vertex_rank = vertex_rank_implicit;
-                        vertex.set_rank(vertex_rank);
                         max_v_id = v_id;
+                        if vertex_rank != old_rank {
+                            is_rank_changed = true;
+                            vertex_rank_map.insert(v_id, vertex_rank);
+                            // vertex.set_rank(vertex_rank);
+                        }
                     }
                     Ordering::Equal => {
-                        vertex.set_rank(vertex_rank);
+                        if vertex_rank != old_rank {
+                            is_rank_changed = true;
+                            vertex_rank_map.insert(v_id, vertex_rank);
+                            // vertex.set_rank(vertex_rank);
+                        }
                     }
                     Ordering::Less => {
-                        panic!("Error in setting initial vertex rank, vertex_vec is not sorted")
+                        return Err(IrError::Unsupported(
+                            "Failed to update vertex rank because vertex_vec is not well sorted"
+                                .to_string(),
+                        ));
                     }
                 }
+
                 vertex_rank_implicit += 1;
             }
         }
+
+        // Update the Rank for Every Vertex
+        for (v_id, v_rank) in vertex_rank_map.iter() {
+            self.get_vertex_mut_from_id(*v_id)
+                .unwrap()
+                .set_rank(*v_rank);
+        }
+
+        Ok(is_rank_changed)
     }
 
     /// Get the Order of two PatternVertices of a Pattern
-    fn cmp_vertices_for_initial_rank(
-        &self,
-        v1_id: PatternId,
-        v2_id: PatternId,
-        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>
+    fn cmp_vertices_for_rank(
+        &self, v1_id: PatternId, v2_id: PatternId,
+        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
     ) -> Ordering {
         if v1_id == v2_id {
             return Ordering::Equal;
@@ -694,22 +734,54 @@ impl Pattern {
             Ordering::Greater => return Ordering::Greater,
             _ => (),
         }
+        // Compare the ranks
+        match v1.get_rank().cmp(&v2.get_rank()) {
+            Ordering::Less => return Ordering::Less,
+            Ordering::Greater => return Ordering::Greater,
+            _ => (),
+        }
 
-        let v1_adjacent_edges = vertex_neighbor_edges_map.get(&v1_id).unwrap();
-        let v2_adjacent_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap();
-        for i in 0..v1_adjacent_edges.len() {
-            // Compare Edge Label
-            let v1_connected_edge_label = self.get_edge_from_id(v1_adjacent_edges[i].0).unwrap().get_label();
-            let v1_connected_edge_end_v_label = self.get_vertex_from_id(v1_adjacent_edges[i].1).unwrap().get_label();
-            let v2_connected_edge_label = self.get_edge_from_id(v2_adjacent_edges[i].0).unwrap().get_label();
-            let v2_connected_edge_end_v_label = self.get_vertex_from_id(v2_adjacent_edges[i].1).unwrap().get_label();
+        let v1_connected_edges = vertex_neighbor_edges_map.get(&v1_id).unwrap();
+        let v2_connected_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap();
+        for i in 0..v1_connected_edges.len() {
+            let v1_connected_edge_label = self
+                .get_edge_from_id(v1_connected_edges[i].0)
+                .unwrap()
+                .get_label();
+            let v1_connected_edge_end_v_label = self
+                .get_vertex_from_id(v1_connected_edges[i].1)
+                .unwrap()
+                .get_label();
+            let v2_connected_edge_label = self
+                .get_edge_from_id(v2_connected_edges[i].0)
+                .unwrap()
+                .get_label();
+            let v2_connected_edge_end_v_label = self
+                .get_vertex_from_id(v2_connected_edges[i].1)
+                .unwrap()
+                .get_label();
+            // Compare End Vertex Label
             match v1_connected_edge_end_v_label.cmp(&v2_connected_edge_end_v_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
                 _ => (),
             }
-            // Ignore Edge Label Comparison since They are Randomly Set
+            // Compare Edge Label
             match v1_connected_edge_label.cmp(&v2_connected_edge_label) {
+                Ordering::Less => return Ordering::Less,
+                Ordering::Greater => return Ordering::Greater,
+                _ => (),
+            }
+            // Compare End Vertex Rank
+            let v1_connected_end_v_rank: PatternRankId = self
+                .get_vertex_from_id(v1_connected_edges[i].1)
+                .unwrap()
+                .get_rank();
+            let v2_connected_end_v_rank: PatternRankId = self
+                .get_vertex_from_id(v2_connected_edges[i].1)
+                .unwrap()
+                .get_rank();
+            match v1_connected_end_v_rank.cmp(&v2_connected_end_v_rank) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
                 _ => (),
@@ -730,458 +802,6 @@ impl Pattern {
                 .unwrap()
                 .sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
         }
-    }
-
-    /// Set Accurate Indices According to the Initial Indices Set in Step-1
-    fn set_accurate_rank(
-        &mut self,
-        vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
-    ) {
-        // Initialize a HashSet Indicating Whether The Vertex Has Been Visited
-        let mut visited_vertex_set: HashSet<PatternId> = HashSet::new();
-        // Initialize a HashSet Indicating Whether the Neighbor Edges of Vertex is Sorted
-        let mut neighbor_edges_sorted_vertex_set: HashSet<PatternId> = HashSet::new();
-        // Iteratively find a group of vertices sharing the same index
-        let same_rank_vertex_groups: Vec<Vec<PatternId>> = self.get_same_rank_vertex_groups();
-        // Iteratively Compare the Indices of Vertices
-        for i in 0..same_rank_vertex_groups.len() {
-            self.set_accurate_rank_for_same_rank_vertex_group(
-                &same_rank_vertex_groups[i],
-                &same_rank_vertex_groups,
-                vertex_neighbor_edges_map,
-                &mut visited_vertex_set,
-                &mut neighbor_edges_sorted_vertex_set,
-            );
-        }
-    }
-
-    /// Get all the vertex groups that share the same initial indices
-    ///
-    /// Only these groups are considered when setting accurate indices
-    ///
-    /// Return: A vector of vertex groups sharing the same initial indices
-    fn get_same_rank_vertex_groups(&mut self) -> Vec<Vec<PatternId>> {
-        let mut same_rank_vertex_groups: Vec<Vec<PatternId>> = vec![];
-        for (_, vertex_set) in self.iter_vertex_label_map() {
-            let mut vertex_vec: Vec<PatternId> = vec![];
-            // Push all the vertices with the same label into a vector
-            for v_id in vertex_set.iter() {
-                vertex_vec.push(*v_id);
-            }
-            // Sort vertices by their ranks
-            vertex_vec.sort_by(|v1_id, v2_id| {
-                self.get_vertex_from_id(*v1_id)
-                    .unwrap()
-                    .get_rank()
-                    .cmp(
-                        &self
-                            .get_vertex_from_id(*v2_id)
-                            .unwrap()
-                            .get_rank(),
-                    )
-            });
-            let mut max_v_rank = -1;
-            for i in 0..vertex_vec.len() {
-                let current_v_rank = self
-                    .get_vertex_from_id(vertex_vec[i])
-                    .unwrap()
-                    .get_rank();
-                match current_v_rank.cmp(&max_v_rank) {
-                    Ordering::Greater => {
-                        same_rank_vertex_groups.push(vec![vertex_vec[i]]);
-                        max_v_rank = current_v_rank;
-                    }
-                    Ordering::Equal => same_rank_vertex_groups
-                        .last_mut()
-                        .unwrap()
-                        .push(vertex_vec[i]),
-                    Ordering::Less => {
-                        panic!("Error in setting accurate rank: vertex_vec is not well sorted")
-                    }
-                }
-            }
-        }
-
-        same_rank_vertex_groups.retain(|vertex_group| vertex_group.len() > 1);
-        same_rank_vertex_groups.sort_by(|vertex_group_1, vertex_group_2| self.cmp_same_rank_vertex_group(vertex_group_1, vertex_group_2));
-        same_rank_vertex_groups
-    }
-
-    /// Used to Sort the Same Rank Vertex Groups Based on Vertex Label and Rank
-    fn cmp_same_rank_vertex_group(
-        &self,
-        vertex_group_1: &Vec<PatternId>,
-        vertex_group_2: &Vec<PatternId>,
-    ) -> Ordering {
-        let v1_label: PatternLabelId = self.get_vertex_from_id(vertex_group_1[0]).unwrap().get_label();
-        let v2_label: PatternLabelId = self.get_vertex_from_id(vertex_group_2[0]).unwrap().get_label();
-        match v1_label.cmp(&v2_label) {
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Less => return Ordering::Less,
-            Ordering::Equal => (),
-        }
-        let v1_rank: PatternRankId = self.get_vertex_from_id(vertex_group_1[0]).unwrap().get_rank();
-        let v2_rank: PatternRankId = self.get_vertex_from_id(vertex_group_2[0]).unwrap().get_rank();
-        match v1_rank.cmp(&v2_rank) {
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Less => return Ordering::Less,
-            Ordering::Equal => (),
-        }
-
-        Ordering::Equal
-    }
-
-    /// Set Accurate Rank For A Single Same Rank Vertex Group
-    /// 
-    /// Called when Setting Accurate Ranks
-    /// 
-    /// Called Also When Finding the Correct Order of Neighbor Vertices
-    fn set_accurate_rank_for_same_rank_vertex_group(
-        &mut self,
-        vertex_group: &Vec<PatternId>,
-        same_rank_vertex_groups: &Vec<Vec<PatternId>>,
-        vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
-        visited_vertex_set: &mut HashSet<PatternId>,
-        neighbor_edges_sorted_vertex_set: &mut HashSet<PatternId>,
-    ) {
-        // Skip Vertex Groups with Length 1 Has Unique Initial Rank
-        if vertex_group.len() <= 1 {
-            return;
-        }
-        
-        let initial_rank: PatternRankId = self
-            .get_vertex_from_id(vertex_group[0])
-            .unwrap()
-            .get_rank();
-        let mut accurate_rank_vec: Vec<PatternRankId> = Vec::with_capacity(vertex_group.len());
-        for _ in 0..vertex_group.len() {
-            accurate_rank_vec.push(initial_rank);
-        }
-        for i in 0..vertex_group.len() {
-            // Only care about how many vertices have smaller rank
-            for j in (i + 1)..vertex_group.len() {
-                match self.cmp_vertices_for_accurate_rank(
-                    vertex_group[i],
-                    vertex_group[j],
-                    same_rank_vertex_groups,
-                    vertex_neighbor_edges_map,
-                    visited_vertex_set,
-                    neighbor_edges_sorted_vertex_set,
-                ) {
-                    // Add index of vertex j by 1 if i > j
-                    Ordering::Less => accurate_rank_vec[j] += 1,
-                    // Add index of vertex i by 1 if i < j
-                    Ordering::Greater => accurate_rank_vec[i] += 1,
-                    // Do nothing if i == j
-                    Ordering::Equal => (),
-                }
-            }
-
-            // Set rank to Vertex i
-            self.get_vertex_mut_from_id(vertex_group[i])
-                .unwrap()
-                .set_rank(accurate_rank_vec[i]);
-        }
-    }
-
-    /// Logic of How Accurate Rank is Set
-    /// 
-    /// Given two vertices, v1 and v2, this function can distinguish their ranks
-    /// 
-    /// Equal Only if v1 and v2 are Completely Isomorphic in Structure With Each Other
-    /// 
-    /// The comparison is done in the following steps:
-    /// 
-    /// Step-1: Compare the ranks of v1 and v2
-    /// 
-    /// Step-2: Shallow Compare the Ranks of Neighbor Vertices of v1 and v2
-    /// 
-    /// Step-3: Sort all neighbor vertices of both v1 and v2 for their accurate ranks
-    /// (In this step, all the same rank vertex groups within the neighbor vertices are set with their accurate ranks)
-    /// 
-    /// Step-4: Compare the Ranks of Neighbor Vertices of v1 and v2 one by one, iteratively.
-    fn cmp_vertices_for_accurate_rank(
-        &mut self,
-        v1_id: PatternId,
-        v2_id: PatternId,
-        same_rank_vertex_groups: &Vec<Vec<PatternId>>,
-        vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
-        visited_vertex_set: &mut HashSet<PatternId>,
-        neighbor_edges_sorted_vertex_set: &mut HashSet<PatternId>,
-    ) -> Ordering {
-        // Return Equal if the Two Vertices Have the Same Index
-        if v1_id == v2_id {
-            return Ordering::Equal;
-        }
-        // Step-1: Compare the ranks of v1 and v2
-        let v1_rank: PatternRankId = self
-            .get_vertex_from_id(v1_id)
-            .unwrap()
-            .get_rank();
-        let v2_rank: PatternRankId = self
-            .get_vertex_from_id(v2_id)
-            .unwrap()
-            .get_rank();
-        match v1_rank.cmp(&v2_rank) {
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Less => return Ordering::Less,
-            Ordering::Equal => (),
-        }
-
-        // Step-2: Shallow Compare the Ranks of Neighbor Vertices of v1 and v2
-        match self.cmp_neighbor_vertex_rank(v1_id, v2_id, &vertex_neighbor_edges_map) {
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Less => return Ordering::Less,
-            Ordering::Equal => (),
-        }
-
-        // Return Equal if the Two Vertices Have Been Set As Visited
-        if visited_vertex_set.contains(&v1_id) && visited_vertex_set.contains(&v2_id) {
-            return Ordering::Equal;
-        }
-
-        // Set v1 and v2 as visited To Avoid Infinite Loop
-        visited_vertex_set.insert(v1_id);
-        visited_vertex_set.insert(v2_id);
-        // Step-3: Sort all neighbor vertices of both v1 and v2 for their accurate ranks
-        // Sort Neighbor Vertices of v1
-        let v1_sorted_neighbor_edges: Vec<(PatternId, PatternId, PatternDirection)> = 
-            self.sort_vertex_neighbor_edges(
-                v1_id,
-                &same_rank_vertex_groups,
-                vertex_neighbor_edges_map,
-                visited_vertex_set,
-                neighbor_edges_sorted_vertex_set,
-            );
-        // Update the Sorted Neighbor Info in the Map
-        vertex_neighbor_edges_map.insert(v1_id, v1_sorted_neighbor_edges.clone());
-        // Sort Neighbor Vertices of v2
-        let v2_sorted_neighbor_edges: Vec<(PatternId, PatternId, PatternDirection)> =
-            self.sort_vertex_neighbor_edges(
-                v2_id,
-                &same_rank_vertex_groups,
-                vertex_neighbor_edges_map,
-                visited_vertex_set,
-                neighbor_edges_sorted_vertex_set,
-            );
-        // Update the Sorted Neighbor Info in the Map
-        vertex_neighbor_edges_map.insert(v2_id, v2_sorted_neighbor_edges.clone());
-        // Step-4: Compare the Ranks of Neighbor Vertices of v1 and v2 one by one, iteratively.
-        let neighbor_vertex_num: usize = v1_sorted_neighbor_edges.len();
-        for index in 0..neighbor_vertex_num {
-            let v1_neighbor_vertex_id: PatternId = v1_sorted_neighbor_edges[index].1;
-            let v2_neighbor_vertex_id: PatternId = v2_sorted_neighbor_edges[index].1;
-            // Compare the Ranks of Neighbor Vertex
-            let order: Ordering = self.cmp_vertices_for_accurate_rank(
-                v1_neighbor_vertex_id,
-                v2_neighbor_vertex_id,
-                same_rank_vertex_groups,
-                vertex_neighbor_edges_map,
-                visited_vertex_set,
-                neighbor_edges_sorted_vertex_set,
-            );
-            match order {
-                Ordering::Greater => {
-                    visited_vertex_set.remove(&v1_id);
-                    visited_vertex_set.remove(&v2_id);
-                    return Ordering::Greater;
-                }
-                Ordering::Less => {
-                    visited_vertex_set.remove(&v1_id);
-                    visited_vertex_set.remove(&v2_id);
-                    return Ordering::Less;
-                }
-                Ordering::Equal => continue,
-            }
-        }
-
-        // Equal Only if v1 and v2 are Completely Isomorphic in Structure With Each Other
-        Ordering::Equal
-    }
-
-    /// Deal with the Case when there are a number of neighbor vertices with the same rank
-    /// 
-    /// The basic idea is: For a list of neighbor vertices of v1 with the same rank, compare them as a whole instead of one by one
-    /// 
-    /// The problem of performing comparison one by one is that: the order is random and will introduce uncertainty to the result
-    fn cmp_neighbor_vertex_rank(
-        &self,
-        v1_id: PatternId,
-        v2_id: PatternId,
-        vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
-    ) -> Ordering {
-        // Shallow Compare the Initial Indices of Neighbor Vertices
-        // Get Neighbor Vertex
-        let v1_neighbor_edges = vertex_neighbor_edges_map.get(&v1_id).unwrap().clone();
-        let v2_neighbor_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap().clone();
-        let neighbor_vertex_num = v1_neighbor_edges.len();
-        for index in 0..neighbor_vertex_num {
-            let v1_neighbor_vertex_id: PatternId = v1_neighbor_edges[index].1;
-            let v1_neighbor_vertex_label: PatternLabelId = self.get_vertex_from_id(v1_neighbor_vertex_id).unwrap().get_label();
-            let v1_neighbor_vertex_rank: PatternRankId = self.get_vertex_from_id(v1_neighbor_vertex_id).unwrap().get_rank();
-            // Deal with the Case when The Accurate Ranks of Neighbor Vertices Cannot Be Completed Sorted
-            let mut v1_same_accurate_rank_v_num: usize = 1;
-            for j in (index + 1)..neighbor_vertex_num {
-                let current_v_id: PatternId = v1_neighbor_edges[j].1;
-                let current_v_label: PatternLabelId = self.get_vertex_from_id(current_v_id).unwrap().get_label();
-                let current_v_rank: PatternRankId = self.get_vertex_from_id(current_v_id).unwrap().get_rank();
-                if !(current_v_label == v1_neighbor_vertex_label && current_v_rank == v1_neighbor_vertex_rank) {
-                    break;
-                }
-                
-                v1_same_accurate_rank_v_num += 1;
-            }
-
-            if v1_same_accurate_rank_v_num > 1 {
-                for offset in 0..v1_same_accurate_rank_v_num {
-                    let v2_neighbor_vertex_id: PatternId = v2_neighbor_edges[index + offset].1;
-                    let v2_neighbor_vertex_label: PatternLabelId = self.get_vertex_from_id(v2_neighbor_vertex_id).unwrap().get_label();
-                    let v2_neighbor_vertex_rank: PatternRankId = self.get_vertex_from_id(v2_neighbor_vertex_id).unwrap().get_rank();
-                    match v1_neighbor_vertex_label.cmp(&v2_neighbor_vertex_label) {
-                        Ordering::Greater => return Ordering::Greater,
-                        Ordering::Less => return Ordering::Less,
-                        Ordering::Equal => (),
-                    }
-                    match v1_neighbor_vertex_rank.cmp(&v2_neighbor_vertex_rank) {
-                        Ordering::Greater => return Ordering::Greater,
-                        Ordering::Less => return Ordering::Less,
-                        Ordering::Equal => (),
-                    }
-                }
-            }
-
-            // Get Neighbor Vertex
-            let v2_neighbor_vertex_id: PatternId = v2_neighbor_edges[index].1;
-            let v2_neighbor_vertex_label: PatternLabelId = self.get_vertex_from_id(v2_neighbor_vertex_id).unwrap().get_label();
-            let v2_neighbor_vertex_rank: PatternRankId = self.get_vertex_from_id(v2_neighbor_vertex_id).unwrap().get_rank();
-            // Deal with the Case when The Accurate Ranks of Neighbor Vertices Cannot Be Completed Sorted
-            let mut v2_same_accurate_rank_v_num: usize = 1;
-            for j in (index + 1)..neighbor_vertex_num {
-                let current_v_id: PatternId = v2_neighbor_edges[j].1;
-                let current_v_label: PatternLabelId = self.get_vertex_from_id(current_v_id).unwrap().get_label();
-                let current_v_rank: PatternRankId = self.get_vertex_from_id(current_v_id).unwrap().get_rank();
-                if !(current_v_label == v2_neighbor_vertex_label && current_v_rank == v2_neighbor_vertex_rank) {
-                    break;
-                }
-                
-                v2_same_accurate_rank_v_num += 1;
-            }
-
-            if v2_same_accurate_rank_v_num > 1 {
-                for offset in 0..v2_same_accurate_rank_v_num {
-                    let v1_neighbor_vertex_id: PatternId = v1_neighbor_edges[index + offset].1;
-                    let v1_neighbor_vertex_label: PatternLabelId = self.get_vertex_from_id(v1_neighbor_vertex_id).unwrap().get_label();
-                    let v1_neighbor_vertex_rank: PatternRankId = self.get_vertex_from_id(v1_neighbor_vertex_id).unwrap().get_rank();
-                    match v1_neighbor_vertex_label.cmp(&v2_neighbor_vertex_label) {
-                        Ordering::Greater => return Ordering::Greater,
-                        Ordering::Less => return Ordering::Less,
-                        Ordering::Equal => (),
-                    }
-                    match v1_neighbor_vertex_rank.cmp(&v2_neighbor_vertex_rank) {
-                        Ordering::Greater => return Ordering::Greater,
-                        Ordering::Less => return Ordering::Less,
-                        Ordering::Equal => (),
-                    }
-                }
-            }
-        }
-
-        Ordering::Equal
-    }
-
-    /// Sort the Neighbor Edges/Vertices of one Vertex v
-    /// 
-    /// Only after sorting the accurate ranks of neighboring vertices could we get the accurate rank of vertex v
-    fn sort_vertex_neighbor_edges(
-        &mut self,
-        v_id: PatternId,
-        same_rank_vertex_groups: &Vec<Vec<PatternId>>,
-        vertex_neighbor_edges_map: &mut HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
-        visited_vertex_set: &mut HashSet<PatternId>,
-        neighbor_edges_sorted_vertex_set: &mut HashSet<PatternId>,
-    ) -> Vec<(PatternId, PatternId, PatternDirection)> {
-        // Get the Neighbor Edges From Vertex ID
-        let mut vertex_neighbor_edges: Vec<(PatternId, PatternId, PatternDirection)> 
-            = vertex_neighbor_edges_map.get(&v_id).unwrap().clone();
-        // Sort the Neighbor Vertices Simply Based on the Initial Ranks
-        vertex_neighbor_edges.sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
-        // Skip if the Neighbor Edges of Vertex Has Been Sorted
-        if neighbor_edges_sorted_vertex_set.contains(&v_id) {
-            return vertex_neighbor_edges;
-        }
-        // Mark Vertex As Sorted to Avoid Infinite Loop
-        neighbor_edges_sorted_vertex_set.insert(v_id);
-        // Skip The Neighbor Edges With Length 1 Since They are Already Sorted
-        if vertex_neighbor_edges.len() <= 1 {
-            return vertex_neighbor_edges;
-        }
-
-        // Set Accurate Ranks for All Same Rank Vertex Groups Within the Neighbor Vertices
-        let mut same_rank_vertex_group: Vec<PatternId> = vec![vertex_neighbor_edges[0].1];
-        let mut last_v_label: PatternLabelId = self.get_vertex_from_id(vertex_neighbor_edges[0].1).unwrap().get_label();
-        let mut last_v_rank: PatternRankId = self.get_vertex_from_id(vertex_neighbor_edges[0].1).unwrap().get_rank();
-        for i in 1..vertex_neighbor_edges.len() {
-            let current_v_id: PatternId = vertex_neighbor_edges[i].1;
-            let current_v_label: PatternLabelId = self.get_vertex_from_id(current_v_id).unwrap().get_label();
-            let current_v_rank: PatternRankId = self.get_vertex_from_id(current_v_id).unwrap().get_rank();
-            if current_v_label == last_v_label && current_v_rank == last_v_rank {
-                same_rank_vertex_group.push(current_v_id);
-            }
-            else {
-                if same_rank_vertex_group.len() > 1 {
-                    // Search For the Corresponding Same Rank Vertex Group
-                    let mut vertex_group: Vec<PatternId> = Vec::new();
-                    for i in 0..same_rank_vertex_groups.len() {
-                        for j in 0..same_rank_vertex_groups[i].len() {
-                            if same_rank_vertex_groups[i][j] == same_rank_vertex_group[0] {
-                                vertex_group = same_rank_vertex_groups[i].clone();
-                            }
-                        }
-                    }
-                    // Set Accurate Rank for This Vertex Group
-                    self.set_accurate_rank_for_same_rank_vertex_group(
-                        &vertex_group,
-                        same_rank_vertex_groups,
-                        vertex_neighbor_edges_map,
-                        visited_vertex_set,
-                        neighbor_edges_sorted_vertex_set,
-                    );
-                }
-
-                same_rank_vertex_group.clear();
-                same_rank_vertex_group.push(current_v_id);
-            }
-
-            // Update Last Vertex Label and Rank
-            last_v_label = current_v_label;
-            last_v_rank = current_v_rank;
-        }
-
-        if same_rank_vertex_group.len() > 1 {
-            // Search For the Corresponding Same Rank Vertex Group
-            let mut vertex_group: Vec<PatternId> = Vec::new();
-            for i in 0..same_rank_vertex_groups.len() {
-                for j in 0..same_rank_vertex_groups[i].len() {
-                    if same_rank_vertex_groups[i][j] == same_rank_vertex_group[0] {
-                        vertex_group = same_rank_vertex_groups[i].clone();
-                    }
-                }
-            }
-
-            // Set Accurate Rank for This Vertex Group
-            self.set_accurate_rank_for_same_rank_vertex_group(
-                &vertex_group,
-                same_rank_vertex_groups,
-                vertex_neighbor_edges_map,
-                visited_vertex_set,
-                neighbor_edges_sorted_vertex_set,
-            );
-            same_rank_vertex_group.clear();
-        }
-
-        // Sort the Neighbor Vertices Based on the Accurate Ranks
-        vertex_neighbor_edges.sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
-        vertex_neighbor_edges
     }
 }
 
@@ -1976,78 +1596,6 @@ mod tests {
     }
 
     #[test]
-    fn set_initial_rank_case1() {
-        let mut pattern = build_pattern_case1();
-        let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
-        pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-    }
-
-    #[test]
-    fn set_initial_rank_case2() {
-        let mut pattern = build_pattern_case2();
-        let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
-        pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(2).unwrap().get_rank(), 0);
-    }
-
-    #[test]
-    fn set_initial_rank_case3() {
-        let mut pattern = build_pattern_case3();
-        let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
-        pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices: VecMap<&PatternVertex> = pattern.iter_vertices().enumerate().collect();
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(2).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(3).unwrap().get_rank(), 0);
-    }
-
-    #[test]
-    fn set_initial_rank_case4() {
-        let mut pattern = build_pattern_case4();
-        let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
-        pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let vertices = &pattern.vertices;
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(2).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(3).unwrap().get_rank(), 0);
-    }
-
-    #[test]
-    fn set_initial_rank_case5() {
-        let mut pattern = build_pattern_case5();
-        let vertex_neighbor_edges_map = pattern.get_vertex_neighbor_edges();
-        pattern.set_initial_rank(&vertex_neighbor_edges_map);
-        let id_vec_a: Vec<PatternId> = vec![100, 200, 300, 400];
-        let id_vec_b: Vec<PatternId> = vec![10, 20, 30];
-        let id_vec_c: Vec<PatternId> = vec![1, 2, 3];
-        let id_vec_d: Vec<PatternId> = vec![1000];
-        let vertices = &pattern.vertices;
-        // A
-        assert_eq!(vertices.get(id_vec_a[0]).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(id_vec_a[1]).unwrap().get_rank(), 3);
-        assert_eq!(vertices.get(id_vec_a[2]).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(id_vec_a[3]).unwrap().get_rank(), 1);
-        // B
-        assert_eq!(vertices.get(id_vec_b[0]).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(id_vec_b[1]).unwrap().get_rank(), 2);
-        assert_eq!(vertices.get(id_vec_b[2]).unwrap().get_rank(), 1);
-        // C
-        assert_eq!(vertices.get(id_vec_c[0]).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(id_vec_c[1]).unwrap().get_rank(), 2);
-        assert_eq!(vertices.get(id_vec_c[2]).unwrap().get_rank(), 0);
-        // D
-        assert_eq!(vertices.get(id_vec_d[0]).unwrap().get_rank(), 0);
-    }
-
-    #[test]
     fn set_accurate_rank_case1() {
         let mut pattern = build_pattern_case1();
         pattern.rank_ranking();
@@ -2793,145 +2341,145 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn rank_ranking_case17_even_num_chain() {
-    //     let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_even_num_chain();
-    //     pattern.rank_ranking();
-    //     let vertices = pattern.get_vertices();
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A0").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         1
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A1").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         3
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A2").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         5
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A3").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         6
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A4").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         4
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A5").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         2
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A6").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         0
-    //     );
-    // }
+    #[test]
+    fn rank_ranking_case17_even_num_chain() {
+        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_even_num_chain();
+        pattern.rank_ranking();
+        let vertices = &pattern.vertices;
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A0").unwrap())
+                .unwrap()
+                .get_rank(),
+            1
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A1").unwrap())
+                .unwrap()
+                .get_rank(),
+            3
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A2").unwrap())
+                .unwrap()
+                .get_rank(),
+            5
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A3").unwrap())
+                .unwrap()
+                .get_rank(),
+            6
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A4").unwrap())
+                .unwrap()
+                .get_rank(),
+            4
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A5").unwrap())
+                .unwrap()
+                .get_rank(),
+            2
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A6").unwrap())
+                .unwrap()
+                .get_rank(),
+            0
+        );
+    }
 
-    // #[test]
-    // fn rank_ranking_case17_long_chain() {
-    //     let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
-    //     pattern.rank_ranking();
-    //     let vertices = pattern.get_vertices();
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A0").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         1
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A1").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         3
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A2").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         5
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A3").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         7
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A4").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         9
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A5").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         10
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A6").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         8
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A7").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         6
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A8").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         4
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A9").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         2
-    //     );
-    //     assert_eq!(
-    //         vertices
-    //             .get(*vertex_id_map.get("A10").unwrap())
-    //             .unwrap()
-    //             .get_rank(),
-    //         0
-    //     );
-    // }
+    #[test]
+    fn rank_ranking_case17_long_chain() {
+        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
+        pattern.rank_ranking();
+        let vertices = &pattern.vertices;
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A0").unwrap())
+                .unwrap()
+                .get_rank(),
+            1
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A1").unwrap())
+                .unwrap()
+                .get_rank(),
+            3
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A2").unwrap())
+                .unwrap()
+                .get_rank(),
+            5
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A3").unwrap())
+                .unwrap()
+                .get_rank(),
+            7
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A4").unwrap())
+                .unwrap()
+                .get_rank(),
+            9
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A5").unwrap())
+                .unwrap()
+                .get_rank(),
+            10
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A6").unwrap())
+                .unwrap()
+                .get_rank(),
+            8
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A7").unwrap())
+                .unwrap()
+                .get_rank(),
+            6
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A8").unwrap())
+                .unwrap()
+                .get_rank(),
+            4
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A9").unwrap())
+                .unwrap()
+                .get_rank(),
+            2
+        );
+        assert_eq!(
+            vertices
+                .get(*vertex_id_map.get("A10").unwrap())
+                .unwrap()
+                .get_rank(),
+            0
+        );
+    }
 
     #[test]
     fn index_ranking_case17_special_id_situation_1() {
