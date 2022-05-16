@@ -19,6 +19,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use ir_common::generated::algebra as pb;
+use lazy_static::__Deref;
 use vec_map::VecMap;
 
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
@@ -390,27 +391,45 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                     pre_dst_vertex_id = dst_vertex_id;
                                     assign_vertex_id += 1;
                                 }
+                                let vertex_labels_candies: DynIter<(PatternLabelId, PatternLabelId)> =
+                                    match edge_expand.direction {
+                                        // Outgoing
+                                        0 => pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id),
+                                        // Incoming
+                                        1 => Box::new(
+                                            pattern_meta
+                                                .associated_vlabels_iter_by_elabel(edge_label_id)
+                                                .map(|(src_v_label, dst_v_label)| {
+                                                    (dst_v_label, src_v_label)
+                                                }),
+                                        ),
+                                        2 => Box::new(
+                                            pattern_meta
+                                                .associated_vlabels_iter_by_elabel(edge_label_id)
+                                                .chain(
+                                                    pattern_meta
+                                                        .associated_vlabels_iter_by_elabel(edge_label_id)
+                                                        .map(|(src_v_label, dst_v_label)| {
+                                                            (dst_v_label, src_v_label)
+                                                        }),
+                                                ),
+                                        ),
+                                        _ => {
+                                            return Err(IrError::Unsupported(
+                                                "Unsupported Direction".to_string(),
+                                            ));
+                                        }
+                                    };
                                 let mut src_vertex_label: Option<PatternLabelId> = None;
                                 let mut dst_vertex_label: Option<PatternLabelId> = None;
                                 if is_head && is_tail {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
-                                        let (src_vlabel_cand, dst_vlabel_cand) = 
-                                        match edge_expand.direction {
-                                            // Outgoing
-                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
-                                            // Incoming
-                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
-                                            // Both
-                                            2 => {
-                                                return Err(IrError::Unsupported("Both Direction".to_string()));
-                                            }
-                                            // Unknown Direction
-                                            _ => {
-                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
-                                            }
-                                        };
-                                        if let (Some(head_label), Some(tail_label)) = (start_tag_label, end_tag_label) {
-                                            if head_label == src_vlabel_cand && tail_label == dst_vlabel_cand {
+                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
+                                        if let (Some(head_label), Some(tail_label)) =
+                                            (start_tag_label, end_tag_label)
+                                        {
+                                            if head_label == src_vlabel_cand
+                                                && tail_label == dst_vlabel_cand
+                                            {
                                                 src_vertex_label = Some(head_label);
                                                 dst_vertex_label = Some(tail_label);
                                                 break;
@@ -436,24 +455,9 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                             id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
                                             break;
                                         }
-                                    };
+                                    }
                                 } else if is_head {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
-                                        let (src_vlabel_cand, dst_vlabel_cand) = 
-                                        match edge_expand.direction {
-                                            // Outgoing
-                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
-                                            // Incoming
-                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
-                                            // Both
-                                            2 => {
-                                                return Err(IrError::Unsupported("Both Direction".to_string()));
-                                            }
-                                            // Unknown Direction
-                                            _ => {
-                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
-                                            }
-                                        };
+                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
                                         if let Some(head_label) = start_tag_label {
                                             if head_label == src_vlabel_cand {
                                                 src_vertex_label = Some(head_label);
@@ -470,24 +474,11 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                         }
                                     }
                                 } else if is_tail {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
-                                        let (src_vlabel_cand, dst_vlabel_cand) = 
-                                        match edge_expand.direction {
-                                            // Outgoing
-                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
-                                            // Incoming
-                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
-                                            // Both
-                                            2 => {
-                                                return Err(IrError::Unsupported("Both Direction".to_string()));
-                                            }
-                                            // Unknown Direction
-                                            _ => {
-                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
-                                            }
-                                        };
+                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
                                         if let Some(tail_label) = end_tag_label {
-                                            if tail_label == dst_vlabel_cand && pre_dst_vertex_label == src_vlabel_cand {
+                                            if tail_label == dst_vlabel_cand
+                                                && pre_dst_vertex_label == src_vlabel_cand
+                                            {
                                                 src_vertex_label = Some(pre_dst_vertex_label);
                                                 dst_vertex_label = Some(tail_label);
                                                 break;
@@ -500,22 +491,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                         }
                                     }
                                 } else {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
-                                        let (src_vlabel_cand, dst_vlabel_cand) = 
-                                        match edge_expand.direction {
-                                            // Outgoing
-                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
-                                            // Incoming
-                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
-                                            // Both
-                                            2 => {
-                                                return Err(IrError::Unsupported("Both Direction".to_string()));
-                                            }
-                                            // Unknown Direction
-                                            _ => {
-                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
-                                            }
-                                        };
+                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
                                         if src_vlabel_cand == pre_dst_vertex_label {
                                             src_vertex_label = Some(pre_dst_vertex_label);
                                             dst_vertex_label = Some(dst_vlabel_cand);
@@ -524,12 +500,22 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                         }
                                     }
                                 }
-                                if let (Some(src_vertex_label), Some(dst_vertex_label)) = (src_vertex_label, dst_vertex_label) {
-                                    pattern_edges.push(PatternEdge::new(edge_id, edge_label_id, src_vertex_id, dst_vertex_id, src_vertex_label, dst_vertex_label));
+                                if let (Some(src_vertex_label), Some(dst_vertex_label)) =
+                                    (src_vertex_label, dst_vertex_label)
+                                {
+                                    pattern_edges.push(PatternEdge::new(
+                                        edge_id,
+                                        edge_label_id,
+                                        src_vertex_id,
+                                        dst_vertex_id,
+                                        src_vertex_label,
+                                        dst_vertex_label,
+                                    ));
                                 } else {
-                                    return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                                    return Err(IrError::Unsupported(
+                                        "FuzzyPattern is not supported".to_string(),
+                                    ));
                                 }
-                                
                             } else {
                                 return Err(IrError::Unsupported(
                                     "FuzzyPattern is not supported".to_string(),
