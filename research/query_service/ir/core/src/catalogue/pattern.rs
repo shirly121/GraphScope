@@ -298,24 +298,54 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         let mut assign_edge_id = 0;
         let mut pattern_edges = vec![];
         let mut tag_id_map: HashMap<String, PatternId> = HashMap::new();
+        let mut id_label_map: HashMap<PatternId, PatternLabelId> = HashMap::new();
         for sentence in &pattern_message.sentences {
             if sentence.binders.is_empty() {
-                return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                return Err(IrError::Unsupported("Match sentence has no binder".to_string()));
             }
             let start_tag = sentence
                 .start
                 .as_ref()
-                .ok_or(IrError::Unsupported("FuzzyPattern is not supported".to_string()))?
+                .ok_or(IrError::Unsupported("Match sentence's start tag is None".to_string()))?
                 .item
                 .as_ref()
-                .ok_or(IrError::Unsupported("FuzzyPattern is not supported".to_string()))?;
+                .ok_or(IrError::Unsupported("Match sentence's start tag item is None".to_string()))?;
+            let start_tag_id: PatternId;
             if let TagItem::Name(start_tag_name) = start_tag {
-                if !tag_id_map.contains_key(start_tag_name) {
+                if let Some(v_id) = tag_id_map.get(start_tag_name) {
+                    start_tag_id = *v_id
+                } else {
+                    start_tag_id = assign_vertex_id;
                     tag_id_map.insert(start_tag_name.clone(), assign_vertex_id);
+                    assign_vertex_id += 1;
                 }
             } else {
                 return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
             }
+            let start_tag_label = id_label_map.get(&start_tag_id).cloned();
+            let end_tag = sentence
+                .end
+                .as_ref()
+                .and_then(|name_or_id| name_or_id.item.as_ref());
+            let end_tag_id: Option<PatternId>;
+            if let Some(end_tag_item) = end_tag {
+                if let TagItem::Name(end_tag_name) = end_tag_item {
+                    if let Some(v_id) = tag_id_map.get(end_tag_name) {
+                        end_tag_id = Some(*v_id);
+                    } else {
+                        end_tag_id = Some(assign_vertex_id);
+                        tag_id_map.insert(end_tag_name.clone(), assign_vertex_id);
+                        assign_vertex_id += 1;
+                    }
+                } else {
+                    return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                }
+            } else {
+                end_tag_id = None;
+            }
+            let end_tag_label = end_tag_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
+            let mut pre_dst_vertex_id: PatternId = PatternId::default();
+            let mut pre_dst_vertex_label: PatternLabelId = PatternLabelId::default();
             for (i, binder) in sentence.binders.iter().enumerate() {
                 if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
                     if edge_expand.is_edge {
@@ -330,16 +360,176 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                         }
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
                             if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
-                                let src_dst_vertex_pairs =
-                                    pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id);
-                                if i == 0 {
-                                } else if i == sentence.binders.len() - 1 {
-                                }
-                                let src_vertex_id = assign_vertex_id;
-                                let dst_vertex_id = assign_vertex_id + 1;
                                 let edge_id = assign_edge_id;
-                                assign_vertex_id += 1;
                                 assign_edge_id += 1;
+                                let (is_head, is_tail) = if sentence.binders.len() == 1 {
+                                    (true, true)
+                                } else if i == 0 {
+                                    (true, false)
+                                } else if i == sentence.binders.len() - 1 {
+                                    (false, true)
+                                } else {
+                                    (false, false)
+                                };
+                                let src_vertex_id: PatternId;
+                                let dst_vertex_id: PatternId;
+                                if is_head {
+                                    src_vertex_id = start_tag_id;
+                                } else {
+                                    src_vertex_id = pre_dst_vertex_id;
+                                }
+                                if is_tail {
+                                    if let Some(v_id) = end_tag_id {
+                                        dst_vertex_id = v_id;
+                                    } else {
+                                        dst_vertex_id = assign_vertex_id;
+                                        assign_vertex_id += 1;
+                                    }
+                                } else {
+                                    dst_vertex_id = assign_vertex_id;
+                                    pre_dst_vertex_id = dst_vertex_id;
+                                    assign_vertex_id += 1;
+                                }
+                                let mut src_vertex_label: Option<PatternLabelId> = None;
+                                let mut dst_vertex_label: Option<PatternLabelId> = None;
+                                if is_head && is_tail {
+                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
+                                        let (src_vlabel_cand, dst_vlabel_cand) = 
+                                        match edge_expand.direction {
+                                            // Outgoing
+                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
+                                            // Incoming
+                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
+                                            // Both
+                                            2 => {
+                                                return Err(IrError::Unsupported("Both Direction".to_string()));
+                                            }
+                                            // Unknown Direction
+                                            _ => {
+                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
+                                            }
+                                        };
+                                        if let (Some(head_label), Some(tail_label)) = (start_tag_label, end_tag_label) {
+                                            if head_label == src_vlabel_cand && tail_label == dst_vlabel_cand {
+                                                src_vertex_label = Some(head_label);
+                                                dst_vertex_label = Some(tail_label);
+                                                break;
+                                            }
+                                        } else if let Some(head_label) = start_tag_label {
+                                            if head_label == src_vlabel_cand {
+                                                src_vertex_label = Some(head_label);
+                                                dst_vertex_label = Some(dst_vlabel_cand);
+                                                id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                                break;
+                                            }
+                                        } else if let Some(tail_label) = end_tag_label {
+                                            if tail_label == dst_vlabel_cand {
+                                                src_vertex_label = Some(src_vlabel_cand);
+                                                id_label_map.insert(src_vertex_id, src_vlabel_cand);
+                                                dst_vertex_label = Some(tail_label);
+                                                break;
+                                            }
+                                        } else {
+                                            src_vertex_label = Some(src_vlabel_cand);
+                                            id_label_map.insert(src_vertex_id, src_vlabel_cand);
+                                            dst_vertex_label = Some(dst_vlabel_cand);
+                                            id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                            break;
+                                        }
+                                    };
+                                } else if is_head {
+                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
+                                        let (src_vlabel_cand, dst_vlabel_cand) = 
+                                        match edge_expand.direction {
+                                            // Outgoing
+                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
+                                            // Incoming
+                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
+                                            // Both
+                                            2 => {
+                                                return Err(IrError::Unsupported("Both Direction".to_string()));
+                                            }
+                                            // Unknown Direction
+                                            _ => {
+                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
+                                            }
+                                        };
+                                        if let Some(head_label) = start_tag_label {
+                                            if head_label == src_vlabel_cand {
+                                                src_vertex_label = Some(head_label);
+                                                dst_vertex_label = Some(dst_vlabel_cand);
+                                                pre_dst_vertex_label = dst_vlabel_cand;
+                                                break;
+                                            }
+                                        } else {
+                                            src_vertex_label = Some(src_vlabel_cand);
+                                            id_label_map.insert(src_vertex_id, src_vlabel_cand);
+                                            dst_vertex_label = Some(dst_vlabel_cand);
+                                            pre_dst_vertex_label = dst_vlabel_cand;
+                                            break;
+                                        }
+                                    }
+                                } else if is_tail {
+                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
+                                        let (src_vlabel_cand, dst_vlabel_cand) = 
+                                        match edge_expand.direction {
+                                            // Outgoing
+                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
+                                            // Incoming
+                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
+                                            // Both
+                                            2 => {
+                                                return Err(IrError::Unsupported("Both Direction".to_string()));
+                                            }
+                                            // Unknown Direction
+                                            _ => {
+                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
+                                            }
+                                        };
+                                        if let Some(tail_label) = end_tag_label {
+                                            if tail_label == dst_vlabel_cand && pre_dst_vertex_label == src_vlabel_cand {
+                                                src_vertex_label = Some(pre_dst_vertex_label);
+                                                dst_vertex_label = Some(tail_label);
+                                                break;
+                                            }
+                                        } else if src_vlabel_cand == pre_dst_vertex_label {
+                                            src_vertex_label = Some(pre_dst_vertex_label);
+                                            dst_vertex_label = Some(dst_vlabel_cand);
+                                            id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    for (src_vlabel_cand, dst_vlabel_cand) in pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id) {
+                                        let (src_vlabel_cand, dst_vlabel_cand) = 
+                                        match edge_expand.direction {
+                                            // Outgoing
+                                            0 => {(src_vlabel_cand, dst_vlabel_cand)},
+                                            // Incoming
+                                            1 => {(dst_vlabel_cand, src_vlabel_cand)},
+                                            // Both
+                                            2 => {
+                                                return Err(IrError::Unsupported("Both Direction".to_string()));
+                                            }
+                                            // Unknown Direction
+                                            _ => {
+                                                return Err(IrError::Unsupported("Unsupported Direction".to_string()));
+                                            }
+                                        };
+                                        if src_vlabel_cand == pre_dst_vertex_label {
+                                            src_vertex_label = Some(pre_dst_vertex_label);
+                                            dst_vertex_label = Some(dst_vlabel_cand);
+                                            pre_dst_vertex_label = dst_vlabel_cand;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if let (Some(src_vertex_label), Some(dst_vertex_label)) = (src_vertex_label, dst_vertex_label) {
+                                    pattern_edges.push(PatternEdge::new(edge_id, edge_label_id, src_vertex_id, dst_vertex_id, src_vertex_label, dst_vertex_label));
+                                } else {
+                                    return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                                }
+                                
                             } else {
                                 return Err(IrError::Unsupported(
                                     "FuzzyPattern is not supported".to_string(),
