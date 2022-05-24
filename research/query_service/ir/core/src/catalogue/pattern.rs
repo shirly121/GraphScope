@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
@@ -785,7 +785,7 @@ impl Pattern {
             PatternId,
             Vec<(PatternId, PatternId, PatternDirection)>,
         > = HashMap::new();
-        for vertex in self.iter_vertices() {
+        for vertex in self.vertices_iter() {
             let v_id: PatternId = vertex.get_id();
             let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> =
                 Vec::with_capacity(vertex.get_out_degree());
@@ -820,7 +820,7 @@ impl Pattern {
     ) -> IrResult<bool> {
         let mut is_rank_changed: bool = false;
         let mut vertex_rank_map: HashMap<PatternId, PatternRankId> = HashMap::new();
-        for (_, vertex_set) in self.iter_vertex_label_map() {
+        for (_, vertex_set) in self.vertex_label_map_iter() {
             let mut vertex_vec: Vec<PatternId> = Vec::with_capacity(vertex_set.len());
             for v_id in vertex_set.iter() {
                 vertex_vec.push(*v_id);
