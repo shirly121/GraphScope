@@ -14,14 +14,14 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use ir_common::generated::algebra as pb;
 use vec_map::VecMap;
 
-use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
+use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
@@ -1019,6 +1019,10 @@ impl Pattern {
     /// Extend the current Pattern to a new Pattern with the given ExtendStep
     /// If the ExtendStep is not matched with the current Pattern, the function will return None
     /// Else, it will return the new Pattern after the extension
+    /// The ExtendStep is not mathced with the current Pattern if:
+    /// 1. Some extend edges of the ExtendStep cannot find a correponsponding source vertex in current Pattern
+    /// (the required source vertex doesn't exist or already occupied by other extend edges)
+    /// 2. Or meet some limitations(e.g. limit the length of Pattern)
     pub fn extend(&self, extend_step: ExtendStep) -> Option<Pattern> {
         let mut new_pattern = self.clone();
         let target_v_label = extend_step.get_target_v_label();
@@ -1128,8 +1132,6 @@ impl Pattern {
         let target_v_labels = pattern_meta.vertex_label_ids_iter();
         // For every possible extend target vertex label, find its all adjacent edges to the current pattern
         for target_v_label in target_v_labels {
-            // The collection of (the collection of extend edges)
-            let mut extend_edgess = vec![];
             // The collection of extend edges with a source vertex id
             // The source vertex id is used to specify the extend edge is from which vertex of the pattern
             let mut extend_edges_with_src_id = vec![];
@@ -1150,31 +1152,25 @@ impl Pattern {
             }
             // Get the subsets of extend_edges_with_src_id, and add every subset to the extend edgess
             // The algorithm is BFS Search
-            let mut queue = VecDeque::new();
-            for (i, extend_edge) in extend_edges_with_src_id.iter().enumerate() {
-                queue.push_back((vec![extend_edge.clone()], i + 1));
-            }
-            while queue.len() > 0 {
-                let (extend_edges_combinations, max_rank) = queue.pop_front().unwrap();
-                let mut extend_edges = Vec::with_capacity(extend_edges_combinations.len());
-                for (extend_edge, _) in &extend_edges_combinations {
-                    extend_edges.push(*extend_edge);
-                }
-                extend_edgess.push(extend_edges);
-                // Can't have more than one edge between two vertices (may be canceled in the future)
-                'outer: for i in max_rank..extend_edges_with_src_id.len() {
-                    for (_, src_id) in &extend_edges_combinations {
-                        if *src_id == extend_edges_with_src_id[i].1 {
-                            continue 'outer;
+            let extend_edges_set_collection =
+                get_subsets(extend_edges_with_src_id, |(_, src_id_for_check), extend_edges_set| {
+                    let mut repeated = false;
+                    for (_, src_id) in extend_edges_set {
+                        if src_id_for_check == *src_id {
+                            repeated = true;
+                            break;
                         }
                     }
-                    let mut new_extend_edges_combinations = extend_edges_combinations.clone();
-                    new_extend_edges_combinations.push(extend_edges_with_src_id[i]);
-                    queue.push_back((new_extend_edges_combinations, i + 1));
-                }
-            }
-            for extend_edges in extend_edgess {
-                let extend_step = ExtendStep::from((target_v_label, extend_edges));
+                    repeated
+                });
+            for extend_edges in extend_edges_set_collection {
+                let extend_step = ExtendStep::from((
+                    target_v_label,
+                    extend_edges
+                        .into_iter()
+                        .map(|(extend_edge, _)| extend_edge)
+                        .collect(),
+                ));
                 extend_steps.push(extend_step);
             }
         }

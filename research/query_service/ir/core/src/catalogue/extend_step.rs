@@ -122,7 +122,11 @@ impl ExtendStep {
 
 /// Get all the subsets of given Vec<T>
 /// The algorithm is BFS
-pub fn get_subsets<T: Clone>(origin_vec: Vec<T>) -> Vec<Vec<T>> {
+pub fn get_subsets<T, F>(origin_vec: Vec<T>, filter: F) -> Vec<Vec<T>>
+where
+    T: Clone,
+    F: Fn(T, &Vec<T>) -> bool,
+{
     let n = origin_vec.len();
     let mut set_collections = Vec::with_capacity((2 as usize).pow(n as u32));
     let mut queue = VecDeque::new();
@@ -134,6 +138,9 @@ pub fn get_subsets<T: Clone>(origin_vec: Vec<T>) -> Vec<Vec<T>> {
         set_collections.push(subset.clone());
         for i in max_rank..n {
             let mut new_subset = subset.clone();
+            if filter(origin_vec[i].clone(), &subset) {
+                continue;
+            }
             new_subset.push(origin_vec[i].clone());
             queue.push_back((new_subset, i + 1));
         }
