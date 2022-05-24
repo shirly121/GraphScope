@@ -1281,6 +1281,178 @@ pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternI
     (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
 }
 
+pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<String, PatternId>) {
+    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
+    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
+    let edge_label_map: HashMap<String, PatternLabelId> =
+        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
+    vertex_label_map.insert(String::from("A"), 1);
+    let vertex_ids = gen_group_ids(6);
+    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
+    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
+    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
+    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
+    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
+    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
+    vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
+    let edge_ids = gen_group_ids(5);
+    let pattern_vec = vec![
+        PatternEdge::new(
+            edge_ids[0],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[1],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[2],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[3],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[4],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_id_map.get("A5").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[5],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A5").unwrap(),
+            *vertex_id_map.get("A6").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+    ];
+    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
+}
+
+pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<String, PatternId>) {
+    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
+    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
+    let edge_label_map: HashMap<String, PatternLabelId> =
+        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
+    vertex_label_map.insert(String::from("A"), 1);
+    let vertex_ids = gen_group_ids(10);
+    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
+    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
+    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
+    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
+    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
+    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
+    vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
+    vertex_id_map.insert(String::from("A7"), vertex_ids[7]);
+    vertex_id_map.insert(String::from("A8"), vertex_ids[8]);
+    vertex_id_map.insert(String::from("A9"), vertex_ids[9]);
+    vertex_id_map.insert(String::from("A10"), vertex_ids[10]);
+    let edge_ids = gen_group_ids(10);
+    let pattern_vec = vec![
+        PatternEdge::new(
+            edge_ids[0],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[1],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[2],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[3],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[4],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_id_map.get("A5").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[5],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A5").unwrap(),
+            *vertex_id_map.get("A6").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[6],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A6").unwrap(),
+            *vertex_id_map.get("A7").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[7],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A7").unwrap(),
+            *vertex_id_map.get("A8").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[8],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A8").unwrap(),
+            *vertex_id_map.get("A9").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[9],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A9").unwrap(),
+            *vertex_id_map.get("A10").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+    ];
+    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
+}
+
 pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, HashMap<String, PatternId>) {
     let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
     let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
@@ -1455,6 +1627,268 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A5").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+    ];
+    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
+}
+
+pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternId>) {
+    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
+    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
+    let edge_label_map: HashMap<String, PatternLabelId> = gen_edge_label_map(vec![
+        String::from("A->A"),
+        String::from("A->B"),
+        String::from("A->C"),
+        String::from("A->D"),
+        String::from("A->E"),
+    ]);
+    vertex_label_map.insert(String::from("A"), 1);
+    vertex_label_map.insert(String::from("B"), 2);
+    vertex_label_map.insert(String::from("C"), 3);
+    vertex_label_map.insert(String::from("D"), 4);
+    vertex_label_map.insert(String::from("E"), 5);
+    let vertex_ids = gen_group_ids(13);
+    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
+    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
+    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
+    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
+    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
+    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
+    vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
+    vertex_id_map.insert(String::from("A7"), vertex_ids[7]);
+    vertex_id_map.insert(String::from("A8"), vertex_ids[8]);
+    vertex_id_map.insert(String::from("A9"), vertex_ids[9]);
+    vertex_id_map.insert(String::from("B0"), vertex_ids[10]);
+    vertex_id_map.insert(String::from("C0"), vertex_ids[11]);
+    vertex_id_map.insert(String::from("D0"), vertex_ids[12]);
+    vertex_id_map.insert(String::from("E0"), vertex_ids[13]);
+    let edge_ids = gen_group_ids(13);
+    let pattern_vec = vec![
+        PatternEdge::new(
+            edge_ids[0],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[1],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[2],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[3],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[4],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[5],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A5").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[6],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_id_map.get("A6").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[7],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_id_map.get("A7").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[8],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_id_map.get("A8").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[9],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A5").unwrap(),
+            *vertex_id_map.get("A9").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[10],
+            *edge_label_map.get("A->B").unwrap(),
+            *vertex_id_map.get("A6").unwrap(),
+            *vertex_id_map.get("B0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("B").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[11],
+            *edge_label_map.get("A->D").unwrap(),
+            *vertex_id_map.get("A7").unwrap(),
+            *vertex_id_map.get("D0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("D").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[12],
+            *edge_label_map.get("A->C").unwrap(),
+            *vertex_id_map.get("A8").unwrap(),
+            *vertex_id_map.get("C0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("C").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[13],
+            *edge_label_map.get("A->E").unwrap(),
+            *vertex_id_map.get("A9").unwrap(),
+            *vertex_id_map.get("E0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("E").unwrap(),
+        ),
+    ];
+    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
+}
+
+pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternId>) {
+    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
+    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
+    let edge_label_map: HashMap<String, PatternLabelId> =
+        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
+    vertex_label_map.insert(String::from("A"), 1);
+    let vertex_ids = gen_group_ids(4);
+    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
+    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
+    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
+    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
+    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
+    let edge_ids = gen_group_ids(11);
+    let pattern_vec = vec![
+        PatternEdge::new(
+            edge_ids[0],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[1],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[2],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[3],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[4],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[5],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[6],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[7],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A2").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[8],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[9],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A3").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[10],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_id_map.get("A0").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+            *vertex_label_map.get("A").unwrap(),
+        ),
+        PatternEdge::new(
+            edge_ids[11],
+            *edge_label_map.get("A->A").unwrap(),
+            *vertex_id_map.get("A4").unwrap(),
+            *vertex_id_map.get("A1").unwrap(),
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
