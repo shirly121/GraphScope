@@ -1190,7 +1190,7 @@ impl Pattern {
                 get_subsets(extend_edges_with_src_id, |(_, src_id_for_check), extend_edges_set| {
                     let mut repeated = false;
                     for (_, src_id) in extend_edges_set {
-                        if src_id_for_check == *src_id {
+                        if *src_id_for_check == *src_id {
                             repeated = true;
                             break;
                         }
