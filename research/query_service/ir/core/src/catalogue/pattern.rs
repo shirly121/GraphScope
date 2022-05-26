@@ -19,6 +19,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use ir_common::generated::algebra as pb;
+use ir_common::NameOrId;
 use vec_map::VecMap;
 
 use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
@@ -279,6 +280,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                     .or_insert(BTreeSet::new())
                     .insert(edge.end_v_id);
             }
+            new_pattern.rank_ranking();
             Ok(new_pattern)
         } else {
             Err(IrError::InvalidPattern("Empty pattern".to_string()))
@@ -297,53 +299,53 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         let mut assign_vertex_id = 0;
         let mut assign_edge_id = 0;
         let mut pattern_edges = vec![];
-        let mut tag_id_map: HashMap<String, PatternId> = HashMap::new();
+        let mut tag_v_id_map: HashMap<NameOrId, PatternId> = HashMap::new();
         let mut id_label_map: HashMap<PatternId, PatternLabelId> = HashMap::new();
         for sentence in &pattern_message.sentences {
             if sentence.binders.is_empty() {
                 return Err(IrError::Unsupported("Match sentence has no binder".to_string()));
             }
-            let start_tag = sentence
+            let start_tag_item = sentence
                 .start
                 .as_ref()
                 .ok_or(IrError::Unsupported("Match sentence's start tag is None".to_string()))?
                 .item
                 .as_ref()
                 .ok_or(IrError::Unsupported("Match sentence's start tag item is None".to_string()))?;
-            let start_tag_id: PatternId;
-            if let TagItem::Name(start_tag_name) = start_tag {
-                if let Some(v_id) = tag_id_map.get(start_tag_name) {
-                    start_tag_id = *v_id
-                } else {
-                    start_tag_id = assign_vertex_id;
-                    tag_id_map.insert(start_tag_name.clone(), assign_vertex_id);
-                    assign_vertex_id += 1;
-                }
+            let start_tag = match start_tag_item {
+                TagItem::Name(name) => NameOrId::Str(name.clone()),
+                TagItem::Id(id) => NameOrId::Id(*id),
+            };
+            let start_tag_v_id: PatternId;
+            if let Some(v_id) = tag_v_id_map.get(&start_tag) {
+                start_tag_v_id = *v_id;
             } else {
-                return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                start_tag_v_id = assign_vertex_id;
+                tag_v_id_map.insert(start_tag.clone(), assign_vertex_id);
+                assign_vertex_id += 1;
             }
-            let start_tag_label = id_label_map.get(&start_tag_id).cloned();
-            let end_tag = sentence
+            let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
+            let end_tag_item = sentence
                 .end
                 .as_ref()
                 .and_then(|name_or_id| name_or_id.item.as_ref());
-            let end_tag_id: Option<PatternId>;
-            if let Some(end_tag_item) = end_tag {
-                if let TagItem::Name(end_tag_name) = end_tag_item {
-                    if let Some(v_id) = tag_id_map.get(end_tag_name) {
-                        end_tag_id = Some(*v_id);
-                    } else {
-                        end_tag_id = Some(assign_vertex_id);
-                        tag_id_map.insert(end_tag_name.clone(), assign_vertex_id);
-                        assign_vertex_id += 1;
-                    }
+            let end_tag = end_tag_item.map(|item| match item {
+                TagItem::Name(name) => NameOrId::Str(name.clone()),
+                TagItem::Id(id) => NameOrId::Id(*id),
+            });
+            let end_tag_v_id: Option<PatternId>;
+            if let Some(tag) = end_tag {
+                if let Some(v_id) = tag_v_id_map.get(&tag) {
+                    end_tag_v_id = Some(*v_id);
                 } else {
-                    return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                    end_tag_v_id = Some(assign_vertex_id);
+                    tag_v_id_map.insert(tag.clone(), assign_vertex_id);
+                    assign_vertex_id += 1;
                 }
             } else {
-                end_tag_id = None;
+                end_tag_v_id = None;
             }
-            let end_tag_label = end_tag_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
+            let end_tag_label = end_tag_v_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
             let mut pre_dst_vertex_id: PatternId = PatternId::default();
             let mut pre_dst_vertex_label: PatternLabelId = PatternLabelId::default();
             for (i, binder) in sentence.binders.iter().enumerate() {
@@ -374,12 +376,12 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                 let src_vertex_id: PatternId;
                                 let dst_vertex_id: PatternId;
                                 if is_head {
-                                    src_vertex_id = start_tag_id;
+                                    src_vertex_id = start_tag_v_id;
                                 } else {
                                     src_vertex_id = pre_dst_vertex_id;
                                 }
                                 if is_tail {
-                                    if let Some(v_id) = end_tag_id {
+                                    if let Some(v_id) = end_tag_v_id {
                                         dst_vertex_id = v_id;
                                     } else {
                                         dst_vertex_id = assign_vertex_id;
@@ -390,39 +392,52 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                     pre_dst_vertex_id = dst_vertex_id;
                                     assign_vertex_id += 1;
                                 }
-                                let vertex_labels_candies: DynIter<(PatternLabelId, PatternLabelId)> =
-                                    match edge_expand.direction {
-                                        // Outgoing
-                                        0 => pattern_meta.associated_vlabels_iter_by_elabel(edge_label_id),
-                                        // Incoming
-                                        1 => Box::new(
-                                            pattern_meta
-                                                .associated_vlabels_iter_by_elabel(edge_label_id)
-                                                .map(|(src_v_label, dst_v_label)| {
-                                                    (dst_v_label, src_v_label)
-                                                }),
-                                        ),
-                                        2 => Box::new(
-                                            pattern_meta
-                                                .associated_vlabels_iter_by_elabel(edge_label_id)
-                                                .chain(
-                                                    pattern_meta
-                                                        .associated_vlabels_iter_by_elabel(edge_label_id)
-                                                        .map(|(src_v_label, dst_v_label)| {
-                                                            (dst_v_label, src_v_label)
-                                                        }),
-                                                ),
-                                        ),
-                                        _ => {
-                                            return Err(IrError::Unsupported(
-                                                "Unsupported Direction".to_string(),
-                                            ));
-                                        }
-                                    };
+                                let vertex_labels_candies: DynIter<(
+                                    PatternLabelId,
+                                    PatternLabelId,
+                                    PatternDirection,
+                                )> = match edge_expand.direction {
+                                    // Outgoing
+                                    0 => Box::new(
+                                        pattern_meta
+                                            .associated_vlabels_iter_by_elabel(edge_label_id)
+                                            .map(|(src_v_label, dst_v_label)| {
+                                                (src_v_label, dst_v_label, PatternDirection::Out)
+                                            }),
+                                    ),
+                                    // Incoming
+                                    1 => Box::new(
+                                        pattern_meta
+                                            .associated_vlabels_iter_by_elabel(edge_label_id)
+                                            .map(|(src_v_label, dst_v_label)| {
+                                                (dst_v_label, src_v_label, PatternDirection::In)
+                                            }),
+                                    ),
+                                    2 => Box::new(
+                                        pattern_meta
+                                            .associated_vlabels_iter_by_elabel(edge_label_id)
+                                            .map(|(src_v_label, dst_v_label)| {
+                                                (src_v_label, dst_v_label, PatternDirection::Out)
+                                            })
+                                            .chain(
+                                                pattern_meta
+                                                    .associated_vlabels_iter_by_elabel(edge_label_id)
+                                                    .map(|(src_v_label, dst_v_label)| {
+                                                        (dst_v_label, src_v_label, PatternDirection::In)
+                                                    }),
+                                            ),
+                                    ),
+                                    _ => {
+                                        return Err(IrError::Unsupported(
+                                            "Unsupported Direction".to_string(),
+                                        ));
+                                    }
+                                };
                                 let mut src_vertex_label: Option<PatternLabelId> = None;
                                 let mut dst_vertex_label: Option<PatternLabelId> = None;
+                                let mut direction: Option<PatternDirection> = None;
                                 if is_head && is_tail {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
+                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                         if let (Some(head_label), Some(tail_label)) =
                                             (start_tag_label, end_tag_label)
                                         {
@@ -431,6 +446,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                             {
                                                 src_vertex_label = Some(head_label);
                                                 dst_vertex_label = Some(tail_label);
+                                                direction = Some(dir);
                                                 break;
                                             }
                                         } else if let Some(head_label) = start_tag_label {
@@ -438,6 +454,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                                 src_vertex_label = Some(head_label);
                                                 dst_vertex_label = Some(dst_vlabel_cand);
                                                 id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                                direction = Some(dir);
                                                 break;
                                             }
                                         } else if let Some(tail_label) = end_tag_label {
@@ -445,6 +462,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                                 src_vertex_label = Some(src_vlabel_cand);
                                                 id_label_map.insert(src_vertex_id, src_vlabel_cand);
                                                 dst_vertex_label = Some(tail_label);
+                                                direction = Some(dir);
                                                 break;
                                             }
                                         } else {
@@ -452,16 +470,18 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                             id_label_map.insert(src_vertex_id, src_vlabel_cand);
                                             dst_vertex_label = Some(dst_vlabel_cand);
                                             id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                            direction = Some(dir);
                                             break;
                                         }
                                     }
                                 } else if is_head {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
+                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                         if let Some(head_label) = start_tag_label {
                                             if head_label == src_vlabel_cand {
                                                 src_vertex_label = Some(head_label);
                                                 dst_vertex_label = Some(dst_vlabel_cand);
                                                 pre_dst_vertex_label = dst_vlabel_cand;
+                                                direction = Some(dir);
                                                 break;
                                             }
                                         } else {
@@ -473,43 +493,57 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                         }
                                     }
                                 } else if is_tail {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
+                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                         if let Some(tail_label) = end_tag_label {
                                             if tail_label == dst_vlabel_cand
                                                 && pre_dst_vertex_label == src_vlabel_cand
                                             {
                                                 src_vertex_label = Some(pre_dst_vertex_label);
                                                 dst_vertex_label = Some(tail_label);
+                                                direction = Some(dir);
                                                 break;
                                             }
                                         } else if src_vlabel_cand == pre_dst_vertex_label {
                                             src_vertex_label = Some(pre_dst_vertex_label);
                                             dst_vertex_label = Some(dst_vlabel_cand);
                                             id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                            direction = Some(dir);
                                             break;
                                         }
                                     }
                                 } else {
-                                    for (src_vlabel_cand, dst_vlabel_cand) in vertex_labels_candies {
+                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                         if src_vlabel_cand == pre_dst_vertex_label {
                                             src_vertex_label = Some(pre_dst_vertex_label);
                                             dst_vertex_label = Some(dst_vlabel_cand);
                                             pre_dst_vertex_label = dst_vlabel_cand;
+                                            direction = Some(dir);
                                             break;
                                         }
                                     }
                                 }
-                                if let (Some(src_vertex_label), Some(dst_vertex_label)) =
-                                    (src_vertex_label, dst_vertex_label)
+                                if let (Some(src_vertex_label), Some(dst_vertex_label), Some(direction)) =
+                                    (src_vertex_label, dst_vertex_label, direction)
                                 {
-                                    pattern_edges.push(PatternEdge::new(
-                                        edge_id,
-                                        edge_label_id,
-                                        src_vertex_id,
-                                        dst_vertex_id,
-                                        src_vertex_label,
-                                        dst_vertex_label,
-                                    ));
+                                    if let PatternDirection::Out = direction {
+                                        pattern_edges.push(PatternEdge::new(
+                                            edge_id,
+                                            edge_label_id,
+                                            src_vertex_id,
+                                            dst_vertex_id,
+                                            src_vertex_label,
+                                            dst_vertex_label,
+                                        ));
+                                    } else if let PatternDirection::In = direction {
+                                        pattern_edges.push(PatternEdge::new(
+                                            edge_id,
+                                            edge_label_id,
+                                            dst_vertex_id,
+                                            src_vertex_id,
+                                            dst_vertex_label,
+                                            src_vertex_label,
+                                        ));
+                                    }
                                 } else {
                                     return Err(IrError::Unsupported(
                                         "FuzzyPattern is not supported".to_string(),
@@ -1180,11 +1214,14 @@ impl Pattern {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use vec_map::VecMap;
 
     use super::Pattern;
     use super::PatternDirection;
     use crate::catalogue::codec::*;
+    use crate::catalogue::pattern::PatternEdge;
     use crate::catalogue::pattern::PatternVertex;
     use crate::catalogue::test_cases::extend_step_cases::*;
     use crate::catalogue::test_cases::pattern_cases::*;
@@ -1261,6 +1298,141 @@ mod tests {
         let mut edges_connect_v1_v0_iter = edges_connect_v1_v0.iter();
         assert_eq!(*edges_connect_v1_v0_iter.next().unwrap(), (0, PatternDirection::In));
         assert_eq!(*edges_connect_v1_v0_iter.next().unwrap(), (1, PatternDirection::Out));
+    }
+
+    #[test]
+    fn test_ldbc_pattern_from_pb_case1_structure() {
+        let pattern_result = build_ldbc_pattern_from_pb_case1();
+        if let Ok(pattern) = pattern_result {
+            assert_eq!(pattern.vertices.len(), 3);
+            assert_eq!(pattern.edges.len(), 3);
+            // 3 Person vertices
+            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 3);
+            // 3 knows edges
+            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 3);
+            // check structure
+            // build identical pattern for comparison
+            let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);
+            let pattern_edge2 = PatternEdge::new(1, 12, 0, 2, 1, 1);
+            let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
+            let pattern_for_comparison =
+                Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
+            // check whether the two pattern has the same code
+            let encoder = Encoder::init(4, 4, 1, 2);
+            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
+            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            assert_eq!(pattern_code, pattern_for_comparison_code);
+        } else if let Err(error) = pattern_result {
+            panic!("Build pattern from pb message failed: {:?}", error)
+        }
+    }
+
+    #[test]
+    fn test_ldbc_pattern_from_pb_case2_structure() {
+        let pattern_result = build_ldbc_pattern_from_pb_case2();
+        if let Ok(pattern) = pattern_result {
+            assert_eq!(pattern.vertices.len(), 3);
+            assert_eq!(pattern.edges.len(), 3);
+            // 2 Person vertices
+            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 2);
+            // 1 University vertex
+            assert_eq!(pattern.vertex_label_map.get(&12).unwrap().len(), 1);
+            // 1 knows edge
+            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 1);
+            // 2 studyat edges
+            assert_eq!(pattern.edge_label_map.get(&15).unwrap().len(), 2);
+            // check structure
+            // build identical pattern for comparison
+            for pattern_edge in pattern.edges_iter() {
+                println!("{:?}", pattern_edge);
+            }
+            let pattern_edge1 = PatternEdge::new(0, 15, 1, 0, 1, 12);
+            let pattern_edge2 = PatternEdge::new(1, 15, 2, 0, 1, 12);
+            let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
+            let pattern_for_comparison =
+                Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
+            // check whether the two pattern has the same code
+            let encoder = Encoder::init(4, 4, 1, 2);
+            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
+            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            assert_eq!(pattern_code, pattern_for_comparison_code);
+        } else if let Err(error) = pattern_result {
+            panic!("Build pattern from pb message failed: {:?}", error)
+        }
+    }
+
+    #[test]
+    fn test_ldbc_pattern_from_pb_case3_structure() {
+        let pattern_result = build_ldbc_pattern_from_pb_case3();
+        if let Ok(pattern) = pattern_result {
+            assert_eq!(pattern.vertices.len(), 4);
+            assert_eq!(pattern.edges.len(), 6);
+            // 4 Person vertices
+            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 4);
+            // 6 knows edges
+            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 6);
+            // check structure
+            // build identical pattern for comparison
+            let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);
+            let pattern_edge2 = PatternEdge::new(1, 12, 0, 2, 1, 1);
+            let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
+            let pattern_edge4 = PatternEdge::new(3, 12, 0, 3, 1, 1);
+            let pattern_edge5 = PatternEdge::new(4, 12, 1, 3, 1, 1);
+            let pattern_edge6 = PatternEdge::new(5, 12, 2, 3, 1, 1);
+            let pattern_for_comparison = Pattern::try_from(vec![
+                pattern_edge1,
+                pattern_edge2,
+                pattern_edge3,
+                pattern_edge4,
+                pattern_edge5,
+                pattern_edge6,
+            ])
+            .unwrap();
+            // check whether the two pattern has the same code
+            let encoder = Encoder::init(4, 4, 1, 3);
+            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
+            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            assert_eq!(pattern_code, pattern_for_comparison_code);
+        } else if let Err(error) = pattern_result {
+            panic!("Build pattern from pb message failed: {:?}", error)
+        }
+    }
+
+    #[test]
+    fn test_ldbc_pattern_from_pb_case4_structure() {
+        let pattern_result = build_ldbc_pattern_from_pb_case4();
+        if let Ok(pattern) = pattern_result {
+            assert_eq!(pattern.vertices.len(), 4);
+            assert_eq!(pattern.edges.len(), 4);
+            // 2 Person vertices
+            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 2);
+            // 1 City vertex
+            assert_eq!(pattern.vertex_label_map.get(&9).unwrap().len(), 1);
+            // 1 Comment vertex
+            assert_eq!(pattern.vertex_label_map.get(&2).unwrap().len(), 1);
+            // 1 has creator edge
+            assert_eq!(pattern.edge_label_map.get(&0).unwrap().len(), 1);
+            // 1 likes edge
+            assert_eq!(pattern.edge_label_map.get(&13).unwrap().len(), 1);
+            // 2 islocated edges
+            assert_eq!(pattern.edge_label_map.get(&11).unwrap().len(), 2);
+            // check structure
+            // build identical pattern for comparison
+            let pattern_edge1 = PatternEdge::new(0, 11, 0, 1, 1, 9);
+            let pattern_edge2 = PatternEdge::new(1, 11, 2, 1, 1, 9);
+            let pattern_edge3 = PatternEdge::new(2, 13, 0, 3, 1, 2);
+            let pattern_edge4 = PatternEdge::new(3, 0, 3, 2, 2, 1);
+            let pattern_for_comparison =
+                Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3, pattern_edge4])
+                    .unwrap();
+            // check whether the two pattern has the same code
+            let encoder = Encoder::init(4, 4, 1, 3);
+            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
+            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            assert_eq!(pattern_code, pattern_for_comparison_code);
+        } else if let Err(error) = pattern_result {
+            panic!("Build pattern from pb message failed: {:?}", error)
+        }
     }
 
     /// Test whether pattern_case1 + extend_step_case1 = pattern_case2
@@ -1764,13 +1936,12 @@ mod tests {
         let ldbc_pattern_meta = get_ldbc_pattern_meta();
         let person_knows_person = build_ldbc_pattern_case1();
         let all_extend_steps = person_knows_person.get_extend_steps(&ldbc_pattern_meta);
-        assert_eq!(all_extend_steps.len(), 41);
+        assert_eq!(all_extend_steps.len(), 44);
     }
 
     #[test]
     fn set_accurate_rank_case1() {
-        let mut pattern = build_pattern_case1();
-        pattern.rank_ranking();
+        let pattern = build_pattern_case1();
         let vertices: VecMap<&PatternVertex> = pattern.vertices_iter().enumerate().collect();
         assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
@@ -1778,8 +1949,7 @@ mod tests {
 
     #[test]
     fn set_accurate_rank_case2() {
-        let mut pattern = build_pattern_case2();
-        pattern.rank_ranking();
+        let pattern = build_pattern_case2();
         let vertices = &pattern.vertices;
         assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
@@ -1788,8 +1958,7 @@ mod tests {
 
     #[test]
     fn set_accurate_rank_case3() {
-        let mut pattern = build_pattern_case3();
-        pattern.rank_ranking();
+        let pattern = build_pattern_case3();
         let vertices = &pattern.vertices;
         assert_eq!(vertices.get(0).unwrap().get_rank(), 1);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
@@ -1799,8 +1968,7 @@ mod tests {
 
     #[test]
     fn set_accurate_rank_case4() {
-        let mut pattern = build_pattern_case4();
-        pattern.rank_ranking();
+        let pattern = build_pattern_case4();
         let vertices = &pattern.vertices;
         assert_eq!(vertices.get(0).unwrap().get_rank(), 1);
         assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
@@ -1810,8 +1978,7 @@ mod tests {
 
     #[test]
     fn set_accurate_rank_case5() {
-        let mut pattern = build_pattern_case5();
-        pattern.rank_ranking();
+        let pattern = build_pattern_case5();
         let id_vec_a: Vec<PatternId> = vec![100, 200, 300, 400];
         let id_vec_b: Vec<PatternId> = vec![10, 20, 30];
         let id_vec_c: Vec<PatternId> = vec![1, 2, 3];
@@ -1836,8 +2003,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case1() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case1();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case1();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -1857,8 +2023,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case2() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case2();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case2();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -1878,8 +2043,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case3() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case3();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case3();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -1906,8 +2070,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case4() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case4();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case4();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -1934,8 +2097,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case5() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case5();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case5();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -1962,8 +2124,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case6() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case6();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case6();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -1990,8 +2151,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case7() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case7();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case7();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2018,8 +2178,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case8() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case8();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case8();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2053,8 +2212,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case9() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case9();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case9();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2088,8 +2246,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case10() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case10();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case10();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2123,8 +2280,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case11() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case11();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case11();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2165,8 +2321,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case12() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case12();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case12();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2214,8 +2369,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case13() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case13();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case13();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2263,8 +2417,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case14() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case14();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case14();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2319,8 +2472,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case15() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case15();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case15();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2389,8 +2541,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case16() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case16();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case16();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2466,8 +2617,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case17() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2515,8 +2665,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case17_even_num_chain() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_even_num_chain();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_even_num_chain();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2571,8 +2720,7 @@ mod tests {
 
     #[test]
     fn rank_ranking_case17_long_chain() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2655,8 +2803,7 @@ mod tests {
 
     #[test]
     fn index_ranking_case17_special_id_situation_1() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_1();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_1();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2704,8 +2851,7 @@ mod tests {
 
     #[test]
     fn index_ranking_case17_special_id_situation_2() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_2();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_2();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2753,8 +2899,7 @@ mod tests {
 
     #[test]
     fn index_ranking_case18() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case18();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case18();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2802,8 +2947,7 @@ mod tests {
 
     #[test]
     fn index_ranking_case19() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case19();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case19();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2907,8 +3051,7 @@ mod tests {
 
     #[test]
     fn index_ranking_case20() {
-        let (mut pattern, vertex_id_map) = build_pattern_rank_ranking_case20();
-        pattern.rank_ranking();
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case20();
         let vertices = &pattern.vertices;
         assert_eq!(
             vertices
@@ -2945,18 +3088,5 @@ mod tests {
                 .get_rank(),
             0
         );
-    }
-
-    #[test]
-    fn test_encode_decode_of_case1() {
-        let mut pattern = build_pattern_case1();
-        let encoder = Encoder::init_by_pattern(&pattern, 4);
-        pattern.rank_ranking();
-        let code1: Vec<u8> = pattern.encode_to(&encoder);
-        let mut pattern: Pattern = Pattern::decode_from(code1.clone(), &encoder).unwrap();
-        let encoder = Encoder::init_by_pattern(&pattern, 4);
-        pattern.rank_ranking();
-        let code2: Vec<u8> = pattern.encode_to(&encoder);
-        assert_eq!(code1, code2);
     }
 }
