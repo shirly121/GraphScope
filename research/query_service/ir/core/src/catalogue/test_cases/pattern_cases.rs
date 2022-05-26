@@ -21,16 +21,16 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
 use ir_common::generated::algebra as pb;
+use ir_common::KeyId;
 
 use crate::catalogue::pattern::*;
 use crate::catalogue::{PatternId, PatternLabelId};
 use crate::catalogue::test_cases::pattern_meta_cases::*;
 
-static TAG_A: u32 = 0;
-static TAG_B: u32 = 1;
-static TAG_C: u32 = 2;
-static TAG_D: u32 = 3;
-
+pub const TAG_A: KeyId = 0;
+pub const TAG_B: KeyId = 1;
+pub const TAG_C: KeyId = 2;
+pub const TAG_D: KeyId = 3;
 
 fn gen_edge_label_map(edges: Vec<String>) -> HashMap<String, PatternLabelId> {
     let mut rng = StdRng::from_seed([0; 32]);
@@ -279,7 +279,7 @@ pub fn build_ldbc_pattern_from_pb_case1() -> Pattern {
             },
         ],
     };
-    Pattern::try_from((pattern, ldbc_pattern_mata)).unwrap()
+    Pattern::try_from((&pattern, &ldbc_pattern_mata)).unwrap()
 }
 
 /// Test Cases for Index Ranking
