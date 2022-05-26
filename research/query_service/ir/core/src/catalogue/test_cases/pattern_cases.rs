@@ -20,8 +20,17 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
+use ir_common::generated::algebra as pb;
+
 use crate::catalogue::pattern::*;
 use crate::catalogue::{PatternId, PatternLabelId};
+use crate::catalogue::test_cases::pattern_meta_cases::*;
+
+static TAG_A: u32 = 0;
+static TAG_B: u32 = 1;
+static TAG_C: u32 = 2;
+static TAG_D: u32 = 3;
+
 
 fn gen_edge_label_map(edges: Vec<String>) -> HashMap<String, PatternLabelId> {
     let mut rng = StdRng::from_seed([0; 32]);
@@ -230,6 +239,47 @@ pub fn build_ldbc_pattern_case1() -> Pattern {
         .unwrap()
         .set_rank(1);
     pattern
+}
+
+pub fn build_ldbc_pattern_from_pb_case1() -> Pattern {
+    let ldbc_pattern_mata = get_ldbc_pattern_meta();
+    // define pb pattern message
+    let expand_opr = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0, // out
+        params: Some(query_params(vec!["KNOWS".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let pattern = pb::Pattern {
+        sentences: vec![
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                }],
+                end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+        ],
+    };
+    Pattern::try_from((pattern, ldbc_pattern_mata)).unwrap()
 }
 
 /// Test Cases for Index Ranking
