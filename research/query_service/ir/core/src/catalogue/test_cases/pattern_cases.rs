@@ -498,6 +498,149 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
     Pattern::try_from((&pattern, &ldbc_pattern_mata))
 }
 
+/// Pattern from ldbc schema file and build from pb::Pattern message
+///           Person
+///     knows/      \knows
+///    knows/       \knows
+///   Person knows->knows Person
+pub fn build_ldbc_pattern_from_pb_case5() -> Result<Pattern, IrError> {
+    let ldbc_pattern_mata = get_ldbc_pattern_meta();
+    // define pb pattern message
+    let expand_opr0 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0, // out
+        params: Some(query_params(vec!["KNOWS".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let expand_opr1 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 1, // in
+        params: Some(query_params(vec!["KNOWS".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let pattern = pb::Pattern {
+        sentences: vec![
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                    },
+                ],
+                end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                    },
+                ],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                    },
+                ],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+        ],
+    };
+    Pattern::try_from((&pattern, &ldbc_pattern_mata))
+}
+
+pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
+    let ldbc_pattern_mata = get_ldbc_pattern_meta();
+    // define pb pattern message
+    let expand_opr0 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0, // out
+        params: Some(query_params(vec!["ISLOCATEDIN".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let expand_opr1 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 1, // in
+        params: Some(query_params(vec!["ISLOCATEDIN".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let expand_opr2 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0, // out
+        params: Some(query_params(vec!["KNOWS".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let expand_opr3 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0, // out
+        params: Some(query_params(vec!["LIKES".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let expand_opr4 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0, // out
+        params: Some(query_params(vec!["HASCREATOR".into()], vec![], None)),
+        is_edge: false,
+        alias: None,
+    };
+    let pattern = pb::Pattern {
+        sentences: vec![
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                }, pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                }, pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
+                }],
+                end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr3.clone())),
+                }, pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr4.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+        ],
+    };
+    Pattern::try_from((&pattern, &ldbc_pattern_mata))
+}
+
 /// Test Cases for Index Ranking
 pub fn build_pattern_rank_ranking_case1() -> (Pattern, HashMap<String, PatternId>) {
     let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();

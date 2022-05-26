@@ -489,6 +489,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                             id_label_map.insert(src_vertex_id, src_vlabel_cand);
                                             dst_vertex_label = Some(dst_vlabel_cand);
                                             pre_dst_vertex_label = dst_vlabel_cand;
+                                            direction = Some(dir);
                                             break;
                                         }
                                     }
@@ -1425,6 +1426,96 @@ mod tests {
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3, pattern_edge4])
                     .unwrap();
+            // check whether the two pattern has the same code
+            let encoder = Encoder::init(4, 4, 1, 2);
+            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
+            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            assert_eq!(pattern_code, pattern_for_comparison_code);
+        } else if let Err(error) = pattern_result {
+            panic!("Build pattern from pb message failed: {:?}", error)
+        }
+    }
+
+    #[test]
+    fn test_ldbc_pattern_from_pb_case5_structure() {
+        let pattern_result = build_ldbc_pattern_from_pb_case5();
+        if let Ok(pattern) = pattern_result {
+            assert_eq!(pattern.vertices.len(), 6);
+            assert_eq!(pattern.edges.len(), 6);
+            // 6 Person vertices
+            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 6);
+            // 6 knows edges
+            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 6);
+            // 1 has creator edge
+            assert_eq!(pattern.edge_label_map.get(&0).unwrap().len(), 1);
+            // 1 likes edge
+            assert_eq!(pattern.edge_label_map.get(&13).unwrap().len(), 1);
+            // 2 islocated edges
+            assert_eq!(pattern.edge_label_map.get(&11).unwrap().len(), 2);
+            // check structure
+            // build identical pattern for comparison
+            let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);
+            let pattern_edge2 = PatternEdge::new(1, 12, 2, 1, 1, 1);
+            let pattern_edge3 = PatternEdge::new(2, 12, 2, 3, 1, 1);
+            let pattern_edge4 = PatternEdge::new(3, 12, 4, 3, 1, 1);
+            let pattern_edge5 = PatternEdge::new(4, 12, 4, 5, 1, 1);
+            let pattern_edge6 = PatternEdge::new(5, 12, 0, 5, 1, 1);
+            let pattern_for_comparison = Pattern::try_from(vec![
+                pattern_edge1,
+                pattern_edge2,
+                pattern_edge3,
+                pattern_edge4,
+                pattern_edge5,
+                pattern_edge6,
+            ])
+            .unwrap();
+            // check whether the two pattern has the same code
+            let encoder = Encoder::init(4, 4, 1, 3);
+            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
+            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            assert_eq!(pattern_code, pattern_for_comparison_code);
+        } else if let Err(error) = pattern_result {
+            panic!("Build pattern from pb message failed: {:?}", error)
+        }
+    }
+
+    #[test]
+    fn test_ldbc_pattern_from_pb_case6_structure() {
+        let pattern_result = build_ldbc_pattern_from_pb_case6();
+        if let Ok(pattern) = pattern_result {
+            assert_eq!(pattern.vertices.len(), 6);
+            assert_eq!(pattern.edges.len(), 6);
+            // 4 Persons vertices
+            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 4);
+            // 1 City vertex
+            assert_eq!(pattern.vertex_label_map.get(&9).unwrap().len(), 1);
+            // 1 Comment vertex
+            assert_eq!(pattern.vertex_label_map.get(&2).unwrap().len(), 1);
+            // 1 has creator edge
+            assert_eq!(pattern.edge_label_map.get(&0).unwrap().len(), 1);
+            // 1 likes edge
+            assert_eq!(pattern.edge_label_map.get(&13).unwrap().len(), 1);
+            // 2 islocated edges
+            assert_eq!(pattern.edge_label_map.get(&11).unwrap().len(), 2);
+            // 2 knows edges
+            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 2);
+            // check structure
+            // build identical pattern for comparison
+            let pattern_edge1 = PatternEdge::new(0, 11, 0, 1, 1, 9);
+            let pattern_edge2 = PatternEdge::new(1, 11, 2, 1, 1, 9);
+            let pattern_edge3 = PatternEdge::new(2, 12, 2, 3, 1, 1);
+            let pattern_edge4 = PatternEdge::new(3, 12, 3, 4, 1, 1);
+            let pattern_edge5 = PatternEdge::new(4, 0, 5, 4, 2, 1);
+            let pattern_edge6 = PatternEdge::new(5, 13, 0, 5, 1, 2);
+            let pattern_for_comparison = Pattern::try_from(vec![
+                pattern_edge1,
+                pattern_edge2,
+                pattern_edge3,
+                pattern_edge4,
+                pattern_edge5,
+                pattern_edge6,
+            ])
+            .unwrap();
             // check whether the two pattern has the same code
             let encoder = Encoder::init(4, 4, 1, 3);
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
