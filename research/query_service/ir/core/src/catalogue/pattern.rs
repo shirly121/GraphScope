@@ -18,7 +18,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
+use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as pb;
+use ir_common::generated::common as common_pb;
 use ir_common::NameOrId;
 use vec_map::VecMap;
 
@@ -175,6 +177,18 @@ pub struct Pattern {
     edge_label_map: BTreeMap<PatternLabelId, BTreeSet<PatternId>>,
     /// Key: vertex label id, Value: BTreeSet<vertex id>
     vertex_label_map: BTreeMap<PatternLabelId, BTreeSet<PatternId>>,
+    /// Key: edge's Tag info, Value: edge id
+    edge_tag_map: BTreeMap<NameOrId, PatternId>,
+    /// Key: vertex's Tag info, Value: vertex id
+    vertex_tag_map: BTreeMap<NameOrId, PatternId>,
+
+    edge_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
+
+    vertex_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
+
+    edge_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
+
+    vertex_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
 }
 
 /// Initializers of Pattern
@@ -202,6 +216,12 @@ impl From<PatternVertex> for Pattern {
             vertices: VecMap::from_iter([(vertex.id, vertex.clone())]),
             edge_label_map: BTreeMap::new(),
             vertex_label_map: BTreeMap::from([(vertex.label, BTreeSet::from([vertex.id]))]),
+            edge_tag_map: BTreeMap::new(),
+            vertex_tag_map: BTreeMap::new(),
+            edge_properties_map: BTreeMap::new(),
+            vertex_properties_map: BTreeMap::new(),
+            edge_predicate_map: BTreeMap::new(),
+            vertex_predicate_map: BTreeMap::new(),
         }
     }
 }
@@ -209,6 +229,7 @@ impl From<PatternVertex> for Pattern {
 /// Initialize a Pattern from a vertor of Pattern Edges
 impl TryFrom<Vec<PatternEdge>> for Pattern {
     type Error = IrError;
+
     fn try_from(edges: Vec<PatternEdge>) -> Result<Self, Self::Error> {
         if !edges.is_empty() {
             let mut new_pattern = Pattern {
@@ -216,6 +237,12 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                 vertices: VecMap::new(),
                 edge_label_map: BTreeMap::new(),
                 vertex_label_map: BTreeMap::new(),
+                edge_tag_map: BTreeMap::new(),
+                vertex_tag_map: BTreeMap::new(),
+                edge_properties_map: BTreeMap::new(),
+                vertex_properties_map: BTreeMap::new(),
+                edge_predicate_map: BTreeMap::new(),
+                vertex_predicate_map: BTreeMap::new(),
             };
             for edge in edges {
                 // Add the new Pattern Edge to the new Pattern
@@ -290,6 +317,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
 
 impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
     type Error = IrError;
+
     fn try_from(
         (pattern_message, pattern_meta): (&pb::Pattern, &PatternMeta),
     ) -> Result<Self, Self::Error> {
@@ -299,8 +327,10 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         let mut assign_vertex_id = 0;
         let mut assign_edge_id = 0;
         let mut pattern_edges = vec![];
-        let mut tag_v_id_map: HashMap<NameOrId, PatternId> = HashMap::new();
-        let mut id_label_map: HashMap<PatternId, PatternLabelId> = HashMap::new();
+        let mut tag_v_id_map: BTreeMap<NameOrId, PatternId> = BTreeMap::new();
+        let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
+        let mut v_id_properties_map: BTreeMap<PatternId, Vec<NameOrId>> = BTreeMap::new();
+        let mut v_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         for sentence in &pattern_message.sentences {
             if sentence.binders.is_empty() {
                 return Err(IrError::Unsupported("Match sentence has no binder".to_string()));
@@ -351,13 +381,10 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
             for (i, binder) in sentence.binders.iter().enumerate() {
                 if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
                     if edge_expand.is_edge {
-                        return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                        return Err(IrError::Unsupported("Expand Edge Only is not supported".to_string()));
                     }
                     if let Some(params) = edge_expand.params.as_ref() {
                         if params.tables.len() != 1 {
-                            return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
-                        }
-                        if !params.columns.is_empty() {
                             return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
                         }
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
@@ -392,6 +419,45 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                     pre_dst_vertex_id = dst_vertex_id;
                                     assign_vertex_id += 1;
                                 }
+                                // check alias tag
+                                if let Some(alias_tag) = edge_expand
+                                    .alias
+                                    .as_ref()
+                                    .and_then(|name_or_id| name_or_id.item.as_ref())
+                                {
+                                    let tag = match alias_tag {
+                                        TagItem::Name(name) => NameOrId::Str(name.clone()),
+                                        TagItem::Id(id) => NameOrId::Id(*id),
+                                    };
+                                    match tag_v_id_map.get(&tag) {
+                                        Some(v_id) => {
+                                            if *v_id != dst_vertex_id {
+                                                return Err(IrError::ParsePbError(
+                                                    ParsePbError::ParseError(
+                                                        "Two vertices use same tag".to_string(),
+                                                    ),
+                                                ));
+                                            }
+                                        }
+                                        None => {
+                                            tag_v_id_map.insert(tag, dst_vertex_id);
+                                        }
+                                    }
+                                }
+                                // add vertex properties(column)
+                                for property in params.columns.iter() {
+                                    if let Some(item) = property.item.as_ref() {
+                                        v_id_properties_map.entry(dst_vertex_id).or_insert(Vec::new()).push(match item {
+                                            TagItem::Name(name) => NameOrId::Str(name.clone()),
+                                            TagItem::Id(id) => NameOrId::Id(*id),
+                                        });
+                                    }
+                                }
+                                // add vertex predicate
+                                if let Some(expr) = params.predicate.as_ref() {
+                                    v_id_predicate_map.insert(dst_vertex_id, expr.clone());
+                                }
+                                // assign vertices labels
                                 let vertex_labels_candies: DynIter<(
                                     PatternLabelId,
                                     PatternLabelId,
@@ -566,7 +632,12 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                 }
             }
         }
-        Pattern::try_from(pattern_edges)
+        Pattern::try_from(pattern_edges).and_then(|mut pattern| {
+            pattern.vertex_tag_map = tag_v_id_map;
+            pattern.vertex_properties_map = v_id_properties_map;
+            pattern.vertex_predicate_map = v_id_predicate_map;
+            Ok(pattern)
+        })
     }
 }
 
@@ -616,6 +687,28 @@ impl Pattern {
 
     pub fn get_vertex_mut_from_id(&mut self, vertex_id: PatternId) -> Option<&mut PatternVertex> {
         self.vertices.get_mut(vertex_id)
+    }
+
+    pub fn get_edge_from_tag(&self, edge_tag: &NameOrId) -> Option<&PatternEdge> {
+        self.edge_tag_map
+            .get(edge_tag)
+            .and_then(|id| self.edges.get(*id))
+    }
+
+    pub fn get_vertex_from_tag(&self, vertex_tag: &NameOrId) -> Option<&PatternEdge> {
+        self.vertex_tag_map
+            .get(vertex_tag)
+            .and_then(|id| self.edges.get(*id))
+    }
+
+    pub fn add_edge_tag(&mut self, edge_tag: &NameOrId, edge_id: PatternId) {
+        self.edge_tag_map
+            .insert(edge_tag.clone(), edge_id);
+    }
+
+    pub fn add_vertex_tag(&mut self, vertex_tag: &NameOrId, vertex_id: PatternId) {
+        self.vertex_tag_map
+            .insert(vertex_tag.clone(), vertex_id);
     }
 
     /// Get Vertex Index from Vertex ID Reference
@@ -712,6 +805,52 @@ impl Pattern {
                 std::cmp::max((64 - same_label_vertex_num.leading_zeros()) as usize, min_rank_bit_num);
         }
         min_rank_bit_num
+    }
+
+    pub fn edge_properties_iter(&self, edge_id: PatternId) -> DynIter<&NameOrId> {
+        match self.edge_properties_map.get(&edge_id) {
+            Some(properties) => Box::new(properties.iter()),
+            None => Box::new(std::iter::empty()),
+        }
+    }
+
+    pub fn vertex_properties_iter(&self, vertex_id: PatternId) -> DynIter<&NameOrId> {
+        match self.vertex_properties_map.get(&vertex_id) {
+            Some(properties) => Box::new(properties.iter()),
+            None => Box::new(std::iter::empty()),
+        }
+    }
+
+    pub fn add_edge_property(&mut self, edge_id: PatternId, property: NameOrId) {
+        self.edge_properties_map
+            .entry(edge_id)
+            .or_insert(Vec::new())
+            .push(property);
+    }
+
+    pub fn add_vertex_property(&mut self, vertex_id: PatternId, property: NameOrId) {
+        self.vertex_properties_map
+            .entry(vertex_id)
+            .or_insert(Vec::new())
+            .push(property);
+    }
+
+    pub fn get_edge_predicate(&self, edge_id: PatternId) -> Option<&common_pb::Expression> {
+        self.edge_predicate_map.get(&edge_id)
+    }
+
+    pub fn get_vertex_predicate(&self, vertex_id: PatternId) -> Option<&common_pb::Expression> {
+        self.vertex_predicate_map.get(&vertex_id)
+    }
+
+    pub fn add_edge_predicate(&mut self, edge_id: PatternId, predicate: common_pb::Expression) {
+        self.edge_predicate_map
+            .insert(edge_id, predicate);
+    }
+
+    pub fn add_vertex_predicate(&mut self, vertex_id: PatternId, predicate: common_pb::Expression) {
+        self.vertex_predicate_map
+            .insert(vertex_id, predicate);
     }
 }
 
@@ -1446,12 +1585,6 @@ mod tests {
             assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 6);
             // 6 knows edges
             assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 6);
-            // 1 has creator edge
-            assert_eq!(pattern.edge_label_map.get(&0).unwrap().len(), 1);
-            // 1 likes edge
-            assert_eq!(pattern.edge_label_map.get(&13).unwrap().len(), 1);
-            // 2 islocated edges
-            assert_eq!(pattern.edge_label_map.get(&11).unwrap().len(), 2);
             // check structure
             // build identical pattern for comparison
             let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);

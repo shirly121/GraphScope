@@ -608,23 +608,30 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
         sentences: vec![
             pb::pattern::Sentence {
                 start: Some(TAG_A.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
-                }, pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
-                }, pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
-                }],
+                binders: vec![
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
+                    },
+                ],
                 end: Some(TAG_B.into()),
                 join_kind: 0,
             },
             pb::pattern::Sentence {
                 start: Some(TAG_A.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr3.clone())),
-                }, pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr4.clone())),
-                }],
+                binders: vec![
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr3.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr4.clone())),
+                    },
+                ],
                 end: Some(TAG_C.into()),
                 join_kind: 0,
             },
