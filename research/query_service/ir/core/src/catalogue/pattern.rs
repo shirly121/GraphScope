@@ -18,7 +18,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
-use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::NameOrId;
@@ -181,13 +180,13 @@ pub struct Pattern {
     edge_tag_map: BTreeMap<NameOrId, PatternId>,
     /// Key: vertex's Tag info, Value: vertex id
     vertex_tag_map: BTreeMap<NameOrId, PatternId>,
-
+    /// Key: edge id, Value: properties the edge required
     edge_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
-
+    /// Key: vertex id, Value: properties the vertex required
     vertex_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
-
+    /// Key: edge id, Value: predicate of the edge
     edge_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
-
+    /// Key: vertex id, Value: predicate of the vertex
     vertex_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
 }
 
@@ -333,15 +332,15 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         let mut v_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         for sentence in &pattern_message.sentences {
             if sentence.binders.is_empty() {
-                return Err(IrError::Unsupported("Match sentence has no binder".to_string()));
+                return Err(IrError::InvalidPattern("Match sentence has no binder".to_string()));
             }
             let start_tag_item = sentence
                 .start
                 .as_ref()
-                .ok_or(IrError::Unsupported("Match sentence's start tag is None".to_string()))?
+                .ok_or(IrError::InvalidPattern("Match sentence's start tag is None".to_string()))?
                 .item
                 .as_ref()
-                .ok_or(IrError::Unsupported("Match sentence's start tag item is None".to_string()))?;
+                .ok_or(IrError::InvalidPattern("Match sentence's start tag item is None".to_string()))?;
             let start_tag = match start_tag_item {
                 TagItem::Name(name) => NameOrId::Str(name.clone()),
                 TagItem::Id(id) => NameOrId::Id(*id),
@@ -381,11 +380,13 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
             for (i, binder) in sentence.binders.iter().enumerate() {
                 if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
                     if edge_expand.is_edge {
-                        return Err(IrError::Unsupported("Expand Edge Only is not supported".to_string()));
+                        return Err(IrError::Unsupported("Expand only edge is not supported".to_string()));
                     }
                     if let Some(params) = edge_expand.params.as_ref() {
                         if params.tables.len() != 1 {
-                            return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                            return Err(IrError::Unsupported(
+                                "FuzzyPattern: more than 1 expand label".to_string(),
+                            ));
                         }
                         if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
                             if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
@@ -432,10 +433,8 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                     match tag_v_id_map.get(&tag) {
                                         Some(v_id) => {
                                             if *v_id != dst_vertex_id {
-                                                return Err(IrError::ParsePbError(
-                                                    ParsePbError::ParseError(
-                                                        "Two vertices use same tag".to_string(),
-                                                    ),
+                                                return Err(IrError::InvalidPattern(
+                                                    "Two vertices use same tag".to_string(),
                                                 ));
                                             }
                                         }
@@ -447,10 +446,13 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                 // add vertex properties(column)
                                 for property in params.columns.iter() {
                                     if let Some(item) = property.item.as_ref() {
-                                        v_id_properties_map.entry(dst_vertex_id).or_insert(Vec::new()).push(match item {
-                                            TagItem::Name(name) => NameOrId::Str(name.clone()),
-                                            TagItem::Id(id) => NameOrId::Id(*id),
-                                        });
+                                        v_id_properties_map
+                                            .entry(dst_vertex_id)
+                                            .or_insert(Vec::new())
+                                            .push(match item {
+                                                TagItem::Name(name) => NameOrId::Str(name.clone()),
+                                                TagItem::Id(id) => NameOrId::Id(*id),
+                                            });
                                     }
                                 }
                                 // add vertex predicate
@@ -494,8 +496,8 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                             ),
                                     ),
                                     _ => {
-                                        return Err(IrError::Unsupported(
-                                            "Unsupported Direction".to_string(),
+                                        return Err(IrError::InvalidPattern(
+                                            "Invalid Direction".to_string(),
                                         ));
                                     }
                                 };
@@ -612,23 +614,27 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                         ));
                                     }
                                 } else {
-                                    return Err(IrError::Unsupported(
-                                        "FuzzyPattern is not supported".to_string(),
+                                    return Err(IrError::InvalidPattern(
+                                        "Cannot find valid label for some vertices".to_string(),
                                     ));
                                 }
                             } else {
-                                return Err(IrError::Unsupported(
-                                    "FuzzyPattern is not supported".to_string(),
+                                return Err(IrError::InvalidPattern(
+                                    "Cannot find edge label info in the pattern meta".to_string(),
                                 ));
                             }
                         } else {
-                            return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                            return Err(IrError::Unsupported(
+                                "FuzzyPattern: edge expand doesn't have label".to_string(),
+                            ));
                         }
                     } else {
-                        return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                        return Err(IrError::Unsupported(
+                            "FuzzyPattern: edge expand doesn't have parameters".to_string(),
+                        ));
                     }
                 } else {
-                    return Err(IrError::Unsupported("FuzzyPattern is not supported".to_string()));
+                    return Err(IrError::InvalidPattern("Binder's item is none".to_string()));
                 }
             }
         }
@@ -681,31 +687,37 @@ impl Pattern {
         self.vertices.get(vertex_id)
     }
 
+    /// Get PatternEdge Mutable Reference from Edge ID
     pub fn get_edge_mut_from_id(&mut self, edge_id: PatternId) -> Option<&mut PatternEdge> {
         self.edges.get_mut(edge_id)
     }
 
+    /// Get PatternVertex Mutable Reference from Vertex ID
     pub fn get_vertex_mut_from_id(&mut self, vertex_id: PatternId) -> Option<&mut PatternVertex> {
         self.vertices.get_mut(vertex_id)
     }
 
+    /// Get PatternEdge Reference from Given Tag
     pub fn get_edge_from_tag(&self, edge_tag: &NameOrId) -> Option<&PatternEdge> {
         self.edge_tag_map
             .get(edge_tag)
             .and_then(|id| self.edges.get(*id))
     }
 
+    /// Get PatternVertex Reference from Given Tag
     pub fn get_vertex_from_tag(&self, vertex_tag: &NameOrId) -> Option<&PatternEdge> {
         self.vertex_tag_map
             .get(vertex_tag)
             .and_then(|id| self.edges.get(*id))
     }
 
+    /// Assign a PatternEdge of the Pattern with the Given Tag
     pub fn add_edge_tag(&mut self, edge_tag: &NameOrId, edge_id: PatternId) {
         self.edge_tag_map
             .insert(edge_tag.clone(), edge_id);
     }
 
+    /// Assign a PatternVertex of th Pattern with the Given Tag
     pub fn add_vertex_tag(&mut self, vertex_tag: &NameOrId, vertex_id: PatternId) {
         self.vertex_tag_map
             .insert(vertex_tag.clone(), vertex_id);
@@ -807,6 +819,7 @@ impl Pattern {
         min_rank_bit_num
     }
 
+    /// Iterate over a PatternEdge's all required properties
     pub fn edge_properties_iter(&self, edge_id: PatternId) -> DynIter<&NameOrId> {
         match self.edge_properties_map.get(&edge_id) {
             Some(properties) => Box::new(properties.iter()),
@@ -814,6 +827,7 @@ impl Pattern {
         }
     }
 
+    /// Iterate over a PatternVertex's all required properties
     pub fn vertex_properties_iter(&self, vertex_id: PatternId) -> DynIter<&NameOrId> {
         match self.vertex_properties_map.get(&vertex_id) {
             Some(properties) => Box::new(properties.iter()),
@@ -821,6 +835,7 @@ impl Pattern {
         }
     }
 
+    /// Add a new property requirement to the PatternEdge
     pub fn add_edge_property(&mut self, edge_id: PatternId, property: NameOrId) {
         self.edge_properties_map
             .entry(edge_id)
@@ -828,6 +843,7 @@ impl Pattern {
             .push(property);
     }
 
+    /// Add a new property requirement to the PatternVertex
     pub fn add_vertex_property(&mut self, vertex_id: PatternId, property: NameOrId) {
         self.vertex_properties_map
             .entry(vertex_id)
@@ -835,19 +851,23 @@ impl Pattern {
             .push(property);
     }
 
+    /// Get the predicate requirement of a PatternEdge
     pub fn get_edge_predicate(&self, edge_id: PatternId) -> Option<&common_pb::Expression> {
         self.edge_predicate_map.get(&edge_id)
     }
 
+    /// Get the predicate requirement of a PatternVertex
     pub fn get_vertex_predicate(&self, vertex_id: PatternId) -> Option<&common_pb::Expression> {
         self.vertex_predicate_map.get(&vertex_id)
     }
 
+    /// Add predicate requirement to a PatternEdge
     pub fn add_edge_predicate(&mut self, edge_id: PatternId, predicate: common_pb::Expression) {
         self.edge_predicate_map
             .insert(edge_id, predicate);
     }
 
+    /// Add predicate requirement to a PatternVertex
     pub fn add_vertex_predicate(&mut self, vertex_id: PatternId, predicate: common_pb::Expression) {
         self.vertex_predicate_map
             .insert(vertex_id, predicate);
@@ -1462,6 +1482,28 @@ mod tests {
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
+            // check Tag
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_A.into())
+                    .unwrap()
+                    .id,
+                0
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_B.into())
+                    .unwrap()
+                    .id,
+                1
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_C.into())
+                    .unwrap()
+                    .id,
+                2
+            );
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -1496,6 +1538,28 @@ mod tests {
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
+            // check Tag
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_A.into())
+                    .unwrap()
+                    .id,
+                0
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_B.into())
+                    .unwrap()
+                    .id,
+                1
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_C.into())
+                    .unwrap()
+                    .id,
+                2
+            );
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -1533,6 +1597,35 @@ mod tests {
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
+            // check Tag
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_A.into())
+                    .unwrap()
+                    .id,
+                0
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_B.into())
+                    .unwrap()
+                    .id,
+                1
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_C.into())
+                    .unwrap()
+                    .id,
+                2
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_D.into())
+                    .unwrap()
+                    .id,
+                3
+            );
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -1570,6 +1663,35 @@ mod tests {
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
+            // check Tag
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_A.into())
+                    .unwrap()
+                    .id,
+                0
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_B.into())
+                    .unwrap()
+                    .id,
+                2
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_C.into())
+                    .unwrap()
+                    .id,
+                1
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_D.into())
+                    .unwrap()
+                    .id,
+                3
+            );
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -1607,6 +1729,28 @@ mod tests {
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
+            // check Tag
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_A.into())
+                    .unwrap()
+                    .id,
+                0
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_B.into())
+                    .unwrap()
+                    .id,
+                1
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_C.into())
+                    .unwrap()
+                    .id,
+                3
+            );
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -1654,6 +1798,28 @@ mod tests {
             let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
+            // check Tag
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_A.into())
+                    .unwrap()
+                    .id,
+                0
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_B.into())
+                    .unwrap()
+                    .id,
+                1
+            );
+            assert_eq!(
+                pattern
+                    .get_vertex_from_tag(&TAG_C.into())
+                    .unwrap()
+                    .id,
+                4
+            );
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
