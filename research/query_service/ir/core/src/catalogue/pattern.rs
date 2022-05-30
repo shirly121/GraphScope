@@ -15,7 +15,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
 use ir_common::generated::algebra as pb;
@@ -314,6 +314,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
     }
 }
 
+/// Initialize a Pattern from a protubuf Pattern and a PatternMeta
 impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
     type Error = IrError;
 
@@ -334,17 +335,13 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
             if sentence.binders.is_empty() {
                 return Err(IrError::InvalidPattern("Match sentence has no binder".to_string()));
             }
-            let start_tag_item = sentence
+            let start_tag: NameOrId = sentence
                 .start
                 .as_ref()
+                .cloned()
                 .ok_or(IrError::InvalidPattern("Match sentence's start tag is None".to_string()))?
-                .item
-                .as_ref()
-                .ok_or(IrError::InvalidPattern("Match sentence's start tag item is None".to_string()))?;
-            let start_tag = match start_tag_item {
-                TagItem::Name(name) => NameOrId::Str(name.clone()),
-                TagItem::Id(id) => NameOrId::Id(*id),
-            };
+                .try_into()
+                .map_err(|err| IrError::ParsePbError(err))?;
             let start_tag_v_id: PatternId;
             if let Some(v_id) = tag_v_id_map.get(&start_tag) {
                 start_tag_v_id = *v_id;
@@ -354,14 +351,11 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                 assign_vertex_id += 1;
             }
             let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
-            let end_tag_item = sentence
+            let end_tag: Option<NameOrId> = sentence
                 .end
                 .as_ref()
-                .and_then(|name_or_id| name_or_id.item.as_ref());
-            let end_tag = end_tag_item.map(|item| match item {
-                TagItem::Name(name) => NameOrId::Str(name.clone()),
-                TagItem::Id(id) => NameOrId::Id(*id),
-            });
+                .cloned()
+                .and_then(|name_or_id| name_or_id.try_into().ok());
             let end_tag_v_id: Option<PatternId>;
             if let Some(tag) = end_tag {
                 if let Some(v_id) = tag_v_id_map.get(&tag) {
