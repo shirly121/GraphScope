@@ -26,6 +26,8 @@ use crate::catalogue::pattern::PatternEdge;
 use crate::catalogue::PatternDirection;
 use crate::error::IrError;
 
+use super::pattern_meta::PatternMeta;
+
 pub trait Cipher<T>: Sized {
     fn encode_to(&self, encoder: &Encoder) -> T;
 
@@ -122,6 +124,21 @@ impl Encoder {
         if vertex_rank_bit_num > min_vertex_rank_bit_num {
             min_vertex_rank_bit_num = vertex_rank_bit_num;
         }
+
+        let edge_direction_bit_num = 2;
+        Encoder {
+            edge_label_bit_num: min_edge_label_bit_num,
+            vertex_label_bit_num: min_vertex_label_bit_num,
+            direction_bit_num: edge_direction_bit_num,
+            vertex_rank_bit_num: min_vertex_rank_bit_num,
+        }
+    }
+
+    pub fn init_by_pattern_meta(pattern_mata: &PatternMeta, same_label_vertex_limit: usize) -> Encoder {
+        let min_edge_label_bit_num = pattern_mata.get_min_edge_label_bit_num();
+        let min_vertex_label_bit_num = pattern_mata.get_min_vertex_label_bit_num();
+        let min_vertex_rank_bit_num =
+            std::cmp::max((64 - (same_label_vertex_limit as u64).leading_zeros()) as usize, 1);
 
         let edge_direction_bit_num = 2;
         Encoder {
@@ -320,16 +337,26 @@ impl EncodeUnit {
     }
 
     pub fn from_pattern(pattern: &Pattern, encoder: &Encoder) -> Self {
-        let mut pattern_encode_unit = EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
-        let ordered_edges_id = pattern.get_ordered_edges();
-        for edge_id in ordered_edges_id {
-            let edge = pattern.get_edge_from_id(edge_id).unwrap();
+        if pattern.get_edge_num() == 0 {
+            let vertex_label = pattern
+                .vertex_label_map_iter()
+                .next()
+                .unwrap()
+                .0;
+            let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
+            EncodeUnit { values: vec![vertex_label], heads: vec![vertex_label_bit_num - 1], tails: vec![0] }
+        } else {
+            let mut pattern_encode_unit = EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
+            let ordered_edges_id = pattern.get_ordered_edges();
+            for edge_id in ordered_edges_id {
+                let edge = pattern.get_edge_from_id(edge_id).unwrap();
 
-            let edge_encode_unit = EncodeUnit::from_pattern_edge(pattern, edge, encoder);
-            pattern_encode_unit.extend_by_another_unit(&edge_encode_unit);
+                let edge_encode_unit = EncodeUnit::from_pattern_edge(pattern, edge, encoder);
+                pattern_encode_unit.extend_by_another_unit(&edge_encode_unit);
+            }
+            println!("");
+            pattern_encode_unit
         }
-        println!("");
-        pattern_encode_unit
     }
 
     pub fn from_extend_edge(extend_edge: &ExtendEdge, encoder: &Encoder) -> Self {
@@ -542,47 +569,56 @@ impl DecodeUnit {
     /// Decode a &[u8] source code to the Vec<i32> decode value
     pub fn decode_to_vec_i32(&self, src_code: &[u8], storage_unit_bit_num: usize) -> Vec<i32> {
         let mut decoded_vec = vec![];
-        let bit_per_extend_edge: usize = self.unit_bits.iter().sum();
+        let bit_per_edge: usize = self.unit_bits.iter().sum();
         // - 1 means delete tbe bit indicating the end of the code
         let src_code_bit_sum = Encoder::get_src_code_effective_bit_num(&src_code, storage_unit_bit_num) - 1;
+        // Situation for one vertex pattern
+        if src_code_bit_sum < bit_per_edge {
+            vec![Encoder::get_decode_value_by_head_tail(
+                &src_code,
+                src_code_bit_sum - 1,
+                0,
+                storage_unit_bit_num,
+            )]
+        } else {
+            let mut unit_tail: usize = 0;
+            let mut unit_head: usize = bit_per_edge - 1;
 
-        let mut unit_tail: usize = 0;
-        let mut unit_head: usize = bit_per_extend_edge - 1;
+            let mut decode_unit_to_vec = |unit: &Vec<usize>, tail| {
+                if unit.len() == 0 {
+                    return;
+                }
+                let mut heads = vec![0; unit.len()];
+                heads[0] = unit[0] + tail - 1;
+                for i in 1..unit.len() {
+                    heads[i] = heads[i - 1] + unit[i]
+                }
 
-        let mut decode_unit_to_vec = |unit: &Vec<usize>, tail| {
-            if unit.len() == 0 {
-                return;
+                let mut tails = vec![0; unit.len()];
+                tails[0] = tail;
+                for i in 1..unit.len() {
+                    tails[i] = tails[i - 1] + unit[i - 1];
+                }
+
+                for i in 0..unit.len() {
+                    let docoded_value = Encoder::get_decode_value_by_head_tail(
+                        &src_code,
+                        heads[i],
+                        tails[i],
+                        storage_unit_bit_num,
+                    );
+                    decoded_vec.push(docoded_value);
+                }
+            };
+
+            while unit_head < src_code_bit_sum {
+                decode_unit_to_vec(&self.unit_bits, unit_tail);
+                unit_tail += bit_per_edge;
+                unit_head += bit_per_edge;
             }
-            let mut heads = vec![0; unit.len()];
-            heads[0] = unit[0] + tail - 1;
-            for i in 1..unit.len() {
-                heads[i] = heads[i - 1] + unit[i]
-            }
-
-            let mut tails = vec![0; unit.len()];
-            tails[0] = tail;
-            for i in 1..unit.len() {
-                tails[i] = tails[i - 1] + unit[i - 1];
-            }
-
-            for i in 0..unit.len() {
-                let docoded_value = Encoder::get_decode_value_by_head_tail(
-                    &src_code,
-                    heads[i],
-                    tails[i],
-                    storage_unit_bit_num,
-                );
-                decoded_vec.push(docoded_value);
-            }
-        };
-
-        while unit_head < src_code_bit_sum {
-            decode_unit_to_vec(&self.unit_bits, unit_tail);
-            unit_tail += bit_per_extend_edge;
-            unit_head += bit_per_extend_edge;
+            decode_unit_to_vec(&self.extra_bits, unit_tail);
+            decoded_vec
         }
-        decode_unit_to_vec(&self.extra_bits, unit_tail);
-        decoded_vec
     }
 
     /// Transform a &[i32] decide value to a ExtendStep
@@ -605,7 +641,9 @@ impl DecodeUnit {
 
     /// Transform a &[i32] decode value to a Pattern
     pub fn to_pattern(decode_vec: &[i32]) -> Result<Pattern, IrError> {
-        if decode_vec.len() % 5 == 0 {
+        if decode_vec.len() == 1 {
+            Ok(Pattern::from((0, decode_vec[0])))
+        } else if decode_vec.len() % 5 == 0 {
             let mut pattern_edges = Vec::with_capacity(decode_vec.len() / 5);
             let mut vertices_label_rank_id_map = HashMap::new();
             for i in (0..decode_vec.len()).step_by(5) {
@@ -972,6 +1010,30 @@ mod tests {
             Encoder::get_decode_value_by_head_tail(&encode_vec_2, 1, 0, 7),
             pattern.get_vertex_rank(edge2.get_end_vertex_id())
         );
+    }
+
+    #[test]
+    fn test_encode_decode_one_vertex_pattern() {
+        // Pattern has label 2
+        let pattern = Pattern::from((1, 2));
+        let encoder = Encoder::init_by_pattern(&pattern, 1);
+        let code1: Vec<u8> = pattern.encode_to(&encoder);
+        let pattern: Pattern = Pattern::decode_from(code1.clone(), &encoder).unwrap();
+        let encoder = Encoder::init_by_pattern(&pattern, 4);
+        let code2: Vec<u8> = pattern.encode_to(&encoder);
+        assert_eq!(code1, code2);
+    }
+
+    #[test]
+    fn test_encode_decode_one_vertex_pattern_ascii_string() {
+        // Pattern has label 5
+        let pattern = Pattern::from((0, 5));
+        let encoder = Encoder::init_by_pattern(&pattern, 1);
+        let code1: AsciiString = pattern.encode_to(&encoder);
+        let pattern: Pattern = Pattern::decode_from(code1.clone(), &encoder).unwrap();
+        let encoder = Encoder::init_by_pattern(&pattern, 4);
+        let code2: AsciiString = pattern.encode_to(&encoder);
+        assert_eq!(code1, code2);
     }
 
     #[test]

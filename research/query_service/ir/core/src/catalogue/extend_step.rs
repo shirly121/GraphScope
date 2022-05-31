@@ -15,6 +15,7 @@
 
 use std::collections::btree_map::Iter as ExtendStepIter;
 use std::collections::{BTreeMap, VecDeque};
+use std::iter::Iterator;
 
 use crate::catalogue::{PatternDirection, PatternLabelId, PatternRankId};
 
@@ -68,9 +69,9 @@ impl From<(PatternLabelId, Vec<ExtendEdge>)> for ExtendStep {
     /// Initialization of a ExtendStep needs
     /// 1. a target vertex label
     /// 2. all extend edges connect to the target verex label
-    fn from((target_v_label, edges): (PatternLabelId, Vec<ExtendEdge>)) -> ExtendStep {
+    fn from((target_v_label, extend_edges): (PatternLabelId, Vec<ExtendEdge>)) -> ExtendStep {
         let mut new_extend_step = ExtendStep { target_v_label, extend_edges: BTreeMap::new() };
-        for edge in edges {
+        for edge in extend_edges {
             let edge_vec = new_extend_step
                 .extend_edges
                 .entry((edge.start_v_label, edge.start_v_rank))
@@ -146,6 +147,29 @@ where
         }
     }
     set_collections
+}
+
+pub fn limit_repeated_element_num<'a, T, U>(
+    add_element: &'a U, subset_to_be_added: T, limit_num: usize,
+) -> bool
+where
+    T: Iterator<Item = &'a U>,
+    U: Eq,
+{
+    let mut repeaded_num = 0;
+    for element in subset_to_be_added {
+        if *add_element == *element {
+            repeaded_num += 1;
+            if repeaded_num >= limit_num {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn limit_subset_size<'a, T>(subset_to_be_added: Vec<T>, size_limit: usize) -> bool {
+    subset_to_be_added.len() >= size_limit
 }
 
 #[cfg(test)]

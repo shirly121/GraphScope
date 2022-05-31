@@ -23,7 +23,7 @@ use ir_common::generated::common as common_pb;
 use ir_common::NameOrId;
 use vec_map::VecMap;
 
-use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
+use crate::catalogue::extend_step::*;
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
@@ -1204,6 +1204,99 @@ impl Pattern {
         new_edge_id
     }
 
+    fn add_edge(&mut self, edge: &PatternEdge) -> IrResult<()> {
+        // Error that the adding edge already exist
+        if self.edges.contains_key(edge.get_id()) {
+            return Err(IrError::InvalidCode("The adding edge already existed".to_string()));
+        }
+        if let (None, None) = (
+            self.get_vertex_from_id(edge.get_start_vertex_id()),
+            self.get_vertex_from_id(edge.get_end_vertex_id()),
+        ) {
+            return Err(IrError::InvalidCode("The adding edge cannot connect to the pattern".to_string()));
+        } else if let None = self.get_vertex_from_id(edge.get_start_vertex_id()) {
+            let start_vertex_id = edge.get_start_vertex_id();
+            let start_vertex_label = edge.get_start_vertex_label();
+            self.vertices.insert(
+                start_vertex_id,
+                PatternVertex {
+                    id: start_vertex_id,
+                    label: start_vertex_label,
+                    rank: 0,
+                    adjacent_edges: BTreeMap::new(),
+                    adjacent_vertices: BTreeMap::new(),
+                    out_degree: 0,
+                    in_degree: 0,
+                },
+            );
+            self.vertex_label_map
+                .entry(start_vertex_label)
+                .or_insert(BTreeSet::new())
+                .insert(start_vertex_id);
+        } else if let None = self.get_vertex_from_id(edge.get_end_vertex_id()) {
+            let end_vertex_id = edge.get_end_vertex_id();
+            let end_vertex_label = edge.get_end_vertex_label();
+            self.vertices.insert(
+                end_vertex_id,
+                PatternVertex {
+                    id: end_vertex_id,
+                    label: end_vertex_label,
+                    rank: 0,
+                    adjacent_edges: BTreeMap::new(),
+                    adjacent_vertices: BTreeMap::new(),
+                    out_degree: 0,
+                    in_degree: 0,
+                },
+            );
+            self.vertex_label_map
+                .entry(end_vertex_label)
+                .or_insert(BTreeSet::new())
+                .insert(end_vertex_id);
+        }
+        if let Some(start_vertex) = self.get_vertex_mut_from_id(edge.get_start_vertex_id()) {
+            start_vertex
+                .adjacent_edges
+                .insert(edge.get_id(), (edge.get_end_vertex_id(), PatternDirection::Out));
+            start_vertex
+                .adjacent_vertices
+                .entry(edge.get_end_vertex_id())
+                .or_insert(vec![])
+                .push((edge.get_id(), PatternDirection::Out));
+            start_vertex.out_degree += 1;
+        }
+        if let Some(end_vertex) = self.get_vertex_mut_from_id(edge.get_end_vertex_id()) {
+            end_vertex
+                .adjacent_edges
+                .insert(edge.get_id(), (edge.get_start_vertex_id(), PatternDirection::In));
+            end_vertex
+                .adjacent_vertices
+                .entry(edge.get_start_vertex_id())
+                .or_insert(vec![])
+                .push((edge.get_id(), PatternDirection::In));
+            end_vertex.in_degree += 1;
+        }
+        self.edges.insert(edge.get_id(), edge.clone());
+        self.edge_label_map
+            .entry(edge.get_label())
+            .or_insert(BTreeSet::new())
+            .insert(edge.get_id());
+        Ok(())
+    }
+
+    pub fn extend_by_edges<'a, T>(&self, edges: T) -> Option<Pattern>
+    where
+        T: Iterator<Item = &'a PatternEdge>,
+    {
+        let mut new_pattern = self.clone();
+        for edge in edges {
+            if let Err(_) = new_pattern.add_edge(edge) {
+                return None;
+            }
+        }
+        new_pattern.rank_ranking();
+        Some(new_pattern)
+    }
+
     /// Extend the current Pattern to a new Pattern with the given ExtendStep
     /// If the ExtendStep is not matched with the current Pattern, the function will return None
     /// Else, it will return the new Pattern after the extension
@@ -1310,16 +1403,28 @@ impl Pattern {
         new_pattern
             .vertices
             .insert(new_pattern_vertex.id, new_pattern_vertex);
+        new_pattern.rank_ranking();
         Some(new_pattern)
     }
 
     /// Find all possible ExtendSteps of current pattern based on the given Pattern Meta
-    pub fn get_extend_steps(&self, pattern_meta: &PatternMeta) -> Vec<ExtendStep> {
+    pub fn get_extend_steps(
+        &self, pattern_meta: &PatternMeta, same_label_vertex_limit: usize,
+    ) -> Vec<ExtendStep> {
         let mut extend_steps = vec![];
         // Get all vertex labels from pattern meta as the possible extend target vertex
         let target_v_labels = pattern_meta.vertex_label_ids_iter();
         // For every possible extend target vertex label, find its all adjacent edges to the current pattern
         for target_v_label in target_v_labels {
+            if self
+                .vertex_label_map
+                .get(&target_v_label)
+                .map(|v_ids| v_ids.len())
+                .unwrap_or(0)
+                >= same_label_vertex_limit
+            {
+                continue;
+            }
             // The collection of extend edges with a source vertex id
             // The source vertex id is used to specify the extend edge is from which vertex of the pattern
             let mut extend_edges_with_src_id = vec![];
@@ -1342,14 +1447,11 @@ impl Pattern {
             // The algorithm is BFS Search
             let extend_edges_set_collection =
                 get_subsets(extend_edges_with_src_id, |(_, src_id_for_check), extend_edges_set| {
-                    let mut repeated = false;
-                    for (_, src_id) in extend_edges_set {
-                        if *src_id_for_check == *src_id {
-                            repeated = true;
-                            break;
-                        }
-                    }
-                    repeated
+                    limit_repeated_element_num(
+                        src_id_for_check,
+                        extend_edges_set.iter().map(|(_, v_id)| v_id),
+                        1,
+                    )
                 });
             for extend_edges in extend_edges_set_collection {
                 let extend_step = ExtendStep::from((
@@ -1915,7 +2017,7 @@ mod tests {
     fn test_get_extend_steps_of_modern_case1() {
         let modern_pattern_meta = get_modern_pattern_meta();
         let person_only_pattern = build_modern_pattern_case1();
-        let all_extend_steps = person_only_pattern.get_extend_steps(&modern_pattern_meta);
+        let all_extend_steps = person_only_pattern.get_extend_steps(&modern_pattern_meta, 10);
         assert_eq!(all_extend_steps.len(), 3);
         let mut out_0_0_0 = 0;
         let mut incoming_0_0_0 = 0;
@@ -1950,7 +2052,7 @@ mod tests {
     fn test_get_extend_steps_of_modern_case2() {
         let modern_pattern_meta = get_modern_pattern_meta();
         let person_only_pattern = build_modern_pattern_case2();
-        let all_extend_steps = person_only_pattern.get_extend_steps(&modern_pattern_meta);
+        let all_extend_steps = person_only_pattern.get_extend_steps(&modern_pattern_meta, 10);
         assert_eq!(all_extend_steps.len(), 1);
         assert_eq!(all_extend_steps[0].get_target_v_label(), 0);
         assert_eq!(all_extend_steps[0].get_diff_start_v_num(), 1);
@@ -1967,7 +2069,7 @@ mod tests {
     fn test_get_extend_steps_of_modern_case3() {
         let modern_pattern_meta = get_modern_pattern_meta();
         let person_knows_person = build_modern_pattern_case3();
-        let all_extend_steps = person_knows_person.get_extend_steps(&modern_pattern_meta);
+        let all_extend_steps = person_knows_person.get_extend_steps(&modern_pattern_meta, 10);
         assert_eq!(all_extend_steps.len(), 11);
         let mut extend_steps_with_label_0_count = 0;
         let mut extend_steps_with_label_1_count = 0;
@@ -2200,7 +2302,7 @@ mod tests {
     fn test_get_extend_steps_of_modern_case4() {
         let modern_pattern_meta = get_modern_pattern_meta();
         let person_created_software = build_modern_pattern_case4();
-        let all_extend_steps = person_created_software.get_extend_steps(&modern_pattern_meta);
+        let all_extend_steps = person_created_software.get_extend_steps(&modern_pattern_meta, 10);
         assert_eq!(all_extend_steps.len(), 6);
         let mut extend_steps_with_label_0_count = 0;
         let mut extend_steps_with_label_1_count = 0;
@@ -2319,7 +2421,7 @@ mod tests {
     fn test_get_extend_steps_of_ldbc_case1() {
         let ldbc_pattern_meta = get_ldbc_pattern_meta();
         let person_knows_person = build_ldbc_pattern_case1();
-        let all_extend_steps = person_knows_person.get_extend_steps(&ldbc_pattern_meta);
+        let all_extend_steps = person_knows_person.get_extend_steps(&ldbc_pattern_meta, 10);
         assert_eq!(all_extend_steps.len(), 44);
     }
 
