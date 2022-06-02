@@ -20,15 +20,15 @@ import os
 
 import pandas as pd
 import pytest
-from networkx.testing.utils import assert_graphs_equal
 
 import graphscope
 import graphscope.nx as nx
 from graphscope.framework.loader import Loader
-from graphscope.nx import NetworkXError
 from graphscope.nx.tests.classes.test_digraph import TestDiGraph as _TestDiGraph
 from graphscope.nx.tests.classes.test_graph import TestGraph as _TestGraph
 from graphscope.nx.tests.utils import almost_equal
+from graphscope.nx.utils.misc import graphs_equal
+from graphscope.nx.utils.misc import replace_with_inf
 
 
 def k3_graph(prefix, directed):
@@ -169,13 +169,13 @@ class TestGraphCopyOnWrite(_TestGraph):
                     (4, 5, {}),
                     (6, 7, {"weight": 2}),
                 ]
-            else:  # num_workers=2
+            else:  # num_workers=2, N.B: diff with _TestGraph, update the order of id
                 elist = [
-                    (0, 1, {}),
-                    (2, 0, {}),  # N.B: diff with _TestGraph, update the order of id
-                    (2, 1, {}),
-                    (4, 5, {}),
-                    (6, 7, {"weight": 2}),
+                    (1, 0, {}),
+                    (1, 2, {}),
+                    (2, 0, {}),
+                    (5, 4, {}),
+                    (7, 6, {"weight": 2}),
                 ]
         assert sorted(G.edges.data()) == elist
         assert G.graph == {}
@@ -195,9 +195,9 @@ class TestGraphCopyOnWrite(_TestGraph):
         GG = G.copy()
         H = self.Graph()
         GG.update(H)
-        assert_graphs_equal(G, GG)
+        assert graphs_equal(G, GG)
         H.update(G)
-        assert_graphs_equal(H, G)
+        assert graphs_equal(H, G)
 
         # update nodes only
         H = self.Graph()
@@ -236,15 +236,15 @@ class TestDiGraphCopyOnWrite(_TestDiGraph):
 
 @pytest.mark.usefixtures("graphscope_session")
 class TestBuiltinCopyOnWrite:
-    def setup_method(self):
+    def setup_class(cls):
         data_dir = os.path.expandvars("${GS_TEST_DIR}/networkx")
         p2p_dir = os.path.expandvars("${GS_TEST_DIR}")
 
-        self.simple = simple_label_graph(data_dir, True)
-        self.multi_simple = simple_label_multigraph(data_dir, True)
-        self.K3 = k3_graph(data_dir, False)
-        self.SG = nx.DiGraph(self.simple, default_label="v-0")
-        self.SG.pagerank = {
+        cls.simple = simple_label_graph(data_dir, True)
+        cls.multi_simple = simple_label_multigraph(data_dir, True)
+        cls.K3 = k3_graph(data_dir, False)
+        cls.SG = nx.DiGraph(cls.simple, default_label="v-0")
+        cls.SG.pagerank = {
             1: 0.03721197,
             2: 0.05395735,
             3: 0.04150565,
@@ -252,7 +252,7 @@ class TestBuiltinCopyOnWrite:
             5: 0.20599833,
             6: 0.28624589,
         }
-        self.SG.auth = {
+        cls.SG.auth = {
             1: 0.165000,
             2: 0.243018,
             3: 0.078017,
@@ -260,7 +260,7 @@ class TestBuiltinCopyOnWrite:
             5: 0.270943,
             6: 0.165000,
         }
-        self.SG.hub = {
+        cls.SG.hub = {
             1: 0.182720,
             2: 0.0,
             3: 0.386437,
@@ -268,7 +268,7 @@ class TestBuiltinCopyOnWrite:
             5: 0.138316,
             6: 0.044404,
         }
-        self.SG.eigen = {
+        cls.SG.eigen = {
             1: 3.201908045277076e-06,
             2: 6.4038160905537886e-06,
             3: 3.201908045277076e-06,
@@ -276,7 +276,7 @@ class TestBuiltinCopyOnWrite:
             4: 0.6479356498234745,
             6: 0.6479356498234745,
         }
-        self.SG.katz = {
+        cls.SG.katz = {
             1: 0.37871516522035104,
             2: 0.4165866814015425,
             3: 0.37871516522035104,
@@ -285,34 +285,29 @@ class TestBuiltinCopyOnWrite:
             6: 0.4255225997990211,
         }
 
-        # FIXME(acezen): p2p_31_graph loading fail in ci, open when fixed the problem. (fixme)
-        # self.p2p_31 = p2p_31_graph(p2p_dir, False)
-        # self.P2P = nx.Graph(self.p2p_31, default_label="vertex")
-        # self.P2P.sssp = dict(
-        #     pd.read_csv(
-        #         "{}/p2p-31-sssp".format(os.path.expandvars("${GS_TEST_DIR}")),
-        #         sep=" ",
-        #         header=None,
-        #         prefix="",
-        #     ).values
-        # )
+        cls.p2p_31 = p2p_31_graph(p2p_dir, False)
+        cls.P2P = nx.Graph(cls.p2p_31, default_label="vertex")
+        cls.P2P.sssp = dict(
+            pd.read_csv(
+                "{}/p2p-31-sssp".format(os.path.expandvars("${GS_TEST_DIR}")),
+                sep=" ",
+                header=None,
+                prefix="",
+            ).values
+        )
 
-    def test_error_with_multigraph(self):
-        with pytest.raises(
-            NetworkXError,
-            match="Graph is multigraph, cannot be converted to networkx graph",
-        ):
-            MSG = nx.DiGraph(self.multi_simple)
+    def test_with_multigraph(self):
+        nx.DiGraph(self.multi_simple)
 
     def test_single_source_dijkstra_path_length(self):
         ret = nx.builtin.single_source_dijkstra_path_length(
             self.SG, source=1, weight="weight"
         )
         assert ret == {1: 0.0, 2: 1.0, 3: 1.0, 4: 3.0, 5: 2.0, 6: 3.0}
-        # p2p_ans = nx.builtin.single_source_dijkstra_path_length(
-        #     self.P2P, source=6, weight="f2"
-        # )
-        # assert replace_with_inf(p2p_ans) == self.P2P.sssp
+        p2p_ans = nx.builtin.single_source_dijkstra_path_length(
+            self.P2P, source=6, weight="f2"
+        )
+        assert replace_with_inf(p2p_ans) == self.P2P.sssp
 
     def test_wcc(self):
         ret = nx.builtin.weakly_connected_components(self.SG)
@@ -399,3 +394,29 @@ class TestBuiltinCopyOnWrite:
     def test_numeric_assortativity_coefficient(self):
         ret = nx.builtin.numeric_assortativity_coefficient(self.SG, attribute="attr")
         assert almost_equal(ret, 0.5383819020581653, places=12)
+
+    def test_voterank(self):
+        gt = [
+            9788,
+            17325,
+            585,
+            50445,
+            28802,
+            2550,
+            61511,
+            5928,
+            29965,
+            38767,
+            57802,
+            52032,
+            44619,
+            13596,
+            59426,
+            454,
+            58170,
+            3544,
+            364,
+            5530,
+        ]
+        ans = nx.builtin.voterank(self.P2P, 20)
+        assert gt == ans

@@ -30,15 +30,17 @@ import com.alibaba.graphscope.common.client.*;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
+import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
+import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.common.store.IrMetaFetcher;
 import com.alibaba.graphscope.gremlin.InterOpCollectionBuilder;
 import com.alibaba.graphscope.gremlin.Utils;
 import com.alibaba.graphscope.gremlin.plugin.script.AntlrToJavaScriptEngineFactory;
 import com.alibaba.graphscope.gremlin.plugin.strategy.RemoveUselessStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.ScanFusionStepStrategy;
-import com.alibaba.graphscope.gremlin.plugin.traversal.IrCustomizedTraversalSource;
 import com.alibaba.graphscope.gremlin.result.GremlinResultAnalyzer;
 import com.alibaba.graphscope.gremlin.result.GremlinResultProcessor;
+import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -58,7 +60,6 @@ import org.apache.tinkerpop.gremlin.server.op.AbstractEvalOpProcessor;
 import org.apache.tinkerpop.gremlin.server.op.OpProcessorException;
 import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
 import org.apache.tinkerpop.gremlin.structure.Graph;
-import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerFactory;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,14 +83,21 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
     protected Configs configs;
     protected RpcBroadcastProcessor broadcastProcessor;
     protected IrMetaFetcher irMetaFetcher;
+    protected IrMetaQueryCallback metaQueryCallback;
 
     public IrStandardOpProcessor(
-            Configs configs, IrMetaFetcher irMetaFetcher, RpcChannelFetcher fetcher) {
-        this.graph = TinkerFactory.createModern();
-        this.g = graph.traversal(IrCustomizedTraversalSource.class);
+            Configs configs,
+            IrMetaFetcher irMetaFetcher,
+            RpcChannelFetcher fetcher,
+            IrMetaQueryCallback metaQueryCallback,
+            Graph graph,
+            GraphTraversalSource g) {
+        this.graph = graph;
+        this.g = g;
         this.configs = configs;
         this.irMetaFetcher = irMetaFetcher;
         this.broadcastProcessor = new RpcBroadcastProcessor(fetcher);
+        this.metaQueryCallback = metaQueryCallback;
     }
 
     @Override
@@ -258,55 +266,11 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                         o -> {
                             try {
                                 if (o != null && o instanceof Traversal) {
-                                    // update the schema before the query is submitted
-                                    irMetaFetcher.fetch();
-
-                                    InterOpCollection opCollection =
-                                            (new InterOpCollectionBuilder((Traversal) o)).build();
-                                    IrPlan irPlan = opCollection.buildIrPlan();
-
-                                    logger.info("{}", irPlan.getPlanAsJson());
-                                    byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
-                                    irPlan.close();
-
-                                    int serverNum = PegasusConfig.PEGASUS_SERVER_NUM.get(configs);
-                                    List<Long> servers = new ArrayList<>();
-                                    for (long i = 0; i < serverNum; ++i) {
-                                        servers.add(i);
-                                    }
-
-                                    long jobId = JOB_ID_COUNTER.incrementAndGet();
-                                    String jobName = "ir_plan_" + jobId;
-
-                                    PegasusClient.JobRequest request =
-                                            PegasusClient.JobRequest.parseFrom(physicalPlanBytes);
-                                    PegasusClient.JobConfig jobConfig =
-                                            PegasusClient.JobConfig.newBuilder()
-                                                    .setJobId(jobId)
-                                                    .setJobName(jobName)
-                                                    .setWorkers(
-                                                            PegasusConfig.PEGASUS_WORKER_NUM.get(
-                                                                    configs))
-                                                    .setBatchSize(
-                                                            PegasusConfig.PEGASUS_BATCH_SIZE.get(
-                                                                    configs))
-                                                    .setMemoryLimit(
-                                                            PegasusConfig.PEGASUS_MEMORY_LIMIT.get(
-                                                                    configs))
-                                                    .setOutputCapacity(
-                                                            PegasusConfig.PEGASUS_OUTPUT_CAPACITY
-                                                                    .get(configs))
-                                                    .setTimeLimit(
-                                                            PegasusConfig.PEGASUS_TIMEOUT.get(
-                                                                    configs))
-                                                    .addAllServers(servers)
-                                                    .build();
-                                    request = request.toBuilder().setConf(jobConfig).build();
-
-                                    ResultParser resultParser =
-                                            GremlinResultAnalyzer.analyze((Traversal) o);
-                                    broadcastProcessor.broadcast(
-                                            request, new GremlinResultProcessor(ctx, resultParser));
+                                    Traversal traversal = (Traversal) o;
+                                    processTraversal(
+                                            traversal,
+                                            new GremlinResultProcessor(
+                                                    ctx, GremlinResultAnalyzer.analyze(traversal)));
                                 }
                             } catch (InvalidProtocolBufferException e) {
                                 throw new RuntimeException(e);
@@ -315,6 +279,43 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                             }
                         })
                 .create();
+    }
+
+    protected void processTraversal(Traversal traversal, ResultProcessor resultProcessor)
+            throws InvalidProtocolBufferException, IOException, RuntimeException {
+        IrMeta irMeta = metaQueryCallback.beforeExec();
+
+        InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
+        // fuse order with limit to topK
+        InterOpCollection.applyStrategies(opCollection);
+        // add sink operator
+        InterOpCollection.process(opCollection);
+
+        IrPlan irPlan = new IrPlan(irMeta, opCollection);
+        logger.info("{}", irPlan.getPlanAsJson());
+
+        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
+        irPlan.close();
+
+        long jobId = JOB_ID_COUNTER.incrementAndGet();
+        String jobName = "ir_plan_" + jobId;
+
+        PegasusClient.JobRequest request = PegasusClient.JobRequest.parseFrom(physicalPlanBytes);
+        PegasusClient.JobConfig jobConfig =
+                PegasusClient.JobConfig.newBuilder()
+                        .setJobId(jobId)
+                        .setJobName(jobName)
+                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(configs))
+                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(configs))
+                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(configs))
+                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(configs))
+                        .setTimeLimit(PegasusConfig.PEGASUS_TIMEOUT.get(configs))
+                        .setAll(PegasusClient.Empty.newBuilder().build())
+                        .build();
+        request = request.toBuilder().setConf(jobConfig).build();
+        broadcastProcessor.broadcast(request, resultProcessor);
+
+        metaQueryCallback.afterExec(irMeta);
     }
 
     public static void applyStrategies(Traversal traversal) {

@@ -17,15 +17,13 @@
 #
 
 import os
-from posixpath import expanduser
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from graphscope import nx
 from graphscope.nx.tests.utils import almost_equal
-from graphscope.nx.tests.utils import replace_with_inf
+from graphscope.nx.utils.misc import replace_with_inf
 
 
 @pytest.mark.usefixtures("graphscope_session")
@@ -94,15 +92,15 @@ class TestBuiltInApp:
         }
 
         data_dir = os.path.expandvars("${GS_TEST_DIR}")
-        p2p_file = os.path.expandvars("${GS_TEST_DIR}/dynamic/p2p-31_dynamic.edgelist")
+        p2p_file = os.path.expandvars("${GS_TEST_DIR}/p2p-31.e")
         p2p_sub_file = os.path.expandvars(
             "${GS_TEST_DIR}/dynamic/p2p-31_dynamic_subgraph.edgelist"
         )
         cls.p2p = nx.read_edgelist(
-            p2p_file, nodetype=int, data=True, create_using=nx.DiGraph
+            p2p_file, nodetype=int, data=(("weight", int),), create_using=nx.DiGraph
         )
         cls.p2p_undirected = nx.read_edgelist(
-            p2p_file, nodetype=int, data=True, create_using=nx.Graph
+            p2p_file, nodetype=int, data=(("weight", int),), create_using=nx.Graph
         )
         cls.p2p_subgraph = nx.read_edgelist(
             p2p_sub_file, nodetype=int, data=True, create_using=nx.DiGraph
@@ -334,6 +332,39 @@ class TestBuiltInApp:
             51: 9.882352941176471,
         }
         ans = nx.builtin.average_degree_connectivity(self.p2p_undirected)
+        assert gt == ans
+
+    @pytest.mark.skipif(
+        os.environ.get("DEPLOYMENT", None) != "standalone",
+        reason="FIXME(acezen): DynamicFragment not store edges of outer vertex.",
+    )
+    def test_voterank(self):
+        gt = [
+            9788,
+            17325,
+            585,
+            50445,
+            28802,
+            2550,
+            61511,
+            5928,
+            29965,
+            38767,
+            57802,
+            52032,
+            44619,
+            13596,
+            59426,
+            454,
+            58170,
+            3544,
+            364,
+            5530,
+        ]
+        ans = nx.builtin.voterank(self.p2p_undirected, 20)
+        assert gt == ans
+        gt = [9788, 17325, 50445, 28802, 61511, 57802, 52032, 29965]
+        ans = nx.builtin.voterank(self.p2p, 8)
         assert gt == ans
 
     @pytest.mark.skip(reason="TODO: the app not compatible with DynamicFragment")

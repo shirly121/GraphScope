@@ -18,15 +18,25 @@
 
 #ifdef NETWORKX
 
-#include <map>
+#include <cassert>
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "grape/fragment/fragment_base.h"
+#include "grape/graph/adj_list.h"
+#include "grape/types.h"
+
 #include "core/config.h"
 #include "core/fragment/dynamic_fragment.h"
-#include "proto/graphscope/proto/types.pb.h"
+#include "core/object/dynamic.h"
+
+namespace grape {
+class CommSpec;
+}
 
 namespace gs {
 namespace dynamic_projected_fragment_impl {
@@ -518,6 +528,7 @@ class DynamicProjectedFragment {
   }
 
   inline adj_list_t GetIncomingAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
     if (!fragment_->directed()) {
       return adj_list_t(fragment_->get_oe_begin(v), fragment_->get_oe_end(v),
                         e_prop_key_);
@@ -527,6 +538,7 @@ class DynamicProjectedFragment {
   }
 
   inline const_adj_list_t GetIncomingAdjList(const vertex_t& v) const {
+    assert(IsInnerVertex(v));
     if (!fragment_->directed()) {
       return const_adj_list_t(fragment_->get_oe_begin(v),
                               fragment_->get_oe_end(v), e_prop_key_);
@@ -536,13 +548,83 @@ class DynamicProjectedFragment {
   }
 
   inline adj_list_t GetOutgoingAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
     return adj_list_t(fragment_->get_oe_begin(v), fragment_->get_oe_end(v),
                       e_prop_key_);
   }
 
   inline const_adj_list_t GetOutgoingAdjList(const vertex_t& v) const {
+    assert(IsInnerVertex(v));
     return const_adj_list_t(fragment_->get_oe_begin(v),
                             fragment_->get_oe_end(v), e_prop_key_);
+  }
+
+  inline adj_list_t GetIncomingInnerVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return adj_list_t(fragment_->get_oe_begin(v), fragment_->oespliter_[v],
+                        e_prop_key_);
+    }
+    return adj_list_t(fragment_->get_ie_begin(v), fragment_->iespliter_[v],
+                      e_prop_key_);
+  }
+
+  inline const_adj_list_t GetIncomingInnerVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return const_adj_list_t(fragment_->get_oe_begin(v),
+                              fragment_->oespliter_[v], e_prop_key_);
+    }
+    return const_adj_list_t(fragment_->get_ie_begin(v),
+                            fragment_->iespliter_[v], e_prop_key_);
+  }
+
+  inline adj_list_t GetIncomingOuterVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return adj_list_t(fragment_->oespliter_[v], fragment_->get_oe_end(v),
+                        e_prop_key_);
+    }
+    return adj_list_t(fragment_->iespliter_[v], fragment_->get_ie_end(v),
+                      e_prop_key_);
+  }
+
+  inline const_adj_list_t GetIncomingOuterVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return const_adj_list_t(fragment_->oespliter_[v],
+                              fragment_->get_oe_end(v), e_prop_key_);
+    }
+    return const_adj_list_t(fragment_->iespliter_[v], fragment_->get_ie_end(v),
+                            e_prop_key_);
+  }
+
+  inline adj_list_t GetOutgoingInnerVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    return adj_list_t(fragment_->get_oe_begin(v), fragment_->oespliter_[v],
+                      e_prop_key_);
+  }
+
+  inline const_adj_list_t GetOutgoingInnerVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    return const_adj_list_t(fragment_->get_oe_begin(v),
+                            fragment_->oespliter_[v], e_prop_key_);
+  }
+
+  inline adj_list_t GetOutgoingOuterVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    return adj_list_t(fragment_->oespliter_[v], fragment_->get_oe_end(v),
+                      e_prop_key_);
+  }
+
+  inline const_adj_list_t GetOutgoingOuterVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    return const_adj_list_t(fragment_->oespliter_[v], fragment_->get_oe_end(v),
+                            e_prop_key_);
   }
 
   inline int GetLocalOutDegree(const vertex_t& v) const {
@@ -577,10 +659,6 @@ class DynamicProjectedFragment {
     return fragment_->HasNode(node);
   }
 
-  bl::result<dynamic::Type> GetOidType(const grape::CommSpec& comm_spec) const {
-    return fragment_->GetOidType(comm_spec);
-  }
-
  private:
   fragment_t* fragment_;
   std::string v_prop_key_;
@@ -601,15 +679,6 @@ class DynamicProjectedFragment {
                 "unsupported type");
 };
 
-/**
- * @brief A wrapper class of DynamicFragment.
- * Inheritance does not work because of different return type of some methods.
- * We forward most of methods to DynamicFragment but enact
- * GetIncoming(Outgoing)AdjList, Get(Set)Data...
- *
- * @tparam VDATA_T The type of data attached with the vertex
- * @tparam EDATA_T The type of data attached with the edge
- */
 template <>
 class DynamicProjectedFragment<grape::EmptyType, grape::EmptyType> {
  public:
@@ -793,6 +862,66 @@ class DynamicProjectedFragment<grape::EmptyType, grape::EmptyType> {
                             fragment_->get_oe_end(v));
   }
 
+  inline adj_list_t GetIncomingInnerVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return adj_list_t(fragment_->get_oe_begin(v), fragment_->oespliter_[v]);
+    }
+    return adj_list_t(fragment_->get_ie_begin(v), fragment_->iespliter_[v]);
+  }
+
+  inline const_adj_list_t GetIncomingInnerVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return const_adj_list_t(fragment_->get_oe_begin(v),
+                              fragment_->oespliter_[v]);
+    }
+    return const_adj_list_t(fragment_->get_ie_begin(v),
+                            fragment_->iespliter_[v]);
+  }
+
+  inline adj_list_t GetIncomingOuterVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return adj_list_t(fragment_->oespliter_[v], fragment_->get_oe_end(v));
+    }
+    return adj_list_t(fragment_->iespliter_[v], fragment_->get_ie_end(v));
+  }
+
+  inline const_adj_list_t GetIncomingOuterVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    if (!fragment_->directed()) {
+      return const_adj_list_t(fragment_->oespliter_[v],
+                              fragment_->get_oe_end(v));
+    }
+    return const_adj_list_t(fragment_->iespliter_[v], fragment_->get_ie_end(v));
+  }
+
+  inline adj_list_t GetOutgoingInnerVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    return adj_list_t(fragment_->get_oe_begin(v), fragment_->oespliter_[v]);
+  }
+
+  inline const_adj_list_t GetOutgoingInnerVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    return const_adj_list_t(fragment_->get_oe_begin(v),
+                            fragment_->oespliter_[v]);
+  }
+
+  inline adj_list_t GetOutgoingOuterVertexAdjList(const vertex_t& v) {
+    assert(IsInnerVertex(v));
+    return adj_list_t(fragment_->oespliter_[v], fragment_->get_oe_end(v));
+  }
+
+  inline const_adj_list_t GetOutgoingOuterVertexAdjList(
+      const vertex_t& v) const {
+    assert(IsInnerVertex(v));
+    return const_adj_list_t(fragment_->oespliter_[v], fragment_->get_oe_end(v));
+  }
+
   inline int GetLocalOutDegree(const vertex_t& v) const {
     return fragment_->GetLocalOutDegree(v);
   }
@@ -823,10 +952,6 @@ class DynamicProjectedFragment<grape::EmptyType, grape::EmptyType> {
 
   inline bool HasNode(const oid_t& node) const {
     return fragment_->HasNode(node);
-  }
-
-  bl::result<dynamic::Type> GetOidType(const grape::CommSpec& comm_spec) const {
-    return fragment_->GetOidType(comm_spec);
   }
 
  private:

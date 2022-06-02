@@ -21,6 +21,7 @@ use std::rc::Rc;
 use std::sync::RwLock;
 
 use ir_common::generated::common as common_pb;
+use ir_common::generated::common::name_or_id::Item;
 use ir_common::generated::schema as schema_pb;
 use ir_common::NameOrId;
 
@@ -117,12 +118,14 @@ impl Default for KeyType {
 
 #[derive(Clone, Debug, Default)]
 pub struct Schema {
-    /// A map from table name to its internally encoded id
+    /// A map from table (Entity or Relation) name to its internally encoded id
     /// In the concept of graph database, this is also known as label
-    table_map: BTreeMap<String, i32>,
-    /// A map from column name to its internally encoded id
+    table_map: BTreeMap<String, (KeyType, i32)>,
+    /// A map from column name to its store-encoded id
     /// In the concept of graph database, this is also known as property
     column_map: BTreeMap<String, i32>,
+    /// Record the primary keys of each table
+    primary_keys: BTreeMap<String, BTreeSet<String>>,
     /// A reversed map of `id` to `name` mapping
     id_name_rev: BTreeMap<(KeyType, i32), String>,
     /// The source and destination labels of a given relation label's id
@@ -139,7 +142,7 @@ pub struct Schema {
 
 impl Schema {
     pub fn get_table_id(&self, name: &str) -> Option<i32> {
-        self.table_map.get(name).cloned()
+        self.table_map.get(name).map(|(_, id)| *id)
     }
 
     pub fn get_table_id_from_pb(&self, name: &common_pb::NameOrId) -> Option<i32> {
@@ -160,15 +163,23 @@ impl Schema {
         })
     }
 
-    pub fn get_name(&self, id: i32, ty: KeyType) -> Option<&String> {
-        self.id_name_rev.get(&(ty, id))
+    pub fn get_entity_name(&self, id: i32) -> Option<&String> {
+        self.id_name_rev.get(&(KeyType::Entity, id))
+    }
+
+    pub fn get_relation_name(&self, id: i32) -> Option<&String> {
+        self.id_name_rev.get(&(KeyType::Relation, id))
+    }
+
+    pub fn get_column_name(&self, id: i32) -> Option<&String> {
+        self.id_name_rev.get(&(KeyType::Column, id))
     }
 
     pub fn get_relation_labels(&self, relation: &NameOrId) -> Option<&Vec<(LabelMeta, LabelMeta)>> {
         match relation {
             NameOrId::Str(name) => self.relation_labels.get(name),
             NameOrId::Id(id) => self
-                .get_name(*id, KeyType::Relation)
+                .get_relation_name(*id)
                 .and_then(|name| self.relation_labels.get(name)),
         }
     }
@@ -183,8 +194,48 @@ impl Schema {
 
     pub fn get_pattern_schema_info(
         &self,
-    ) -> (BTreeMap<String, i32>, BTreeMap<String, Vec<(LabelMeta, LabelMeta)>>) {
+    ) -> (BTreeMap<String, (KeyType, i32)>, BTreeMap<String, Vec<(LabelMeta, LabelMeta)>>) {
         (self.table_map.clone(), self.relation_labels.clone())
+    }
+    /// Check whether a given table contains a given column as a primary key.
+    /// Also return the number of primary keys of the given table.
+    pub fn check_primary_key(&self, table: &str, col: &str) -> (bool, usize) {
+        if let Some(pks) = self.primary_keys.get(table) {
+            (pks.contains(col), pks.len())
+        } else {
+            (false, 0)
+        }
+    }
+
+    pub fn check_primary_key_from_pb(
+        &self, table: &common_pb::NameOrId, is_entity: bool, col: &common_pb::NameOrId,
+    ) -> (bool, usize) {
+        let mut table_name = "";
+        let mut col_name = "";
+        if let Some(item) = table.item.as_ref() {
+            match item {
+                Item::Name(name) => table_name = name.as_str(),
+                Item::Id(id) => {
+                    if let Some(name) =
+                        if is_entity { self.get_entity_name(*id) } else { self.get_relation_name(*id) }
+                    {
+                        table_name = name.as_str();
+                    }
+                }
+            }
+        }
+        if let Some(item) = col.item.as_ref() {
+            match item {
+                Item::Name(name) => col_name = name.as_str(),
+                Item::Id(id) => {
+                    if let Some(name) = self.get_column_name(*id) {
+                        col_name = name.as_str();
+                    }
+                }
+            }
+        }
+
+        self.check_primary_key(table_name, col_name)
     }
 }
 
@@ -197,13 +248,17 @@ impl From<(Vec<(String, i32)>, Vec<(String, i32)>, Vec<(String, i32)>)> for Sche
 
         if schema.is_table_id {
             for (name, id) in entities.into_iter() {
-                schema.table_map.insert(name.clone(), id);
+                schema
+                    .table_map
+                    .insert(name.clone(), (KeyType::Entity, id));
                 schema
                     .id_name_rev
                     .insert((KeyType::Entity, id), name);
             }
             for (name, id) in relations.into_iter() {
-                schema.table_map.insert(name.clone(), id);
+                schema
+                    .table_map
+                    .insert(name.clone(), (KeyType::Relation, id));
                 schema
                     .id_name_rev
                     .insert((KeyType::Relation, id), name);
@@ -273,6 +328,7 @@ impl JsonIO for Schema {
             is_column_id: self.is_column_id,
         };
         serde_json::to_writer_pretty(writer, &schema_pb)?;
+
         Ok(())
     }
 
@@ -292,16 +348,17 @@ impl JsonIO for Schema {
                     if !schema.table_map.contains_key(&label.name) {
                         schema
                             .table_map
-                            .insert(label.name.clone(), label.id);
+                            .insert(label.name.clone(), (KeyType::Entity, label.id));
                         schema
                             .id_name_rev
                             .insert((KeyType::Entity, label.id), label.name.clone());
                     }
                 }
             }
-            if schema_pb.is_column_id {
-                for column in entity.columns {
-                    if let Some(key) = &column.key {
+
+            for column in entity.columns {
+                if let Some(key) = &column.key {
+                    if schema_pb.is_column_id {
                         if !schema.column_map.contains_key(&key.name) {
                             schema
                                 .column_map
@@ -309,6 +366,15 @@ impl JsonIO for Schema {
                             schema
                                 .id_name_rev
                                 .insert((KeyType::Column, key.id), key.name.clone());
+                        }
+                    }
+                    if column.is_primary_key {
+                        if let Some(label) = &entity.label {
+                            schema
+                                .primary_keys
+                                .entry(label.name.clone())
+                                .or_insert_with(BTreeSet::new)
+                                .insert(key.name.clone());
                         }
                     }
                 }
@@ -321,16 +387,17 @@ impl JsonIO for Schema {
                     if !schema.table_map.contains_key(&label.name) {
                         schema
                             .table_map
-                            .insert(label.name.clone(), label.id);
+                            .insert(label.name.clone(), (KeyType::Relation, label.id));
                         schema
                             .id_name_rev
                             .insert((KeyType::Relation, label.id), label.name.clone());
                     }
                 }
             }
-            if schema_pb.is_column_id {
-                for column in rel.columns {
-                    if let Some(key) = &column.key {
+
+            for column in rel.columns {
+                if let Some(key) = &column.key {
+                    if schema_pb.is_column_id {
                         if !schema.column_map.contains_key(&key.name) {
                             schema
                                 .column_map
@@ -338,6 +405,15 @@ impl JsonIO for Schema {
                             schema
                                 .id_name_rev
                                 .insert((KeyType::Column, key.id), key.name.clone());
+                        }
+                    }
+                    if column.is_primary_key {
+                        if let Some(label) = &rel.label {
+                            schema
+                                .primary_keys
+                                .entry(label.name.clone())
+                                .or_insert_with(BTreeSet::new)
+                                .insert(key.name.clone());
                         }
                     }
                 }
@@ -396,14 +472,14 @@ impl NodeMeta {
 }
 
 #[derive(Clone, Debug)]
-pub enum CurrNodeOpt {
+pub enum SingleOrNodes {
     Single(u32),
     Union(Vec<u32>),
 }
 
-impl Default for CurrNodeOpt {
+impl Default for SingleOrNodes {
     fn default() -> Self {
-        CurrNodeOpt::Single(0)
+        SingleOrNodes::Single(0)
     }
 }
 
@@ -490,6 +566,11 @@ pub struct PlanMeta {
     /// with the storage to access the required column. Thus, such information can help
     /// the computation route and fetch columns.
     node_metas: BTreeMap<u32, Rc<RefCell<NodeMeta>>>,
+    /// Refer a node to the most-recent nodes that interact with the storage.
+    /// For example, if the plan looks like, `Scan.Filter(xx)`, `Scan` is a node that
+    /// accesses storage, while `Filter` is not. Here, we refer the node id of
+    /// `Filter` to the node id of `Scan`.
+    node_to_referred_nodes: BTreeMap<u32, SingleOrNodes>,
     /// The tag must refer to some valid nodes in the plan.
     tag_nodes: BTreeMap<NameOrId, Vec<u32>>,
     /// To ease the processing, tag may be transformed to an internal id.
@@ -497,7 +578,7 @@ pub struct PlanMeta {
     tag_ids: BTreeMap<NameOrId, u32>,
     /// To record the current nodes' id in the logical plan. Note that nodes that have operators that
     /// of `As` or `Selection` does not alter curr_node.
-    curr_node: CurrNodeOpt,
+    curr_node: SingleOrNodes,
     /// The maximal tag id that has been assigned, for mapping tag ids.
     max_tag_id: u32,
     /// Whether to preprocess the table name into id.
@@ -514,7 +595,7 @@ pub struct PlanMeta {
 impl PlanMeta {
     pub fn new(node_id: u32) -> Self {
         let mut plan_meta = PlanMeta::default();
-        plan_meta.curr_node = CurrNodeOpt::Single(node_id);
+        plan_meta.curr_node = SingleOrNodes::Single(node_id);
         plan_meta.node_metas.entry(node_id).or_default();
         plan_meta
     }
@@ -539,13 +620,13 @@ impl PlanMeta {
 impl PlanMeta {
     pub fn curr_node_metas_mut(&mut self) -> NodeMetaOpt {
         match &self.curr_node {
-            CurrNodeOpt::Single(node) => NodeMetaOpt::Single(
+            SingleOrNodes::Single(node) => NodeMetaOpt::Single(
                 self.node_metas
                     .entry(*node)
                     .or_default()
                     .clone(),
             ),
-            CurrNodeOpt::Union(nodes) => {
+            SingleOrNodes::Union(nodes) => {
                 let mut node_metas = vec![];
                 for node in nodes {
                     node_metas.push(
@@ -596,11 +677,11 @@ impl PlanMeta {
 
     pub fn curr_node_metas(&self) -> Option<NodeMetaOpt> {
         match &self.curr_node {
-            CurrNodeOpt::Single(node) => self
+            SingleOrNodes::Single(node) => self
                 .node_metas
                 .get(node)
                 .map(|meta| NodeMetaOpt::Single(meta.clone())),
-            CurrNodeOpt::Union(nodes) => {
+            SingleOrNodes::Union(nodes) => {
                 let mut node_metas = vec![];
                 for node in nodes {
                     if let Some(node_meta) = self.node_metas.get(node) {
@@ -649,21 +730,43 @@ impl PlanMeta {
     }
 
     pub fn set_curr_node(&mut self, curr_node: u32) {
-        self.curr_node = CurrNodeOpt::Single(curr_node);
+        self.curr_node = SingleOrNodes::Single(curr_node);
     }
 
     pub fn set_union_curr_nodes(&mut self, nodes: Vec<u32>) {
         if nodes.len() == 1 {
-            self.curr_node = CurrNodeOpt::Single(nodes[0]);
+            self.curr_node = SingleOrNodes::Single(nodes[0]);
         } else {
-            self.curr_node = CurrNodeOpt::Union(nodes);
+            self.curr_node = SingleOrNodes::Union(nodes);
         }
     }
 
     pub fn get_curr_nodes(&self) -> Vec<u32> {
         match &self.curr_node {
-            CurrNodeOpt::Single(node) => vec![*node],
-            CurrNodeOpt::Union(nodes) => nodes.clone(),
+            SingleOrNodes::Single(node) => vec![*node],
+            SingleOrNodes::Union(nodes) => nodes.clone(),
+        }
+    }
+
+    pub fn refer_to_nodes(&mut self, node: u32, referred_nodes: Vec<u32>) {
+        self.node_to_referred_nodes.insert(
+            node,
+            if referred_nodes.len() == 1 {
+                SingleOrNodes::Single(referred_nodes[0])
+            } else {
+                SingleOrNodes::Union(referred_nodes)
+            },
+        );
+    }
+
+    pub fn get_referred_nodes(&self, node: u32) -> Vec<u32> {
+        if let Some(referred_nodes) = self.node_to_referred_nodes.get(&node) {
+            match referred_nodes {
+                SingleOrNodes::Single(n) => vec![*n],
+                SingleOrNodes::Union(ns) => ns.clone(),
+            }
+        } else {
+            vec![node]
         }
     }
 

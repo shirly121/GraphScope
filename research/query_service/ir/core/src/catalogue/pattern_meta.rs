@@ -51,7 +51,7 @@ impl From<Schema> for PatternMeta {
             e2vertices_meta: BTreeMap::new(),
             vv2edges_meta: BTreeMap::new(),
         };
-        for (name, id) in &table_map {
+        for (name, (_, id)) in &table_map {
             match relation_labels.get(name) {
                 // Case that this is an edge label
                 Some(connections) => {

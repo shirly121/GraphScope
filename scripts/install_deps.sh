@@ -14,8 +14,8 @@ readonly GREEN="\033[0;32m"
 readonly NC="\033[0m" # No Color
 
 readonly GRAPE_BRANCH="master" # libgrape-lite branch
-readonly V6D_VERSION="0.3.21"  # vineyard version
-readonly V6D_BRANCH="v0.3.21" # vineyard branch
+readonly V6D_VERSION="0.4.1"  # vineyard version
+readonly V6D_BRANCH="v0.4.1" # vineyard branch
 
 readonly OUTPUT_ENV_FILE="${HOME}/.graphscope_env"
 IS_IN_WSL=false && [[ ! -z "${IS_WSL}" || ! -z "${WSL_DISTRO_NAME}" ]] && IS_IN_WSL=true
@@ -184,6 +184,8 @@ init_basic_packages() {
       python3-pip
       git
       rapidjson-dev
+      libmsgpack-dev
+      golang-go
     )
   elif [[ "${PLATFORM}" == *"CentOS"* ]]; then
     BASIC_PACKGES_TO_INSTALL=(
@@ -221,6 +223,8 @@ init_basic_packages() {
       wget
       curl
       rapidjson-devel
+      msgpack-devel
+      golang
     )
   else
     BASIC_PACKGES_TO_INSTALL=(
@@ -239,6 +243,8 @@ init_basic_packages() {
       wget
       libomp
       rapidjson
+      msgpack-cxx
+      go
     )
   fi
   readonly BASIC_PACKGES_TO_INSTALL
@@ -331,16 +337,6 @@ check_dependencies() {
      ( ! command -v ${HOME}/.cargo/bin/rustup &> /dev/null || \
     [[ "$(${HOME}/.cargo/bin/rustc --V | awk -F ' ' '{print $2}')" < "1.52.0" ]] ); then
     packages_to_install+=(rust)
-  fi
-
-  # check go < 1.16 (reason: vertion 1.16 can't install zetcd)
-  if $(! command -v go &> /dev/null) || \
-     [[ "$(go version 2>&1 | awk -F '.' '{print $2}' | awk -F ' ' '{print $1}')" -ge "16" ]]; then
-    if [[ "${PLATFORM}" == *"CentOS"* ]]; then
-      packages_to_install+=(golang)
-    else
-      packages_to_install+=(go)
-    fi
   fi
 
   # check etcd
@@ -552,16 +548,6 @@ install_dependencies() {
     log "Installing packages ${BASIC_PACKGES_TO_INSTALL[*]}"
     sudo apt-get install -y ${BASIC_PACKGES_TO_INSTALL[*]}
 
-    if [[ "${packages_to_install[*]}" =~ "go" ]]; then
-      # packages_to_install contains go
-      log "Installing Go."
-      wget -c https://golang.org/dl/go1.15.5.linux-amd64.tar.gz -P /tmp
-      sudo tar -C /usr/local -xzf /tmp/go1.15.5.linux-amd64.tar.gz
-      rm -fr /tmp/go1.15.5.linux-amd64.tar.gz
-      sudo ln -sf /usr/local/go/bin/go /usr/local/bin/go
-      # remove go from packages_to_install
-      packages_to_install=("${packages_to_install[@]/go}")
-    fi
     if [[ "${packages_to_install[*]}" =~ "rust" ]]; then
       # packages_to_install contains rust
       log "Installing rust."
@@ -579,15 +565,6 @@ install_dependencies() {
       sudo apt install -y libarrow-dev=3.0.0-1 libarrow-python-dev=3.0.0-1
       # remove apache-arrow from packages_to_install
       packages_to_install=("${packages_to_install[@]/apache-arrow}")
-    fi
-
-    if [[ "${packages_to_install[*]}" =~ "zetcd" ]]; then
-      log "Installing zetcd."
-      export PATH=${PATH}:/usr/local/go/bin
-      go get github.com/etcd-io/zetcd/cmd/zetcd
-      sudo cp ${HOME}/go/bin/zetcd /usr/local/bin/zetcd
-      # remove zetcd from packages_to_install
-      packages_to_install=("${packages_to_install[@]/zetcd}")
     fi
 
     if [[ ! -z "${packages_to_install}" ]]; then
@@ -626,15 +603,6 @@ install_dependencies() {
       popd
       rm -fr /tmp/openmpi-4.0.5 /tmp/openmpi-4.0.5.tar.gz
       packages_to_install=("${packages_to_install[@]/openmpi}")
-    fi
-
-    if [[ "${packages_to_install[*]}" =~ "zetcd" ]]; then
-      log "Installing zetcd."
-      export PATH=${PATH}:/usr/local/go/bin
-      go get github.com/etcd-io/zetcd/cmd/zetcd
-      sudo cp ${HOME}/go/bin/zetcd /usr/local/bin/zetcd
-      # remove zetcd from packages_to_install
-      packages_to_install=("${packages_to_install[@]/zetcd}")
     fi
 
     if [[ "${packages_to_install[*]}" =~ "etcd" ]]; then
@@ -712,6 +680,8 @@ install_dependencies() {
       export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
     fi
     log "Installing packages ${BASIC_PACKGES_TO_INSTALL[*]}"
+    export HOMEBREW_NO_INSTALL_CLEANUP=1
+    export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
     brew install ${BASIC_PACKGES_TO_INSTALL[*]}
 
     if [[ ${CN_MIRROR} == true && "${packages_to_install[*]}" =~ "openjdk@11" ]]; then
@@ -723,26 +693,6 @@ install_dependencies() {
       rm -fr /tmp/OpenJDK11U-jdk_x64_mac_hotspot_11.0.13_8.tar.gz
       # remove jdk from packages_to_install
       packages_to_install=("${packages_to_install[@]/openjdk@11}")
-    fi
-
-    if [[ "${packages_to_install[*]}" =~ "go" ]]; then
-      # packages_to_install contains go
-      log "Installing Go."
-      wget -c https://dl.google.com/go/go1.15.15.darwin-amd64.pkg -P /tmp
-      sudo installer -pkg /tmp/go1.15.15.darwin-amd64.pkg -target /
-      rm -fr /tmp/go1.15.15.darwin-amd64.pkg
-      sudo ln -sf /usr/local/go/bin/go /usr/local/bin/go
-      # remove go from packages_to_install
-      packages_to_install=("${packages_to_install[@]/go}")
-    fi
-
-    if [[ "${packages_to_install[*]}" =~ "zetcd" ]]; then
-      log "Installing zetcd."
-      export PATH=/usr/local/go/bin:${PATH}
-      go get github.com/etcd-io/zetcd/cmd/zetcd
-      sudo cp ${HOME}/go/bin/zetcd /usr/local/bin/zetcd
-      # remove zetcd from packages_to_install
-      packages_to_install=("${packages_to_install[@]/zetcd}")
     fi
 
     if [[ "${packages_to_install[*]}" =~ "rust" ]]; then
@@ -759,13 +709,10 @@ install_dependencies() {
       packages_to_install=("${packages_to_install[@]/maven}")
     fi
 
-
     if [[ ! -z "${packages_to_install}" ]]; then
       log "Installing packages ${packages_to_install[*]}"
       brew install ${packages_to_install[*]}
     fi
-
-
 
     if [[ "$(uname -m)" == "x86_64" ]]; then
       declare -r homebrew_prefix="/usr/local"
@@ -778,6 +725,14 @@ install_dependencies() {
     export CC=${homebrew_prefix}/opt/llvm/bin/clang
     export CXX=${homebrew_prefix}/opt/llvm/bin/clang++
     export CPPFLAGS=-I${homebrew_prefix}/opt/llvm/include
+  fi
+
+  if [[ "${packages_to_install[*]}" =~ "zetcd" ]]; then
+    log "Installing zetcd."
+    GO111MODULE="auto" go get github.com/etcd-io/zetcd/cmd/zetcd
+    sudo cp ${HOME}/go/bin/zetcd /usr/local/bin/zetcd
+    # remove zetcd from packages_to_install
+    packages_to_install=("${packages_to_install[@]/zetcd}")
   fi
 
   log "Installing python packages for vineyard codegen."

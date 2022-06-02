@@ -14,10 +14,8 @@
 package com.alibaba.graphscope.groot.store;
 
 import com.alibaba.graphscope.groot.operation.OperationBatch;
+import com.alibaba.graphscope.groot.store.external.ExternalStorage;
 import com.alibaba.maxgraph.proto.groot.GraphDefPb;
-
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -36,9 +34,11 @@ public interface GraphPartition extends Closeable {
 
     GraphDefPb getGraphDefBlob() throws IOException;
 
-    void ingestHdfsFile(FileSystem fs, Path filePath) throws IOException;
+    void ingestExternalFile(ExternalStorage storage, String fullPath) throws IOException;
 
     GraphPartitionBackup openBackupEngine();
 
     int getId();
+
+    void garbageCollect(long snapshotId) throws IOException;
 }

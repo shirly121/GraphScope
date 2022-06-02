@@ -33,7 +33,6 @@ import signal
 import string
 import sys
 import threading
-import time
 import traceback
 import urllib.parse
 import urllib.request
@@ -215,6 +214,9 @@ class CoordinatorServiceServicer(
             )
             self._dangling_detecting_timer.start()
 
+        # a lock that protects the coordinator
+        self._lock = threading.Lock()
+
         atexit.register(self._cleanup)
 
     def __del__(self):
@@ -309,11 +311,11 @@ class CoordinatorServiceServicer(
         sv = version.parse(__version__)
         cv = version.parse(self._request.version)
         if sv.major != cv.major or sv.minor != cv.minor:
-            logger.warning(
-                "Version between client and server is inconsistent: %s vs %s",
-                self._request.version,
-                __version__,
-            )
+            error_msg = f"Version between client and server is inconsistent: {self._request.version} vs {__version__}"
+            logger.warning(error_msg)
+            context.set_code(error_codes_pb2.CONNECTION_ERROR)
+            context.set_details(error_msg)
+            return message_pb2.ConnectSessionResponse()
 
         return message_pb2.ConnectSessionResponse(
             session_id=self._session_id,
@@ -407,8 +409,7 @@ class CoordinatorServiceServicer(
             if (
                 (
                     op.op == types_pb2.CREATE_GRAPH
-                    and op.attr[types_pb2.GRAPH_TYPE].graph_type
-                    == graph_def_pb2.ARROW_PROPERTY
+                    and op.attr[types_pb2.GRAPH_TYPE].i == graph_def_pb2.ARROW_PROPERTY
                 )
                 or op.op == types_pb2.TRANSFORM_GRAPH
                 or op.op == types_pb2.PROJECT_TO_SIMPLE
@@ -584,8 +585,8 @@ class CoordinatorServiceServicer(
             )
             if op.op == types_pb2.DATA_SOURCE:
                 op_result = self._process_data_source(op, dag_bodies, loader_op_bodies)
-            elif op.op == types_pb2.OUTPUT:
-                op_result = self._output(op)
+            elif op.op == types_pb2.DATA_SINK:
+                op_result = self._process_data_sink(op)
             else:
                 raise RuntimeError("Unsupport op type: " + str(op.op))
             response_head.head.results.append(op_result)
@@ -593,8 +594,9 @@ class CoordinatorServiceServicer(
         return response_head, response_bodies
 
     def RunStep(self, request_iterator, context):
-        for response in self.RunStepWrapped(request_iterator, context):
-            yield response
+        with self._lock:
+            for response in self.RunStepWrapped(request_iterator, context):
+                yield response
 
     def _RunStep(self, request_iterator, context):
         # split dag
@@ -610,6 +612,9 @@ class CoordinatorServiceServicer(
 
         while not dag_manager.empty():
             run_dag_on, dag, dag_bodies = dag_manager.next_dag()
+            error_code = error_codes_pb2.COORDINATOR_INTERNAL_ERROR
+            head = None
+            bodies = None
             try:
                 # run on analytical engine
                 if run_dag_on == GSEngine.analytical_engine:
@@ -715,9 +720,7 @@ class CoordinatorServiceServicer(
                 attr_value_pb2.AttrValue(s=graph_sig.encode("utf-8"))
             )
             op_def.attr[types_pb2.GRAPH_TYPE].CopyFrom(
-                attr_value_pb2.AttrValue(
-                    graph_type=op.attr[types_pb2.GRAPH_TYPE].graph_type
-                )
+                attr_value_pb2.AttrValue(i=op.attr[types_pb2.GRAPH_TYPE].i)
             )
             dag_def = op_def_pb2.DagDef()
             dag_def.op.extend([op_def])
@@ -848,7 +851,7 @@ class CoordinatorServiceServicer(
         try:
             # 60 seconds is enough, see also GH#1024; try 120
             # already add errs to outs
-            outs, errs = proc.communicate(timeout=120)
+            outs, _ = proc.communicate(timeout=120)
             return_code = proc.poll()
             if return_code == 0:
                 # match maxgraph endpoint and check for ready
@@ -869,13 +872,12 @@ class CoordinatorServiceServicer(
                     op.key,
                     InteractiveQueryManager(op.key, maxgraph_endpoint, object_id),
                 )
+                endpoint = maxgraph_external_endpoint or maxgraph_endpoint
+                result = {"endpoint": endpoint, "object_id": object_id}
                 return op_def_pb2.OpResult(
                     code=error_codes_pb2.OK,
                     key=op.key,
-                    result=maxgraph_external_endpoint.encode("utf-8")
-                    if maxgraph_external_endpoint
-                    else maxgraph_endpoint.encode("utf-8"),
-                    extra_info=str(object_id).encode("utf-8"),
+                    result=json.dumps(result).encode("utf-8"),
                 )
             raise RuntimeError("Error code: {0}, message {1}".format(return_code, outs))
         except Exception as e:
@@ -911,15 +913,15 @@ class CoordinatorServiceServicer(
                 rlt = result_set.all().result()
         except Exception as e:
             raise RuntimeError("Fetch gremlin result failed") from e
-
+        meta = op_def_pb2.OpResult.Meta(has_large_result=True)
         return op_def_pb2.OpResult(
             code=error_codes_pb2.OK,
             key=op.key,
-            has_large_result=True,
+            meta=meta,
             result=pickle.dumps(rlt),
         )
 
-    def _output(self, op: op_def_pb2.OpDef):
+    def _process_data_sink(self, op: op_def_pb2.OpDef):
         import vineyard
         import vineyard.io
 
@@ -1025,6 +1027,164 @@ class CoordinatorServiceServicer(
             key=op.key,
         )
 
+    def _gremlin_to_subgraph_v2(self, op: op_def_pb2.OpDef):
+        gremlin_script = op.attr[types_pb2.GIE_GREMLIN_QUERY_MESSAGE].s.decode()
+        oid_type = op.attr[types_pb2.OID_TYPE].s.decode()
+        request_options = None
+        if types_pb2.GIE_GREMLIN_REQUEST_OPTIONS in op.attr:
+            request_options = json.loads(
+                op.attr[types_pb2.GIE_GREMLIN_REQUEST_OPTIONS].s.decode()
+            )
+        key_of_parent_op = op.parents[0]
+        gremlin_client = self._object_manager.get(key_of_parent_op)
+
+        def create_global_graph_builder(graph_name, num_workers):
+            import vineyard
+
+            vineyard_client = vineyard.connect(
+                self._analytical_engine_config["vineyard_rpc_endpoint"]
+            )
+
+            # build the vineyard::GlobalPGStream
+            metadata = vineyard.ObjectMeta()
+            metadata.set_global(True)
+            metadata["typename"] = "vineyard::GlobalPGStream"
+            metadata["total_stream_chunks"] = num_workers
+
+            # build the parallel stream for edge
+            edge_metadata = vineyard.ObjectMeta()
+            edge_metadata.set_global(True)
+            edge_metadata["typename"] = "vineyard::ParallelStream"
+            edge_metadata["__streams_-size"] = num_workers
+
+            # build the parallel stream for vertex
+            vertex_metadata = vineyard.ObjectMeta()
+            vertex_metadata.set_global(True)
+            vertex_metadata["typename"] = "vineyard::ParallelStream"
+            vertex_metadata["__streams_-size"] = num_workers
+
+            for worker in range(num_workers):
+                edge_metadata = vineyard.ObjectMeta()
+                edge_metadata["typename"] = "vineyard::RecordBatchStream"
+                edge_metadata["nbytes"] = 0
+                edge_metadata["params_"] = json.dumps(
+                    {
+                        "graph_name": graph_name,
+                        "kind": "edge",
+                    }
+                )
+                edge = vineyard_client.create_metadata(edge_metadata)
+                vineyard_client.persist(edge.id)
+                edge_metadata.add_member("__streams_-%d" % worker, edge)
+
+                vertex_metadata = vineyard.ObjectMeta()
+                vertex_metadata["typename"] = "vineyard::RecordBatchStream"
+                vertex_metadata["nbytes"] = 0
+                vertex_metadata["params_"] = json.dumps(
+                    {
+                        "graph_name": graph_name,
+                        "kind": "vertex",
+                    }
+                )
+                vertex = vineyard_client.create_metadata(vertex_metadata)
+                vineyard_client.persist(vertex.id)
+                edge_metadata.add_member("__streams_-%d" % worker, vertex)
+
+                metadata = vineyard.ObjectMeta()
+                metadata["typename"] = "vineyard::PropertyGraphOutStream"
+                metadata["graph_name"] = graph_name
+                metadata["graph_schema"] = "{}"
+                metadata["nbytes"] = 0
+                metadata["stream_index"] = worker
+                metadata["edge_stream"] = edge
+                metadata["vertex_stream"] = vertex
+                chunk = vineyard_client.create_metadata(metadata)
+                vineyard_client.persist(chunk.id)
+                metadata.add_member("stream_chunk_%d" % worker, chunk)
+
+            # build the vineyard::GlobalPGStream
+            graph = vineyard_client.create_metadata(metadata)
+            vineyard_client.persist(graph.id)
+            vineyard_client.put_name(graph.id, graph_name)
+
+            # build the parallel stream for edge
+            edge = vineyard_client.create_metadata(metadata)
+            vineyard_client.persist(edge.id)
+            vineyard_client.put_name(edge.id, "__%s_edge_stream" % graph_name)
+
+            # build the parallel stream for vertex
+            vertex = vineyard_client.create_metadata(metadata)
+            vineyard_client.persist(vertex.id)
+            vineyard_client.put_name(vertex.id, "__%s_vertex_stream" % graph_name)
+
+            return repr(graph.id), repr(edge.id), repr(vertex.id)
+
+        def load_subgraph(oid_type, edge_stream_id, vertex_stream_id):
+            import vineyard
+
+            vertices = [Loader(vineyard.ObjectID(vertex_stream_id))]
+            edges = [Loader(vineyard.ObjectID(edge_stream_id))]
+            oid_type = normalize_data_type_str(oid_type)
+            v_labels = normalize_parameter_vertices(vertices, oid_type)
+            e_labels = normalize_parameter_edges(edges, oid_type)
+            loader_op = create_loader(v_labels + e_labels)
+            config = {
+                types_pb2.DIRECTED: utils.b_to_attr(True),
+                types_pb2.OID_TYPE: utils.s_to_attr(oid_type),
+                types_pb2.GENERATE_EID: utils.b_to_attr(False),
+                types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
+                types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
+            }
+            new_op = create_graph(
+                self._session_id,
+                graph_def_pb2.ARROW_PROPERTY,
+                inputs=[loader_op],
+                attrs=config,
+            )
+            # spawn a vineyard stream loader on coordinator
+            loader_op_def = loader_op.as_op_def()
+            coordinator_dag = op_def_pb2.DagDef()
+            coordinator_dag.op.extend([loader_op_def])
+            # set the same key from subgraph to new op
+            new_op_def = new_op.as_op_def()
+            new_op_def.key = op.key
+            dag = op_def_pb2.DagDef()
+            dag.op.extend([new_op_def])
+            self.run_on_coordinator(coordinator_dag, [], {})
+            response_head, _ = self.run_on_analytical_engine(dag, [], {})
+            logger.info("subgraph has been loaded")
+            return response_head.head.results[-1]
+
+        # generate a random graph name
+        now_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        random_num = random.randint(0, 10000000)
+        graph_name = "%s_%s" % (str(now_time), str(random_num))
+
+        (
+            _graph_builder_id,
+            edge_stream_id,
+            vertex_stream_id,
+        ) = create_global_graph_builder(graph_name, self._launcher.num_workers)
+
+        # start a thread to launch the graph
+        pool = futures.ThreadPoolExecutor()
+        subgraph_task = pool.submit(
+            load_subgraph,
+            oid_type,
+            edge_stream_id,
+            vertex_stream_id,
+        )
+
+        # add subgraph vertices and edges
+        subgraph_script = "{0}.subgraph('{1}').outputVineyard('{2}')".format(
+            gremlin_script, graph_name, graph_name
+        )
+        gremlin_client.submit(
+            subgraph_script, request_options=request_options
+        ).all().result()
+
+        return subgraph_task.result()
+
     def _gremlin_to_subgraph(self, op: op_def_pb2.OpDef):
         gremlin_script = op.attr[types_pb2.GIE_GREMLIN_QUERY_MESSAGE].s.decode()
         oid_type = op.attr[types_pb2.OID_TYPE].s.decode()
@@ -1107,19 +1267,20 @@ class CoordinatorServiceServicer(
             "Coordinator create learning instance with object id %ld",
             object_id,
         )
-        handle = op.attr[types_pb2.GLE_HANDLE].s
-        config = op.attr[types_pb2.GLE_CONFIG].s
-        endpoints = self._launcher.create_learning_instance(
-            object_id, handle.decode("utf-8"), config.decode("utf-8")
-        )
+        handle = op.attr[types_pb2.GLE_HANDLE].s.decode("utf-8")
+        config = op.attr[types_pb2.GLE_CONFIG].s.decode("utf-8")
+        endpoints = self._launcher.create_learning_instance(object_id, handle, config)
         self._object_manager.put(op.key, LearningInstanceManager(op.key, object_id))
+        result = {
+            "handle": handle,
+            "config": config,
+            "endpoints": endpoints,
+            "object_id": object_id,
+        }
         return op_def_pb2.OpResult(
             code=error_codes_pb2.OK,
             key=op.key,
-            handle=handle,
-            config=config,
-            result=",".join(endpoints).encode("utf-8"),
-            extra_info=str(object_id).encode("utf-8"),
+            result=json.dumps(result).encode("utf-8"),
         )
 
     def _close_learning_instance(self, op: op_def_pb2.OpDef):
