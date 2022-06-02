@@ -38,7 +38,7 @@ struct EdgeWeightForJoin {
     pattern_index: NodeIndex,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct EdgeWeightForExtendStep {
     code: Vec<u8>,
     count_sum: usize,
@@ -49,6 +49,16 @@ struct EdgeWeightForExtendStep {
 enum EdgeWeight {
     Pattern(EdgeWeightForJoin),
     ExtendStep(EdgeWeightForExtendStep),
+}
+
+impl EdgeWeight {
+    pub fn get_extend_step_weight(&self) -> Option<EdgeWeightForExtendStep> {
+        if let EdgeWeight::ExtendStep(w) = self {
+            Some(w.clone())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -83,7 +93,7 @@ impl Catalogue {
         }
         while queue.len() > 0 {
             let (relaxed_pattern, relaxed_pattern_index) = queue.pop_front().unwrap();
-            if relaxed_pattern.get_vertex_num() == pattern_size_limit {
+            if relaxed_pattern.get_vertex_num() >= pattern_size_limit {
                 continue;
             }
             let extend_steps = relaxed_pattern.get_extend_steps(pattern_meta, same_label_vertex_limit);
@@ -152,7 +162,7 @@ impl Catalogue {
                 });
                 catalog
                     .pattern_v_locate_map
-                    .insert(new_pattern_code.clone(), pattern_index);
+                    .insert(new_pattern_code, pattern_index);
                 pattern_index
             };
             queue.push_back((new_pattern, new_pattern_index));
@@ -168,7 +178,11 @@ impl Catalogue {
                 relaxed_patterns.insert(relaxed_pattern_vertices.clone());
             }
             let mut added_vertices_ids = BTreeSet::new();
-            for vertex in relaxed_pattern.vertices_iter() {
+            for vertex_id in relaxed_pattern
+                .vertices_iter()
+                .map(|v| v.get_id())
+            {
+                let vertex = pattern.get_vertex_from_id(vertex_id).unwrap();
                 for (adj_vertex_id, adj_connections) in vertex.adjacent_vertices_iter() {
                     if relaxed_pattern_vertices.contains(&adj_vertex_id)
                         || added_vertices_ids.contains(&adj_vertex_id)
@@ -223,12 +237,12 @@ impl Catalogue {
                             let add_edge_label = add_edge.get_label();
                             let (src_v_label, src_v_rank, dir) =
                                 if add_edge.get_end_vertex_id() == adj_vertex_id {
-                                    let src_vertex = pattern
+                                    let src_vertex = relaxed_pattern
                                         .get_vertex_from_id(add_edge.get_start_vertex_id())
                                         .unwrap();
                                     (src_vertex.get_label(), src_vertex.get_rank(), PatternDirection::Out)
                                 } else {
-                                    let src_vertex = pattern
+                                    let src_vertex = relaxed_pattern
                                         .get_vertex_from_id(add_edge.get_end_vertex_id())
                                         .unwrap();
                                     (src_vertex.get_label(), src_vertex.get_rank(), PatternDirection::In)
@@ -245,17 +259,27 @@ impl Catalogue {
                     if !existed {
                         catalog
                             .pattern_v_locate_map
-                            .insert(new_pattern_code.clone(), new_pattern_index);
+                            .insert(new_pattern_code, new_pattern_index);
                     }
-                    if let None = catalog
+                    let mut found_extend_step = false;
+                    for connection_weight in catalog
                         .store
-                        .find_edge(relaxed_pattern_index, new_pattern_index)
+                        .edges_connecting(relaxed_pattern_index, new_pattern_index)
+                        .map(|edge| edge.weight())
                     {
+                        if let EdgeWeight::ExtendStep(pre_extend_step_weight) = connection_weight {
+                            if pre_extend_step_weight.code == extend_step_code {
+                                found_extend_step = true;
+                                break;
+                            }
+                        }
+                    }
+                    if !found_extend_step {
                         catalog.store.add_edge(
                             relaxed_pattern_index,
                             new_pattern_index,
                             EdgeWeight::ExtendStep(EdgeWeightForExtendStep {
-                                code: extend_step_code.clone(),
+                                code: extend_step_code,
                                 count_sum: 0,
                                 counts: BinaryHeap::new(),
                             }),
@@ -272,6 +296,7 @@ impl Catalogue {
 
 #[cfg(test)]
 mod test {
+    use crate::catalogue::test_cases::pattern_cases::*;
     use crate::catalogue::test_cases::pattern_meta_cases::*;
 
     use super::Catalogue;
@@ -279,15 +304,80 @@ mod test {
     #[test]
     fn test_catalog_for_modern_graph() {
         let modern_graph_meta = get_modern_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&modern_graph_meta, 6, 3);
-        println!("{:?}", catalog.store);
+        let catalog = Catalogue::build_from_meta(&modern_graph_meta, 2, 3);
+        assert_eq!(4, catalog.store.node_count());
+        assert_eq!(4, catalog.store.edge_count());
     }
 
     #[test]
     fn test_catalog_for_ldbc_graph() {
         let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 5, 3);
-        println!("{:?}", catalog.store.node_count());
-        println!("{:?}", catalog.store.edge_count());
+        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 2, 3);
+        assert_eq!(34, catalog.store.node_count());
+        assert_eq!(42, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_modern_pattern_case1() {
+        let modern_pattern = build_modern_pattern_case1();
+        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        assert_eq!(1, catalog.store.node_count());
+        assert_eq!(0, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_modern_pattern_case2() {
+        let modern_pattern = build_modern_pattern_case2();
+        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        assert_eq!(1, catalog.store.node_count());
+        assert_eq!(0, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_modern_pattern_case3() {
+        let modern_pattern = build_modern_pattern_case3();
+        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        assert_eq!(2, catalog.store.node_count());
+        assert_eq!(2, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_modern_pattern_case4() {
+        let modern_pattern = build_modern_pattern_case4();
+        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        assert_eq!(3, catalog.store.node_count());
+        assert_eq!(2, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_ldbc_pattern_from_pb_case1() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        assert_eq!(3, catalog.store.node_count());
+        assert_eq!(5, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_ldbc_pattern_from_pb_case2() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        assert_eq!(5, catalog.store.node_count());
+        assert_eq!(7, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_ldbc_pattern_from_pb_case3() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        assert_eq!(4, catalog.store.node_count());
+        assert_eq!(9, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_catalog_for_ldbc_pattern_from_pb_case4() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        assert_eq!(11, catalog.store.node_count());
+        assert_eq!(17, catalog.store.edge_count());
     }
 }

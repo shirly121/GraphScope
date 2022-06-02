@@ -33,6 +33,15 @@ impl Into<u8> for PatternDirection {
     }
 }
 
+impl PatternDirection {
+    pub fn reverse(&self) -> PatternDirection {
+        match self {
+            PatternDirection::Out => PatternDirection::In,
+            PatternDirection::In => PatternDirection::Out,
+        }
+    }
+}
+
 pub mod catalog;
 pub mod codec;
 pub mod extend_step;

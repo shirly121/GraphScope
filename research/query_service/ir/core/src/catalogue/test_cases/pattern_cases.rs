@@ -243,12 +243,7 @@ pub fn build_modern_pattern_case4() -> Pattern {
 /// Person -> knows -> Person
 pub fn build_ldbc_pattern_case1() -> Pattern {
     let pattern_edge = PatternEdge::new(0, 12, 0, 1, 1, 1);
-    let mut pattern = Pattern::try_from(vec![pattern_edge]).unwrap();
-    pattern
-        .get_vertex_mut_from_id(1)
-        .unwrap()
-        .set_rank(1);
-    pattern
+    Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message

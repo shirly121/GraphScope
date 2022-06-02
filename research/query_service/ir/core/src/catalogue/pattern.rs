@@ -1325,75 +1325,68 @@ impl Pattern {
             }
             // Connect each vertex can be use to each extend edge
             for i in 0..extend_edges.len() {
-                match extend_edges[i].get_direction() {
-                    // Case that the extend edge's direciton is Out
-                    PatternDirection::Out => {
-                        // new pattern edge info
-                        let new_pattern_edge = PatternEdge {
-                            id: new_pattern.get_next_pattern_edge_id(),
-                            label: extend_edges[i].get_edge_label(),
-                            start_v_id: vertices_can_use[i],
-                            end_v_id: new_pattern_vertex.id,
-                            start_v_label: self
-                                .vertices
-                                .get(vertices_can_use[i])
-                                .unwrap()
-                                .label,
-                            end_v_label: new_pattern_vertex.label,
-                        };
-                        // update newly extended pattern vertex's adjacency info
-                        new_pattern_vertex
-                            .adjacent_edges
-                            .insert(new_pattern_edge.id, (vertices_can_use[i], PatternDirection::In));
-                        new_pattern_vertex.adjacent_vertices.insert(
-                            vertices_can_use[i],
-                            vec![(new_pattern_edge.id, PatternDirection::Out)],
-                        );
-                        new_pattern_vertex.in_degree += 1;
-                        // Add the new pattern edge info to the new Pattern
-                        new_pattern
-                            .edge_label_map
-                            .entry(new_pattern_edge.label)
-                            .or_insert(BTreeSet::new())
-                            .insert(new_pattern_edge.id);
-                        new_pattern
-                            .edges
-                            .insert(new_pattern_edge.id, new_pattern_edge);
-                    }
-                    // Case that the extend edge's direction is Incoming
-                    PatternDirection::In => {
-                        let new_pattern_edge = PatternEdge {
-                            id: new_pattern.get_next_pattern_edge_id(),
-                            label: extend_edges[i].get_edge_label(),
-                            start_v_id: new_pattern_vertex.id,
-                            end_v_id: vertices_can_use[i],
-                            start_v_label: new_pattern_vertex.label,
-                            end_v_label: self
-                                .vertices
-                                .get(vertices_can_use[i])
-                                .unwrap()
-                                .label,
-                        };
-                        new_pattern_vertex
-                            .adjacent_edges
-                            .insert(new_pattern_edge.id, (vertices_can_use[i], PatternDirection::Out));
-                        new_pattern_vertex
-                            .adjacent_vertices
-                            .insert(vertices_can_use[i], vec![(new_pattern_edge.id, PatternDirection::In)]);
-                        new_pattern_vertex.out_degree += 1;
-                        new_pattern
-                            .edge_label_map
-                            .entry(new_pattern_edge.label)
-                            .or_insert(BTreeSet::new())
-                            .insert(new_pattern_edge.id);
-                        new_pattern
-                            .edges
-                            .insert(new_pattern_edge.id, new_pattern_edge);
-                    }
+                let extend_vertex_id = vertices_can_use[i];
+                let extend_dir = extend_edges[i].get_direction();
+                // new pattern edge info
+                let (mut start_v_id, mut end_v_id, mut start_v_label, mut end_v_label) = (
+                    extend_vertex_id,
+                    new_pattern_vertex.id,
+                    self.vertices
+                        .get(vertices_can_use[i])
+                        .unwrap()
+                        .label,
+                    new_pattern_vertex.label,
+                );
+                if let PatternDirection::In = extend_dir {
+                    (start_v_id, end_v_id) = (end_v_id, start_v_id);
+                    (start_v_label, end_v_label) = (end_v_label, start_v_label);
                 }
+                let new_pattern_edge = PatternEdge {
+                    id: new_pattern.get_next_pattern_edge_id(),
+                    label: extend_edges[i].get_edge_label(),
+                    start_v_id,
+                    end_v_id,
+                    start_v_label,
+                    end_v_label,
+                };
+                // update newly extended pattern vertex's adjacency info
+                new_pattern_vertex
+                    .adjacent_edges
+                    .insert(new_pattern_edge.id, (extend_vertex_id, extend_dir.reverse()));
+                new_pattern_vertex
+                    .adjacent_vertices
+                    .insert(extend_vertex_id, vec![(new_pattern_edge.id, extend_dir.reverse())]);
+                if let PatternDirection::Out = extend_dir {
+                    new_pattern_vertex.in_degree += 1;
+                } else {
+                    new_pattern_vertex.out_degree += 1
+                }
+                // update extend vertex's adjacancy info
+                let extend_vertex = new_pattern
+                    .get_vertex_mut_from_id(extend_vertex_id)
+                    .unwrap();
+                extend_vertex
+                    .adjacent_edges
+                    .insert(new_pattern_edge.id, (new_pattern_vertex.id, extend_dir));
+                extend_vertex
+                    .adjacent_vertices
+                    .insert(new_pattern_vertex.id, vec![(new_pattern_edge.id, extend_dir)]);
+                if let PatternDirection::Out = extend_dir {
+                    extend_vertex.out_degree += 1;
+                } else {
+                    extend_vertex.in_degree += 1
+                }
+                // Add the new pattern edge info to the new Pattern
+                new_pattern
+                    .edge_label_map
+                    .entry(new_pattern_edge.label)
+                    .or_insert(BTreeSet::new())
+                    .insert(new_pattern_edge.id);
+                new_pattern
+                    .edges
+                    .insert(new_pattern_edge.id, new_pattern_edge);
             }
         }
-
         // Add the newly extended pattern vertex to the new pattern
         new_pattern
             .vertex_label_map
@@ -1406,6 +1399,12 @@ impl Pattern {
         new_pattern.rank_ranking();
         Some(new_pattern)
     }
+
+    // pub fn de_extend(&self, extend_step: ExtendStep) -> Option<Pattern> {
+    //     let mut new_pattern = self.clone();
+    //     let target_v_label = extend_step.get_target_v_label();
+    //     let target_vertex =
+    // }
 
     /// Find all possible ExtendSteps of current pattern based on the given Pattern Meta
     pub fn get_extend_steps(
