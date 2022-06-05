@@ -54,8 +54,7 @@ def test_load_graph_copy(graphscope_session, arrow_property_graph):
     assert g.vineyard_id != g2.vineyard_id
     assert str(g.schema) == str(g2.schema)
     assert np.all(g.to_numpy("v:v0.id") == g2.to_numpy("v:v0.id"))
-    g2.unload()
-    assert not g2.loaded()
+    del g2
     # test load from vineyard's graph
     g3 = graphscope_session.g(vineyard.ObjectID(g.vineyard_id))
     assert g3.loaded()
@@ -130,18 +129,7 @@ def test_unload(graphscope_session):
     g = load_p2p_network(graphscope_session)
     assert g.loaded()
     assert g.vineyard_id is not None
-    g.unload()
-
-    assert not g.loaded()
-
-    # unload twice
-    g.unload()
-
-    with pytest.raises(RuntimeError, match="The graph is not loaded"):
-        pg = g.project(vertices={"host": []}, edges={"connect": []})
-        pg._project_to_simple()
-    with pytest.raises(AssertionError):
-        g2 = graphscope_session.g(g)
+    del g
 
 
 def test_error_on_project_to_simple_wrong_graph_type(arrow_property_graph):
@@ -531,3 +519,27 @@ def test_add_column(ldbc_graph, arrow_modern_graph):
     with pytest.raises(AnalyticalEngineInternalError):
         g5 = sub_graph_4.add_column(ret, selector={"cc": "r"})
         print(g4.schema)
+
+
+def test_add_column_string_oid(
+    p2p_property_graph_string, p2p_project_directed_graph_string
+):
+    g1 = p2p_property_graph_string
+    g2 = p2p_project_directed_graph_string
+
+    property_names = [p.name for p in g1.schema.get_vertex_properties("person")]
+    assert "pagerank" not in property_names
+
+    ctx = graphscope.pagerank(g2)
+    g3 = g1.add_column(ctx, selector={"pagerank": "r"})
+
+    property_names = [p.name for p in g3.schema.get_vertex_properties("person")]
+    assert "pagerank" in property_names
+
+
+def test_graph_lifecycle(graphscope_session):
+    graph = load_modern_graph(graphscope_session)
+    c = graphscope.wcc(graph)
+    del graph
+    assert c.to_numpy("v.id") is not None
+    del c  # should delete c and graph in c++

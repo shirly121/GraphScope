@@ -20,6 +20,7 @@ import com.alibaba.graphscope.groot.metrics.MetricsAgent;
 import com.alibaba.graphscope.groot.metrics.MetricsCollector;
 import com.alibaba.graphscope.groot.operation.OperationBatch;
 import com.alibaba.graphscope.groot.operation.StoreDataBatch;
+import com.alibaba.graphscope.groot.store.external.ExternalStorage;
 import com.alibaba.graphscope.groot.store.jna.JnaGraphStore;
 import com.alibaba.maxgraph.common.config.CommonConfig;
 import com.alibaba.maxgraph.common.config.Configs;
@@ -28,9 +29,6 @@ import com.alibaba.maxgraph.common.util.ThreadFactoryUtils;
 import com.alibaba.maxgraph.compiler.api.exception.MaxGraphException;
 import com.alibaba.maxgraph.proto.groot.GraphDefPb;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +59,9 @@ public class StoreService implements MetricsAgent {
     private int writeThreadCount;
     private MetaService metaService;
     private Map<Integer, GraphPartition> idToPartition;
-    private ExecutorService writeExecutor, ingestExecutor;
+    private ExecutorService writeExecutor;
+    private ExecutorService ingestExecutor;
+    private ExecutorService garbageCollectExecutor;
     private volatile boolean shouldStop = true;
 
     private volatile long lastUpdateTime;
@@ -108,6 +108,15 @@ public class StoreService implements MetricsAgent {
                         new LinkedBlockingQueue<>(1),
                         ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
                                 "store-ingest", logger));
+        this.garbageCollectExecutor =
+                new ThreadPoolExecutor(
+                        1,
+                        1,
+                        0L,
+                        TimeUnit.MILLISECONDS,
+                        new LinkedBlockingQueue<>(),
+                        ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
+                                "store-garbage-collect", logger));
         logger.info("StoreService started. storeId [" + this.storeId + "]");
     }
 
@@ -285,15 +294,33 @@ public class StoreService implements MetricsAgent {
     }
 
     private void ingestDataInternal(String path) throws IOException {
-        Path dataDir = new Path(path);
-        Configuration conf = new Configuration();
-        FileSystem fs = dataDir.getFileSystem(conf);
+        ExternalStorage externalStorage = ExternalStorage.getStorage(configs, path);
         for (Map.Entry<Integer, GraphPartition> entry : this.idToPartition.entrySet()) {
             int pid = entry.getKey();
             GraphPartition partition = entry.getValue();
             String fileName = "part-r-" + String.format("%05d", pid) + ".sst";
-            Path realPath = new Path(dataDir, fileName);
-            partition.ingestHdfsFile(fs, realPath);
+            String fullPath = path + "/" + fileName;
+            partition.ingestExternalFile(externalStorage, fullPath);
+        }
+    }
+
+    public void garbageCollect(long snapshotId, CompletionCallback<Void> callback) {
+        this.garbageCollectExecutor.execute(
+                () -> {
+                    try {
+                        garbageCollectInternal(snapshotId);
+                        callback.onCompleted(null);
+                    } catch (Exception e) {
+                        logger.error("garbage collect failed. snapshot [" + snapshotId + "]", e);
+                        callback.onError(e);
+                    }
+                });
+    }
+
+    private void garbageCollectInternal(long snapshotId) throws IOException {
+        for (Map.Entry<Integer, GraphPartition> entry : this.idToPartition.entrySet()) {
+            GraphPartition partition = entry.getValue();
+            partition.garbageCollect(snapshotId);
         }
     }
 

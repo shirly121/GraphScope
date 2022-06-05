@@ -30,6 +30,8 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib:${CMAKE_INSTALL_PREFIX}/lib64")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 macro(install_vineyard_target target)
     install(TARGETS ${target}
         ARCHIVE DESTINATION lib
@@ -48,7 +50,7 @@ find_package(Threads REQUIRED)
 #  we need edge src/dst ids in etable.
 add_definitions(-DENDPOINT_LISTS)
 
-find_package(vineyard 0.3.21 REQUIRED)
+find_package(vineyard 0.4.1 REQUIRED)
 add_library(native_store global_store_ffi.cc
                          htap_ds_impl.cc
                          graph_builder_ffi.cc

@@ -1,4 +1,4 @@
-ARG BASE_VERSION=v0.3.21
+ARG BASE_VERSION=v0.4.1
 FROM registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-vineyard:$BASE_VERSION as builder
 
 ARG CI=true
@@ -29,7 +29,6 @@ RUN sudo chown -R $(id -u):$(id -g) /home/graphscope/gs /home/graphscope/.m2 && 
     && cmake .. && make -j && sudo make install \
     && rm -fr /tmp/cppkafka \
     && echo "build with profile: $profile" \
-    && cd /home/graphscope/gs/research/query_service/ir/core && cargo build --release \
     && cd /home/graphscope/gs/interactive_engine \
     && if [ "$profile" = "release" ]; then \
           echo "release mode"; \

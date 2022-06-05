@@ -37,26 +37,19 @@ def project_to_simple(func):
     def wrapper(*args, **kwargs):
         graph = args[0]
         if not hasattr(graph, "graph_type"):
-            raise InvalidArgumentError("Missing graph_type attribute in graph object.")
+            raise InvalidArgumentError("Unsupported graph to project to simple.")
         elif graph.graph_type in (
             graph_def_pb2.DYNAMIC_PROPERTY,
             graph_def_pb2.ARROW_PROPERTY,
         ):
-            if (
-                "weight" in inspect.getfullargspec(func)[0]
-            ):  # func has 'weight' argument
-                weight = kwargs.get("weight", None)
-                try:
-                    e_label = graph.schema.edge_labels[0]
-                    graph.schema.get_edge_property_id(e_label, weight)
-                except KeyError:
-                    weight = None
-                graph = graph._project_to_simple(e_prop=weight)
-            elif "attribute" in inspect.getfullargspec(func)[0]:
+            weight = None
+            attribute = None
+            if "attribute" in inspect.getfullargspec(func)[0]:
                 attribute = kwargs.get("attribute", None)
-                graph = graph._project_to_simple(v_prop=attribute)
-            else:
-                graph = graph._project_to_simple()
+            if "weight" in inspect.getfullargspec(func)[0]:
+                # func has 'weight' argument
+                weight = kwargs.get("weight", None)
+            graph = graph._project_to_simple(v_prop=attribute, e_prop=weight)
         return func(graph, *args[1:], **kwargs)
 
     return wrapper
@@ -172,8 +165,7 @@ def hits(G, max_iter=100, tol=1.0e-8, nstart=None, normalized=True):
     return _hits(G, max_iter, tol, normalized)
 
 
-def hits_scipy(G, max_iter=100, tol=1.0e-8, normalized=True):
-    return hits(G, max_iter=max_iter, tol=tol, normalized=normalized)
+hits_scipy = hits
 
 
 @context_to_dict
@@ -221,6 +213,9 @@ def eigenvector_centrality(G, max_iter=100, tol=1e-06, nstart=None, weight=None)
     if max_iter == 0:
         raise nx.PowerIterationFailedConvergence(max_iter)
     return _eigenvector_centrality(G, max_iter=max_iter, tol=tol, weight=weight)
+
+
+eigenvector_centrality_numpy = eigenvector_centrality
 
 
 @not_implemented_for("multigraph")
@@ -1086,8 +1081,50 @@ def betweenness_centrality(
             G, normalized=normalized, endpoints=endpoints
         )
 
-    if not isinstance(G, nx.Graph):
+    if not isinstance(G, nx.Graph) or seed is not None:
         return nxa.betweenness_centrality(G, k, normalized, weight, endpoints, seed)
     return _betweenness_centrality(
         G, k=k, normalized=normalized, weight=weight, endpoints=endpoints, seed=seed
     )
+
+
+@project_to_simple
+@not_implemented_for("multigraph")
+def voterank(G, num_of_nodes=0):
+    """Select a list of influential nodes in a graph using VoteRank algorithm
+
+    VoteRank [1]_ computes a ranking of the nodes in a graph G based on a
+    voting scheme. With VoteRank, all nodes vote for each of its in-neighbours
+    and the node with the highest votes is elected iteratively. The voting
+    ability of out-neighbors of elected nodes is decreased in subsequent turns.
+
+    Note: We treat each edge independently in case of multigraphs.
+
+    Parameters
+    ----------
+    G : graph
+      A networkx directed graph.
+
+    number_of_nodes : integer, optional
+        Number of ranked nodes to extract (default all nodes).
+
+    Returns
+    -------
+    voterank : list
+       Ordered list of computed seeds.
+       Only nodes with positive number of votes are returned.
+
+    Examples
+    --------
+    >>> G = nx.DiGraph(nx.path_graph(4))
+    >>> pr = nx.voterank(G, num_of_nodes=2)
+
+    References
+    ----------
+    .. [1] Zhang, J.-X. et al. (2016).
+        Identifying a set of influential spreaders in complex networks.
+        Sci. Rep. 6, 27823; doi: 10.1038/srep27823.
+
+    """
+
+    return graphscope.voterank(G, num_of_nodes)
