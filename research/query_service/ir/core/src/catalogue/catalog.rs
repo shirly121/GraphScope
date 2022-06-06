@@ -318,6 +318,33 @@ mod test {
     }
 
     #[test]
+    fn test_catalog_for_ldbc_graph_size_3() {
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 3, 3);
+        assert_eq!(34, catalog.store.node_count());
+        assert_eq!(42, catalog.store.edge_count());
+    }
+
+    // 3.41s
+    #[test]
+    fn test_catalog_for_ldbc_graph_size_4() {
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 4, 3);
+        assert_eq!(34, catalog.store.node_count());
+        assert_eq!(42, catalog.store.edge_count());
+    }
+
+    // 200.19s
+    #[test]
+    fn test_catalog_for_ldbc_graph_size_5() {
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 5, 3);
+        assert_eq!(34, catalog.store.node_count());
+        assert_eq!(42, catalog.store.edge_count());
+    }
+
+
+    #[test]
     fn test_catalog_for_modern_pattern_case1() {
         let modern_pattern = build_modern_pattern_case1();
         let catalog = Catalogue::build_from_pattern(&modern_pattern);
