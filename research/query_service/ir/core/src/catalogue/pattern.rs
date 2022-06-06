@@ -966,6 +966,10 @@ impl Pattern {
     ///
     /// Basic Idea: Iteratively update the rank locally (neighbor edges vertices) and update the order of neighbor edges
     pub fn vertex_ranking(&mut self) {
+        //
+        for (_, vertex) in self.vertices.iter_mut() {
+            vertex.set_rank(0);
+        }
         // Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
         let mut vertex_neighbor_edges_map: HashMap<
             PatternId,
@@ -1298,12 +1302,10 @@ impl Pattern {
     }
 
     /// Compare the ranks of two PatternVertices
-    /// 
+    ///
     /// Called when setting initial ranks
     fn cmp_vertices_for_rank(
-        &self,
-        v1_id: PatternId,
-        v2_id: PatternId,
+        &self, v1_id: PatternId, v2_id: PatternId,
         vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
     ) -> Ordering {
         let v1 = self.vertices.get(v1_id).unwrap();
@@ -1383,12 +1385,10 @@ impl Pattern {
     }
 
     /// Compare the ranks of two PatternVertices
-    /// 
+    ///
     /// Called when updating vertex ranks as only ranks need to be considered
     fn cmp_vertices_by_rank(
-        &self,
-        v1_id: PatternId,
-        v2_id: PatternId,
+        &self, v1_id: PatternId, v2_id: PatternId,
         vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
     ) -> Ordering {
         let v1 = self.vertices.get(v1_id).unwrap();
@@ -1814,7 +1814,7 @@ impl Pattern {
                     adjacent_vertex.out_degree -= 1;
                 }
             }
-            new_pattern.rank_ranking();
+            new_pattern.vertex_ranking();
             Some(new_pattern)
         } else {
             None
