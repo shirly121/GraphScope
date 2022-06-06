@@ -43,7 +43,65 @@ pub fn build_extend_step_case1() -> ExtendStep {
 pub fn build_extend_step_case2() -> ExtendStep {
     let target_v_label = 3;
     let extend_edge_1 = ExtendEdge::new(1, 0, 1, PatternDirection::Out);
-    let extend_edge_2 = ExtendEdge::new(1, 1, 1, PatternDirection::In);
+    let extend_edge_2 = ExtendEdge::new(1, 1, 1, PatternDirection::Out);
     let extend_edge_3 = ExtendEdge::new(2, 0, 2, PatternDirection::Out);
     ExtendStep::from((target_v_label, vec![extend_edge_1, extend_edge_2, extend_edge_3]))
+}
+
+/// The extend step looks like:
+/// Person -> knows -> Person
+pub fn build_modern_extend_step_case1() -> ExtendStep {
+    let target_v_label = 0;
+    let extend_edge_1 = ExtendEdge::new(0, 0, 0, PatternDirection::Out);
+    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+}
+
+/// The extend step looks like:
+/// Person <- knows <- Person
+pub fn build_modern_extend_step_case2() -> ExtendStep {
+    let target_v_label = 0;
+    let extend_edge_1 = ExtendEdge::new(0, 0, 0, PatternDirection::In);
+    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+}
+
+/// The extend step looks like:
+/// Person -> create -> Software
+pub fn build_modern_extend_step_case3() -> ExtendStep {
+    let target_v_label = 1;
+    let extend_edge_1 = ExtendEdge::new(0, 0, 1, PatternDirection::Out);
+    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+}
+
+/// The extend step looks like:
+/// Software <- create <- Person
+pub fn build_modern_extend_step_case4() -> ExtendStep {
+    let target_v_label = 0;
+    let extend_edge_1 = ExtendEdge::new(1, 0, 1, PatternDirection::In);
+    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+}
+
+/// The extend step looks like:
+///          Person
+///       /        \
+///   create       knows
+///   /               \
+/// Software        Person
+pub fn build_modern_extend_step_case5() -> ExtendStep {
+    let target_v_label = 0;
+    let extend_edge_1 = ExtendEdge::new(1, 0, 1, PatternDirection::In);
+    let extend_edge_2 = ExtendEdge::new(0, 0, 0, PatternDirection::Out);
+    ExtendStep::from((target_v_label, vec![extend_edge_1, extend_edge_2]))
+}
+
+/// The extend step looks like:
+///          Software
+///       /          \
+///   create         create
+///   /                 \
+/// Person            Person
+pub fn build_modern_extend_step_case6() -> ExtendStep {
+    let target_v_label = 1;
+    let extend_edge_1 = ExtendEdge::new(0, 0, 1, PatternDirection::Out);
+    let extend_edge_2 = ExtendEdge::new(0, 1, 1, PatternDirection::Out);
+    ExtendStep::from((target_v_label, vec![extend_edge_1, extend_edge_2]))
 }

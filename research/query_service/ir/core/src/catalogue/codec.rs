@@ -388,11 +388,9 @@ impl EncodeUnit {
 
     pub fn from_extend_step(extend_step: &ExtendStep, encoder: &Encoder) -> Self {
         let mut extend_step_encode_unit = EncodeUnit { values: vec![], heads: vec![], tails: vec![] };
-        for (_, extend_edges) in extend_step.iter() {
-            for extend_edge in extend_edges {
-                let extend_edge_encode_unit = EncodeUnit::from_extend_edge(extend_edge, encoder);
-                extend_step_encode_unit.extend_by_another_unit(&extend_edge_encode_unit);
-            }
+        for extend_edge in extend_step.extend_edges_iter() {
+            let extend_edge_encode_unit = EncodeUnit::from_extend_edge(extend_edge, encoder);
+            extend_step_encode_unit.extend_by_another_unit(&extend_edge_encode_unit);
         }
         extend_step_encode_unit.extend_by_value_and_length(
             extend_step.get_target_v_label(),

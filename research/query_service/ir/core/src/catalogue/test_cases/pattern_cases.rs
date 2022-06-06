@@ -216,6 +216,37 @@ pub fn build_pattern_case7() -> Pattern {
     Pattern::try_from(pattern_edges).unwrap()
 }
 
+/// The pattern looks like:
+/// A -> A -> B
+/// Vertex Label Map:
+/// A: 1, B: 2
+/// Edge Label Map:
+/// A->A: 0, A->B: 3
+pub fn build_pattern_case8() -> Pattern {
+    let edge_1 = PatternEdge::new(0, 0, 0, 1, 1, 1);
+    let edge_2 = PatternEdge::new(1, 3, 1, 2, 1, 2);
+    let pattern_edges = vec![edge_1, edge_2];
+    Pattern::try_from(pattern_edges).unwrap()
+}
+
+/// The pattern looks like:
+///       C
+///    /  |   \
+///  A -> A -> B
+/// Vertex Label Map:
+/// A: 1, B: 2, C: 3
+/// Edge Label Map:
+/// A->A: 0, A->C: 1, B->C: 2, A->B: 3
+pub fn build_pattern_case9() -> Pattern {
+    let edge_1 = PatternEdge::new(0, 0, 0, 1, 1, 1);
+    let edge_2 = PatternEdge::new(1, 3, 1, 2, 1, 2);
+    let edge_3 = PatternEdge::new(2, 1, 0, 3, 1, 3);
+    let edge_4 = PatternEdge::new(3, 1, 1, 3, 1, 3);
+    let edge_5 = PatternEdge::new(4, 2, 2, 3, 2, 3);
+    let pattern_edges = vec![edge_1, edge_2, edge_3, edge_4, edge_5];
+    Pattern::try_from(pattern_edges).unwrap()
+}
+
 /// Pattern from modern schema file
 /// Person only Pattern
 pub fn build_modern_pattern_case1() -> Pattern {
@@ -237,6 +268,18 @@ pub fn build_modern_pattern_case3() -> Pattern {
 pub fn build_modern_pattern_case4() -> Pattern {
     let pattern_edge = PatternEdge::new(0, 1, 0, 1, 0, 1);
     Pattern::try_from(vec![pattern_edge]).unwrap()
+}
+
+///          Software
+///       /          \
+///   create         create
+///   /                 \
+/// Person -> knows -> Person
+pub fn build_modern_pattern_case5() -> Pattern {
+    let pattern_edge1 = PatternEdge::new(0, 0, 0, 1, 0, 0);
+    let pattern_edge2 = PatternEdge::new(1, 1, 0, 2, 0, 1);
+    let pattern_edge3 = PatternEdge::new(2, 1, 1, 2, 0, 1);
+    Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap()
 }
 
 /// Pattern from ldbc schema file

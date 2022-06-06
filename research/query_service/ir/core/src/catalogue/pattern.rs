@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
+use bimap::BiBTreeMap;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::NameOrId;
@@ -177,9 +178,9 @@ pub struct Pattern {
     /// Key: vertex label id, Value: BTreeSet<vertex id>
     vertex_label_map: BTreeMap<PatternLabelId, BTreeSet<PatternId>>,
     /// Key: edge's Tag info, Value: edge id
-    edge_tag_map: BTreeMap<NameOrId, PatternId>,
+    edge_tag_map: BiBTreeMap<NameOrId, PatternId>,
     /// Key: vertex's Tag info, Value: vertex id
-    vertex_tag_map: BTreeMap<NameOrId, PatternId>,
+    vertex_tag_map: BiBTreeMap<NameOrId, PatternId>,
     /// Key: edge id, Value: properties the edge required
     edge_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
     /// Key: vertex id, Value: properties the vertex required
@@ -215,8 +216,8 @@ impl From<PatternVertex> for Pattern {
             vertices: VecMap::from_iter([(vertex.id, vertex.clone())]),
             edge_label_map: BTreeMap::new(),
             vertex_label_map: BTreeMap::from([(vertex.label, BTreeSet::from([vertex.id]))]),
-            edge_tag_map: BTreeMap::new(),
-            vertex_tag_map: BTreeMap::new(),
+            edge_tag_map: BiBTreeMap::new(),
+            vertex_tag_map: BiBTreeMap::new(),
             edge_properties_map: BTreeMap::new(),
             vertex_properties_map: BTreeMap::new(),
             edge_predicate_map: BTreeMap::new(),
@@ -236,8 +237,8 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                 vertices: VecMap::new(),
                 edge_label_map: BTreeMap::new(),
                 vertex_label_map: BTreeMap::new(),
-                edge_tag_map: BTreeMap::new(),
-                vertex_tag_map: BTreeMap::new(),
+                edge_tag_map: BiBTreeMap::new(),
+                vertex_tag_map: BiBTreeMap::new(),
                 edge_properties_map: BTreeMap::new(),
                 vertex_properties_map: BTreeMap::new(),
                 edge_predicate_map: BTreeMap::new(),
@@ -633,7 +634,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
             }
         }
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
-            pattern.vertex_tag_map = tag_v_id_map;
+            pattern.vertex_tag_map = tag_v_id_map.into_iter().collect();
             pattern.vertex_properties_map = v_id_properties_map;
             pattern.vertex_predicate_map = v_id_predicate_map;
             Ok(pattern)
@@ -651,6 +652,28 @@ impl Pattern {
     /// Iterate Vertices
     pub fn vertices_iter(&self) -> DynIter<&PatternVertex> {
         Box::new(self.vertices.iter().map(|(_, vertex)| vertex))
+    }
+
+    pub fn edges_iter_by_label(&self, edge_label: PatternLabelId) -> DynIter<&PatternEdge> {
+        match self.edge_label_map.get(&edge_label) {
+            Some(edges_set) => Box::new(
+                edges_set
+                    .iter()
+                    .map(move |edge_id| self.edges.get(*edge_id).unwrap()),
+            ),
+            None => Box::new(std::iter::empty()),
+        }
+    }
+
+    pub fn vertices_iter_by_label(&self, vertex_label: PatternLabelId) -> DynIter<&PatternVertex> {
+        match self.vertex_label_map.get(&vertex_label) {
+            Some(vertices_set) => Box::new(
+                vertices_set
+                    .iter()
+                    .map(move |vertex_id| self.vertices.get(*vertex_id).unwrap()),
+            ),
+            None => Box::new(std::iter::empty()),
+        }
     }
 
     /// Iterate Edge Labels with Edges has this Label
@@ -694,14 +717,14 @@ impl Pattern {
     /// Get PatternEdge Reference from Given Tag
     pub fn get_edge_from_tag(&self, edge_tag: &NameOrId) -> Option<&PatternEdge> {
         self.edge_tag_map
-            .get(edge_tag)
+            .get_by_left(edge_tag)
             .and_then(|id| self.edges.get(*id))
     }
 
     /// Get PatternVertex Reference from Given Tag
     pub fn get_vertex_from_tag(&self, vertex_tag: &NameOrId) -> Option<&PatternEdge> {
         self.vertex_tag_map
-            .get(vertex_tag)
+            .get_by_left(vertex_tag)
             .and_then(|id| self.edges.get(*id))
     }
 
@@ -1400,11 +1423,146 @@ impl Pattern {
         Some(new_pattern)
     }
 
-    // pub fn de_extend(&self, extend_step: ExtendStep) -> Option<Pattern> {
-    //     let mut new_pattern = self.clone();
-    //     let target_v_label = extend_step.get_target_v_label();
-    //     let target_vertex =
-    // }
+    pub fn de_extend(&self, extend_step: ExtendStep) -> Option<Pattern> {
+        let mut new_pattern = self.clone();
+        let target_v_label = extend_step.get_target_v_label();
+        let mut target_vertex: Option<&PatternVertex> = None;
+        for target_v_cand in new_pattern.vertices_iter_by_label(target_v_label) {
+            if target_v_cand.get_degree() != extend_step.get_extend_edges_num() {
+                continue;
+            }
+            let cand_src_v_e_label_dir_set: BTreeSet<(PatternLabelId, PatternLabelId, PatternDirection)> =
+                target_v_cand
+                    .adjacent_edges_iter()
+                    .map(|(edge_id, vertex_id, dir)| {
+                        (
+                            new_pattern
+                                .get_vertex_from_id(vertex_id)
+                                .unwrap()
+                                .get_label(),
+                            new_pattern
+                                .get_edge_from_id(edge_id)
+                                .unwrap()
+                                .get_label(),
+                            dir.reverse(),
+                        )
+                    })
+                    .collect();
+            let extend_src_v_e_label_dir_set: BTreeSet<(PatternLabelId, PatternLabelId, PatternDirection)> =
+                extend_step
+                    .extend_edges_iter()
+                    .map(|extend_edge| {
+                        (
+                            extend_edge.get_start_vertex_label(),
+                            extend_edge.get_edge_label(),
+                            extend_edge.get_direction(),
+                        )
+                    })
+                    .collect();
+            if cand_src_v_e_label_dir_set == extend_src_v_e_label_dir_set {
+                target_vertex = Some(target_v_cand);
+                break;
+            }
+        }
+        if let Some(target_vertex) = target_vertex {
+            let target_vertex_id = target_vertex.get_id();
+            let target_vertex_label = target_vertex.get_label();
+            let adjacent_edges_vertices_dirs: Vec<(PatternId, PatternId, PatternDirection)> =
+                target_vertex.adjacent_edges_iter().collect();
+            // delete target vertex
+            // delete in vertices
+            new_pattern.vertices.remove(target_vertex_id);
+            // delete in vertex label map
+            new_pattern
+                .vertex_label_map
+                .get_mut(&target_vertex_label)
+                .unwrap()
+                .remove(&target_vertex_id);
+            if new_pattern
+                .vertex_label_map
+                .get(&target_vertex_label)
+                .unwrap()
+                .len()
+                == 0
+            {
+                new_pattern
+                    .vertex_label_map
+                    .remove(&target_vertex_label);
+            }
+            // delete in vertex tag map
+            new_pattern
+                .vertex_tag_map
+                .remove_by_right(&target_vertex_id);
+            // delete in vertex property map
+            new_pattern
+                .vertex_properties_map
+                .remove(&target_vertex_id);
+            // delete in vertex predicate map
+            new_pattern
+                .vertex_predicate_map
+                .remove(&target_vertex_id);
+            for (adjacent_edge_id, adjacent_vertex_id, dir) in adjacent_edges_vertices_dirs {
+                let adjacent_edge_label = new_pattern
+                    .get_edge_from_id(adjacent_edge_id)
+                    .unwrap()
+                    .get_label();
+                // delete adjacent edges
+                // delete in edges
+                new_pattern.edges.remove(adjacent_edge_id);
+                // delete in edge label map
+                new_pattern
+                    .edge_label_map
+                    .get_mut(&adjacent_edge_label)
+                    .unwrap()
+                    .remove(&adjacent_edge_id);
+                if new_pattern
+                    .edge_label_map
+                    .get(&adjacent_edge_label)
+                    .unwrap()
+                    .len()
+                    == 0
+                {
+                    new_pattern
+                        .edge_label_map
+                        .remove(&adjacent_edge_label);
+                }
+                // delete in edge tag map
+                new_pattern
+                    .edge_tag_map
+                    .remove_by_right(&adjacent_edge_id);
+                // delete in edge property map
+                new_pattern
+                    .edge_properties_map
+                    .remove(&adjacent_edge_id);
+                // delete in edge predicate map
+                new_pattern
+                    .edge_predicate_map
+                    .remove(&adjacent_edge_id);
+                // update adjcent vertices's info
+                let adjacent_vertex = new_pattern
+                    .get_vertex_mut_from_id(adjacent_vertex_id)
+                    .unwrap();
+                // delete edge in adjacent edges
+                adjacent_vertex
+                    .adjacent_edges
+                    .remove(&adjacent_edge_id);
+                // delete target vertex in adjacent vertices
+                adjacent_vertex
+                    .adjacent_vertices
+                    .remove(&target_vertex_id);
+                // update out_degree/ in_degree info
+                if let PatternDirection::Out = dir {
+                    adjacent_vertex.in_degree -= 1;
+                } else {
+                    adjacent_vertex.out_degree -= 1;
+                }
+            }
+            new_pattern.rank_ranking();
+            Some(new_pattern)
+        } else {
+            None
+        }
+    }
 
     /// Find all possible ExtendSteps of current pattern based on the given Pattern Meta
     pub fn get_extend_steps(
@@ -1478,9 +1636,7 @@ mod tests {
     use crate::catalogue::codec::*;
     use crate::catalogue::pattern::PatternEdge;
     use crate::catalogue::pattern::PatternVertex;
-    use crate::catalogue::test_cases::extend_step_cases::*;
     use crate::catalogue::test_cases::pattern_cases::*;
-    use crate::catalogue::test_cases::pattern_meta_cases::*;
     use crate::catalogue::PatternId;
 
     /// Test whether the structure of pattern_case1 is the same as our previous description
@@ -1619,10 +1775,6 @@ mod tests {
             // 2 studyat edges
             assert_eq!(pattern.edge_label_map.get(&15).unwrap().len(), 2);
             // check structure
-            // build identical pattern for comparison
-            for pattern_edge in pattern.edges_iter() {
-                println!("{:?}", pattern_edge);
-            }
             let pattern_edge1 = PatternEdge::new(0, 15, 1, 0, 1, 12);
             let pattern_edge2 = PatternEdge::new(1, 15, 2, 0, 1, 12);
             let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
@@ -1918,510 +2070,6 @@ mod tests {
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
-    }
-
-    /// Test whether pattern_case1 + extend_step_case1 = pattern_case2
-    #[test]
-    fn test_pattern_case1_extend() {
-        let pattern_case1 = build_pattern_case1();
-        let extend_step = build_extend_step_case1();
-        let pattern_after_extend = pattern_case1.extend(extend_step).unwrap();
-        assert_eq!(pattern_after_extend.edges.len(), 4);
-        assert_eq!(pattern_after_extend.vertices.len(), 3);
-        // Pattern after extend should be exactly the same as pattern case2
-        let pattern_case2 = build_pattern_case2();
-        assert_eq!(pattern_after_extend.edges.len(), pattern_case2.edges.len());
-        for i in 0..pattern_after_extend.edges.len() as PatternId {
-            let edge1 = pattern_after_extend.edges.get(i).unwrap();
-            let edge2 = pattern_case2.edges.get(i).unwrap();
-            assert_eq!(edge1.id, edge2.id);
-            assert_eq!(edge1.label, edge2.label);
-            assert_eq!(edge1.start_v_id, edge2.start_v_id);
-            assert_eq!(edge1.start_v_label, edge2.start_v_label);
-            assert_eq!(edge1.end_v_id, edge2.end_v_id);
-            assert_eq!(edge1.end_v_label, edge2.end_v_label);
-        }
-        assert_eq!(pattern_after_extend.edges.len(), pattern_case2.edges.len());
-        for i in 0..pattern_after_extend.vertices.len() as PatternId {
-            let vertex1 = pattern_after_extend.vertices.get(i).unwrap();
-            let vertex2 = pattern_after_extend.vertices.get(i).unwrap();
-            assert_eq!(vertex1.id, vertex2.id);
-            assert_eq!(vertex1.label, vertex2.label);
-            assert_eq!(vertex1.rank, vertex2.rank);
-            assert_eq!(vertex1.in_degree, vertex2.in_degree);
-            assert_eq!(vertex1.out_degree, vertex2.out_degree);
-            assert_eq!(vertex1.adjacent_edges.len(), vertex2.adjacent_edges.len());
-            assert_eq!(vertex1.adjacent_vertices.len(), vertex2.adjacent_vertices.len());
-            for (adjacent_edge1_id, (adjacent_vertex1_id, dir1)) in &vertex1.adjacent_edges {
-                let (adjacent_vertex2_id, dir2) = vertex2
-                    .adjacent_edges
-                    .get(adjacent_edge1_id)
-                    .unwrap();
-                assert_eq!(*adjacent_vertex1_id, *adjacent_vertex2_id);
-                assert_eq!(*dir1, *dir2);
-            }
-            for (adjacent_vertex1_id, edges_with_dirs1) in &vertex1.adjacent_vertices {
-                let edges_with_dirs2 = vertex2
-                    .adjacent_vertices
-                    .get(adjacent_vertex1_id)
-                    .unwrap();
-                let (adjacent_edge1_id, dir1) = edges_with_dirs1[0];
-                let (adjacent_edge2_id, dir2) = edges_with_dirs2[0];
-                assert_eq!(adjacent_edge1_id, adjacent_edge2_id);
-                assert_eq!(dir1, dir2);
-            }
-        }
-        assert_eq!(pattern_after_extend.edge_label_map.len(), pattern_case2.edge_label_map.len());
-        for i in 0..=1 {
-            let edges_with_labeli_1 = pattern_after_extend
-                .edge_label_map
-                .get(&i)
-                .unwrap();
-            let edges_with_labeli_2 = pattern_case2.edge_label_map.get(&i).unwrap();
-            assert_eq!(edges_with_labeli_1.len(), edges_with_labeli_2.len());
-            let mut edges_with_labeli_1_iter = edges_with_labeli_1.iter();
-            let mut edges_with_labeli_2_iter = edges_with_labeli_2.iter();
-            let mut edges_with_labeli_1_element = edges_with_labeli_1_iter.next();
-            let mut edges_with_labeli_2_element = edges_with_labeli_2_iter.next();
-            while edges_with_labeli_1_element.is_some() {
-                assert_eq!(*edges_with_labeli_1_element.unwrap(), *edges_with_labeli_2_element.unwrap());
-                edges_with_labeli_1_element = edges_with_labeli_1_iter.next();
-                edges_with_labeli_2_element = edges_with_labeli_2_iter.next();
-            }
-        }
-        assert_eq!(pattern_after_extend.vertex_label_map.len(), pattern_case2.vertex_label_map.len());
-        for i in 0..=1 {
-            let vertices_with_labeli_1 = pattern_after_extend
-                .vertex_label_map
-                .get(&i)
-                .unwrap();
-            let vertices_with_labeli_2 = pattern_case2.vertex_label_map.get(&i).unwrap();
-            assert_eq!(vertices_with_labeli_1.len(), vertices_with_labeli_2.len());
-            let mut vertices_with_labeli_1_iter = vertices_with_labeli_1.iter();
-            let mut vertices_with_labeli_2_iter = vertices_with_labeli_2.iter();
-            let mut vertices_with_labeli_1_element = vertices_with_labeli_1_iter.next();
-            let mut vertices_with_labeli_2_element = vertices_with_labeli_2_iter.next();
-            while vertices_with_labeli_1_element.is_some() {
-                assert_eq!(
-                    *vertices_with_labeli_1_element.unwrap(),
-                    *vertices_with_labeli_2_element.unwrap()
-                );
-                vertices_with_labeli_1_element = vertices_with_labeli_1_iter.next();
-                vertices_with_labeli_2_element = vertices_with_labeli_2_iter.next();
-            }
-        }
-    }
-
-    #[test]
-    fn test_get_extend_steps_of_modern_case1() {
-        let modern_pattern_meta = get_modern_pattern_meta();
-        let person_only_pattern = build_modern_pattern_case1();
-        let all_extend_steps = person_only_pattern.get_extend_steps(&modern_pattern_meta, 10);
-        assert_eq!(all_extend_steps.len(), 3);
-        let mut out_0_0_0 = 0;
-        let mut incoming_0_0_0 = 0;
-        let mut out_0_0_1 = 0;
-        for extend_step in all_extend_steps {
-            let extend_edges = extend_step
-                .get_extend_edges_by_start_v(0, 0)
-                .unwrap();
-            assert_eq!(extend_edges.len(), 1);
-            let extend_edge = extend_edges[0];
-            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-            if extend_step.get_target_v_label() == 0 {
-                if extend_edge.get_direction() == PatternDirection::Out {
-                    out_0_0_0 += 1;
-                }
-                if extend_edge.get_direction() == PatternDirection::In {
-                    incoming_0_0_0 += 1;
-                }
-            }
-            if extend_step.get_target_v_label() == 1 && extend_edge.get_direction() == PatternDirection::Out
-            {
-                out_0_0_1 += 1;
-            }
-        }
-        assert_eq!(out_0_0_0, 1);
-        assert_eq!(incoming_0_0_0, 1);
-        assert_eq!(out_0_0_1, 1);
-    }
-
-    #[test]
-    fn test_get_extend_steps_of_modern_case2() {
-        let modern_pattern_meta = get_modern_pattern_meta();
-        let person_only_pattern = build_modern_pattern_case2();
-        let all_extend_steps = person_only_pattern.get_extend_steps(&modern_pattern_meta, 10);
-        assert_eq!(all_extend_steps.len(), 1);
-        assert_eq!(all_extend_steps[0].get_target_v_label(), 0);
-        assert_eq!(all_extend_steps[0].get_diff_start_v_num(), 1);
-        let extend_edge = all_extend_steps[0]
-            .get_extend_edges_by_start_v(1, 0)
-            .unwrap()[0];
-        assert_eq!(extend_edge.get_start_vertex_label(), 1);
-        assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-        assert_eq!(extend_edge.get_edge_label(), 1);
-        assert_eq!(extend_edge.get_direction(), PatternDirection::In);
-    }
-
-    #[test]
-    fn test_get_extend_steps_of_modern_case3() {
-        let modern_pattern_meta = get_modern_pattern_meta();
-        let person_knows_person = build_modern_pattern_case3();
-        let all_extend_steps = person_knows_person.get_extend_steps(&modern_pattern_meta, 10);
-        assert_eq!(all_extend_steps.len(), 11);
-        let mut extend_steps_with_label_0_count = 0;
-        let mut extend_steps_with_label_1_count = 0;
-        let mut out_0_0_0_count = 0;
-        let mut incoming_0_0_0_count = 0;
-        let mut out_0_1_0_count = 0;
-        let mut incoming_0_1_0_count = 0;
-        let mut out_0_0_1_count = 0;
-        let mut out_0_1_1_count = 0;
-        let mut out_0_0_0_out_0_1_0_count = 0;
-        let mut out_0_0_0_incoming_0_1_0_count = 0;
-        let mut incoming_0_0_0_out_0_1_0_count = 0;
-        let mut incoming_0_0_0_incoming_0_1_0_count = 0;
-        let mut out_0_0_1_out_0_1_1_count = 0;
-        for extend_step in all_extend_steps {
-            if extend_step.get_target_v_label() == 0 {
-                extend_steps_with_label_0_count += 1;
-                if extend_step.get_diff_start_v_num() == 1 {
-                    if extend_step.has_extend_from_start_v(0, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                out_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                incoming_0_0_0_count += 1
-                            }
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                out_0_0_1_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                out_0_1_1_count += 1;
-                            }
-                        }
-                    } else if extend_step.has_extend_from_start_v(0, 1) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 1)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 1);
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                out_0_1_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                incoming_0_1_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                out_0_0_1_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                out_0_1_1_count += 1;
-                            }
-                        }
-                    }
-                } else if extend_step.get_diff_start_v_num() == 2 {
-                    let mut found_out_0_0_0 = false;
-                    let mut found_incoming_0_0_0 = false;
-                    let mut found_out_0_1_0 = false;
-                    let mut found_incoming_0_1_0 = false;
-                    if extend_step.has_extend_from_start_v(0, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                found_out_0_0_0 = true;
-                            } else if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                found_incoming_0_0_0 = true;
-                            }
-                        }
-                    }
-                    if extend_step.has_extend_from_start_v(0, 1) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 1)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 1);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                found_out_0_1_0 = true;
-                            } else if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                found_incoming_0_1_0 = true;
-                            }
-                        }
-                    }
-                    if found_out_0_0_0 && found_out_0_1_0 {
-                        out_0_0_0_out_0_1_0_count += 1;
-                    } else if found_out_0_0_0 && found_incoming_0_1_0 {
-                        out_0_0_0_incoming_0_1_0_count += 1;
-                    } else if found_incoming_0_0_0 && found_out_0_1_0 {
-                        incoming_0_0_0_out_0_1_0_count += 1;
-                    } else if found_incoming_0_0_0 && found_incoming_0_1_0 {
-                        incoming_0_0_0_incoming_0_1_0_count += 1;
-                    }
-                }
-            } else if extend_step.get_target_v_label() == 1 {
-                extend_steps_with_label_1_count += 1;
-                if extend_step.get_diff_start_v_num() == 1 {
-                    if extend_step.has_extend_from_start_v(0, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                out_0_0_1_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                out_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                incoming_0_0_0_count += 1
-                            }
-                        }
-                    } else if extend_step.has_extend_from_start_v(0, 1) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 1)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 1);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                out_0_1_1_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                out_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                incoming_0_0_0_count += 1
-                            }
-                        }
-                    }
-                } else if extend_step.get_diff_start_v_num() == 2 {
-                    let mut found_out_0_0_1 = false;
-                    let mut found_out_0_1_1 = false;
-                    if extend_step.has_extend_from_start_v(0, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                found_out_0_0_1 = true;
-                            }
-                        }
-                    }
-                    if extend_step.has_extend_from_start_v(0, 1) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 1)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 1);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                found_out_0_1_1 = true;
-                            }
-                        }
-                    }
-                    if found_out_0_0_1 && found_out_0_1_1 {
-                        out_0_0_1_out_0_1_1_count += 1;
-                    }
-                }
-            }
-        }
-        assert_eq!(extend_steps_with_label_0_count, 8);
-        assert_eq!(extend_steps_with_label_1_count, 3);
-        assert_eq!(out_0_0_0_count, 1);
-        assert_eq!(incoming_0_0_0_count, 1);
-        assert_eq!(out_0_1_0_count, 1);
-        assert_eq!(incoming_0_1_0_count, 1);
-        assert_eq!(out_0_0_1_count, 1);
-        assert_eq!(out_0_1_1_count, 1);
-        assert_eq!(out_0_0_0_out_0_1_0_count, 1);
-        assert_eq!(out_0_0_0_incoming_0_1_0_count, 1);
-        assert_eq!(incoming_0_0_0_out_0_1_0_count, 1);
-        assert_eq!(incoming_0_0_0_incoming_0_1_0_count, 1);
-        assert_eq!(out_0_0_1_out_0_1_1_count, 1);
-    }
-
-    #[test]
-    fn test_get_extend_steps_of_modern_case4() {
-        let modern_pattern_meta = get_modern_pattern_meta();
-        let person_created_software = build_modern_pattern_case4();
-        let all_extend_steps = person_created_software.get_extend_steps(&modern_pattern_meta, 10);
-        assert_eq!(all_extend_steps.len(), 6);
-        let mut extend_steps_with_label_0_count = 0;
-        let mut extend_steps_with_label_1_count = 0;
-        let mut out_0_0_0_count = 0;
-        let mut incoming_0_0_0_count = 0;
-        let mut incoming_1_0_1_count = 0;
-        let mut out_0_0_0_incoming_1_0_1_count = 0;
-        let mut incoming_0_0_0_incoming_1_0_1_count = 0;
-        for extend_step in all_extend_steps {
-            if extend_step.get_target_v_label() == 0 {
-                extend_steps_with_label_0_count += 1;
-                if extend_step.get_diff_start_v_num() == 1 {
-                    if extend_step.has_extend_from_start_v(0, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                out_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                incoming_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                incoming_1_0_1_count += 1;
-                            }
-                        }
-                    } else if extend_step.has_extend_from_start_v(1, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(1, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 1);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                out_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                incoming_0_0_0_count += 1;
-                            }
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                incoming_1_0_1_count += 1;
-                            }
-                        }
-                    }
-                } else if extend_step.get_diff_start_v_num() == 2 {
-                    let mut found_out_0_0_0 = false;
-                    let mut found_incoming_1_0_1 = false;
-                    let mut found_incoming_0_0_0 = false;
-                    if extend_step.has_extend_from_start_v(0, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(0, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 0);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::Out
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                found_out_0_0_0 = true;
-                            } else if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 0
-                            {
-                                found_incoming_0_0_0 = true;
-                            }
-                        }
-                    }
-                    if extend_step.has_extend_from_start_v(1, 0) {
-                        let extend_edges = extend_step
-                            .get_extend_edges_by_start_v(1, 0)
-                            .unwrap();
-                        for extend_edge in extend_edges {
-                            assert_eq!(extend_edge.get_start_vertex_label(), 1);
-                            assert_eq!(extend_edge.get_start_vertex_rank(), 0);
-                            if extend_edge.get_direction() == PatternDirection::In
-                                && extend_edge.get_edge_label() == 1
-                            {
-                                found_incoming_1_0_1 = true;
-                            }
-                        }
-                    }
-                    if found_out_0_0_0 && found_incoming_1_0_1 {
-                        out_0_0_0_incoming_1_0_1_count += 1;
-                    } else if found_incoming_0_0_0 && found_incoming_1_0_1 {
-                        incoming_0_0_0_incoming_1_0_1_count += 1;
-                    }
-                }
-            } else if extend_step.get_target_v_label() == 1 {
-                extend_steps_with_label_1_count += 1;
-            }
-        }
-        assert_eq!(extend_steps_with_label_0_count, 5);
-        assert_eq!(extend_steps_with_label_1_count, 1);
-        assert_eq!(out_0_0_0_count, 1);
-        assert_eq!(incoming_0_0_0_count, 1);
-        assert_eq!(incoming_1_0_1_count, 1);
-        assert_eq!(out_0_0_0_incoming_1_0_1_count, 1);
-        assert_eq!(incoming_0_0_0_incoming_1_0_1_count, 1);
-    }
-
-    #[test]
-    fn test_get_extend_steps_of_ldbc_case1() {
-        let ldbc_pattern_meta = get_ldbc_pattern_meta();
-        let person_knows_person = build_ldbc_pattern_case1();
-        let all_extend_steps = person_knows_person.get_extend_steps(&ldbc_pattern_meta, 10);
-        assert_eq!(all_extend_steps.len(), 44);
     }
 
     #[test]
