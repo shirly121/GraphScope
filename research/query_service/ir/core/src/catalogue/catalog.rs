@@ -357,7 +357,6 @@ impl Catalogue {
 impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
     fn build_logical_plan(&self) -> crate::error::IrResult<pb::LogicalPlan> {
         let &(pattern, catalog, pattern_meta) = self;
-        println!("{:?}", catalog.store);
         let pattern_code: Vec<u8> = Cipher::encode_to(pattern, &catalog.encoder);
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
             let mut trace_pattern = pattern.clone();
@@ -676,6 +675,56 @@ mod test {
     #[test]
     fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
+            .build_logical_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case2() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
+            .build_logical_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case4() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         let ldbc_graph_meta = get_ldbc_pattern_meta();
         let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
