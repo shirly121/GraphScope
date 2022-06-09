@@ -13,18 +13,24 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
+use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 
-use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
-
 use crate::catalogue::codec::{Cipher, Encoder};
-use crate::catalogue::pattern::Pattern;
+use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
+use crate::catalogue::pattern::{Pattern, PatternEdge};
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{DynIter, PatternId, PatternRankId};
+use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternRankId};
+use crate::error::IrError;
+use crate::plan::patmat::MatchingStrategy;
+use ir_common::generated::algebra::LogicalPlan;
 
-use super::extend_step::{ExtendEdge, ExtendStep};
-use super::pattern::PatternEdge;
-use super::PatternDirection;
+use super::extend_step::DefiniteExtendStep;
+
+static ALPHA: f64 = 0.5;
+static BETA: f64 = 0.5;
 
 #[derive(Debug)]
 struct VertexWeight {
@@ -33,7 +39,7 @@ struct VertexWeight {
     best_approach: Option<EdgeIndex>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct EdgeWeightForJoin {
     pattern_index: NodeIndex,
 }
@@ -41,20 +47,37 @@ struct EdgeWeightForJoin {
 #[derive(Debug, Clone)]
 struct EdgeWeightForExtendStep {
     code: Vec<u8>,
+    is_single_extend: bool,
     count_sum: usize,
     counts: BinaryHeap<(usize, PatternId, PatternRankId)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum EdgeWeight {
     Pattern(EdgeWeightForJoin),
     ExtendStep(EdgeWeightForExtendStep),
 }
 
 impl EdgeWeight {
-    pub fn get_extend_step_weight(&self) -> Option<EdgeWeightForExtendStep> {
+    fn is_extend(&self) -> bool {
+        if let EdgeWeight::ExtendStep(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn is_join(&self) -> bool {
+        if let EdgeWeight::ExtendStep(_) = self {
+            false
+        } else {
+            true
+        }
+    }
+
+    fn get_extend_step_weight(&self) -> Option<&EdgeWeightForExtendStep> {
         if let EdgeWeight::ExtendStep(w) = self {
-            Some(w.clone())
+            Some(&w)
         } else {
             None
         }
@@ -97,8 +120,8 @@ impl Catalogue {
                 continue;
             }
             let extend_steps = relaxed_pattern.get_extend_steps(pattern_meta, same_label_vertex_limit);
-            for extend_step in extend_steps {
-                let extend_step_code: Vec<u8> = Cipher::encode_to(&extend_step, &catalog.encoder);
+            for extend_step in extend_steps.iter() {
+                let extend_step_code: Vec<u8> = Cipher::encode_to(extend_step, &catalog.encoder);
                 let new_pattern = relaxed_pattern.extend(extend_step).unwrap();
                 let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
                 let (new_pattern_index, existed) = if let Some(pattern_index) = catalog
@@ -121,6 +144,7 @@ impl Catalogue {
                     new_pattern_index,
                     EdgeWeight::ExtendStep(EdgeWeightForExtendStep {
                         code: extend_step_code.clone(),
+                        is_single_extend: extend_step.get_extend_edges_num() == 0,
                         count_sum: 0,
                         counts: BinaryHeap::new(),
                     }),
@@ -280,6 +304,7 @@ impl Catalogue {
                             new_pattern_index,
                             EdgeWeight::ExtendStep(EdgeWeightForExtendStep {
                                 code: extend_step_code,
+                                is_single_extend: extend_step.get_extend_edges_num() == 1,
                                 count_sum: 0,
                                 counts: BinaryHeap::new(),
                             }),
@@ -291,6 +316,167 @@ impl Catalogue {
             }
         }
         catalog
+    }
+}
+
+impl Catalogue {
+    fn get_pattern_index(&self, pattern_code: &Vec<u8>) -> Option<NodeIndex> {
+        self.pattern_v_locate_map
+            .get(pattern_code)
+            .cloned()
+    }
+
+    fn get_pattern_weight(&self, pattern_index: NodeIndex) -> Option<&VertexWeight> {
+        self.store.node_weight(pattern_index)
+    }
+
+    fn pattern_out_connection_iter(
+        &self, pattern_index: NodeIndex,
+    ) -> DynIter<(NodeIndex, &VertexWeight, &EdgeWeight)> {
+        Box::new(
+            self.store
+                .edges_directed(pattern_index, Direction::Outgoing)
+                .map(move |edge| {
+                    (edge.target(), self.store.node_weight(edge.target()).unwrap(), edge.weight())
+                }),
+        )
+    }
+
+    fn pattern_in_connection_iter(
+        &self, pattern_index: NodeIndex,
+    ) -> DynIter<(NodeIndex, &VertexWeight, &EdgeWeight)> {
+        Box::new(
+            self.store
+                .edges_directed(pattern_index, Direction::Incoming)
+                .map(move |edge| {
+                    (edge.source(), self.store.node_weight(edge.source()).unwrap(), edge.weight())
+                }),
+        )
+    }
+}
+
+impl MatchingStrategy for (&Pattern, &Catalogue) {
+    fn build_logical_plan(&self) -> crate::error::IrResult<LogicalPlan> {
+        let &(pattern, catalog) = self;
+        let pattern_code: Vec<u8> = Cipher::encode_to(pattern, &Encoder::init_by_pattern(pattern, 3));
+        if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
+            let mut trace_pattern = pattern.clone();
+            let mut trace_pattern_index = node_index;
+            let mut trace_pattern_weight = catalog
+                .get_pattern_weight(trace_pattern_index)
+                .unwrap();
+            let mut definite_extend_steps = vec![];
+            while trace_pattern.get_vertex_num() > 1 {
+                let mut all_extends: Vec<(NodeIndex, &VertexWeight, &EdgeWeight)> = catalog
+                    .pattern_in_connection_iter(trace_pattern_index)
+                    .filter(|(_, _, edge_weight)| edge_weight.is_extend())
+                    .collect();
+                all_extends.sort_by(
+                    |&(_, pre_pattern_weight1, edge_weight1), &(_, pre_pattern_weight2, edge_weight2)| {
+                        total_cost_estimate(
+                            ALPHA,
+                            BETA,
+                            pre_pattern_weight1,
+                            trace_pattern_weight,
+                            edge_weight1,
+                        )
+                        .cmp(&total_cost_estimate(
+                            ALPHA,
+                            BETA,
+                            pre_pattern_weight2,
+                            trace_pattern_weight,
+                            edge_weight2,
+                        ))
+                    },
+                );
+                let mut found_best_extend = false;
+                for &(pre_pattern_index, pre_pattern_weight, edge_weight) in all_extends.iter() {
+                    let extend_step: ExtendStep = Cipher::decode_from(
+                        &edge_weight
+                            .get_extend_step_weight()
+                            .unwrap()
+                            .code,
+                        &catalog.encoder,
+                    )?;
+                    let target_vertex_id = trace_pattern
+                        .locate_vertex(&extend_step, &pre_pattern_weight.code, &catalog.encoder)
+                        .unwrap();
+                    if !trace_pattern.vertex_has_predicate(target_vertex_id)
+                        && !trace_pattern.vertex_has_property(target_vertex_id)
+                    {
+                        let definite_extend_step =
+                            DefiniteExtendStep::new(target_vertex_id, &trace_pattern).unwrap();
+                        definite_extend_steps.push(definite_extend_step);
+                        trace_pattern.remove_vertex(target_vertex_id);
+                        trace_pattern_index = pre_pattern_index;
+                        trace_pattern_weight = pre_pattern_weight;
+                        found_best_extend = true;
+                    }
+                }
+                if !found_best_extend {
+                    let (pre_pattern_index, pre_pattern_weight, edge_weight) = all_extends[0];
+                    let extend_step: ExtendStep = Cipher::decode_from(
+                        &edge_weight
+                            .get_extend_step_weight()
+                            .unwrap()
+                            .code,
+                        &catalog.encoder,
+                    )?;
+                    let target_vertex_id = trace_pattern
+                        .locate_vertex(&extend_step, &pre_pattern_weight.code, &catalog.encoder)
+                        .unwrap();
+                    let definite_extend_step =
+                        DefiniteExtendStep::new(target_vertex_id, &trace_pattern).unwrap();
+                    definite_extend_steps.push(definite_extend_step);
+                    trace_pattern.remove_vertex(target_vertex_id);
+                    trace_pattern_index = pre_pattern_index;
+                    trace_pattern_weight = pre_pattern_weight;
+                }
+            }
+
+            let mut match_plan = LogicalPlan::default();
+            Ok(match_plan)
+        } else {
+            Err(IrError::Unsupported("Cannot locate the pattern in the catalog".to_string()))
+        }
+    }
+}
+
+fn f_cost_estimate(
+    alpha: f64, pre_pattern_weight: &VertexWeight, extend_weight: &EdgeWeightForExtendStep,
+) -> usize {
+    (alpha * (pre_pattern_weight.count as f64) * (extend_weight.count_sum as f64)) as usize
+}
+
+fn i_cost_estimate(
+    beta: f64, pre_pattern_weight: &VertexWeight, extend_weight: &EdgeWeightForExtendStep,
+) -> usize {
+    if extend_weight.is_single_extend {
+        0
+    } else {
+        (beta * (pre_pattern_weight.count as f64) * (extend_weight.count_sum as f64)) as usize
+    }
+}
+
+fn e_cost_estimate(pattern_weight: &VertexWeight) -> usize {
+    pattern_weight.count
+}
+
+fn d_cost_estimate(pre_pattern_weight: &VertexWeight) -> usize {
+    pre_pattern_weight.count
+}
+
+fn total_cost_estimate(
+    alpha: f64, beta: f64, pre_pattern_weight: &VertexWeight, pattern_weight: &VertexWeight,
+    edge_weight: &EdgeWeight,
+) -> usize {
+    if let EdgeWeight::ExtendStep(extend_weight) = edge_weight {
+        f_cost_estimate(alpha, pre_pattern_weight, extend_weight)
+            + i_cost_estimate(beta, pre_pattern_weight, extend_weight)
+            + e_cost_estimate(pattern_weight)
+            + d_cost_estimate(pre_pattern_weight)
+    } else {
+        usize::MAX
     }
 }
 
@@ -316,33 +502,6 @@ mod test {
         assert_eq!(34, catalog.store.node_count());
         assert_eq!(42, catalog.store.edge_count());
     }
-
-    #[test]
-    fn test_catalog_for_ldbc_graph_size_3() {
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 3, 3);
-        assert_eq!(34, catalog.store.node_count());
-        assert_eq!(42, catalog.store.edge_count());
-    }
-
-    // 3.41s
-    #[test]
-    fn test_catalog_for_ldbc_graph_size_4() {
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 4, 3);
-        assert_eq!(34, catalog.store.node_count());
-        assert_eq!(42, catalog.store.edge_count());
-    }
-
-    // 200.19s
-    #[test]
-    fn test_catalog_for_ldbc_graph_size_5() {
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 5, 3);
-        assert_eq!(34, catalog.store.node_count());
-        assert_eq!(42, catalog.store.edge_count());
-    }
-
 
     #[test]
     fn test_catalog_for_modern_pattern_case1() {

@@ -13,6 +13,10 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use ir_common::generated::algebra as pb;
+use ir_common::generated::common as common_pb;
+use std::collections::HashMap;
+
 type PatternId = usize;
 type PatternLabelId = ir_common::KeyId;
 type PatternRankId = i32;
@@ -39,6 +43,20 @@ impl PatternDirection {
             PatternDirection::Out => PatternDirection::In,
             PatternDirection::In => PatternDirection::Out,
         }
+    }
+}
+
+pub fn query_params(
+    tables: Vec<common_pb::NameOrId>, columns: Vec<common_pb::NameOrId>,
+    predicate: Option<common_pb::Expression>,
+) -> pb::QueryParams {
+    pb::QueryParams {
+        tables,
+        columns,
+        is_all_columns: false,
+        limit: None,
+        predicate,
+        extra: HashMap::new(),
     }
 }
 

@@ -18,6 +18,11 @@ use std::iter::Iterator;
 
 use crate::catalogue::{DynIter, PatternDirection, PatternLabelId, PatternRankId};
 
+use crate::catalogue::pattern::Pattern;
+use crate::catalogue::{query_params, PatternId};
+
+use ir_common::generated::algebra as pb;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExtendEdge {
     start_v_label: PatternLabelId,
@@ -36,7 +41,7 @@ impl ExtendEdge {
     }
 }
 
-/// Methods for access fields of PatternEdge
+/// Methods for access fields of VagueExtendEdge
 impl ExtendEdge {
     pub fn get_start_vertex_label(&self) -> PatternLabelId {
         self.start_v_label
@@ -126,6 +131,69 @@ impl ExtendStep {
         &self, v_label: PatternLabelId, v_rank: PatternRankId,
     ) -> Option<&Vec<ExtendEdge>> {
         self.extend_edges.get(&(v_label, v_rank))
+    }
+}
+
+pub struct DefiniteExtendEdge {
+    start_v_id: PatternId,
+    edge_label: PatternLabelId,
+    dir: PatternDirection,
+}
+
+pub struct DefiniteExtendStep {
+    target_v_id: PatternId,
+    target_v_label: PatternLabelId,
+    extend_edges: Vec<DefiniteExtendEdge>,
+}
+
+impl DefiniteExtendStep {
+    pub fn new(target_v_id: PatternId, pattern: &Pattern) -> Option<DefiniteExtendStep> {
+        if let Some(target_vertex) = pattern.get_vertex_from_id(target_v_id) {
+            let target_v_label = target_vertex.get_label();
+            let mut extend_edges = vec![];
+            for (edge_id, _, dir) in target_vertex.adjacent_edges_iter() {
+                let edge = pattern.get_edge_from_id(edge_id).unwrap();
+                if let PatternDirection::In = dir {
+                    extend_edges.push(DefiniteExtendEdge {
+                        start_v_id: edge.get_start_vertex_id(),
+                        edge_label: edge.get_label(),
+                        dir: PatternDirection::Out,
+                    });
+                } else {
+                    extend_edges.push(DefiniteExtendEdge {
+                        start_v_id: edge.get_end_vertex_id(),
+                        edge_label: edge.get_label(),
+                        dir: PatternDirection::In,
+                    });
+                }
+            }
+            Some(DefiniteExtendStep { target_v_id, target_v_label, extend_edges })
+        } else {
+            None
+        }
+    }
+
+    pub fn generate_operators(&self) -> (Vec<pb::EdgeExpand>, Option<pb::Unfold>) {
+        let mut expand_operators = vec![];
+        let unfold_operator = if self.extend_edges.len() > 1 {
+            Some(pb::Unfold {
+                tag: Some((self.target_v_id as i32).into()),
+                alias: Some((self.target_v_id as i32).into()),
+            })
+        } else {
+            None
+        };
+        for extend_edge in self.extend_edges.iter() {
+            let edge_expand = pb::EdgeExpand {
+                v_tag: Some((extend_edge.start_v_id as i32).into()),
+                direction: extend_edge.dir as i32,
+                params: Some(query_params(vec![extend_edge.edge_label.into()], vec![], None)),
+                is_edge: false,
+                alias: Some((self.target_v_id as i32).into()),
+            };
+            expand_operators.push(edge_expand);
+        }
+        (expand_operators, unfold_operator)
     }
 }
 
@@ -219,7 +287,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_extend_step_case1();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_pattern_case2();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -227,7 +295,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -240,7 +308,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_extend_step_case2();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_pattern_case9();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -248,7 +316,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -261,7 +329,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_modern_extend_step_case1();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case3();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -269,7 +337,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -282,7 +350,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_modern_extend_step_case2();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case3();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -290,7 +358,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -303,7 +371,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_modern_extend_step_case3();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case4();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -311,7 +379,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -324,7 +392,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_modern_extend_step_case4();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case4();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -332,7 +400,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -345,7 +413,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_modern_extend_step_case6();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case5();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -353,7 +421,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);
@@ -366,7 +434,7 @@ mod tests {
         let encoder1 = Encoder::init_by_pattern(&pattern1, 2);
         let pattern1_code: Vec<u8> = Cipher::encode_to(&pattern1, &encoder1);
         let extend_step = build_modern_extend_step_case5();
-        let pattern_after_extend = pattern1.extend(extend_step.clone()).unwrap();
+        let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case5();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
@@ -374,7 +442,7 @@ mod tests {
         let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
-            .de_extend(extend_step)
+            .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();
         let pattern_after_de_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_de_extend, &encoder1);
         assert_eq!(pattern_after_extend_code, pattern2_code);

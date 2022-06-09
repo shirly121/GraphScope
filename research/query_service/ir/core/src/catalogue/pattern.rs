@@ -29,6 +29,8 @@ use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
 
+use super::codec::{Cipher, Encoder};
+
 #[derive(Debug, Clone)]
 pub struct PatternVertex {
     id: PatternId,
@@ -615,7 +617,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                 }
                             } else {
                                 return Err(IrError::InvalidPattern(
-                                    "Cannot find edge label info in the pattern meta".to_string(),
+                                    "given edge label doesn't exist".to_string(),
                                 ));
                             }
                         } else {
@@ -836,6 +838,15 @@ impl Pattern {
         min_rank_bit_num
     }
 
+    pub fn edge_has_property(&self, edge_id: PatternId) -> bool {
+        self.edge_properties_map.contains_key(&edge_id)
+    }
+
+    pub fn vertex_has_property(&self, vertex_id: PatternId) -> bool {
+        self.vertex_properties_map
+            .contains_key(&vertex_id)
+    }
+
     /// Iterate over a PatternEdge's all required properties
     pub fn edge_properties_iter(&self, edge_id: PatternId) -> DynIter<&NameOrId> {
         match self.edge_properties_map.get(&edge_id) {
@@ -866,6 +877,15 @@ impl Pattern {
             .entry(vertex_id)
             .or_insert(Vec::new())
             .push(property);
+    }
+
+    pub fn edge_has_predicate(&self, edge_id: PatternId) -> bool {
+        self.edge_predicate_map.contains_key(&edge_id)
+    }
+
+    pub fn vertex_has_predicate(&self, vertex_id: PatternId) -> bool {
+        self.vertex_predicate_map
+            .contains_key(&vertex_id)
     }
 
     /// Get the predicate requirement of a PatternEdge
@@ -1582,7 +1602,7 @@ impl Pattern {
     /// 1. Some extend edges of the ExtendStep cannot find a correponsponding source vertex in current Pattern
     /// (the required source vertex doesn't exist or already occupied by other extend edges)
     /// 2. Or meet some limitations(e.g. limit the length of Pattern)
-    pub fn extend(&self, extend_step: ExtendStep) -> Option<Pattern> {
+    pub fn extend(&self, extend_step: &ExtendStep) -> Option<Pattern> {
         let mut new_pattern = self.clone();
         let target_v_label = extend_step.get_target_v_label();
         let mut new_pattern_vertex = PatternVertex {
@@ -1616,8 +1636,6 @@ impl Pattern {
                     new_pattern_vertex.label,
                 );
                 if let PatternDirection::In = extend_dir {
-                    // (start_v_id, end_v_id) = (end_v_id, start_v_id);
-                    // (start_v_label, end_v_label) = (end_v_label, start_v_label);
                     std::mem::swap(&mut start_v_id, &mut end_v_id);
                     std::mem::swap(&mut start_v_label, &mut end_v_label);
                 }
@@ -1680,11 +1698,12 @@ impl Pattern {
         Some(new_pattern)
     }
 
-    pub fn de_extend(&self, extend_step: ExtendStep) -> Option<Pattern> {
-        let mut new_pattern = self.clone();
+    pub fn locate_vertex(
+        &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
+    ) -> Option<PatternId> {
+        let mut target_vertex_id: Option<PatternId> = None;
         let target_v_label = extend_step.get_target_v_label();
-        let mut target_vertex: Option<&PatternVertex> = None;
-        for target_v_cand in new_pattern.vertices_iter_by_label(target_v_label) {
+        for target_v_cand in self.vertices_iter_by_label(target_v_label) {
             if target_v_cand.get_degree() != extend_step.get_extend_edges_num() {
                 continue;
             }
@@ -1693,12 +1712,10 @@ impl Pattern {
                     .adjacent_edges_iter()
                     .map(|(edge_id, vertex_id, dir)| {
                         (
-                            new_pattern
-                                .get_vertex_from_id(vertex_id)
+                            self.get_vertex_from_id(vertex_id)
                                 .unwrap()
                                 .get_label(),
-                            new_pattern
-                                .get_edge_from_id(edge_id)
+                            self.get_edge_from_id(edge_id)
                                 .unwrap()
                                 .get_label(),
                             dir.reverse(),
@@ -1717,86 +1734,84 @@ impl Pattern {
                     })
                     .collect();
             if cand_src_v_e_label_dir_set == extend_src_v_e_label_dir_set {
-                target_vertex = Some(target_v_cand);
-                break;
+                let mut check_pattern = self.clone();
+                check_pattern.remove_vertex(target_v_cand.get_id());
+                let check_pattern_code: Vec<u8> = Cipher::encode_to(&check_pattern, encoder);
+                if check_pattern_code == *target_pattern_code {
+                    target_vertex_id = Some(target_v_cand.get_id());
+                    break;
+                }
             }
         }
-        if let Some(target_vertex) = target_vertex {
+        target_vertex_id
+    }
+
+    pub fn remove_vertex(&mut self, vertex_id: PatternId) {
+        if let Some(target_vertex) = self.get_vertex_from_id(vertex_id) {
             let target_vertex_id = target_vertex.get_id();
             let target_vertex_label = target_vertex.get_label();
             let adjacent_edges_vertices_dirs: Vec<(PatternId, PatternId, PatternDirection)> =
                 target_vertex.adjacent_edges_iter().collect();
             // delete target vertex
             // delete in vertices
-            new_pattern.vertices.remove(target_vertex_id);
+            self.vertices.remove(target_vertex_id);
             // delete in vertex label map
-            new_pattern
-                .vertex_label_map
+            self.vertex_label_map
                 .get_mut(&target_vertex_label)
                 .unwrap()
                 .remove(&target_vertex_id);
-            if new_pattern
+            if self
                 .vertex_label_map
                 .get(&target_vertex_label)
                 .unwrap()
                 .len()
                 == 0
             {
-                new_pattern
-                    .vertex_label_map
+                self.vertex_label_map
                     .remove(&target_vertex_label);
             }
             // delete in vertex tag map
-            new_pattern
-                .vertex_tag_map
+            self.vertex_tag_map
                 .remove_by_right(&target_vertex_id);
             // delete in vertex property map
-            new_pattern
-                .vertex_properties_map
+            self.vertex_properties_map
                 .remove(&target_vertex_id);
             // delete in vertex predicate map
-            new_pattern
-                .vertex_predicate_map
+            self.vertex_predicate_map
                 .remove(&target_vertex_id);
             for (adjacent_edge_id, adjacent_vertex_id, dir) in adjacent_edges_vertices_dirs {
-                let adjacent_edge_label = new_pattern
+                let adjacent_edge_label = self
                     .get_edge_from_id(adjacent_edge_id)
                     .unwrap()
                     .get_label();
                 // delete adjacent edges
                 // delete in edges
-                new_pattern.edges.remove(adjacent_edge_id);
+                self.edges.remove(adjacent_edge_id);
                 // delete in edge label map
-                new_pattern
-                    .edge_label_map
+                self.edge_label_map
                     .get_mut(&adjacent_edge_label)
                     .unwrap()
                     .remove(&adjacent_edge_id);
-                if new_pattern
+                if self
                     .edge_label_map
                     .get(&adjacent_edge_label)
                     .unwrap()
                     .len()
                     == 0
                 {
-                    new_pattern
-                        .edge_label_map
-                        .remove(&adjacent_edge_label);
+                    self.edge_label_map.remove(&adjacent_edge_label);
                 }
                 // delete in edge tag map
-                new_pattern
-                    .edge_tag_map
+                self.edge_tag_map
                     .remove_by_right(&adjacent_edge_id);
                 // delete in edge property map
-                new_pattern
-                    .edge_properties_map
+                self.edge_properties_map
                     .remove(&adjacent_edge_id);
                 // delete in edge predicate map
-                new_pattern
-                    .edge_predicate_map
+                self.edge_predicate_map
                     .remove(&adjacent_edge_id);
                 // update adjcent vertices's info
-                let adjacent_vertex = new_pattern
+                let adjacent_vertex = self
                     .get_vertex_mut_from_id(adjacent_vertex_id)
                     .unwrap();
                 // delete edge in adjacent edges
@@ -1814,7 +1829,16 @@ impl Pattern {
                     adjacent_vertex.out_degree -= 1;
                 }
             }
-            new_pattern.vertex_ranking();
+            self.vertex_ranking();
+        }
+    }
+
+    pub fn de_extend(
+        &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
+    ) -> Option<Pattern> {
+        if let Some(target_vertex_id) = self.locate_vertex(extend_step, target_pattern_code, encoder) {
+            let mut new_pattern = self.clone();
+            new_pattern.remove_vertex(target_vertex_id);
             Some(new_pattern)
         } else {
             None
