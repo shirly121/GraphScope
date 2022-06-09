@@ -13,6 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use bimap::BiBTreeMap;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
@@ -22,10 +23,10 @@ use crate::plan::meta::Schema;
 pub struct PatternMeta {
     /// Key: vertex label name, Value: vertex labal id
     /// Usage: get a vertex label id from its label name
-    vertex_label_map: BTreeMap<String, PatternLabelId>,
+    vertex_label_map: BiBTreeMap<String, PatternLabelId>,
     /// Key: edge label name, Value: edge label id
     /// Usage: get an edge label id from its label name
-    edge_label_map: BTreeMap<String, PatternLabelId>,
+    edge_label_map: BiBTreeMap<String, PatternLabelId>,
     /// Key: vertex label id, Value: BTreeSet<(edge label id, direction)>
     /// Usage: given a vertex(label id), find all its adjacent edges(label id) with directions
     v2edges_meta: BTreeMap<PatternLabelId, BTreeSet<(PatternLabelId, PatternDirection)>>,
@@ -45,8 +46,8 @@ impl From<Schema> for PatternMeta {
     fn from(src_schema: Schema) -> PatternMeta {
         let (table_map, relation_labels) = src_schema.get_pattern_schema_info();
         let mut pattern_meta = PatternMeta {
-            vertex_label_map: BTreeMap::new(),
-            edge_label_map: BTreeMap::new(),
+            vertex_label_map: BiBTreeMap::new(),
+            edge_label_map: BiBTreeMap::new(),
             v2edges_meta: BTreeMap::new(),
             e2vertices_meta: BTreeMap::new(),
             vv2edges_meta: BTreeMap::new(),
@@ -142,11 +143,27 @@ impl PatternMeta {
     }
 
     pub fn get_vertex_label_id(&self, label_name: &str) -> Option<PatternLabelId> {
-        self.vertex_label_map.get(label_name).cloned()
+        self.vertex_label_map
+            .get_by_left(label_name)
+            .cloned()
     }
 
     pub fn get_edge_label_id(&self, label_name: &str) -> Option<PatternLabelId> {
-        self.edge_label_map.get(label_name).cloned()
+        self.edge_label_map
+            .get_by_left(label_name)
+            .cloned()
+    }
+
+    pub fn get_vertex_label_name(&self, label_id: PatternLabelId) -> Option<String> {
+        self.vertex_label_map
+            .get_by_right(&label_id)
+            .cloned()
+    }
+
+    pub fn get_edge_label_name(&self, label_id: PatternLabelId) -> Option<String> {
+        self.edge_label_map
+            .get_by_right(&label_id)
+            .cloned()
     }
 
     /// Given a soruce vertex label, iterate over all its neighboring adjacent vertices(label)

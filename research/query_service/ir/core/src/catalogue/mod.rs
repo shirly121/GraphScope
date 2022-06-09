@@ -46,7 +46,7 @@ impl PatternDirection {
     }
 }
 
-pub fn query_params(
+pub(crate) fn query_params(
     tables: Vec<common_pb::NameOrId>, columns: Vec<common_pb::NameOrId>,
     predicate: Option<common_pb::Expression>,
 ) -> pb::QueryParams {
@@ -60,10 +60,15 @@ pub fn query_params(
     }
 }
 
+#[allow(dead_code)]
 pub mod catalog;
+
 pub mod codec;
+
 pub mod extend_step;
+
 pub mod pattern;
+
 pub mod pattern_meta;
 
 #[cfg(test)]

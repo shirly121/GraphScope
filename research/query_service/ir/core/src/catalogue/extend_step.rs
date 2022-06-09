@@ -21,7 +21,10 @@ use crate::catalogue::{DynIter, PatternDirection, PatternLabelId, PatternRankId}
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, PatternId};
 
+use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
+
+use super::pattern_meta::PatternMeta;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExtendEdge {
@@ -173,16 +176,8 @@ impl DefiniteExtendStep {
         }
     }
 
-    pub fn generate_operators(&self) -> (Vec<pb::EdgeExpand>, Option<pb::Unfold>) {
+    pub fn generate_expand_operators(&self) -> Vec<pb::EdgeExpand> {
         let mut expand_operators = vec![];
-        let unfold_operator = if self.extend_edges.len() > 1 {
-            Some(pb::Unfold {
-                tag: Some((self.target_v_id as i32).into()),
-                alias: Some((self.target_v_id as i32).into()),
-            })
-        } else {
-            None
-        };
         for extend_edge in self.extend_edges.iter() {
             let edge_expand = pb::EdgeExpand {
                 v_tag: Some((extend_edge.start_v_id as i32).into()),
@@ -193,7 +188,20 @@ impl DefiniteExtendStep {
             };
             expand_operators.push(edge_expand);
         }
-        (expand_operators, unfold_operator)
+        expand_operators
+    }
+
+    pub fn generate_intersect_operator(&self, parents: Vec<i32>) -> pb::Intersect {
+        pb::Intersect { parents, key: Some((self.target_v_id as i32).into()) }
+    }
+
+    pub fn generate_label_filter_operator(&self, pattern_meta: &PatternMeta) -> pb::Select {
+        let target_v_label_name = pattern_meta
+            .get_vertex_label_name(self.target_v_label)
+            .unwrap();
+        pb::Select {
+            predicate: Some(str_to_expr_pb(format!("@.~label == \"{}\"", target_v_label_name)).unwrap()),
+        }
     }
 }
 

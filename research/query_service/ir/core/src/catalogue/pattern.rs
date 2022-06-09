@@ -730,6 +730,18 @@ impl Pattern {
             .and_then(|id| self.edges.get(*id))
     }
 
+    pub fn edges_with_tag_iter(&self) -> DynIter<PatternId> {
+        Box::new(self.edge_tag_map.iter().map(|(_, e_id)| *e_id))
+    }
+
+    pub fn vertices_with_tag_iter(&self) -> DynIter<PatternId> {
+        Box::new(
+            self.vertex_tag_map
+                .iter()
+                .map(|(_, v_id)| *v_id),
+        )
+    }
+
     /// Assign a PatternEdge of the Pattern with the Given Tag
     pub fn add_edge_tag(&mut self, edge_tag: &NameOrId, edge_id: PatternId) {
         self.edge_tag_map

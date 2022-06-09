@@ -19,19 +19,18 @@ use petgraph::Direction;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 
 use crate::catalogue::codec::{Cipher, Encoder};
-use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
+use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternEdge};
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternRankId};
+use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
 use crate::error::IrError;
 use crate::plan::patmat::MatchingStrategy;
-use ir_common::generated::algebra::LogicalPlan;
 
-use super::extend_step::DefiniteExtendStep;
+use ir_common::generated::algebra as pb;
+use ir_common::generated::common as common_pb;
 
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
-
 #[derive(Debug)]
 struct VertexWeight {
     code: Vec<u8>,
@@ -355,10 +354,11 @@ impl Catalogue {
     }
 }
 
-impl MatchingStrategy for (&Pattern, &Catalogue) {
-    fn build_logical_plan(&self) -> crate::error::IrResult<LogicalPlan> {
-        let &(pattern, catalog) = self;
-        let pattern_code: Vec<u8> = Cipher::encode_to(pattern, &Encoder::init_by_pattern(pattern, 3));
+impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
+    fn build_logical_plan(&self) -> crate::error::IrResult<pb::LogicalPlan> {
+        let &(pattern, catalog, pattern_meta) = self;
+        println!("{:?}", catalog.store);
+        let pattern_code: Vec<u8> = Cipher::encode_to(pattern, &catalog.encoder);
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
             let mut trace_pattern = pattern.clone();
             let mut trace_pattern_index = node_index;
@@ -411,6 +411,7 @@ impl MatchingStrategy for (&Pattern, &Catalogue) {
                         trace_pattern_index = pre_pattern_index;
                         trace_pattern_weight = pre_pattern_weight;
                         found_best_extend = true;
+                        break;
                     }
                 }
                 if !found_best_extend {
@@ -433,8 +434,57 @@ impl MatchingStrategy for (&Pattern, &Catalogue) {
                     trace_pattern_weight = pre_pattern_weight;
                 }
             }
-
-            let mut match_plan = LogicalPlan::default();
+            let mut match_plan = pb::LogicalPlan::default();
+            let mut child_offset = 1;
+            let source = {
+                let source_vertex = trace_pattern.vertices_iter().last().unwrap();
+                let source_vertex_label_id = source_vertex.get_label();
+                let source_vertex_label_name = pattern_meta
+                    .get_vertex_label_name(source_vertex_label_id)
+                    .unwrap();
+                pb::Scan {
+                    scan_opt: 0,
+                    alias: Some((source_vertex.get_id() as i32).into()),
+                    params: Some(query_params(vec![source_vertex_label_name.into()], vec![], None)),
+                    idx_predicate: None,
+                }
+            };
+            let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
+            for definite_extend_step in definite_extend_steps.into_iter().rev() {
+                let edge_expands = definite_extend_step.generate_expand_operators();
+                let edge_expands_num = edge_expands.len();
+                let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
+                    .map(|i| i + child_offset)
+                    .collect();
+                for &i in edge_expands_ids.iter() {
+                    pre_node.children.push(i);
+                }
+                match_plan.nodes.push(pre_node);
+                for edge_expand in edge_expands {
+                    let node = pb::logical_plan::Node {
+                        opr: Some(edge_expand.into()),
+                        children: vec![child_offset + edge_expands_num as i32],
+                    };
+                    match_plan.nodes.push(node);
+                }
+                let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
+                pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
+                child_offset += (edge_expands_num + 1) as i32;
+            }
+            pre_node.children.push(child_offset);
+            match_plan.nodes.push(pre_node);
+            let sink = {
+                pb::Sink {
+                    tags: pattern
+                        .vertices_with_tag_iter()
+                        .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
+                        .collect(),
+                    id_name_mappings: vec![],
+                }
+            };
+            match_plan
+                .nodes
+                .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
             Ok(match_plan)
         } else {
             Err(IrError::Unsupported("Cannot locate the pattern in the catalog".to_string()))
@@ -482,10 +532,66 @@ fn total_cost_estimate(
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+    use std::sync::Once;
+
+    use pegasus_client::builder::JobBuilder;
+
     use crate::catalogue::test_cases::pattern_cases::*;
     use crate::catalogue::test_cases::pattern_meta_cases::*;
+    use crate::plan::logical::LogicalPlan;
+    use crate::plan::patmat::MatchingStrategy;
+    use crate::plan::physical::AsPhysical;
+    use graph_proxy::{InitializeJobCompiler, QueryExpGraph};
+    use pegasus::result::{ResultSink, ResultStream};
+    use pegasus::{run_opt, Configuration, JobConf, StartupError};
+    use pegasus_server::job::{JobAssembly, JobDesc};
+    use pegasus_server::JobRequest;
+    use runtime::IRJobAssembly;
 
     use super::Catalogue;
+
+    static INIT: Once = Once::new();
+
+    lazy_static! {
+        static ref FACTORY: IRJobAssembly = initialize_job_compiler();
+    }
+
+    pub fn initialize() {
+        INIT.call_once(|| {
+            start_pegasus();
+        });
+    }
+
+    fn start_pegasus() {
+        match pegasus::startup(Configuration::singleton()) {
+            Ok(_) => {
+                lazy_static::initialize(&FACTORY);
+            }
+            Err(err) => match err {
+                StartupError::AlreadyStarted(_) => {}
+                _ => panic!("start pegasus failed"),
+            },
+        }
+    }
+
+    fn initialize_job_compiler() -> IRJobAssembly {
+        let query_exp_graph = QueryExpGraph::new(1);
+        query_exp_graph.initialize_job_compiler()
+    }
+
+    fn submit_query(job_req: JobRequest, num_workers: u32) -> ResultStream<Vec<u8>> {
+        let mut conf = JobConf::default();
+        conf.workers = num_workers;
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let sink = ResultSink::new(tx);
+        let cancel_hook = sink.get_cancel_hook().clone();
+        let results = ResultStream::new(conf.job_id, cancel_hook, rx);
+        let service = &FACTORY;
+        let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
+        run_opt(conf, sink, move |worker| service.assemble(&job, worker)).expect("submit job failure;");
+        results
+    }
 
     #[test]
     fn test_catalog_for_modern_graph() {
@@ -565,5 +671,30 @@ mod test {
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         assert_eq!(11, catalog.store.node_count());
         assert_eq!(17, catalog.store.edge_count());
+    }
+
+    #[test]
+    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case1() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
+            .build_logical_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
     }
 }
