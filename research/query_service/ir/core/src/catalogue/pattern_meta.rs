@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
 use crate::plan::meta::Schema;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PatternMeta {
     /// Key: vertex label name, Value: vertex labal id
     /// Usage: get a vertex label id from its label name

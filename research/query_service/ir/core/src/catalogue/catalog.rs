@@ -19,19 +19,18 @@ use petgraph::Direction;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 
 use crate::catalogue::codec::{Cipher, Encoder};
-use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
-use crate::catalogue::pattern::{Pattern, PatternEdge};
+use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
+use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
-use crate::error::IrError;
-use crate::plan::patmat::MatchingStrategy;
+use crate::error::{IrError, IrResult};
 
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct VertexWeight {
     code: Vec<u8>,
     count: usize,
@@ -83,7 +82,7 @@ impl EdgeWeight {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Catalogue {
     store: Graph<VertexWeight, EdgeWeight>,
     pattern_v_locate_map: HashMap<Vec<u8>, NodeIndex>,
@@ -354,12 +353,29 @@ impl Catalogue {
     }
 }
 
-impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
-    fn build_logical_plan(&self) -> crate::error::IrResult<pb::LogicalPlan> {
-        let &(pattern, catalog, pattern_meta) = self;
-        let pattern_code: Vec<u8> = Cipher::encode_to(pattern, &catalog.encoder);
+impl Pattern {
+    pub fn generate_simple_extend_match_plan(&self) -> pb::LogicalPlan {
+        let mut trace_pattern = self.clone();
+        let mut definite_extend_steps = vec![];
+        while trace_pattern.get_vertex_num() > 0 {
+            let mut all_vertices: Vec<&PatternVertex> = trace_pattern.vertices_iter().collect();
+            all_vertices.sort_by(|&v1, &v2| v1.get_degree().cmp(&v2.get_degree()));
+            let select_vertex_id = all_vertices.first().unwrap().get_id();
+            let definite_extend_step =
+                trace_pattern.generate_definite_extend_step_by_v_id(select_vertex_id);
+            definite_extend_steps.push(definite_extend_step);
+            trace_pattern.remove_vertex(select_vertex_id);
+        }
+
+        pb::LogicalPlan::default()
+    }
+
+    pub fn generate_optimized_match_plan(
+        &self, catalog: &Catalogue, pattern_meta: &PatternMeta,
+    ) -> IrResult<pb::LogicalPlan> {
+        let pattern_code: Vec<u8> = Cipher::encode_to(self, &catalog.encoder);
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
-            let mut trace_pattern = pattern.clone();
+            let mut trace_pattern = self.clone();
             let mut trace_pattern_index = node_index;
             let mut trace_pattern_weight = catalog
                 .get_pattern_weight(trace_pattern_index)
@@ -403,8 +419,9 @@ impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
                     if !trace_pattern.vertex_has_predicate(target_vertex_id)
                         && !trace_pattern.vertex_has_property(target_vertex_id)
                     {
-                        let definite_extend_step =
-                            DefiniteExtendStep::new(target_vertex_id, &trace_pattern).unwrap();
+                        let definite_extend_step = trace_pattern
+                            .generate_definite_extend_step_by_v_id(target_vertex_id)
+                            .unwrap();
                         definite_extend_steps.push(definite_extend_step);
                         trace_pattern.remove_vertex(target_vertex_id);
                         trace_pattern_index = pre_pattern_index;
@@ -425,8 +442,9 @@ impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
                     let target_vertex_id = trace_pattern
                         .locate_vertex(&extend_step, &pre_pattern_weight.code, &catalog.encoder)
                         .unwrap();
-                    let definite_extend_step =
-                        DefiniteExtendStep::new(target_vertex_id, &trace_pattern).unwrap();
+                    let definite_extend_step = trace_pattern
+                        .generate_definite_extend_step_by_v_id(target_vertex_id)
+                        .unwrap();
                     definite_extend_steps.push(definite_extend_step);
                     trace_pattern.remove_vertex(target_vertex_id);
                     trace_pattern_index = pre_pattern_index;
@@ -474,7 +492,7 @@ impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
             match_plan.nodes.push(pre_node);
             let sink = {
                 pb::Sink {
-                    tags: pattern
+                    tags: self
                         .vertices_with_tag_iter()
                         .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
                         .collect(),
@@ -486,10 +504,66 @@ impl MatchingStrategy for (&Pattern, &Catalogue, &PatternMeta) {
                 .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
             Ok(match_plan)
         } else {
-            Err(IrError::Unsupported("Cannot locate the pattern in the catalog".to_string()))
+            Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
     }
 }
+
+// fn generate_logical_plan(
+//     source_pattern: &Pattern, definite_extend_steps: Vec<DefiniteExtendStep>, pattern_meta: &PatternMeta,
+// ) -> pb::LogicalPlan {
+//     let mut match_plan = pb::LogicalPlan::default();
+//     let mut child_offset = 1;
+//     let source = {
+//         let source_vertex = source_pattern.vertices_iter().last().unwrap();
+//         let source_vertex_label_id = source_vertex.get_label();
+//         let source_vertex_label_name = pattern_meta
+//             .get_vertex_label_name(source_vertex_label_id)
+//             .unwrap();
+//         pb::Scan {
+//             scan_opt: 0,
+//             alias: Some((source_vertex.get_id() as i32).into()),
+//             params: Some(query_params(vec![source_vertex_label_name.into()], vec![], None)),
+//             idx_predicate: None,
+//         }
+//     };
+//     let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
+//     for definite_extend_step in definite_extend_steps.into_iter().rev() {
+//         let edge_expands = definite_extend_step.generate_expand_operators();
+//         let edge_expands_num = edge_expands.len();
+//         let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
+//             .map(|i| i + child_offset)
+//             .collect();
+//         for &i in edge_expands_ids.iter() {
+//             pre_node.children.push(i);
+//         }
+//         match_plan.nodes.push(pre_node);
+//         for edge_expand in edge_expands {
+//             let node = pb::logical_plan::Node {
+//                 opr: Some(edge_expand.into()),
+//                 children: vec![child_offset + edge_expands_num as i32],
+//             };
+//             match_plan.nodes.push(node);
+//         }
+//         let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
+//         pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
+//         child_offset += (edge_expands_num + 1) as i32;
+//     }
+//     pre_node.children.push(child_offset);
+//     match_plan.nodes.push(pre_node);
+//     let sink = {
+//         pb::Sink {
+//             tags: self
+//                 .vertices_with_tag_iter()
+//                 .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
+//                 .collect(),
+//             id_name_mappings: vec![],
+//         }
+//     };
+//     match_plan
+//         .nodes
+//         .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
+// }
 
 fn f_cost_estimate(
     alpha: f64, pre_pattern_weight: &VertexWeight, extend_weight: &EdgeWeightForExtendStep,
@@ -539,7 +613,6 @@ mod test {
     use crate::catalogue::test_cases::pattern_cases::*;
     use crate::catalogue::test_cases::pattern_meta_cases::*;
     use crate::plan::logical::LogicalPlan;
-    use crate::plan::patmat::MatchingStrategy;
     use crate::plan::physical::AsPhysical;
     use graph_proxy::{InitializeJobCompiler, QueryExpGraph};
     use pegasus::result::{ResultSink, ResultStream};
@@ -677,8 +750,8 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
-            .build_logical_plan()
+        let pb_plan = ldbc_pattern
+            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -702,8 +775,8 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
-            .build_logical_plan()
+        let pb_plan = ldbc_pattern
+            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -727,8 +800,8 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let pb_plan = (&ldbc_pattern, &catalog, &ldbc_graph_meta)
-            .build_logical_plan()
+        let pb_plan = ldbc_pattern
+            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();

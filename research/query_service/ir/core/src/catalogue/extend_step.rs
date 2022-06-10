@@ -14,12 +14,14 @@
 //! limitations under the License.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::convert::TryFrom;
 use std::iter::Iterator;
 
 use crate::catalogue::{DynIter, PatternDirection, PatternLabelId, PatternRankId};
 
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, PatternId};
+use crate::error::{IrError, IrResult};
 
 use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
@@ -150,12 +152,24 @@ pub struct DefiniteExtendStep {
 }
 
 impl DefiniteExtendStep {
-    pub fn new(target_v_id: PatternId, pattern: &Pattern) -> Option<DefiniteExtendStep> {
-        if let Some(target_vertex) = pattern.get_vertex_from_id(target_v_id) {
+    pub fn get_target_v_id(&self) -> PatternId {
+        self.target_v_id
+    }
+
+    pub fn get_target_v_label(&self) -> PatternLabelId {
+        self.target_v_label
+    }
+}
+
+impl Pattern {
+    pub fn generate_definite_extend_step_by_v_id(
+        &self, target_v_id: PatternId,
+    ) -> Option<DefiniteExtendStep> {
+        if let Some(target_vertex) = self.get_vertex_from_id(target_v_id) {
             let target_v_label = target_vertex.get_label();
             let mut extend_edges = vec![];
             for (edge_id, _, dir) in target_vertex.adjacent_edges_iter() {
-                let edge = pattern.get_edge_from_id(edge_id).unwrap();
+                let edge = self.get_edge_from_id(edge_id).unwrap();
                 if let PatternDirection::In = dir {
                     extend_edges.push(DefiniteExtendEdge {
                         start_v_id: edge.get_start_vertex_id(),
@@ -175,7 +189,9 @@ impl DefiniteExtendStep {
             None
         }
     }
+}
 
+impl DefiniteExtendStep {
     pub fn generate_expand_operators(&self) -> Vec<pb::EdgeExpand> {
         let mut expand_operators = vec![];
         for extend_edge in self.extend_edges.iter() {
@@ -201,6 +217,23 @@ impl DefiniteExtendStep {
             .unwrap();
         pb::Select {
             predicate: Some(str_to_expr_pb(format!("@.~label == \"{}\"", target_v_label_name)).unwrap()),
+        }
+    }
+}
+
+impl TryFrom<Pattern> for DefiniteExtendStep {
+    type Error = IrError;
+
+    fn try_from(pattern: Pattern) -> IrResult<Self> {
+        if pattern.get_vertex_num() == 1 {
+            let target_vertex = pattern.vertices_iter().last().unwrap();
+            let target_v_id = target_vertex.get_id();
+            let target_v_label = target_vertex.get_label();
+            Ok(DefiniteExtendStep { target_v_id, target_v_label, extend_edges: vec![] })
+        } else {
+            Err(IrError::Unsupported(
+                "Can only convert pattern with one vertex to Definite Extend Step".to_string(),
+            ))
         }
     }
 }

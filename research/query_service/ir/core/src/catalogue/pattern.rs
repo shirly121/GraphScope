@@ -232,7 +232,7 @@ impl From<PatternVertex> for Pattern {
 impl TryFrom<Vec<PatternEdge>> for Pattern {
     type Error = IrError;
 
-    fn try_from(edges: Vec<PatternEdge>) -> Result<Self, Self::Error> {
+    fn try_from(edges: Vec<PatternEdge>) -> IrResult<Self> {
         if !edges.is_empty() {
             let mut new_pattern = Pattern {
                 edges: VecMap::new(),
@@ -321,9 +321,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
 impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
     type Error = IrError;
 
-    fn try_from(
-        (pattern_message, pattern_meta): (&pb::Pattern, &PatternMeta),
-    ) -> Result<Self, Self::Error> {
+    fn try_from((pattern_message, pattern_meta): (&pb::Pattern, &PatternMeta)) -> IrResult<Self> {
         use ir_common::generated::common::name_or_id::Item as TagItem;
         use pb::pattern::binder::Item as BinderItem;
 
