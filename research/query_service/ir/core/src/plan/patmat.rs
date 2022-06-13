@@ -1151,13 +1151,21 @@ impl MatchingStrategy for ExtendStrategy {
                 {
                     Ok(match_plan)
                 } else {
-                    Ok(self.pattern.generate_simple_extend_match_plan())
+                    self.pattern
+                        .generate_simple_extend_match_plan(pattern_meta)
                 }
+            } else if let Some(pattern_meta) = store_meta.pattern_meta.as_ref() {
+                self.pattern
+                    .generate_simple_extend_match_plan(pattern_meta)
             } else {
-                Ok(self.pattern.generate_simple_extend_match_plan())
+                Err(IrError::Unsupported(
+                    "Cannot generate extend with intersection match plan without pattern meta".to_string(),
+                ))
             }
         } else {
-            Ok(self.pattern.generate_simple_extend_match_plan())
+            Err(IrError::Unsupported(
+                "Cannot generate extend with intersection match plan without store meta".to_string(),
+            ))
         }
     }
 }

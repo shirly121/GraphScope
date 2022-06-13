@@ -17,9 +17,10 @@ use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
+use std::convert::TryInto;
 
 use crate::catalogue::codec::{Cipher, Encoder};
-use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
+use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
@@ -354,20 +355,23 @@ impl Catalogue {
 }
 
 impl Pattern {
-    pub fn generate_simple_extend_match_plan(&self) -> pb::LogicalPlan {
+    pub fn generate_simple_extend_match_plan(
+        &self, pattern_meta: &PatternMeta,
+    ) -> IrResult<pb::LogicalPlan> {
         let mut trace_pattern = self.clone();
         let mut definite_extend_steps = vec![];
         while trace_pattern.get_vertex_num() > 0 {
             let mut all_vertices: Vec<&PatternVertex> = trace_pattern.vertices_iter().collect();
             all_vertices.sort_by(|&v1, &v2| v1.get_degree().cmp(&v2.get_degree()));
             let select_vertex_id = all_vertices.first().unwrap().get_id();
-            let definite_extend_step =
-                trace_pattern.generate_definite_extend_step_by_v_id(select_vertex_id);
+            let definite_extend_step = trace_pattern
+                .generate_definite_extend_step_by_v_id(select_vertex_id)
+                .unwrap();
             definite_extend_steps.push(definite_extend_step);
             trace_pattern.remove_vertex(select_vertex_id);
         }
-
-        pb::LogicalPlan::default()
+        definite_extend_steps.push(trace_pattern.try_into()?);
+        build_logical_plan(self, definite_extend_steps, pattern_meta)
     }
 
     pub fn generate_optimized_match_plan(
@@ -451,119 +455,78 @@ impl Pattern {
                     trace_pattern_weight = pre_pattern_weight;
                 }
             }
-            let mut match_plan = pb::LogicalPlan::default();
-            let mut child_offset = 1;
-            let source = {
-                let source_vertex = trace_pattern.vertices_iter().last().unwrap();
-                let source_vertex_label_id = source_vertex.get_label();
-                let source_vertex_label_name = pattern_meta
-                    .get_vertex_label_name(source_vertex_label_id)
-                    .unwrap();
-                pb::Scan {
-                    scan_opt: 0,
-                    alias: Some((source_vertex.get_id() as i32).into()),
-                    params: Some(query_params(vec![source_vertex_label_name.into()], vec![], None)),
-                    idx_predicate: None,
-                }
-            };
-            let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
-            for definite_extend_step in definite_extend_steps.into_iter().rev() {
-                let edge_expands = definite_extend_step.generate_expand_operators();
-                let edge_expands_num = edge_expands.len();
-                let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
-                    .map(|i| i + child_offset)
-                    .collect();
-                for &i in edge_expands_ids.iter() {
-                    pre_node.children.push(i);
-                }
-                match_plan.nodes.push(pre_node);
-                for edge_expand in edge_expands {
-                    let node = pb::logical_plan::Node {
-                        opr: Some(edge_expand.into()),
-                        children: vec![child_offset + edge_expands_num as i32],
-                    };
-                    match_plan.nodes.push(node);
-                }
-                let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
-                pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
-                child_offset += (edge_expands_num + 1) as i32;
-            }
-            pre_node.children.push(child_offset);
-            match_plan.nodes.push(pre_node);
-            let sink = {
-                pb::Sink {
-                    tags: self
-                        .vertices_with_tag_iter()
-                        .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
-                        .collect(),
-                    id_name_mappings: vec![],
-                }
-            };
-            match_plan
-                .nodes
-                .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
-            Ok(match_plan)
+            definite_extend_steps.push(trace_pattern.try_into()?);
+            build_logical_plan(self, definite_extend_steps, pattern_meta)
         } else {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
     }
 }
 
-// fn generate_logical_plan(
-//     source_pattern: &Pattern, definite_extend_steps: Vec<DefiniteExtendStep>, pattern_meta: &PatternMeta,
-// ) -> pb::LogicalPlan {
-//     let mut match_plan = pb::LogicalPlan::default();
-//     let mut child_offset = 1;
-//     let source = {
-//         let source_vertex = source_pattern.vertices_iter().last().unwrap();
-//         let source_vertex_label_id = source_vertex.get_label();
-//         let source_vertex_label_name = pattern_meta
-//             .get_vertex_label_name(source_vertex_label_id)
-//             .unwrap();
-//         pb::Scan {
-//             scan_opt: 0,
-//             alias: Some((source_vertex.get_id() as i32).into()),
-//             params: Some(query_params(vec![source_vertex_label_name.into()], vec![], None)),
-//             idx_predicate: None,
-//         }
-//     };
-//     let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
-//     for definite_extend_step in definite_extend_steps.into_iter().rev() {
-//         let edge_expands = definite_extend_step.generate_expand_operators();
-//         let edge_expands_num = edge_expands.len();
-//         let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
-//             .map(|i| i + child_offset)
-//             .collect();
-//         for &i in edge_expands_ids.iter() {
-//             pre_node.children.push(i);
-//         }
-//         match_plan.nodes.push(pre_node);
-//         for edge_expand in edge_expands {
-//             let node = pb::logical_plan::Node {
-//                 opr: Some(edge_expand.into()),
-//                 children: vec![child_offset + edge_expands_num as i32],
-//             };
-//             match_plan.nodes.push(node);
-//         }
-//         let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
-//         pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
-//         child_offset += (edge_expands_num + 1) as i32;
-//     }
-//     pre_node.children.push(child_offset);
-//     match_plan.nodes.push(pre_node);
-//     let sink = {
-//         pb::Sink {
-//             tags: self
-//                 .vertices_with_tag_iter()
-//                 .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
-//                 .collect(),
-//             id_name_mappings: vec![],
-//         }
-//     };
-//     match_plan
-//         .nodes
-//         .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
-// }
+fn build_logical_plan(
+    origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
+    pattern_meta: &PatternMeta,
+) -> IrResult<pb::LogicalPlan> {
+    let mut match_plan = pb::LogicalPlan::default();
+    let mut child_offset = 1;
+    let source = {
+        let source_extend = match definite_extend_steps.pop() {
+            Some(src_extend) => src_extend,
+            None => {
+                return Err(IrError::InvalidPattern(
+                    "Build logical plan error: from empty extend steps!".to_string(),
+                ))
+            }
+        };
+        let source_vertex_label_id = source_extend.get_target_v_label();
+        let source_vertex_label_name = pattern_meta
+            .get_vertex_label_name(source_vertex_label_id)
+            .unwrap();
+        pb::Scan {
+            scan_opt: 0,
+            alias: Some((source_extend.get_target_v_id() as i32).into()),
+            params: Some(query_params(vec![source_vertex_label_name.into()], vec![], None)),
+            idx_predicate: None,
+        }
+    };
+    let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
+    for definite_extend_step in definite_extend_steps.into_iter().rev() {
+        let edge_expands = definite_extend_step.generate_expand_operators();
+        let edge_expands_num = edge_expands.len();
+        let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
+            .map(|i| i + child_offset)
+            .collect();
+        for &i in edge_expands_ids.iter() {
+            pre_node.children.push(i);
+        }
+        match_plan.nodes.push(pre_node);
+        for edge_expand in edge_expands {
+            let node = pb::logical_plan::Node {
+                opr: Some(edge_expand.into()),
+                children: vec![child_offset + edge_expands_num as i32],
+            };
+            match_plan.nodes.push(node);
+        }
+        let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
+        pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
+        child_offset += (edge_expands_num + 1) as i32;
+    }
+    pre_node.children.push(child_offset);
+    match_plan.nodes.push(pre_node);
+    let sink = {
+        pb::Sink {
+            tags: origin_pattern
+                .vertices_with_tag_iter()
+                .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
+                .collect(),
+            id_name_mappings: vec![],
+        }
+    };
+    match_plan
+        .nodes
+        .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
+    Ok(match_plan)
+}
 
 fn f_cost_estimate(
     alpha: f64, pre_pattern_weight: &VertexWeight, extend_weight: &EdgeWeightForExtendStep,
@@ -773,6 +736,31 @@ mod test {
     #[test]
     fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let ldbc_graph_meta = get_ldbc_pattern_meta();
+        let pb_plan = ldbc_pattern
+            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case3() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         let ldbc_graph_meta = get_ldbc_pattern_meta();
         let pb_plan = ldbc_pattern

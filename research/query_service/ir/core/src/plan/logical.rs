@@ -233,6 +233,22 @@ impl LogicalPlan {
             None
         }
     }
+
+    // fn get_merge_nodes(&self, branch_node: NodeType) -> Vec<Vec<NodeType>> {
+    //     if branch_node.borrow().children.len() > 1 {
+    //         let root_children: BTreeSet<u32> = branch_node
+    //             .borrow()
+    //             .children
+    //             .iter()
+    //             .cloned()
+    //             .collect();
+    //         let mut merge_nodes_with_hiearchy = vec![];
+    //         let root_child_related_to_node_map
+    //         merge_nodes_with_hiearchy
+    //     } else {
+    //         vec![]
+    //     }
+    // }
 }
 
 #[allow(dead_code)]
