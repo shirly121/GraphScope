@@ -27,7 +27,7 @@ fast-math = "0.1.1"
 rand = "0.8.5"
 petgraph = "0.6.2"
 bimap = "0.6.2"
-crossbeam-channel = "0.3.6"
+crossbeam-channel = "0.4.4"
 
 [features]
 default = []
