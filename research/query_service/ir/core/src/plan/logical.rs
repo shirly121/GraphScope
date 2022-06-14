@@ -197,48 +197,11 @@ fn clone_node(node: NodeType) -> Node {
 
     clone_node
 }
-
 // Implement some private functions
 #[allow(dead_code)]
 impl LogicalPlan {
     /// Get the corresponding merge node of the given branch node.
     fn get_merge_node(&self, branch_node: NodeType) -> Option<NodeType> {
-        if branch_node.borrow().children.len() > 1 {
-            let mut layer = 0;
-            let mut curr_node_opt = Some(branch_node.clone());
-            while curr_node_opt.is_some() {
-                let next_node_id = curr_node_opt
-                    .as_ref()
-                    .unwrap()
-                    .borrow()
-                    .get_first_child();
-                curr_node_opt = next_node_id.and_then(|id| self.get_node(id));
-                if let Some(curr_node) = &curr_node_opt {
-                    let curr_ref = curr_node.borrow();
-                    if curr_ref.children.len() > 1 {
-                        layer += curr_ref.children.len();
-                    }
-                    if curr_ref.parents.len() > 1 {
-                        // Every branch node must have a corresponding merge node in a valid plan
-                        if layer > 0 {
-                            layer -= curr_ref.parents.len();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-            if layer == 0 {
-                curr_node_opt
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    fn get_final_merge_node(&self, branch_node: NodeType) -> Option<NodeType> {
         if branch_node.borrow().children.len() > 1 {
             let root_children: BTreeSet<u32> = branch_node
                 .borrow()
@@ -2807,36 +2770,24 @@ mod test {
     }
 
     #[test]
-    fn test_get_final_merge_node1() {
-        let plan = create_logical_plan1();
-        let merge_node = plan.get_final_merge_node(plan.get_node(1).unwrap());
-        assert_eq!(merge_node, plan.get_node(5));
-        let merge_node = plan.get_final_merge_node(plan.get_node(0).unwrap());
-        assert_eq!(merge_node, plan.get_node(6));
-        // Not a branch node
-        let merge_node = plan.get_final_merge_node(plan.get_node(2).unwrap());
-        assert!(merge_node.is_none());
-    }
-
-    #[test]
-    fn test_get_final_merge_node2() {
+    fn test_get_merge_node2() {
         let plan = create_logical_plan2();
-        let merge_node = plan.get_final_merge_node(plan.get_node(0).unwrap());
+        let merge_node = plan.get_merge_node(plan.get_node(0).unwrap());
         assert_eq!(merge_node, plan.get_node(5));
         // Not a branch node
-        let merge_node = plan.get_final_merge_node(plan.get_node(2).unwrap());
+        let merge_node = plan.get_merge_node(plan.get_node(2).unwrap());
         assert!(merge_node.is_none());
     }
 
     #[test]
-    fn test_get_final_merge_node3() {
+    fn test_get_merge_node3() {
         let plan = create_logical_plan3();
-        let merge_node = plan.get_final_merge_node(plan.get_node(0).unwrap());
+        let merge_node = plan.get_merge_node(plan.get_node(0).unwrap());
         assert_eq!(merge_node, plan.get_node(6));
-        let merge_node = plan.get_final_merge_node(plan.get_node(2).unwrap());
+        let merge_node = plan.get_merge_node(plan.get_node(2).unwrap());
         assert_eq!(merge_node, plan.get_node(6));
         // Not a branch node
-        let merge_node = plan.get_final_merge_node(plan.get_node(1).unwrap());
+        let merge_node = plan.get_merge_node(plan.get_node(1).unwrap());
         assert!(merge_node.is_none());
     }
 
