@@ -32,9 +32,9 @@ pub fn get_modern_pattern_meta() -> PatternMeta {
 }
 
 pub fn read_ldbc_graph_schema() -> Schema {
-    let ldbc_schema_file = match File::open("resource/ldbc_schema.json") {
+    let ldbc_schema_file = match File::open("resource/ldbc_schema_edit.json") {
         Ok(file) => file,
-        Err(_) => File::open("core/resource/ldbc_schema.json").unwrap(),
+        Err(_) => File::open("core/resource/ldbc_schema_edit.json").unwrap(),
     };
     Schema::from_json(ldbc_schema_file).unwrap()
 }

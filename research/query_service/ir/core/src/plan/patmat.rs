@@ -1164,30 +1164,20 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for ExtendStrategy {
 impl MatchingStrategy for ExtendStrategy {
     fn build_logical_plan(&self, store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
         if let Some(store_meta) = store_meta {
-            if let (Some(catalog), Some(pattern_meta)) =
-                (store_meta.catalogue.as_ref(), store_meta.pattern_meta.as_ref())
-            {
+            if let Some(catalog) = store_meta.catalogue.as_ref() {
                 if let Ok(match_plan) = self
                     .pattern
-                    .generate_optimized_match_plan(catalog, pattern_meta)
+                    .generate_optimized_match_plan(catalog)
                 {
                     Ok(match_plan)
                 } else {
-                    self.pattern
-                        .generate_simple_extend_match_plan(pattern_meta)
+                    self.pattern.generate_simple_extend_match_plan()
                 }
-            } else if let Some(pattern_meta) = store_meta.pattern_meta.as_ref() {
-                self.pattern
-                    .generate_simple_extend_match_plan(pattern_meta)
             } else {
-                Err(IrError::Unsupported(
-                    "Cannot generate extend with intersection match plan without pattern meta".to_string(),
-                ))
+                self.pattern.generate_simple_extend_match_plan()
             }
         } else {
-            Err(IrError::Unsupported(
-                "Cannot generate extend with intersection match plan without store meta".to_string(),
-            ))
+            self.pattern.generate_simple_extend_match_plan()
         }
     }
 }

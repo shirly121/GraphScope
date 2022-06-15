@@ -16,6 +16,7 @@
 use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 use std::convert::TryInto;
 
@@ -355,14 +356,19 @@ impl Catalogue {
 }
 
 impl Pattern {
-    pub fn generate_simple_extend_match_plan(
-        &self, pattern_meta: &PatternMeta,
-    ) -> IrResult<pb::LogicalPlan> {
+    pub fn generate_simple_extend_match_plan(&self) -> IrResult<pb::LogicalPlan> {
         let mut trace_pattern = self.clone();
         let mut definite_extend_steps = vec![];
-        while trace_pattern.get_vertex_num() > 0 {
+        while trace_pattern.get_vertex_num() > 1 {
             let mut all_vertices: Vec<&PatternVertex> = trace_pattern.vertices_iter().collect();
-            all_vertices.sort_by(|&v1, &v2| v1.get_degree().cmp(&v2.get_degree()));
+            all_vertices.sort_by(|&v1, &v2| {
+                let degree_order = v1.get_degree().cmp(&v2.get_degree());
+                if let Ordering::Equal = degree_order {
+                    v1.get_out_degree().cmp(&v2.get_out_degree())
+                } else {
+                    degree_order
+                }
+            });
             let select_vertex_id = all_vertices.first().unwrap().get_id();
             let definite_extend_step = trace_pattern
                 .generate_definite_extend_step_by_v_id(select_vertex_id)
@@ -371,12 +377,10 @@ impl Pattern {
             trace_pattern.remove_vertex(select_vertex_id);
         }
         definite_extend_steps.push(trace_pattern.try_into()?);
-        build_logical_plan(self, definite_extend_steps, pattern_meta)
+        build_logical_plan(self, definite_extend_steps)
     }
 
-    pub fn generate_optimized_match_plan(
-        &self, catalog: &Catalogue, pattern_meta: &PatternMeta,
-    ) -> IrResult<pb::LogicalPlan> {
+    pub fn generate_optimized_match_plan(&self, catalog: &Catalogue) -> IrResult<pb::LogicalPlan> {
         let pattern_code: Vec<u8> = Cipher::encode_to(self, &catalog.encoder);
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
             let mut trace_pattern = self.clone();
@@ -456,7 +460,7 @@ impl Pattern {
                 }
             }
             definite_extend_steps.push(trace_pattern.try_into()?);
-            build_logical_plan(self, definite_extend_steps, pattern_meta)
+            build_logical_plan(self, definite_extend_steps)
         } else {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
@@ -465,7 +469,6 @@ impl Pattern {
 
 fn build_logical_plan(
     origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
-    pattern_meta: &PatternMeta,
 ) -> IrResult<pb::LogicalPlan> {
     let mut match_plan = pb::LogicalPlan::default();
     let mut child_offset = 1;
@@ -478,20 +481,17 @@ fn build_logical_plan(
                 ))
             }
         };
-        let source_vertex_label_id = source_extend.get_target_v_label();
-        let source_vertex_label_name = pattern_meta
-            .get_vertex_label_name(source_vertex_label_id)
-            .unwrap();
+        let source_vertex_label = source_extend.get_target_v_label();
         pb::Scan {
             scan_opt: 0,
             alias: Some((source_extend.get_target_v_id() as i32).into()),
-            params: Some(query_params(vec![source_vertex_label_name.into()], vec![], None)),
+            params: Some(query_params(vec![source_vertex_label.into()], vec![], None)),
             idx_predicate: None,
         }
     };
     let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
     for definite_extend_step in definite_extend_steps.into_iter().rev() {
-        let edge_expands = definite_extend_step.generate_expand_operators();
+        let edge_expands = definite_extend_step.generate_expand_operators(origin_pattern);
         let edge_expands_num = edge_expands.len();
         let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
             .map(|i| i + child_offset)
@@ -500,16 +500,26 @@ fn build_logical_plan(
             pre_node.children.push(i);
         }
         match_plan.nodes.push(pre_node);
-        for edge_expand in edge_expands {
-            let node = pb::logical_plan::Node {
-                opr: Some(edge_expand.into()),
-                children: vec![child_offset + edge_expands_num as i32],
-            };
-            match_plan.nodes.push(node);
+        if edge_expands_num > 1 {
+            for edge_expand in edge_expands {
+                let node = pb::logical_plan::Node {
+                    opr: Some(edge_expand.into()),
+                    children: vec![child_offset + edge_expands_num as i32],
+                };
+                match_plan.nodes.push(node);
+            }
+            let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
+            pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
+            child_offset += (edge_expands_num + 1) as i32;
+        } else if edge_expands_num == 1 {
+            let edge_expand = edge_expands.into_iter().last().unwrap();
+            pre_node = pb::logical_plan::Node { opr: Some(edge_expand.into()), children: vec![] };
+            child_offset += 1;
+        } else {
+            return Err(IrError::InvalidPattern(
+                "Build logical plan error: extend step is not source but has 0 edges".to_string(),
+            ));
         }
-        let intersect = definite_extend_step.generate_intersect_operator(edge_expands_ids);
-        pre_node = pb::logical_plan::Node { opr: Some(intersect.into()), children: vec![] };
-        child_offset += (edge_expands_num + 1) as i32;
     }
     pre_node.children.push(child_offset);
     match_plan.nodes.push(pre_node);
@@ -709,12 +719,11 @@ mod test {
     }
 
     #[test]
-    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case1() {
+    fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
         let pb_plan = ldbc_pattern
-            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
+            .generate_optimized_match_plan(&catalog)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -734,12 +743,34 @@ mod test {
     }
 
     #[test]
-    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case2() {
+    fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case1() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+        let pb_plan = ldbc_pattern
+            .generate_simple_extend_match_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
         let pb_plan = ldbc_pattern
-            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
+            .generate_optimized_match_plan(&catalog)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -759,12 +790,34 @@ mod test {
     }
 
     #[test]
-    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case3() {
+    fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case2() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
+        let pb_plan = ldbc_pattern
+            .generate_simple_extend_match_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case3() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
         let pb_plan = ldbc_pattern
-            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
+            .generate_optimized_match_plan(&catalog)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -784,12 +837,104 @@ mod test {
     }
 
     #[test]
-    fn test_generate_matching_plan_for_ldbc_pattern_from_pb_case4() {
+    fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case3() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
+        let pb_plan = ldbc_pattern
+            .generate_simple_extend_match_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case4() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
         let pb_plan = ldbc_pattern
-            .generate_optimized_match_plan(&catalog, &ldbc_graph_meta)
+            .generate_optimized_match_plan(&catalog)
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case4() {
+        let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
+        let pb_plan = ldbc_pattern
+            .generate_simple_extend_match_plan()
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_optimized_matching_plan_for_ldbc_bi11() {
+        let ldbc_pattern = build_ldbc_bi11().unwrap();
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let pb_plan = ldbc_pattern
+            .generate_optimized_match_plan(&catalog)
+            .unwrap();
+        initialize();
+        let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build().unwrap();
+        let mut results = submit_query(request, 2);
+        let mut count = 0;
+        while let Some(result) = results.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+    }
+
+    #[test]
+    fn test_generate_simple_matching_plan_for_ldbc_bi11() {
+        let ldbc_pattern = build_ldbc_bi11().unwrap();
+        let pb_plan = ldbc_pattern
+            .generate_simple_extend_match_plan()
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();

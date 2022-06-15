@@ -25,8 +25,7 @@ use crate::error::{IrError, IrResult};
 
 use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
-
-use super::pattern_meta::PatternMeta;
+use ir_common::generated::common as common_pb;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExtendEdge {
@@ -141,8 +140,55 @@ impl ExtendStep {
 
 pub struct DefiniteExtendEdge {
     start_v_id: PatternId,
+    edge_id: PatternId,
     edge_label: PatternLabelId,
     dir: PatternDirection,
+}
+
+impl DefiniteExtendEdge {
+    /// To Do: further fix the outE() + inV()
+    pub fn generate_expand_operator(
+        &self, target_v_id: PatternId, origin_pattern: &Pattern,
+    ) -> pb::EdgeExpand {
+        let edge_id = self.edge_id;
+        let edge_properties: Vec<common_pb::NameOrId> = origin_pattern
+            .edge_properties_iter(edge_id)
+            .cloned()
+            .map(|name_or_id| name_or_id.into())
+            .collect();
+        let edge_predicate = origin_pattern
+            .get_edge_predicate(edge_id)
+            .cloned();
+        if None == edge_predicate && edge_properties.is_empty() {
+            let target_v_properties: Vec<common_pb::NameOrId> = origin_pattern
+                .vertex_properties_iter(target_v_id)
+                .cloned()
+                .map(|name_or_id| name_or_id.into())
+                .collect();
+            let target_v_predicate = origin_pattern
+                .get_vertex_predicate(target_v_id)
+                .cloned();
+            pb::EdgeExpand {
+                v_tag: Some((self.start_v_id as i32).into()),
+                direction: self.dir as i32,
+                params: Some(query_params(
+                    vec![self.edge_label.into()],
+                    target_v_properties,
+                    target_v_predicate,
+                )),
+                is_edge: false,
+                alias: Some((target_v_id as i32).into()),
+            }
+        } else {
+            pb::EdgeExpand {
+                v_tag: Some((self.start_v_id as i32).into()),
+                direction: self.dir as i32,
+                params: Some(query_params(vec![self.edge_label.into()], edge_properties, edge_predicate)),
+                is_edge: false,
+                alias: Some((target_v_id as i32).into()),
+            }
+        }
+    }
 }
 
 pub struct DefiniteExtendStep {
@@ -173,12 +219,14 @@ impl Pattern {
                 if let PatternDirection::In = dir {
                     extend_edges.push(DefiniteExtendEdge {
                         start_v_id: edge.get_start_vertex_id(),
+                        edge_id,
                         edge_label: edge.get_label(),
                         dir: PatternDirection::Out,
                     });
                 } else {
                     extend_edges.push(DefiniteExtendEdge {
                         start_v_id: edge.get_end_vertex_id(),
+                        edge_id,
                         edge_label: edge.get_label(),
                         dir: PatternDirection::In,
                     });
@@ -192,15 +240,37 @@ impl Pattern {
 }
 
 impl DefiniteExtendStep {
-    pub fn generate_expand_operators(&self) -> Vec<pb::EdgeExpand> {
+    pub fn generate_expand_operators(&self, origin_pattern: &Pattern) -> Vec<pb::EdgeExpand> {
         let mut expand_operators = vec![];
+        let target_v_id = self.target_v_id;
+        let target_v_label = self.target_v_label;
+        let target_v_properties: Vec<common_pb::NameOrId> = origin_pattern
+            .vertex_properties_iter(target_v_id)
+            .cloned()
+            .map(|name_or_id| name_or_id.into())
+            .collect();
+        let mut target_v_predicate = origin_pattern
+            .get_vertex_predicate(target_v_id)
+            .cloned();
+        if let Some(expr) = target_v_predicate.as_mut() {
+            let label_filter = str_to_expr_pb(format!("&& @.~label == {}", target_v_label)).unwrap();
+            for expr_opr in label_filter.operators {
+                expr.operators.push(expr_opr);
+            }
+        } else {
+            target_v_predicate = Some(str_to_expr_pb(format!("@.~label == {}", target_v_label)).unwrap());
+        }
         for extend_edge in self.extend_edges.iter() {
             let edge_expand = pb::EdgeExpand {
                 v_tag: Some((extend_edge.start_v_id as i32).into()),
                 direction: extend_edge.dir as i32,
-                params: Some(query_params(vec![extend_edge.edge_label.into()], vec![], None)),
+                params: Some(query_params(
+                    vec![extend_edge.edge_label.into()],
+                    target_v_properties.clone(),
+                    target_v_predicate.clone(),
+                )),
                 is_edge: false,
-                alias: Some((self.target_v_id as i32).into()),
+                alias: Some((target_v_id as i32).into()),
             };
             expand_operators.push(edge_expand);
         }
@@ -209,15 +279,6 @@ impl DefiniteExtendStep {
 
     pub fn generate_intersect_operator(&self, parents: Vec<i32>) -> pb::Intersect {
         pb::Intersect { parents, key: Some((self.target_v_id as i32).into()) }
-    }
-
-    pub fn generate_label_filter_operator(&self, pattern_meta: &PatternMeta) -> pb::Select {
-        let target_v_label_name = pattern_meta
-            .get_vertex_label_name(self.target_v_label)
-            .unwrap();
-        pb::Select {
-            predicate: Some(str_to_expr_pb(format!("@.~label == \"{}\"", target_v_label_name)).unwrap()),
-        }
     }
 }
 
