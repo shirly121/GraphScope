@@ -1152,11 +1152,9 @@ pub struct ExtendStrategy {
     pattern: Pattern,
 }
 
-impl TryFrom<(&pb::Pattern, &PatternMeta)> for ExtendStrategy {
-    type Error = IrError;
-
-    fn try_from((pb_pattern, pattern_meta): (&pb::Pattern, &PatternMeta)) -> IrResult<Self> {
-        let pattern: Pattern = Pattern::try_from((pb_pattern, pattern_meta))?;
+impl ExtendStrategy {
+    pub fn init(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
+        let pattern = Pattern::init_by_pb_pattern(pb_pattern, pattern_meta)?;
         Ok(ExtendStrategy { pattern })
     }
 }

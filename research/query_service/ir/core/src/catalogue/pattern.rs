@@ -194,11 +194,11 @@ pub struct Pattern {
 }
 
 /// Initializers of Pattern
-/// Initialize a Pattern containing only one vertex from hte vertex's id and label
-impl From<(PatternId, PatternLabelId)> for Pattern {
-    fn from((vertex_id, vertex_label): (PatternId, PatternLabelId)) -> Pattern {
+/// Initialize a Pattern containing only one vertex from hte vertex's label
+impl From<PatternLabelId> for Pattern {
+    fn from(vertex_label: PatternLabelId) -> Pattern {
         let vertex = PatternVertex {
-            id: vertex_id,
+            id: 0,
             label: vertex_label,
             rank: 0,
             adjacent_edges: BTreeMap::new(),
@@ -212,7 +212,12 @@ impl From<(PatternId, PatternLabelId)> for Pattern {
 
 /// Initialze a Pattern from just a single Pattern Vertex
 impl From<PatternVertex> for Pattern {
-    fn from(vertex: PatternVertex) -> Pattern {
+    fn from(mut vertex: PatternVertex) -> Pattern {
+        vertex.rank = 0;
+        vertex.adjacent_edges.clear();
+        vertex.adjacent_vertices.clear();
+        vertex.in_degree = 0;
+        vertex.out_degree = 0;
         Pattern {
             edges: VecMap::new(),
             vertices: VecMap::from_iter([(vertex.id, vertex.clone())]),
@@ -317,11 +322,8 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
     }
 }
 
-/// Initialize a Pattern from a protubuf Pattern and a PatternMeta
-impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
-    type Error = IrError;
-
-    fn try_from((pattern_message, pattern_meta): (&pb::Pattern, &PatternMeta)) -> IrResult<Self> {
+impl Pattern {
+    pub fn init_by_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
         use ir_common::generated::common::name_or_id::Item as TagItem;
         use pb::pattern::binder::Item as BinderItem;
 
@@ -332,7 +334,7 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
         let mut v_id_properties_map: BTreeMap<PatternId, Vec<NameOrId>> = BTreeMap::new();
         let mut v_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
-        for sentence in &pattern_message.sentences {
+        for sentence in &pb_pattern.sentences {
             if sentence.binders.is_empty() {
                 return Err(IrError::InvalidPattern("Match sentence has no binder".to_string()));
             }
@@ -383,244 +385,241 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
                                 "FuzzyPattern: more than 1 expand label".to_string(),
                             ));
                         }
-                        if let Some(TagItem::Name(edge_label_name)) = params.tables[0].item.as_ref() {
-                            if let Some(edge_label_id) = pattern_meta.get_edge_label_id(edge_label_name) {
-                                let edge_id = assign_edge_id;
-                                assign_edge_id += 1;
-                                let (is_head, is_tail) = if sentence.binders.len() == 1 {
-                                    (true, true)
-                                } else if i == 0 {
-                                    (true, false)
-                                } else if i == sentence.binders.len() - 1 {
-                                    (false, true)
-                                } else {
-                                    (false, false)
-                                };
-                                let src_vertex_id: PatternId;
-                                let dst_vertex_id: PatternId;
-                                if is_head {
-                                    src_vertex_id = start_tag_v_id;
-                                } else {
-                                    src_vertex_id = pre_dst_vertex_id;
-                                }
-                                if is_tail {
-                                    if let Some(v_id) = end_tag_v_id {
-                                        dst_vertex_id = v_id;
-                                    } else {
-                                        dst_vertex_id = assign_vertex_id;
-                                        assign_vertex_id += 1;
-                                    }
+                        let edge_label_id = match params.tables[0].item.as_ref() {
+                            Some(&TagItem::Id(e_label_id)) => Some(e_label_id),
+                            Some(TagItem::Name(e_label_name)) => {
+                                pattern_meta.get_edge_label_id(e_label_name)
+                            }
+                            _ => None,
+                        };
+                        if let Some(edge_label_id) = edge_label_id {
+                            let edge_id = assign_edge_id;
+                            assign_edge_id += 1;
+                            let (is_head, is_tail) = if sentence.binders.len() == 1 {
+                                (true, true)
+                            } else if i == 0 {
+                                (true, false)
+                            } else if i == sentence.binders.len() - 1 {
+                                (false, true)
+                            } else {
+                                (false, false)
+                            };
+                            let src_vertex_id: PatternId;
+                            let dst_vertex_id: PatternId;
+                            if is_head {
+                                src_vertex_id = start_tag_v_id;
+                            } else {
+                                src_vertex_id = pre_dst_vertex_id;
+                            }
+                            if is_tail {
+                                if let Some(v_id) = end_tag_v_id {
+                                    dst_vertex_id = v_id;
                                 } else {
                                     dst_vertex_id = assign_vertex_id;
-                                    pre_dst_vertex_id = dst_vertex_id;
                                     assign_vertex_id += 1;
                                 }
-                                // check alias tag
-                                if let Some(alias_tag) = edge_expand
-                                    .alias
-                                    .as_ref()
-                                    .and_then(|name_or_id| name_or_id.item.as_ref())
-                                {
-                                    let tag = match alias_tag {
-                                        TagItem::Name(name) => NameOrId::Str(name.clone()),
-                                        TagItem::Id(id) => NameOrId::Id(*id),
-                                    };
-                                    match tag_v_id_map.get(&tag) {
-                                        Some(v_id) => {
-                                            if *v_id != dst_vertex_id {
-                                                return Err(IrError::InvalidPattern(
-                                                    "Two vertices use same tag".to_string(),
-                                                ));
-                                            }
-                                        }
-                                        None => {
-                                            tag_v_id_map.insert(tag, dst_vertex_id);
-                                        }
-                                    }
-                                }
-                                // add vertex properties(column)
-                                for property in params.columns.iter() {
-                                    if let Some(item) = property.item.as_ref() {
-                                        v_id_properties_map
-                                            .entry(dst_vertex_id)
-                                            .or_insert(Vec::new())
-                                            .push(match item {
-                                                TagItem::Name(name) => NameOrId::Str(name.clone()),
-                                                TagItem::Id(id) => NameOrId::Id(*id),
-                                            });
-                                    }
-                                }
-                                // add vertex predicate
-                                if let Some(expr) = params.predicate.as_ref() {
-                                    v_id_predicate_map.insert(dst_vertex_id, expr.clone());
-                                }
-                                // assign vertices labels
-                                let vertex_labels_candies: DynIter<(
-                                    PatternLabelId,
-                                    PatternLabelId,
-                                    PatternDirection,
-                                )> = match edge_expand.direction {
-                                    // Outgoing
-                                    0 => Box::new(
-                                        pattern_meta
-                                            .associated_vlabels_iter_by_elabel(edge_label_id)
-                                            .map(|(src_v_label, dst_v_label)| {
-                                                (src_v_label, dst_v_label, PatternDirection::Out)
-                                            }),
-                                    ),
-                                    // Incoming
-                                    1 => Box::new(
-                                        pattern_meta
-                                            .associated_vlabels_iter_by_elabel(edge_label_id)
-                                            .map(|(src_v_label, dst_v_label)| {
-                                                (dst_v_label, src_v_label, PatternDirection::In)
-                                            }),
-                                    ),
-                                    2 => Box::new(
-                                        pattern_meta
-                                            .associated_vlabels_iter_by_elabel(edge_label_id)
-                                            .map(|(src_v_label, dst_v_label)| {
-                                                (src_v_label, dst_v_label, PatternDirection::Out)
-                                            })
-                                            .chain(
-                                                pattern_meta
-                                                    .associated_vlabels_iter_by_elabel(edge_label_id)
-                                                    .map(|(src_v_label, dst_v_label)| {
-                                                        (dst_v_label, src_v_label, PatternDirection::In)
-                                                    }),
-                                            ),
-                                    ),
-                                    _ => {
-                                        return Err(IrError::InvalidPattern(
-                                            "Invalid Direction".to_string(),
-                                        ));
-                                    }
+                            } else {
+                                dst_vertex_id = assign_vertex_id;
+                                pre_dst_vertex_id = dst_vertex_id;
+                                assign_vertex_id += 1;
+                            }
+                            // check alias tag
+                            if let Some(alias_tag) = edge_expand
+                                .alias
+                                .as_ref()
+                                .and_then(|name_or_id| name_or_id.item.as_ref())
+                            {
+                                let tag = match alias_tag {
+                                    TagItem::Name(name) => NameOrId::Str(name.clone()),
+                                    TagItem::Id(id) => NameOrId::Id(*id),
                                 };
-                                let mut src_vertex_label: Option<PatternLabelId> = None;
-                                let mut dst_vertex_label: Option<PatternLabelId> = None;
-                                let mut direction: Option<PatternDirection> = None;
-                                if is_head && is_tail {
-                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
-                                        if let (Some(head_label), Some(tail_label)) =
-                                            (start_tag_label, end_tag_label)
-                                        {
-                                            if head_label == src_vlabel_cand
-                                                && tail_label == dst_vlabel_cand
-                                            {
-                                                src_vertex_label = Some(head_label);
-                                                dst_vertex_label = Some(tail_label);
-                                                direction = Some(dir);
-                                                break;
-                                            }
-                                        } else if let Some(head_label) = start_tag_label {
-                                            if head_label == src_vlabel_cand {
-                                                src_vertex_label = Some(head_label);
-                                                dst_vertex_label = Some(dst_vlabel_cand);
-                                                id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
-                                                direction = Some(dir);
-                                                break;
-                                            }
-                                        } else if let Some(tail_label) = end_tag_label {
-                                            if tail_label == dst_vlabel_cand {
-                                                src_vertex_label = Some(src_vlabel_cand);
-                                                id_label_map.insert(src_vertex_id, src_vlabel_cand);
-                                                dst_vertex_label = Some(tail_label);
-                                                direction = Some(dir);
-                                                break;
-                                            }
-                                        } else {
-                                            src_vertex_label = Some(src_vlabel_cand);
-                                            id_label_map.insert(src_vertex_id, src_vlabel_cand);
-                                            dst_vertex_label = Some(dst_vlabel_cand);
-                                            id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
-                                            direction = Some(dir);
-                                            break;
+                                match tag_v_id_map.get(&tag) {
+                                    Some(v_id) => {
+                                        if *v_id != dst_vertex_id {
+                                            return Err(IrError::InvalidPattern(
+                                                "Two vertices use same tag".to_string(),
+                                            ));
                                         }
                                     }
-                                } else if is_head {
-                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
-                                        if let Some(head_label) = start_tag_label {
-                                            if head_label == src_vlabel_cand {
-                                                src_vertex_label = Some(head_label);
-                                                dst_vertex_label = Some(dst_vlabel_cand);
-                                                pre_dst_vertex_label = dst_vlabel_cand;
-                                                direction = Some(dir);
-                                                break;
-                                            }
-                                        } else {
-                                            src_vertex_label = Some(src_vlabel_cand);
-                                            id_label_map.insert(src_vertex_id, src_vlabel_cand);
-                                            dst_vertex_label = Some(dst_vlabel_cand);
-                                            pre_dst_vertex_label = dst_vlabel_cand;
-                                            direction = Some(dir);
-                                            break;
-                                        }
-                                    }
-                                } else if is_tail {
-                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
-                                        if let Some(tail_label) = end_tag_label {
-                                            if tail_label == dst_vlabel_cand
-                                                && pre_dst_vertex_label == src_vlabel_cand
-                                            {
-                                                src_vertex_label = Some(pre_dst_vertex_label);
-                                                dst_vertex_label = Some(tail_label);
-                                                direction = Some(dir);
-                                                break;
-                                            }
-                                        } else if src_vlabel_cand == pre_dst_vertex_label {
-                                            src_vertex_label = Some(pre_dst_vertex_label);
-                                            dst_vertex_label = Some(dst_vlabel_cand);
-                                            id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
-                                            direction = Some(dir);
-                                            break;
-                                        }
-                                    }
-                                } else {
-                                    for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
-                                        if src_vlabel_cand == pre_dst_vertex_label {
-                                            src_vertex_label = Some(pre_dst_vertex_label);
-                                            dst_vertex_label = Some(dst_vlabel_cand);
-                                            pre_dst_vertex_label = dst_vlabel_cand;
-                                            direction = Some(dir);
-                                            break;
-                                        }
+                                    None => {
+                                        tag_v_id_map.insert(tag, dst_vertex_id);
                                     }
                                 }
-                                if let (Some(src_vertex_label), Some(dst_vertex_label), Some(direction)) =
-                                    (src_vertex_label, dst_vertex_label, direction)
-                                {
-                                    if let PatternDirection::Out = direction {
-                                        pattern_edges.push(PatternEdge::new(
-                                            edge_id,
-                                            edge_label_id,
-                                            src_vertex_id,
-                                            dst_vertex_id,
-                                            src_vertex_label,
-                                            dst_vertex_label,
-                                        ));
-                                    } else if let PatternDirection::In = direction {
-                                        pattern_edges.push(PatternEdge::new(
-                                            edge_id,
-                                            edge_label_id,
-                                            dst_vertex_id,
-                                            src_vertex_id,
-                                            dst_vertex_label,
-                                            src_vertex_label,
-                                        ));
+                            }
+                            // add vertex properties(column)
+                            for property in params.columns.iter() {
+                                if let Some(item) = property.item.as_ref() {
+                                    v_id_properties_map
+                                        .entry(dst_vertex_id)
+                                        .or_insert(Vec::new())
+                                        .push(match item {
+                                            TagItem::Name(name) => NameOrId::Str(name.clone()),
+                                            TagItem::Id(id) => NameOrId::Id(*id),
+                                        });
+                                }
+                            }
+                            // add vertex predicate
+                            if let Some(expr) = params.predicate.as_ref() {
+                                v_id_predicate_map.insert(dst_vertex_id, expr.clone());
+                            }
+                            // assign vertices labels
+                            let vertex_labels_candies: DynIter<(
+                                PatternLabelId,
+                                PatternLabelId,
+                                PatternDirection,
+                            )> = match edge_expand.direction {
+                                // Outgoing
+                                0 => Box::new(
+                                    pattern_meta
+                                        .associated_vlabels_iter_by_elabel(edge_label_id)
+                                        .map(|(src_v_label, dst_v_label)| {
+                                            (src_v_label, dst_v_label, PatternDirection::Out)
+                                        }),
+                                ),
+                                // Incoming
+                                1 => Box::new(
+                                    pattern_meta
+                                        .associated_vlabels_iter_by_elabel(edge_label_id)
+                                        .map(|(src_v_label, dst_v_label)| {
+                                            (dst_v_label, src_v_label, PatternDirection::In)
+                                        }),
+                                ),
+                                2 => Box::new(
+                                    pattern_meta
+                                        .associated_vlabels_iter_by_elabel(edge_label_id)
+                                        .map(|(src_v_label, dst_v_label)| {
+                                            (src_v_label, dst_v_label, PatternDirection::Out)
+                                        })
+                                        .chain(
+                                            pattern_meta
+                                                .associated_vlabels_iter_by_elabel(edge_label_id)
+                                                .map(|(src_v_label, dst_v_label)| {
+                                                    (dst_v_label, src_v_label, PatternDirection::In)
+                                                }),
+                                        ),
+                                ),
+                                _ => {
+                                    return Err(IrError::InvalidPattern("Invalid Direction".to_string()));
+                                }
+                            };
+                            let mut src_vertex_label: Option<PatternLabelId> = None;
+                            let mut dst_vertex_label: Option<PatternLabelId> = None;
+                            let mut direction: Option<PatternDirection> = None;
+                            if is_head && is_tail {
+                                for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
+                                    if let (Some(head_label), Some(tail_label)) =
+                                        (start_tag_label, end_tag_label)
+                                    {
+                                        if head_label == src_vlabel_cand && tail_label == dst_vlabel_cand {
+                                            src_vertex_label = Some(head_label);
+                                            dst_vertex_label = Some(tail_label);
+                                            direction = Some(dir);
+                                            break;
+                                        }
+                                    } else if let Some(head_label) = start_tag_label {
+                                        if head_label == src_vlabel_cand {
+                                            src_vertex_label = Some(head_label);
+                                            dst_vertex_label = Some(dst_vlabel_cand);
+                                            id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                            direction = Some(dir);
+                                            break;
+                                        }
+                                    } else if let Some(tail_label) = end_tag_label {
+                                        if tail_label == dst_vlabel_cand {
+                                            src_vertex_label = Some(src_vlabel_cand);
+                                            id_label_map.insert(src_vertex_id, src_vlabel_cand);
+                                            dst_vertex_label = Some(tail_label);
+                                            direction = Some(dir);
+                                            break;
+                                        }
+                                    } else {
+                                        src_vertex_label = Some(src_vlabel_cand);
+                                        id_label_map.insert(src_vertex_id, src_vlabel_cand);
+                                        dst_vertex_label = Some(dst_vlabel_cand);
+                                        id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                        direction = Some(dir);
+                                        break;
                                     }
-                                } else {
-                                    return Err(IrError::InvalidPattern(
-                                        "Cannot find valid label for some vertices".to_string(),
+                                }
+                            } else if is_head {
+                                for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
+                                    if let Some(head_label) = start_tag_label {
+                                        if head_label == src_vlabel_cand {
+                                            src_vertex_label = Some(head_label);
+                                            dst_vertex_label = Some(dst_vlabel_cand);
+                                            pre_dst_vertex_label = dst_vlabel_cand;
+                                            direction = Some(dir);
+                                            break;
+                                        }
+                                    } else {
+                                        src_vertex_label = Some(src_vlabel_cand);
+                                        id_label_map.insert(src_vertex_id, src_vlabel_cand);
+                                        dst_vertex_label = Some(dst_vlabel_cand);
+                                        pre_dst_vertex_label = dst_vlabel_cand;
+                                        direction = Some(dir);
+                                        break;
+                                    }
+                                }
+                            } else if is_tail {
+                                for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
+                                    if let Some(tail_label) = end_tag_label {
+                                        if tail_label == dst_vlabel_cand
+                                            && pre_dst_vertex_label == src_vlabel_cand
+                                        {
+                                            src_vertex_label = Some(pre_dst_vertex_label);
+                                            dst_vertex_label = Some(tail_label);
+                                            direction = Some(dir);
+                                            break;
+                                        }
+                                    } else if src_vlabel_cand == pre_dst_vertex_label {
+                                        src_vertex_label = Some(pre_dst_vertex_label);
+                                        dst_vertex_label = Some(dst_vlabel_cand);
+                                        id_label_map.insert(dst_vertex_id, dst_vlabel_cand);
+                                        direction = Some(dir);
+                                        break;
+                                    }
+                                }
+                            } else {
+                                for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
+                                    if src_vlabel_cand == pre_dst_vertex_label {
+                                        src_vertex_label = Some(pre_dst_vertex_label);
+                                        dst_vertex_label = Some(dst_vlabel_cand);
+                                        pre_dst_vertex_label = dst_vlabel_cand;
+                                        direction = Some(dir);
+                                        break;
+                                    }
+                                }
+                            }
+                            if let (Some(src_vertex_label), Some(dst_vertex_label), Some(direction)) =
+                                (src_vertex_label, dst_vertex_label, direction)
+                            {
+                                if let PatternDirection::Out = direction {
+                                    pattern_edges.push(PatternEdge::new(
+                                        edge_id,
+                                        edge_label_id,
+                                        src_vertex_id,
+                                        dst_vertex_id,
+                                        src_vertex_label,
+                                        dst_vertex_label,
+                                    ));
+                                } else if let PatternDirection::In = direction {
+                                    pattern_edges.push(PatternEdge::new(
+                                        edge_id,
+                                        edge_label_id,
+                                        dst_vertex_id,
+                                        src_vertex_id,
+                                        dst_vertex_label,
+                                        src_vertex_label,
                                     ));
                                 }
                             } else {
                                 return Err(IrError::InvalidPattern(
-                                    "given edge label doesn't exist".to_string(),
+                                    "Cannot find valid label for some vertices".to_string(),
                                 ));
                             }
                         } else {
                             return Err(IrError::Unsupported(
-                                "FuzzyPattern: edge expand doesn't have label".to_string(),
+                                "FuzzyPattern: edge expand doesn't have valid label".to_string(),
                             ));
                         }
                     } else {
@@ -641,7 +640,6 @@ impl TryFrom<(&pb::Pattern, &PatternMeta)> for Pattern {
         })
     }
 }
-
 /// Methods to access the fields of a Pattern or get some info from Pattern
 impl Pattern {
     /// Iterate Edges

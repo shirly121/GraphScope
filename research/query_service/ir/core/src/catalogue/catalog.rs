@@ -102,7 +102,7 @@ impl Catalogue {
         };
         let mut queue = VecDeque::new();
         for vertex_label in pattern_meta.vertex_label_ids_iter() {
-            let new_pattern = Pattern::from((0, vertex_label));
+            let new_pattern = Pattern::from(vertex_label);
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
             let new_pattern_index = catalog.store.add_node(VertexWeight {
                 code: new_pattern_code.clone(),
@@ -169,9 +169,7 @@ impl Catalogue {
         let mut queue = VecDeque::new();
         let mut relaxed_patterns = BTreeSet::new();
         for vertex in pattern.vertices_iter() {
-            let vertex_id = vertex.get_id();
-            let vertex_label = vertex.get_label();
-            let new_pattern = Pattern::from((vertex_id, vertex_label));
+            let new_pattern = Pattern::from(vertex.clone());
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
             let new_pattern_index = if let Some(pattern_index) = catalog
                 .pattern_v_locate_map

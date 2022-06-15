@@ -640,7 +640,7 @@ impl DecodeUnit {
     /// Transform a &[i32] decode value to a Pattern
     pub fn to_pattern(decode_vec: &[i32]) -> Result<Pattern, IrError> {
         if decode_vec.len() == 1 {
-            Ok(Pattern::from((0, decode_vec[0])))
+            Ok(Pattern::from(decode_vec[0]))
         } else if decode_vec.len() % 5 == 0 {
             let mut pattern_edges = Vec::with_capacity(decode_vec.len() / 5);
             let mut vertices_label_rank_id_map = HashMap::new();
@@ -1015,7 +1015,7 @@ mod tests {
     #[test]
     fn test_encode_decode_one_vertex_pattern() {
         // Pattern has label 2
-        let pattern = Pattern::from((1, 2));
+        let pattern = Pattern::from(2);
         let encoder = Encoder::init_by_pattern(&pattern, 1);
         let code1: Vec<u8> = pattern.encode_to(&encoder);
         let pattern: Pattern = Pattern::decode_from(&code1, &encoder).unwrap();
@@ -1027,7 +1027,7 @@ mod tests {
     #[test]
     fn test_encode_decode_one_vertex_pattern_ascii_string() {
         // Pattern has label 5
-        let pattern = Pattern::from((0, 5));
+        let pattern = Pattern::from(5);
         let encoder = Encoder::init_by_pattern(&pattern, 1);
         let code1: AsciiString = pattern.encode_to(&encoder);
         let pattern: Pattern = Pattern::decode_from(&code1, &encoder).unwrap();
