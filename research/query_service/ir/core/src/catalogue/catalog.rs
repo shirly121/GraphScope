@@ -166,27 +166,29 @@ impl Catalogue {
             pattern_v_locate_map: HashMap::new(),
             encoder: Encoder::init_by_pattern(pattern, 4),
         };
+        catalog.update_catalog_by_pattern(pattern);
+        catalog
+    }
+
+    pub fn update_catalog_by_pattern(&mut self, pattern: &Pattern) {
         let mut queue = VecDeque::new();
         let mut relaxed_patterns = BTreeSet::new();
         for vertex in pattern.vertices_iter() {
             let new_pattern = Pattern::from(vertex.clone());
-            let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
-            let new_pattern_index = if let Some(pattern_index) = catalog
-                .pattern_v_locate_map
-                .get(&new_pattern_code)
-            {
-                *pattern_index
-            } else {
-                let pattern_index = catalog.store.add_node(VertexWeight {
-                    code: new_pattern_code.clone(),
-                    count: 0,
-                    best_approach: None,
-                });
-                catalog
-                    .pattern_v_locate_map
-                    .insert(new_pattern_code, pattern_index);
-                pattern_index
-            };
+            let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
+            let new_pattern_index =
+                if let Some(pattern_index) = self.pattern_v_locate_map.get(&new_pattern_code) {
+                    *pattern_index
+                } else {
+                    let pattern_index = self.store.add_node(VertexWeight {
+                        code: new_pattern_code.clone(),
+                        count: 0,
+                        best_approach: None,
+                    });
+                    self.pattern_v_locate_map
+                        .insert(new_pattern_code, pattern_index);
+                    pattern_index
+                };
             queue.push_back((new_pattern, new_pattern_index));
         }
         while let Some((relaxed_pattern, relaxed_pattern_index)) = queue.pop_front() {
@@ -237,22 +239,20 @@ impl Catalogue {
                         .clone()
                         .extend_by_edges(add_edges.iter().map(|&e| e))
                         .unwrap();
-                    let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
-                    let (new_pattern_index, existed) = if let Some(pattern_index) = catalog
-                        .pattern_v_locate_map
-                        .get(&new_pattern_code)
-                    {
-                        (*pattern_index, true)
-                    } else {
-                        (
-                            catalog.store.add_node(VertexWeight {
-                                code: new_pattern_code.clone(),
-                                count: 0,
-                                best_approach: None,
-                            }),
-                            false,
-                        )
-                    };
+                    let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
+                    let (new_pattern_index, existed) =
+                        if let Some(pattern_index) = self.pattern_v_locate_map.get(&new_pattern_code) {
+                            (*pattern_index, true)
+                        } else {
+                            (
+                                self.store.add_node(VertexWeight {
+                                    code: new_pattern_code.clone(),
+                                    count: 0,
+                                    best_approach: None,
+                                }),
+                                false,
+                            )
+                        };
                     let extend_edges: Vec<ExtendEdge> = add_edges
                         .iter()
                         .map(|add_edge| {
@@ -276,15 +276,14 @@ impl Catalogue {
                         .get_vertex_from_id(adj_vertex_id)
                         .unwrap()
                         .get_label();
-                    let extend_step = ExtendStep::from((target_v_label, extend_edges));
-                    let extend_step_code: Vec<u8> = Cipher::encode_to(&extend_step, &catalog.encoder);
+                    let extend_step = ExtendStep::new(target_v_label, extend_edges);
+                    let extend_step_code: Vec<u8> = Cipher::encode_to(&extend_step, &self.encoder);
                     if !existed {
-                        catalog
-                            .pattern_v_locate_map
+                        self.pattern_v_locate_map
                             .insert(new_pattern_code, new_pattern_index);
                     }
                     let mut found_extend_step = false;
-                    for connection_weight in catalog
+                    for connection_weight in self
                         .store
                         .edges_connecting(relaxed_pattern_index, new_pattern_index)
                         .map(|edge| edge.weight())
@@ -297,7 +296,7 @@ impl Catalogue {
                         }
                     }
                     if !found_extend_step {
-                        catalog.store.add_edge(
+                        self.store.add_edge(
                             relaxed_pattern_index,
                             new_pattern_index,
                             EdgeWeight::ExtendStep(EdgeWeightForExtendStep {
@@ -313,7 +312,6 @@ impl Catalogue {
                 }
             }
         }
-        catalog
     }
 }
 

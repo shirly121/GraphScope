@@ -28,7 +28,7 @@ use crate::catalogue::PatternDirection;
 pub fn build_extend_step_case1() -> ExtendStep {
     let extend_edge1 = ExtendEdge::new(0, 0, 1, PatternDirection::Out);
     let extend_edge2 = extend_edge1.clone();
-    ExtendStep::from((1, vec![extend_edge1, extend_edge2]))
+    ExtendStep::new(1, vec![extend_edge1, extend_edge2])
 }
 
 /// The extend step looks like:
@@ -45,7 +45,7 @@ pub fn build_extend_step_case2() -> ExtendStep {
     let extend_edge_1 = ExtendEdge::new(1, 0, 1, PatternDirection::Out);
     let extend_edge_2 = ExtendEdge::new(1, 1, 1, PatternDirection::Out);
     let extend_edge_3 = ExtendEdge::new(2, 0, 2, PatternDirection::Out);
-    ExtendStep::from((target_v_label, vec![extend_edge_1, extend_edge_2, extend_edge_3]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1, extend_edge_2, extend_edge_3])
 }
 
 /// The extend step looks like:
@@ -53,7 +53,7 @@ pub fn build_extend_step_case2() -> ExtendStep {
 pub fn build_modern_extend_step_case1() -> ExtendStep {
     let target_v_label = 0;
     let extend_edge_1 = ExtendEdge::new(0, 0, 0, PatternDirection::Out);
-    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1])
 }
 
 /// The extend step looks like:
@@ -61,7 +61,7 @@ pub fn build_modern_extend_step_case1() -> ExtendStep {
 pub fn build_modern_extend_step_case2() -> ExtendStep {
     let target_v_label = 0;
     let extend_edge_1 = ExtendEdge::new(0, 0, 0, PatternDirection::In);
-    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1])
 }
 
 /// The extend step looks like:
@@ -69,7 +69,7 @@ pub fn build_modern_extend_step_case2() -> ExtendStep {
 pub fn build_modern_extend_step_case3() -> ExtendStep {
     let target_v_label = 1;
     let extend_edge_1 = ExtendEdge::new(0, 0, 1, PatternDirection::Out);
-    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1])
 }
 
 /// The extend step looks like:
@@ -77,7 +77,7 @@ pub fn build_modern_extend_step_case3() -> ExtendStep {
 pub fn build_modern_extend_step_case4() -> ExtendStep {
     let target_v_label = 0;
     let extend_edge_1 = ExtendEdge::new(1, 0, 1, PatternDirection::In);
-    ExtendStep::from((target_v_label, vec![extend_edge_1]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1])
 }
 
 /// The extend step looks like:
@@ -90,7 +90,7 @@ pub fn build_modern_extend_step_case5() -> ExtendStep {
     let target_v_label = 0;
     let extend_edge_1 = ExtendEdge::new(1, 0, 1, PatternDirection::In);
     let extend_edge_2 = ExtendEdge::new(0, 0, 0, PatternDirection::Out);
-    ExtendStep::from((target_v_label, vec![extend_edge_1, extend_edge_2]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1, extend_edge_2])
 }
 
 /// The extend step looks like:
@@ -103,5 +103,5 @@ pub fn build_modern_extend_step_case6() -> ExtendStep {
     let target_v_label = 1;
     let extend_edge_1 = ExtendEdge::new(0, 0, 1, PatternDirection::Out);
     let extend_edge_2 = ExtendEdge::new(0, 1, 1, PatternDirection::Out);
-    ExtendStep::from((target_v_label, vec![extend_edge_1, extend_edge_2]))
+    ExtendStep::new(target_v_label, vec![extend_edge_1, extend_edge_2])
 }

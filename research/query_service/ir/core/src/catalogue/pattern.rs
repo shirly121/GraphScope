@@ -323,7 +323,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
 }
 
 impl Pattern {
-    pub fn init_by_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
+    pub fn from_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
         use ir_common::generated::common::name_or_id::Item as TagItem;
         use pb::pattern::binder::Item as BinderItem;
 
@@ -1900,17 +1900,47 @@ impl Pattern {
                     )
                 });
             for extend_edges in extend_edges_set_collection {
-                let extend_step = ExtendStep::from((
+                let extend_step = ExtendStep::new(
                     target_v_label,
                     extend_edges
                         .into_iter()
                         .map(|(extend_edge, _)| extend_edge)
                         .collect(),
-                ));
+                );
                 extend_steps.push(extend_step);
             }
         }
         extend_steps
+    }
+
+    pub fn generate_definite_extend_step_by_v_id(
+        &self, target_v_id: PatternId,
+    ) -> Option<DefiniteExtendStep> {
+        if let Some(target_vertex) = self.get_vertex_from_id(target_v_id) {
+            let target_v_label = target_vertex.get_label();
+            let mut extend_edges = vec![];
+            for (edge_id, _, dir) in target_vertex.adjacent_edges_iter() {
+                let edge = self.get_edge_from_id(edge_id).unwrap();
+                if let PatternDirection::In = dir {
+                    extend_edges.push(DefiniteExtendEdge::new(
+                        edge.get_start_vertex_id(),
+                        edge_id,
+                        edge.get_label(),
+                        PatternDirection::Out,
+                    ));
+                } else {
+                    extend_edges.push(DefiniteExtendEdge::new(
+                        edge.get_end_vertex_id(),
+                        edge_id,
+                        edge.get_label(),
+                        PatternDirection::In,
+                    ));
+                }
+            }
+            Some(DefiniteExtendStep::new(target_v_id, target_v_label, extend_edges))
+        } else {
+            None
+        }
     }
 }
 
