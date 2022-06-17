@@ -1152,6 +1152,7 @@ pub struct ExtendStrategy {
     pattern: Pattern,
 }
 
+/// Initializer of a ExtendStrategy
 impl ExtendStrategy {
     pub fn init(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
         let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta)?;
@@ -1159,8 +1160,10 @@ impl ExtendStrategy {
     }
 }
 
+/// Build pattern match Logical Plan for ExtendStrategy
 impl MatchingStrategy for ExtendStrategy {
     fn build_logical_plan(&self, store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
+        // if can find catalog, generate optimized logical plan
         if let Some(store_meta) = store_meta {
             if let Some(catalog) = store_meta.catalogue.as_ref() {
                 if let Ok(match_plan) = self
@@ -1169,6 +1172,7 @@ impl MatchingStrategy for ExtendStrategy {
                 {
                     Ok(match_plan)
                 } else {
+                    // generate optimized logical plan fails, use simple plan instead
                     self.pattern.generate_simple_extend_match_plan()
                 }
             } else {

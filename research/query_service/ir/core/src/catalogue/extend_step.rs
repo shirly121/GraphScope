@@ -137,6 +137,7 @@ impl ExtendStep {
     }
 }
 
+/// Given a DefiniteExtendEdge, we can uniquely locate an edge with dir in the pattern
 pub struct DefiniteExtendEdge {
     start_v_id: PatternId,
     edge_id: PatternId,
@@ -144,6 +145,7 @@ pub struct DefiniteExtendEdge {
     dir: PatternDirection,
 }
 
+/// Initializer of DefiniteExtendEdge
 impl DefiniteExtendEdge {
     pub fn new(
         start_v_id: PatternId, edge_id: PatternId, edge_label: PatternLabelId, dir: PatternDirection,
@@ -152,12 +154,14 @@ impl DefiniteExtendEdge {
     }
 }
 
+/// Given a DefiniteExtendStep, we can uniquely find which part of the pattern to extend
 pub struct DefiniteExtendStep {
     target_v_id: PatternId,
     target_v_label: PatternLabelId,
     extend_edges: Vec<DefiniteExtendEdge>,
 }
 
+/// Initializer of DefiniteExtendStep
 impl DefiniteExtendStep {
     pub fn new(
         target_v_id: PatternId, target_v_label: PatternLabelId, extend_edges: Vec<DefiniteExtendEdge>,
@@ -166,6 +170,8 @@ impl DefiniteExtendStep {
     }
 }
 
+/// Transform a one-vertex pattern to DefiniteExtendStep
+/// It is usually to use such DefiniteExtendStep to generate Source operator
 impl TryFrom<Pattern> for DefiniteExtendStep {
     type Error = IrError;
 
@@ -183,6 +189,7 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
     }
 }
 
+/// Methods of accessing some fields of DefiniteExtendStep
 impl DefiniteExtendStep {
     pub fn get_target_v_id(&self) -> PatternId {
         self.target_v_id
@@ -194,10 +201,12 @@ impl DefiniteExtendStep {
 }
 
 impl DefiniteExtendStep {
+    /// Use the DefiniteExtendStep to generate corresponding edge expand operator
     pub fn generate_expand_operators(&self, origin_pattern: &Pattern) -> Vec<pb::EdgeExpand> {
         let mut expand_operators = vec![];
         let target_v_id = self.target_v_id;
         for extend_edge in self.extend_edges.iter() {
+            // pick edge's property and predicate from origin pattern
             let edge_id = extend_edge.edge_id;
             let edge_properties: Vec<common_pb::NameOrId> = origin_pattern
                 .edge_properties_iter(edge_id)
@@ -208,6 +217,7 @@ impl DefiniteExtendStep {
                 .get_edge_predicate(edge_id)
                 .cloned();
             let edge_expand = pb::EdgeExpand {
+                // use start vertex id as tag
                 v_tag: Some((extend_edge.start_v_id as i32).into()),
                 direction: extend_edge.dir as i32,
                 params: Some(query_params(
@@ -216,6 +226,7 @@ impl DefiniteExtendStep {
                     edge_predicate,
                 )),
                 is_edge: false,
+                // use target vertex id as alias
                 alias: Some((target_v_id as i32).into()),
             };
             expand_operators.push(edge_expand);
@@ -223,11 +234,15 @@ impl DefiniteExtendStep {
         expand_operators
     }
 
+    /// Generate the intersect operator for DefiniteExtendStep;s target vertex
+    /// It needs its parent EdgeExpand Operator's node ids
     pub fn generate_intersect_operator(&self, parents: Vec<i32>) -> pb::Intersect {
         pb::Intersect { parents, key: Some((self.target_v_id as i32).into()) }
     }
 
+    /// Generate the filter operator for DefiniteExtendStep;s target vertex
     pub fn generate_vertex_filter_operator(&self, origin_pattern: &Pattern) -> pb::Auxilia {
+        // pick target vertex's property and predicate info from origin pattern
         let target_v_id = self.target_v_id;
         let target_v_label = self.target_v_label;
         let target_v_properties: Vec<common_pb::NameOrId> = origin_pattern

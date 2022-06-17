@@ -323,21 +323,28 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
 }
 
 impl Pattern {
-    pub fn from_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
+    pub fn from_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Pattern> {
         use ir_common::generated::common::name_or_id::Item as TagItem;
         use pb::pattern::binder::Item as BinderItem;
-
+        // vertex id assign to the vertex picked from the pb pattern
         let mut assign_vertex_id = 0;
+        // edge id assign to the edge picked from the pb pattern
         let mut assign_edge_id = 0;
+        // pattern edges picked from the pb pattern
         let mut pattern_edges = vec![];
+        // record the vertices from the pb pattern having tags
         let mut tag_v_id_map: BTreeMap<NameOrId, PatternId> = BTreeMap::new();
+        // record the label for each vertex from the pb pattern
         let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
-        let mut v_id_properties_map: BTreeMap<PatternId, Vec<NameOrId>> = BTreeMap::new();
-        let mut v_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
+        // record the edges from the pb pattern has properties
+        let mut e_id_properties_map: BTreeMap<PatternId, Vec<NameOrId>> = BTreeMap::new();
+        // record the edges from the pb pattern has predicates
+        let mut e_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         for sentence in &pb_pattern.sentences {
             if sentence.binders.is_empty() {
                 return Err(IrError::InvalidPattern("Match sentence has no binder".to_string()));
             }
+            // pb pattern sentence must have start tag
             let start_tag: NameOrId = sentence
                 .start
                 .as_ref()
@@ -345,25 +352,33 @@ impl Pattern {
                 .ok_or(IrError::InvalidPattern("Match sentence's start tag is None".to_string()))?
                 .try_into()
                 .map_err(|err| IrError::ParsePbError(err))?;
+            // assgin a vertex id to the start vertex of a pb pattern sentence
             let start_tag_v_id: PatternId;
+            // situation that the start tag is already found in other pb pattern sentence
             if let Some(v_id) = tag_v_id_map.get(&start_tag) {
                 start_tag_v_id = *v_id;
             } else {
+                // assign the start vertex with a new id
                 start_tag_v_id = assign_vertex_id;
                 tag_v_id_map.insert(start_tag.clone(), assign_vertex_id);
                 assign_vertex_id += 1;
             }
+            // check whether the start tag label is already determined or not
             let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
+            // it is allowed that the pb pattern sentence doesn't have an end tag
             let end_tag: Option<NameOrId> = sentence
                 .end
                 .as_ref()
                 .cloned()
                 .and_then(|name_or_id| name_or_id.try_into().ok());
+            // if the end tag exists, assign the end vertex with an id
             let end_tag_v_id: Option<PatternId>;
+            // situation that the end tag is already found in other pb pattern sentence
             if let Some(tag) = end_tag {
                 if let Some(v_id) = tag_v_id_map.get(&tag) {
                     end_tag_v_id = Some(*v_id);
                 } else {
+                    // assign the end vertex with a new id
                     end_tag_v_id = Some(assign_vertex_id);
                     tag_v_id_map.insert(tag.clone(), assign_vertex_id);
                     assign_vertex_id += 1;
@@ -371,8 +386,11 @@ impl Pattern {
             } else {
                 end_tag_v_id = None;
             }
+            // check the end tag label is already determined or not
             let end_tag_label = end_tag_v_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
+            // record previous pattern edge's destinated vertex's id
             let mut pre_dst_vertex_id: PatternId = PatternId::default();
+            // record previous pattern edge's destinated vertex's label
             let mut pre_dst_vertex_label: PatternLabelId = PatternLabelId::default();
             for (i, binder) in sentence.binders.iter().enumerate() {
                 if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
@@ -385,6 +403,7 @@ impl Pattern {
                                 "FuzzyPattern: more than 1 expand label".to_string(),
                             ));
                         }
+                        // get edge label's id
                         let edge_label_id = match params.tables[0].item.as_ref() {
                             Some(&TagItem::Id(e_label_id)) => Some(e_label_id),
                             Some(TagItem::Name(e_label_name)) => {
@@ -393,8 +412,10 @@ impl Pattern {
                             _ => None,
                         };
                         if let Some(edge_label_id) = edge_label_id {
+                            // assign the new pattern edge with a new id
                             let edge_id = assign_edge_id;
                             assign_edge_id += 1;
+                            // check whether the current pattern is the head or tail of the pb pattern sentence
                             let (is_head, is_tail) = if sentence.binders.len() == 1 {
                                 (true, true)
                             } else if i == 0 {
@@ -404,6 +425,8 @@ impl Pattern {
                             } else {
                                 (false, false)
                             };
+                            // assign/pick the souce vertex id and destination vertex id of the pattern edge
+                            // the situation is classified as whether it is the head/tail of the sentence
                             let src_vertex_id: PatternId;
                             let dst_vertex_id: PatternId;
                             if is_head {
@@ -446,11 +469,11 @@ impl Pattern {
                                     }
                                 }
                             }
-                            // add vertex properties(column)
+                            // add edge properties(column)
                             for property in params.columns.iter() {
                                 if let Some(item) = property.item.as_ref() {
-                                    v_id_properties_map
-                                        .entry(dst_vertex_id)
+                                    e_id_properties_map
+                                        .entry(edge_id)
                                         .or_insert(Vec::new())
                                         .push(match item {
                                             TagItem::Name(name) => NameOrId::Str(name.clone()),
@@ -458,11 +481,12 @@ impl Pattern {
                                         });
                                 }
                             }
-                            // add vertex predicate
+                            // add edge predicate
                             if let Some(expr) = params.predicate.as_ref() {
-                                v_id_predicate_map.insert(dst_vertex_id, expr.clone());
+                                e_id_predicate_map.insert(edge_id, expr.clone());
                             }
                             // assign vertices labels
+                            // firstly, pick all candidate labels that can be assigned to the src/dst vertex
                             let vertex_labels_candies: DynIter<(
                                 PatternLabelId,
                                 PatternLabelId,
@@ -484,6 +508,7 @@ impl Pattern {
                                             (dst_v_label, src_v_label, PatternDirection::In)
                                         }),
                                 ),
+                                // Both
                                 2 => Box::new(
                                     pattern_meta
                                         .associated_vlabels_iter_by_elabel(edge_label_id)
@@ -502,10 +527,14 @@ impl Pattern {
                                     return Err(IrError::InvalidPattern("Invalid Direction".to_string()));
                                 }
                             };
+                            // check which label candidate can connect to the previous determined partial pattern
                             let mut src_vertex_label: Option<PatternLabelId> = None;
                             let mut dst_vertex_label: Option<PatternLabelId> = None;
                             let mut direction: Option<PatternDirection> = None;
                             if is_head && is_tail {
+                                // for head && tail, it is required that
+                                // src vertex label <match> head vertex label
+                                // dst vertex label <match> tail vertex label
                                 for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                     if let (Some(head_label), Some(tail_label)) =
                                         (start_tag_label, end_tag_label)
@@ -542,6 +571,7 @@ impl Pattern {
                                     }
                                 }
                             } else if is_head {
+                                // for head, it is required that src vertex label <match> head vertex label
                                 for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                     if let Some(head_label) = start_tag_label {
                                         if head_label == src_vlabel_cand {
@@ -561,6 +591,9 @@ impl Pattern {
                                     }
                                 }
                             } else if is_tail {
+                                // for tail, it is required that
+                                // src vertex label <match> previous dst vertex label
+                                // dst vertex label <match> tail vertex label
                                 for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                     if let Some(tail_label) = end_tag_label {
                                         if tail_label == dst_vlabel_cand
@@ -580,6 +613,8 @@ impl Pattern {
                                     }
                                 }
                             } else {
+                                // if it is not head either tail, it is required that
+                                // src vertex label <match> previous dst vertex label
                                 for (src_vlabel_cand, dst_vlabel_cand, dir) in vertex_labels_candies {
                                     if src_vlabel_cand == pre_dst_vertex_label {
                                         src_vertex_label = Some(pre_dst_vertex_label);
@@ -590,6 +625,7 @@ impl Pattern {
                                     }
                                 }
                             }
+                            // check whether we find proper src vertex label and dst vertex label
                             if let (Some(src_vertex_label), Some(dst_vertex_label), Some(direction)) =
                                 (src_vertex_label, dst_vertex_label, direction)
                             {
@@ -634,8 +670,8 @@ impl Pattern {
         }
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             pattern.vertex_tag_map = tag_v_id_map.into_iter().collect();
-            pattern.vertex_properties_map = v_id_properties_map;
-            pattern.vertex_predicate_map = v_id_predicate_map;
+            pattern.edge_properties_map = e_id_properties_map;
+            pattern.edge_predicate_map = e_id_predicate_map;
             Ok(pattern)
         })
     }
@@ -652,6 +688,7 @@ impl Pattern {
         Box::new(self.vertices.iter().map(|(_, vertex)| vertex))
     }
 
+    /// Iterate Edges with the given edge label
     pub fn edges_iter_by_label(&self, edge_label: PatternLabelId) -> DynIter<&PatternEdge> {
         match self.edge_label_map.get(&edge_label) {
             Some(edges_set) => Box::new(
@@ -663,6 +700,7 @@ impl Pattern {
         }
     }
 
+    /// Iterate Vertices with the given vertex label
     pub fn vertices_iter_by_label(&self, vertex_label: PatternLabelId) -> DynIter<&PatternVertex> {
         match self.vertex_label_map.get(&vertex_label) {
             Some(vertices_set) => Box::new(
@@ -726,10 +764,12 @@ impl Pattern {
             .and_then(|id| self.edges.get(*id))
     }
 
+    /// Iterate over edges that has tag
     pub fn edges_with_tag_iter(&self) -> DynIter<PatternId> {
         Box::new(self.edge_tag_map.iter().map(|(_, e_id)| *e_id))
     }
 
+    /// Iterate over vertices that has tag
     pub fn vertices_with_tag_iter(&self) -> DynIter<PatternId> {
         Box::new(
             self.vertex_tag_map
@@ -846,10 +886,12 @@ impl Pattern {
         min_rank_bit_num
     }
 
+    /// Check whether the edge has property or not
     pub fn edge_has_property(&self, edge_id: PatternId) -> bool {
         self.edge_properties_map.contains_key(&edge_id)
     }
 
+    /// Check whether the vertex has property or not
     pub fn vertex_has_property(&self, vertex_id: PatternId) -> bool {
         self.vertex_properties_map
             .contains_key(&vertex_id)
@@ -887,10 +929,12 @@ impl Pattern {
             .push(property);
     }
 
+    /// Check whether the edge has predicate or not
     pub fn edge_has_predicate(&self, edge_id: PatternId) -> bool {
         self.edge_predicate_map.contains_key(&edge_id)
     }
 
+    /// Check whether the edge has predicate or not
     pub fn vertex_has_predicate(&self, vertex_id: PatternId) -> bool {
         self.vertex_predicate_map
             .contains_key(&vertex_id)
@@ -1474,7 +1518,7 @@ impl Pattern {
     }
 }
 
-/// Methods for Pattern Extension
+/// Methods for Pattern Extension or Related to (Definite) Extend Steps
 impl Pattern {
     /// Get all the vertices(id) with the same vertex label and vertex rank
     /// These vertices are equivalent in the Pattern
@@ -1508,99 +1552,6 @@ impl Pattern {
             new_edge_id += 1;
         }
         new_edge_id
-    }
-
-    fn add_edge(&mut self, edge: &PatternEdge) -> IrResult<()> {
-        // Error that the adding edge already exist
-        if self.edges.contains_key(edge.get_id()) {
-            return Err(IrError::InvalidCode("The adding edge already existed".to_string()));
-        }
-        if let (None, None) = (
-            self.get_vertex_from_id(edge.get_start_vertex_id()),
-            self.get_vertex_from_id(edge.get_end_vertex_id()),
-        ) {
-            return Err(IrError::InvalidCode("The adding edge cannot connect to the pattern".to_string()));
-        } else if let None = self.get_vertex_from_id(edge.get_start_vertex_id()) {
-            let start_vertex_id = edge.get_start_vertex_id();
-            let start_vertex_label = edge.get_start_vertex_label();
-            self.vertices.insert(
-                start_vertex_id,
-                PatternVertex {
-                    id: start_vertex_id,
-                    label: start_vertex_label,
-                    rank: 0,
-                    adjacent_edges: BTreeMap::new(),
-                    adjacent_vertices: BTreeMap::new(),
-                    out_degree: 0,
-                    in_degree: 0,
-                },
-            );
-            self.vertex_label_map
-                .entry(start_vertex_label)
-                .or_insert(BTreeSet::new())
-                .insert(start_vertex_id);
-        } else if let None = self.get_vertex_from_id(edge.get_end_vertex_id()) {
-            let end_vertex_id = edge.get_end_vertex_id();
-            let end_vertex_label = edge.get_end_vertex_label();
-            self.vertices.insert(
-                end_vertex_id,
-                PatternVertex {
-                    id: end_vertex_id,
-                    label: end_vertex_label,
-                    rank: 0,
-                    adjacent_edges: BTreeMap::new(),
-                    adjacent_vertices: BTreeMap::new(),
-                    out_degree: 0,
-                    in_degree: 0,
-                },
-            );
-            self.vertex_label_map
-                .entry(end_vertex_label)
-                .or_insert(BTreeSet::new())
-                .insert(end_vertex_id);
-        }
-        if let Some(start_vertex) = self.get_vertex_mut_from_id(edge.get_start_vertex_id()) {
-            start_vertex
-                .adjacent_edges
-                .insert(edge.get_id(), (edge.get_end_vertex_id(), PatternDirection::Out));
-            start_vertex
-                .adjacent_vertices
-                .entry(edge.get_end_vertex_id())
-                .or_insert(vec![])
-                .push((edge.get_id(), PatternDirection::Out));
-            start_vertex.out_degree += 1;
-        }
-        if let Some(end_vertex) = self.get_vertex_mut_from_id(edge.get_end_vertex_id()) {
-            end_vertex
-                .adjacent_edges
-                .insert(edge.get_id(), (edge.get_start_vertex_id(), PatternDirection::In));
-            end_vertex
-                .adjacent_vertices
-                .entry(edge.get_start_vertex_id())
-                .or_insert(vec![])
-                .push((edge.get_id(), PatternDirection::In));
-            end_vertex.in_degree += 1;
-        }
-        self.edges.insert(edge.get_id(), edge.clone());
-        self.edge_label_map
-            .entry(edge.get_label())
-            .or_insert(BTreeSet::new())
-            .insert(edge.get_id());
-        Ok(())
-    }
-
-    pub fn extend_by_edges<'a, T>(&self, edges: T) -> Option<Pattern>
-    where
-        T: Iterator<Item = &'a PatternEdge>,
-    {
-        let mut new_pattern = self.clone();
-        for edge in edges {
-            if let Err(_) = new_pattern.add_edge(edge) {
-                return None;
-            }
-        }
-        new_pattern.vertex_ranking();
-        Some(new_pattern)
     }
 
     /// Extend the current Pattern to a new Pattern with the given ExtendStep
@@ -1706,15 +1657,183 @@ impl Pattern {
         Some(new_pattern)
     }
 
+    /// Find all possible ExtendSteps of current pattern based on the given Pattern Meta
+    pub fn get_extend_steps(
+        &self, pattern_meta: &PatternMeta, same_label_vertex_limit: usize,
+    ) -> Vec<ExtendStep> {
+        let mut extend_steps = vec![];
+        // Get all vertex labels from pattern meta as the possible extend target vertex
+        let target_v_labels = pattern_meta.vertex_label_ids_iter();
+        // For every possible extend target vertex label, find its all adjacent edges to the current pattern
+        for target_v_label in target_v_labels {
+            if self
+                .vertex_label_map
+                .get(&target_v_label)
+                .map(|v_ids| v_ids.len())
+                .unwrap_or(0)
+                >= same_label_vertex_limit
+            {
+                continue;
+            }
+            // The collection of extend edges with a source vertex id
+            // The source vertex id is used to specify the extend edge is from which vertex of the pattern
+            let mut extend_edges_with_src_id = vec![];
+            for (_, src_vertex) in &self.vertices {
+                // check whether there are some edges between the target vertex and the current source vertex
+                let adjacent_edges =
+                    pattern_meta.associated_elabels_iter_by_vlabel(src_vertex.label, target_v_label);
+                // Transform all the adjacent edges to ExtendEdge and add to extend_edges_with_src_id
+                for adjacent_edge in adjacent_edges {
+                    let extend_edge = ExtendEdge::new(
+                        src_vertex.label,
+                        src_vertex.rank,
+                        adjacent_edge.0,
+                        adjacent_edge.1,
+                    );
+                    extend_edges_with_src_id.push((extend_edge, src_vertex.id));
+                }
+            }
+            // Get the subsets of extend_edges_with_src_id, and add every subset to the extend edgess
+            // The algorithm is BFS Search
+            let extend_edges_set_collection =
+                get_subsets(extend_edges_with_src_id, |(_, src_id_for_check), extend_edges_set| {
+                    limit_repeated_element_num(
+                        src_id_for_check,
+                        extend_edges_set.iter().map(|(_, v_id)| v_id),
+                        1,
+                    )
+                });
+            for extend_edges in extend_edges_set_collection {
+                let extend_step = ExtendStep::new(
+                    target_v_label,
+                    extend_edges
+                        .into_iter()
+                        .map(|(extend_edge, _)| extend_edge)
+                        .collect(),
+                );
+                extend_steps.push(extend_step);
+            }
+        }
+        extend_steps
+    }
+
+    /// Edit the pattern by connect some edges to the current pattern
+    fn add_edge(&mut self, edge: &PatternEdge) -> IrResult<()> {
+        // Error that the adding edge already exist
+        if self.edges.contains_key(edge.get_id()) {
+            return Err(IrError::InvalidCode("The adding edge already existed".to_string()));
+        }
+        // Error that cannot connect the edge to the pattern
+        if let (None, None) = (
+            self.get_vertex_from_id(edge.get_start_vertex_id()),
+            self.get_vertex_from_id(edge.get_end_vertex_id()),
+        ) {
+            return Err(IrError::InvalidCode("The adding edge cannot connect to the pattern".to_string()));
+        } else if let None = self.get_vertex_from_id(edge.get_start_vertex_id()) {
+            // end vertex already exists in the pattern, use it to connect
+            let start_vertex_id = edge.get_start_vertex_id();
+            let start_vertex_label = edge.get_start_vertex_label();
+            // add start vertex
+            self.vertices.insert(
+                start_vertex_id,
+                PatternVertex {
+                    id: start_vertex_id,
+                    label: start_vertex_label,
+                    rank: 0,
+                    adjacent_edges: BTreeMap::new(),
+                    adjacent_vertices: BTreeMap::new(),
+                    out_degree: 0,
+                    in_degree: 0,
+                },
+            );
+            // add start vertex label
+            self.vertex_label_map
+                .entry(start_vertex_label)
+                .or_insert(BTreeSet::new())
+                .insert(start_vertex_id);
+        } else if let None = self.get_vertex_from_id(edge.get_end_vertex_id()) {
+            // start vertex already exists in the pattern, use it to connect
+            let end_vertex_id = edge.get_end_vertex_id();
+            let end_vertex_label = edge.get_end_vertex_label();
+            // add end vertex
+            self.vertices.insert(
+                end_vertex_id,
+                PatternVertex {
+                    id: end_vertex_id,
+                    label: end_vertex_label,
+                    rank: 0,
+                    adjacent_edges: BTreeMap::new(),
+                    adjacent_vertices: BTreeMap::new(),
+                    out_degree: 0,
+                    in_degree: 0,
+                },
+            );
+            self.vertex_label_map
+                .entry(end_vertex_label)
+                .or_insert(BTreeSet::new())
+                .insert(end_vertex_id);
+        }
+        // update start vertex's connection info
+        if let Some(start_vertex) = self.get_vertex_mut_from_id(edge.get_start_vertex_id()) {
+            start_vertex
+                .adjacent_edges
+                .insert(edge.get_id(), (edge.get_end_vertex_id(), PatternDirection::Out));
+            start_vertex
+                .adjacent_vertices
+                .entry(edge.get_end_vertex_id())
+                .or_insert(vec![])
+                .push((edge.get_id(), PatternDirection::Out));
+            start_vertex.out_degree += 1;
+        }
+        // update end vertex's connection info
+        if let Some(end_vertex) = self.get_vertex_mut_from_id(edge.get_end_vertex_id()) {
+            end_vertex
+                .adjacent_edges
+                .insert(edge.get_id(), (edge.get_start_vertex_id(), PatternDirection::In));
+            end_vertex
+                .adjacent_vertices
+                .entry(edge.get_start_vertex_id())
+                .or_insert(vec![])
+                .push((edge.get_id(), PatternDirection::In));
+            end_vertex.in_degree += 1;
+        }
+        // add edge to the pattern
+        self.edges.insert(edge.get_id(), edge.clone());
+        // add edge label to the pattern
+        self.edge_label_map
+            .entry(edge.get_label())
+            .or_insert(BTreeSet::new())
+            .insert(edge.get_id());
+        Ok(())
+    }
+
+    /// Add a series of edges to the current pattern to get a new pattern
+    pub fn extend_by_edges<'a, T>(&self, edges: T) -> Option<Pattern>
+    where
+        T: Iterator<Item = &'a PatternEdge>,
+    {
+        let mut new_pattern = self.clone();
+        for edge in edges {
+            if let Err(_) = new_pattern.add_edge(edge) {
+                return None;
+            }
+        }
+        new_pattern.vertex_ranking();
+        Some(new_pattern)
+    }
+
+    /// Locate a vertex(id) from the pattern based on the given extend step and target pattern code
     pub fn locate_vertex(
         &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
     ) -> Option<PatternId> {
         let mut target_vertex_id: Option<PatternId> = None;
         let target_v_label = extend_step.get_target_v_label();
+        // mark all the vertices with the same label as the extend step's target vertex as the candidates
         for target_v_cand in self.vertices_iter_by_label(target_v_label) {
             if target_v_cand.get_degree() != extend_step.get_extend_edges_num() {
                 continue;
             }
+            // compare whether the candidate vertex has the same connection info as the extend step
             let cand_src_v_e_label_dir_set: BTreeSet<(PatternLabelId, PatternLabelId, PatternDirection)> =
                 target_v_cand
                     .adjacent_edges_iter()
@@ -1741,10 +1860,13 @@ impl Pattern {
                         )
                     })
                     .collect();
+            // if has the same connection info, check whether the pattern after the removing the target vertex
+            // has the same code with the target pattern code
             if cand_src_v_e_label_dir_set == extend_src_v_e_label_dir_set {
                 let mut check_pattern = self.clone();
                 check_pattern.remove_vertex(target_v_cand.get_id());
                 let check_pattern_code: Vec<u8> = Cipher::encode_to(&check_pattern, encoder);
+                // same code means successfully locate the vertex
                 if check_pattern_code == *target_pattern_code {
                     target_vertex_id = Some(target_v_cand.get_id());
                     break;
@@ -1754,6 +1876,7 @@ impl Pattern {
         target_vertex_id
     }
 
+    /// Remove a vertex with all its adjacent edges in the current pattern
     pub fn remove_vertex(&mut self, vertex_id: PatternId) {
         if let Some(target_vertex) = self.get_vertex_from_id(vertex_id) {
             let target_vertex_id = target_vertex.get_id();
@@ -1841,6 +1964,8 @@ impl Pattern {
         }
     }
 
+    /// Delete a extend step from current pattern to get a new pattern
+    /// the new pattern's code should be the same as the target pattern code
     pub fn de_extend(
         &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
     ) -> Option<Pattern> {
@@ -1853,66 +1978,7 @@ impl Pattern {
         }
     }
 
-    /// Find all possible ExtendSteps of current pattern based on the given Pattern Meta
-    pub fn get_extend_steps(
-        &self, pattern_meta: &PatternMeta, same_label_vertex_limit: usize,
-    ) -> Vec<ExtendStep> {
-        let mut extend_steps = vec![];
-        // Get all vertex labels from pattern meta as the possible extend target vertex
-        let target_v_labels = pattern_meta.vertex_label_ids_iter();
-        // For every possible extend target vertex label, find its all adjacent edges to the current pattern
-        for target_v_label in target_v_labels {
-            if self
-                .vertex_label_map
-                .get(&target_v_label)
-                .map(|v_ids| v_ids.len())
-                .unwrap_or(0)
-                >= same_label_vertex_limit
-            {
-                continue;
-            }
-            // The collection of extend edges with a source vertex id
-            // The source vertex id is used to specify the extend edge is from which vertex of the pattern
-            let mut extend_edges_with_src_id = vec![];
-            for (_, src_vertex) in &self.vertices {
-                // check whether there are some edges between the target vertex and the current source vertex
-                let adjacent_edges =
-                    pattern_meta.associated_elabels_iter_by_vlabel(src_vertex.label, target_v_label);
-                // Transform all the adjacent edges to ExtendEdge and add to extend_edges_with_src_id
-                for adjacent_edge in adjacent_edges {
-                    let extend_edge = ExtendEdge::new(
-                        src_vertex.label,
-                        src_vertex.rank,
-                        adjacent_edge.0,
-                        adjacent_edge.1,
-                    );
-                    extend_edges_with_src_id.push((extend_edge, src_vertex.id));
-                }
-            }
-            // Get the subsets of extend_edges_with_src_id, and add every subset to the extend edgess
-            // The algorithm is BFS Search
-            let extend_edges_set_collection =
-                get_subsets(extend_edges_with_src_id, |(_, src_id_for_check), extend_edges_set| {
-                    limit_repeated_element_num(
-                        src_id_for_check,
-                        extend_edges_set.iter().map(|(_, v_id)| v_id),
-                        1,
-                    )
-                });
-            for extend_edges in extend_edges_set_collection {
-                let extend_step = ExtendStep::new(
-                    target_v_label,
-                    extend_edges
-                        .into_iter()
-                        .map(|(extend_edge, _)| extend_edge)
-                        .collect(),
-                );
-                extend_steps.push(extend_step);
-            }
-        }
-        extend_steps
-    }
-
+    /// Given a vertex id, pick all its neiboring edges and vertices to generate a definite extend step
     pub fn generate_definite_extend_step_by_v_id(
         &self, target_v_id: PatternId,
     ) -> Option<DefiniteExtendStep> {
