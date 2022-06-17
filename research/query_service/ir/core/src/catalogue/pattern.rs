@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
@@ -306,6 +306,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                     .or_insert(BTreeSet::new())
                     .insert(edge.end_v_id);
             }
+
             new_pattern.vertex_ranking();
             Ok(new_pattern)
         } else {
@@ -800,16 +801,31 @@ impl Pattern {
         }
     }
 
+    // /// Compute at least how many bits are needed to represent vertices with the same label
+    // /// At least 1 bit
+    // pub fn get_min_vertex_rank_bit_num(&self) -> usize {
+    //     // iterate through the hashmap and compute how many vertices have the same label in one set
+    //     let mut min_rank_bit_num: usize = 1;
+    //     for (_, value) in self.vertex_label_map.iter() {
+    //         let same_label_vertex_num = value.len() as u64;
+    //         min_rank_bit_num =
+    //             std::cmp::max((64 - same_label_vertex_num.leading_zeros()) as usize, min_rank_bit_num);
+    //     }
+    //     min_rank_bit_num
+    // }
+
     /// Compute at least how many bits are needed to represent vertices with the same label
     /// At least 1 bit
     pub fn get_min_vertex_rank_bit_num(&self) -> usize {
-        // iterate through the hashmap and compute how many vertices have the same label in one set
+        // plus 1 since rank (dfs id) starts from 1 instead of 0
+        let vertex_num = self.get_vertex_num() + 1;
         let mut min_rank_bit_num: usize = 1;
-        for (_, value) in self.vertex_label_map.iter() {
-            let same_label_vertex_num = value.len() as u64;
-            min_rank_bit_num =
-                std::cmp::max((64 - same_label_vertex_num.leading_zeros()) as usize, min_rank_bit_num);
+        let mut rank_range = 2;
+        while rank_range < vertex_num {
+            rank_range = rank_range * 2;
+            min_rank_bit_num += 1;
         }
+
         min_rank_bit_num
     }
 
@@ -979,9 +995,7 @@ impl Pattern {
     /// i.e. [ sorted outgoing edges | sorted incoming edges ]
     ///
     /// Each neighbor edge element stores 3 values: edge id, target vertex id, and edge direction
-    fn get_vertex_neighbor_edges(
-        &self,
-    ) -> HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> {
+    pub fn get_vertex_neighbor_edges(&self) -> HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> {
         let mut vertex_neighbor_edges_map: HashMap<
             PatternId,
             Vec<(PatternId, PatternId, PatternDirection)>,
@@ -1048,7 +1062,7 @@ impl Pattern {
             }
             for i in 0..vertex_num {
                 for j in (i + 1)..vertex_num {
-                    match self.cmp_vertices_for_rank(
+                    match self.cmp_vertices_by_label(
                         vertex_vec[i],
                         vertex_vec[j],
                         vertex_neighbor_edges_map,
@@ -1276,8 +1290,10 @@ impl Pattern {
 
     /// Compare the ranks of two PatternVertices
     /// 
+    /// Consider labels and out/in degrees only 
+    /// 
     /// Called when setting initial ranks
-    fn cmp_vertices_for_rank(
+    fn cmp_vertices_by_label(
         &self,
         v1_id: PatternId,
         v2_id: PatternId,
@@ -1302,26 +1318,12 @@ impl Pattern {
             Ordering::Greater => return Ordering::Greater,
             _ => (),
         }
-        // Compare the ranks
-        match v1.get_rank().cmp(&v2.get_rank()) {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            _ => (),
-        }
 
         let v1_connected_edges = vertex_neighbor_edges_map.get(&v1_id).unwrap();
         let v2_connected_edges = vertex_neighbor_edges_map.get(&v2_id).unwrap();
         for i in 0..v1_connected_edges.len() {
-            let v1_connected_edge_label = self
-                .get_edge_from_id(v1_connected_edges[i].0)
-                .unwrap()
-                .get_label();
             let v1_connected_edge_end_v_label = self
                 .get_vertex_from_id(v1_connected_edges[i].1)
-                .unwrap()
-                .get_label();
-            let v2_connected_edge_label = self
-                .get_edge_from_id(v2_connected_edges[i].0)
                 .unwrap()
                 .get_label();
             let v2_connected_edge_end_v_label = self
@@ -1334,27 +1336,23 @@ impl Pattern {
                 Ordering::Greater => return Ordering::Greater,
                 _ => (),
             }
+
+            let v1_connected_edge_label = self
+                .get_edge_from_id(v1_connected_edges[i].0)
+                .unwrap()
+                .get_label();
+            let v2_connected_edge_label = self
+                .get_edge_from_id(v2_connected_edges[i].0)
+                .unwrap()
+                .get_label();
             // Compare Edge Label
             match v1_connected_edge_label.cmp(&v2_connected_edge_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
                 _ => (),
             }
-            // Compare End Vertex Rank
-            let v1_connected_end_v_rank: PatternRankId = self
-                .get_vertex_from_id(v1_connected_edges[i].1)
-                .unwrap()
-                .get_rank();
-            let v2_connected_end_v_rank: PatternRankId = self
-                .get_vertex_from_id(v2_connected_edges[i].1)
-                .unwrap()
-                .get_rank();
-            match v1_connected_end_v_rank.cmp(&v2_connected_end_v_rank) {
-                Ordering::Less => return Ordering::Less,
-                Ordering::Greater => return Ordering::Greater,
-                _ => (),
-            }
         }
+        
         // Return Equal if Still Cannot Distinguish
         Ordering::Equal
     }
@@ -1420,6 +1418,132 @@ impl Pattern {
                         )
                 });
         }
+    }
+}
+
+/// DFS Sorting
+/// 
+/// Find a unique sequence of edges in DFS order and assign each vertex with a unique DFS id for easier decoding process
+impl Pattern {
+    /// Return the ID of the starting vertex of DFS
+    /// In our case, It's the vertex with the smallest label and rank
+    fn get_dfs_starting_vertex(&self) -> PatternId {
+        // Step-1: Find the smallest vertex label
+        let mut min_v_label: PatternLabelId = PatternLabelId::MAX;
+        let mut min_label_vertices: &BTreeSet<PatternId> = &BTreeSet::new();
+        for (v_label, vertices) in self.vertex_label_map_iter() {
+            if v_label < min_v_label {
+                min_v_label = v_label;
+                min_label_vertices = vertices;
+            }
+        }
+        // Step-2: Find the vertex with the smallest rank
+        let mut starting_v_id: PatternId = 0;
+        let mut min_v_rank: PatternRankId = PatternRankId::MAX;
+        for v_id in min_label_vertices.iter() {
+            let current_v_rank: PatternRankId = self.get_vertex_from_id(*v_id).unwrap().get_rank();
+            if current_v_rank < min_v_rank {
+                starting_v_id = *v_id;
+                min_v_rank = current_v_rank;
+            }
+        }
+
+        starting_v_id
+    }
+
+    /// Perform DFS Sorting to Pattern Edges Based on Labels and Ranks
+    /// 
+    /// Return a tuple of 2 elements
+    /// 
+    /// dfs_edge_sequence is a vector of edge ids in DFS order
+    /// 
+    /// vertex_dfs_id_map maps from vertex ids to dfs id
+    pub fn get_dfs_edge_sequence(&self) -> (Vec<PatternId>, HashMap<PatternId, PatternRankId>) {
+        // output edge sequence
+        let mut dfs_edge_sequence: Vec<PatternId> = Vec::new();
+        // DFS Generation Tree
+        let mut vertex_dfs_id_map: HashMap<PatternId, PatternRankId> = HashMap::new();
+        // get the starting vertex
+        let starting_v_id: PatternId = self.get_dfs_starting_vertex();
+        vertex_dfs_id_map.insert(starting_v_id, 0);
+        let mut next_free_id: PatternRankId = 1;
+        // collect neighbor edges info for each vertex
+        let vertex_neighbor_edges_map: HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>> = self.get_vertex_neighbor_edges();
+        // Record which edges have been visited
+        let mut visited_edges: HashSet<PatternId> = HashSet::new();
+        // Vertex Stack
+        let mut vertex_stack: VecDeque<PatternId> = VecDeque::new();
+        vertex_stack.push_back(starting_v_id);
+        // DFS on Vertices
+        while vertex_stack.len() > 0 {
+            let current_v_id: PatternId = *vertex_stack.back().unwrap();
+            let neighbor_edges: &Vec<(PatternId, PatternId, PatternDirection)> = vertex_neighbor_edges_map.get(&current_v_id).expect(&format!("Unknown ID {}", current_v_id));
+            let mut found_next_edge: bool = false;
+            let mut index: usize = 0;
+            while index < neighbor_edges.len() {
+                let (mut e_id, mut end_v_id, e_dir) = neighbor_edges[index];
+                if !visited_edges.contains(&e_id) {
+                    found_next_edge = true;
+                    // Case-1: Vertex that has not been tranversed has the highesrt priority
+                    if !vertex_dfs_id_map.contains_key(&end_v_id) {
+                        vertex_dfs_id_map.insert(end_v_id, next_free_id);
+                        next_free_id += 1;
+                    }
+                    // Case-2: Compare the DFS ids between end vertices that have been traversed and with the same ranks
+                    // Choose the one with the smallest DFS id
+                    else {
+                        let mut min_dfs_id: PatternRankId = *vertex_dfs_id_map.get(&end_v_id).unwrap();
+                        while index < neighbor_edges.len() - 1 {
+                            index += 1;
+                            let (current_e_id, current_end_v_id, current_e_dir) = neighbor_edges[index];
+                            if visited_edges.contains(&current_e_id) { continue };
+                            if current_e_dir != e_dir { break };
+                            match self.cmp_edges(e_id, current_e_id) {
+                                Ordering::Greater => break,
+                                Ordering::Less => break,
+                                Ordering::Equal => {
+                                    if !vertex_dfs_id_map.contains_key(&current_end_v_id) {
+                                        vertex_dfs_id_map.insert(current_end_v_id, next_free_id);
+                                        next_free_id += 1;
+                                        // Update
+                                        e_id = current_e_id;
+                                        end_v_id = current_end_v_id;
+                                        break;
+                                    }
+        
+                                    let current_dfs_id: PatternRankId = *vertex_dfs_id_map.get(&current_end_v_id).unwrap();
+                                    if current_dfs_id < min_dfs_id {
+                                        min_dfs_id = current_dfs_id;
+                                        // Update
+                                        e_id = current_e_id;
+                                        end_v_id = current_end_v_id;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Update
+                    dfs_edge_sequence.push(e_id);
+                    visited_edges.insert(e_id);
+                    vertex_stack.push_back(end_v_id);
+                    break;
+                }
+
+                index += 1;
+            }
+
+            // If Cannot find the next edge to traverse
+            if !found_next_edge {
+                vertex_stack.pop_back();
+            }
+        }
+
+        assert_eq!(visited_edges.len(), self.get_edge_num());
+        assert_eq!(dfs_edge_sequence.len(), self.get_edge_num());
+        assert_eq!(vertex_dfs_id_map.len(), self.get_vertex_num());
+
+        (dfs_edge_sequence, vertex_dfs_id_map)
     }
 }
 
@@ -3544,7 +3668,7 @@ mod tests {
     }
 
     #[test]
-    fn index_ranking_case17_special_id_situation_1() {
+    fn vertex_ranking_case17_special_id_situation_1() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_1();
         let vertices = &pattern.vertices;
         assert_eq!(
@@ -3592,7 +3716,7 @@ mod tests {
     }
 
     #[test]
-    fn index_ranking_case17_special_id_situation_2() {
+    fn vertex_ranking_case17_special_id_situation_2() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_2();
         let vertices = &pattern.vertices;
         assert_eq!(
@@ -3640,7 +3764,7 @@ mod tests {
     }
 
     #[test]
-    fn index_ranking_case18() {
+    fn vertex_ranking_case18() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case18();
         let vertices = &pattern.vertices;
         assert_eq!(
@@ -3688,7 +3812,7 @@ mod tests {
     }
 
     #[test]
-    fn index_ranking_case19() {
+    fn vertex_ranking_case19() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case19();
         let vertices = &pattern.vertices;
         assert_eq!(
@@ -3792,7 +3916,7 @@ mod tests {
     }
 
     #[test]
-    fn index_ranking_case20() {
+    fn vertex_ranking_case20() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case20();
         let vertices = &pattern.vertices;
         assert_eq!(
@@ -3829,6 +3953,416 @@ mod tests {
                 .unwrap()
                 .get_rank(),
             0
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case1() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case1();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case3() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case3();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case4() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case4();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case6() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case6();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case9() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case9();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B1").unwrap()).unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case11() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case11();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B1").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B2").unwrap()).unwrap(),
+            4
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case13() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case13();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            4
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B1").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B2").unwrap()).unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case14() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case14();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B1").unwrap()).unwrap(),
+            4
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B2").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B3").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("C0").unwrap()).unwrap(),
+            6
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case15() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case15();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            4
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            7
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A3").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B1").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B2").unwrap()).unwrap(),
+            8
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("C0").unwrap()).unwrap(),
+            6
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("C1").unwrap()).unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case16() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case16();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            8
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A3").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            6
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B1").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B2").unwrap()).unwrap(),
+            9
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("C0").unwrap()).unwrap(),
+            7
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("C1").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("D0").unwrap()).unwrap(),
+            4
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case17() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            4
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A3").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A4").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A5").unwrap()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case17_variant_long_chain() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            10
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            9
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            8
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A3").unwrap()).unwrap(),
+            7
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A4").unwrap()).unwrap(),
+            6
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A5").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A6").unwrap()).unwrap(),
+            4
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A7").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A8").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A9").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A10").unwrap()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn dfs_sorting_case19() {
+        let (pattern, vertex_id_map) = build_pattern_rank_ranking_case19();
+        let (_, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A0").unwrap()).unwrap(),
+            3
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A1").unwrap()).unwrap(),
+            7
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A2").unwrap()).unwrap(),
+            0
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A3").unwrap()).unwrap(),
+            4
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A4").unwrap()).unwrap(),
+            8
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A5").unwrap()).unwrap(),
+            11
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A6").unwrap()).unwrap(),
+            1
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A7").unwrap()).unwrap(),
+            5
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A8").unwrap()).unwrap(),
+            9
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("A9").unwrap()).unwrap(),
+            12
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("B0").unwrap()).unwrap(),
+            2
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("C0").unwrap()).unwrap(),
+            10
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("D0").unwrap()).unwrap(),
+            6
+        );
+        assert_eq!(
+            *vertex_dfs_id_map.get(vertex_id_map.get("E0").unwrap()).unwrap(),
+            13
         );
     }
 }
