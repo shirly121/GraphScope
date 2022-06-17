@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 crossbeam-channel = "0.3.6"
-crossbeam-queue = "0.1"
+crossbeam-queue = "0.2"
 crossbeam-utils = "0.6"
 env_logger = { version = "0.6" }
 log = "0.4"
