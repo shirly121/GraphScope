@@ -12,12 +12,18 @@ import java.util.Map;
 
 public class CommitDataCommand extends DataCommand {
 
-    public CommitDataCommand(String dataPath) throws IOException {
-        super(dataPath);
+    public CommitDataCommand(String dataPath, boolean isFromOSS, String uniquePath)
+            throws IOException {
+        super(dataPath, isFromOSS, uniquePath);
     }
 
     public void run() {
-        MaxGraphClient client = MaxGraphClient.newBuilder().setHosts(graphEndpoint).build();
+        MaxGraphClient client =
+                MaxGraphClient.newBuilder()
+                        .setHosts(graphEndpoint)
+                        .setUsername(username)
+                        .setPassword(password)
+                        .build();
         Map<Long, DataLoadTarget> tableToTarget = new HashMap<>();
         for (ColumnMappingInfo columnMappingInfo : columnMappingInfos.values()) {
             long tableId = columnMappingInfo.getTableId();
@@ -34,6 +40,6 @@ public class CommitDataCommand extends DataCommand {
             }
             tableToTarget.put(tableId, builder.build());
         }
-        client.commitDataLoad(tableToTarget);
+        client.commitDataLoad(tableToTarget, this.uniquePath);
     }
 }

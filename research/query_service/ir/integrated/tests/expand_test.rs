@@ -21,7 +21,8 @@ mod common;
 mod test {
     use std::sync::Arc;
 
-    use graph_proxy::{create_demo_graph, SimplePartition};
+    use graph_proxy::apis::{Details, Element, GraphElement};
+    use graph_proxy::{create_exp_store, SimplePartition};
     use graph_store::ldbc::LDBCVertexParser;
     use graph_store::prelude::DefaultId;
     use ir_common::expr_parse::str_to_expr_pb;
@@ -30,8 +31,6 @@ mod test {
     use pegasus::api::{Map, Sink};
     use pegasus::result::ResultStream;
     use pegasus::JobConf;
-    use runtime::graph::element::{Element, GraphElement};
-    use runtime::graph::property::Details;
     use runtime::process::operator::flatmap::FlatMapFuncGen;
     use runtime::process::operator::map::{FilterMapFuncGen, MapFuncGen};
     use runtime::process::operator::source::SourceOperator;
@@ -41,12 +40,13 @@ mod test {
 
     // g.V()
     fn source_gen(alias: Option<common_pb::NameOrId>) -> Box<dyn Iterator<Item = Record> + Send> {
+        create_exp_store();
         let scan_opr_pb = pb::Scan { scan_opt: 0, alias, params: None, idx_predicate: None };
         source_gen_with_scan_opr(scan_opr_pb)
     }
 
     fn source_gen_with_scan_opr(scan_opr_pb: pb::Scan) -> Box<dyn Iterator<Item = Record> + Send> {
-        create_demo_graph();
+        create_exp_store();
         let mut source_opr_pb =
             pb::logical_plan::Operator { opr: Some(pb::logical_plan::operator::Opr::Scan(scan_opr_pb)) };
         let source =
@@ -447,6 +447,55 @@ mod test {
                 stream = stream.flat_map(move |input| flatmap_func.exec(input))?;
                 let map_func = getv.gen_map().unwrap();
                 stream = stream.map(move |input| map_func.exec(input))?;
+                stream.sink_into(output)
+            }
+        })
+        .expect("build job failure");
+
+        let expected_ids = vec![1, 1, 2, 4];
+        let mut result_ids = vec![];
+        while let Some(Ok(record)) = result.next() {
+            if let Some(element) = record.get(None).unwrap().as_graph_vertex() {
+                result_ids.push(element.id() as usize);
+                assert!(element
+                    .details()
+                    .unwrap()
+                    .get_property(&"name".into())
+                    .is_none())
+            }
+        }
+        result_ids.sort();
+        assert_eq!(result_ids, expected_ids)
+    }
+
+    // g.V().outE('knows').bothV()
+    #[test]
+    fn expand_oute_bothv_test() {
+        let expand_opr = pb::EdgeExpand {
+            v_tag: None,
+            direction: 0,
+            params: Some(query_params(vec!["knows".into()], vec![], None)),
+            is_edge: true,
+            alias: None,
+        };
+
+        let getv_opr = pb::GetV {
+            tag: None,
+            opt: 3, // BothV
+            params: Some(query_params(vec![], vec![], None)),
+            alias: None,
+        };
+
+        let conf = JobConf::new("expand_oute_bothv_test");
+        let mut result = pegasus::run(conf, || {
+            let expand = expand_opr.clone();
+            let getv = getv_opr.clone();
+            |input, output| {
+                let mut stream = input.input_from(source_gen(None))?;
+                let flatmap_func = expand.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| flatmap_func.exec(input))?;
+                let flatmap_func = getv.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| flatmap_func.exec(input))?;
                 stream.sink_into(output)
             }
         })

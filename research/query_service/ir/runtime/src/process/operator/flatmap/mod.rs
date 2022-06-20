@@ -13,6 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 mod edge_expand;
+mod get_v;
 mod unfold;
 
 use ir_common::error::ParsePbError;
@@ -35,6 +36,7 @@ impl FlatMapFuncGen for algebra_pb::logical_plan::Operator {
             match opr {
                 algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
                 algebra_pb::logical_plan::operator::Opr::Unfold(unfold) => unfold.gen_flat_map(),
+                algebra_pb::logical_plan::operator::Opr::Vertex(get_vertex) => get_vertex.gen_flat_map(),
                 _ => Err(ParsePbError::from("algebra_pb op is not a flatmap"))?,
             }
         } else {
