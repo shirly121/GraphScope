@@ -22,10 +22,10 @@ use ir_common::KeyId;
 use pegasus::api::function::{FilterMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
-use crate::graph::element::{Element, GraphElement, GraphObject};
-use crate::graph::{Direction, Statement, ID};
 use crate::process::operator::map::FilterMapFuncGen;
 use crate::process::record::{Entry, Record, RecordElement};
+use graph_proxy::apis::graph::element::{Element, GraphElement, GraphObject};
+use graph_proxy::apis::{Direction, Statement, ID};
 
 /// An ExpandOrIntersect operator to expand neighbors
 /// and intersect with the ones of the same tag found previously (if exists).
@@ -159,7 +159,7 @@ impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for Expan
 
 impl FilterMapFuncGen for algebra_pb::EdgeExpand {
     fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record, Record>>> {
-        let graph = crate::get_graph().ok_or(FnGenError::NullGraphError)?;
+        let graph = graph_proxy::apis::get_graph().ok_or(FnGenError::NullGraphError)?;
         let start_v_tag = self
             .v_tag
             .ok_or(ParsePbError::from("`EdgeExpand::v_tag` cannot be empty for intersection"))?
@@ -191,8 +191,8 @@ impl FilterMapFuncGen for algebra_pb::EdgeExpand {
 #[cfg(test)]
 mod tests {
     use super::{do_intersection, RecordElement};
-    use crate::graph::element::Element;
-    use crate::graph::ID;
+    use graph_proxy::apis::graph::element::Element;
+    use graph_proxy::apis::ID;
 
     #[test]
     fn intersect_test_01() {
@@ -258,7 +258,7 @@ mod tests {
                 .into_iter()
                 .map(|r| r.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
-            vec![]
+            Vec::<ID>::new()
         );
     }
 

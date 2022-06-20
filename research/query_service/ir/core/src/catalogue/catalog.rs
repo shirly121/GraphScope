@@ -662,7 +662,7 @@ mod test {
     use crate::catalogue::test_cases::pattern_meta_cases::*;
     use crate::plan::logical::LogicalPlan;
     use crate::plan::physical::AsPhysical;
-    use graph_proxy::{InitializeJobCompiler, QueryExpGraph};
+    use graph_proxy::{create_exp_store, SimplePartition};
     use pegasus::result::{ResultSink, ResultStream};
     use pegasus::{run_opt, Configuration, JobConf, StartupError};
     use pegasus_server::job::{JobAssembly, JobDesc};
@@ -674,7 +674,7 @@ mod test {
     static INIT: Once = Once::new();
 
     lazy_static! {
-        static ref FACTORY: IRJobAssembly = initialize_job_compiler();
+        static ref FACTORY: IRJobAssembly = initialize_job_assembly();
     }
 
     pub fn initialize() {
@@ -695,9 +695,9 @@ mod test {
         }
     }
 
-    fn initialize_job_compiler() -> IRJobAssembly {
+    fn initialize_job_assembly() -> IRJobAssembly {
         let query_exp_graph = QueryExpGraph::new(1);
-        query_exp_graph.initialize_job_compiler()
+        query_exp_graph.initialize_job_assembly()
     }
 
     fn submit_query(job_req: JobRequest, num_workers: u32) -> ResultStream<Vec<u8>> {
@@ -711,6 +711,28 @@ mod test {
         let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
         run_opt(conf, sink, move |worker| service.assemble(&job, worker)).expect("submit job failure;");
         results
+    }
+
+    pub trait InitializeJobAssembly {
+        fn initialize_job_assembly(&self) -> IRJobAssembly;
+    }
+
+    pub struct QueryExpGraph {
+        num_servers: usize,
+    }
+
+    impl QueryExpGraph {
+        pub fn new(num_servers: usize) -> Self {
+            QueryExpGraph { num_servers }
+        }
+    }
+
+    impl InitializeJobAssembly for QueryExpGraph {
+        fn initialize_job_assembly(&self) -> IRJobAssembly {
+            create_exp_store();
+            let partitioner = SimplePartition { num_servers: self.num_servers };
+            IRJobAssembly::new(partitioner)
+        }
     }
 
     #[test]

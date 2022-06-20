@@ -21,9 +21,9 @@ use ir_common::KeyId;
 use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
-use crate::graph::element::GraphObject;
 use crate::process::operator::flatmap::FlatMapFuncGen;
 use crate::process::record::{Entry, Record, RecordElement};
+use graph_proxy::apis::graph::element::GraphObject;
 
 #[derive(Debug)]
 pub struct UnfoldOperator {
@@ -109,11 +109,11 @@ mod tests {
     use pegasus::api::{Fold, Map, Sink};
     use pegasus::JobConf;
 
-    use crate::graph::element::GraphElement;
     use crate::process::functions::FoldGen;
     use crate::process::operator::accum::accumulator::Accumulator;
     use crate::process::operator::flatmap::FlatMapFuncGen;
     use crate::process::operator::tests::{init_source, TAG_A};
+    use graph_proxy::apis::graph::element::GraphElement;
 
     #[test]
     fn unfold_fold_test() {
