@@ -82,7 +82,10 @@ pub fn query_params(
 /// The left A has id 0
 /// The right A has id 1
 pub fn build_pattern_case1() -> Pattern {
-    let pattern_vec = vec![PatternEdge::new(0, 0, 0, 1, 0, 0), PatternEdge::new(1, 0, 1, 0, 0, 0)];
+    let pattern_vec = vec![
+        PatternEdge::new(0, 0, 0, 1, 0, 0),
+        PatternEdge::new(1, 0, 1, 0, 0, 0),
+    ];
     Pattern::try_from(pattern_vec).unwrap()
 }
 
