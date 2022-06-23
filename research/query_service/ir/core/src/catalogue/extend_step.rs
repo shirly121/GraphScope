@@ -24,7 +24,6 @@ use crate::catalogue::{query_params, PatternId};
 use crate::error::{IrError, IrResult};
 
 use ir_common::generated::algebra as pb;
-use ir_common::generated::common as common_pb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExtendEdge {
@@ -208,11 +207,6 @@ impl DefiniteExtendStep {
         for extend_edge in self.extend_edges.iter() {
             // pick edge's property and predicate from origin pattern
             let edge_id = extend_edge.edge_id;
-            let edge_properties: Vec<common_pb::NameOrId> = origin_pattern
-                .edge_properties_iter(edge_id)
-                .cloned()
-                .map(|name_or_id| name_or_id.into())
-                .collect();
             let edge_predicate = origin_pattern
                 .get_edge_predicate(edge_id)
                 .cloned();
@@ -220,11 +214,7 @@ impl DefiniteExtendStep {
                 // use start vertex id as tag
                 v_tag: Some((extend_edge.start_v_id as i32).into()),
                 direction: extend_edge.dir as i32,
-                params: Some(query_params(
-                    vec![extend_edge.edge_label.into()],
-                    edge_properties,
-                    edge_predicate,
-                )),
+                params: Some(query_params(vec![extend_edge.edge_label.into()], vec![], edge_predicate)),
                 is_edge: false,
                 // use target vertex id as alias
                 alias: Some((target_v_id as i32).into()),
@@ -241,26 +231,13 @@ impl DefiniteExtendStep {
     }
 
     /// Generate the filter operator for DefiniteExtendStep;s target vertex
-    pub fn generate_vertex_filter_operator(&self, origin_pattern: &Pattern) -> pb::Auxilia {
+    pub fn generate_vertex_filter_operator(&self, origin_pattern: &Pattern) -> pb::Select {
         // pick target vertex's property and predicate info from origin pattern
         let target_v_id = self.target_v_id;
-        let target_v_label = self.target_v_label;
-        let target_v_properties: Vec<common_pb::NameOrId> = origin_pattern
-            .vertex_properties_iter(target_v_id)
-            .cloned()
-            .map(|name_or_id| name_or_id.into())
-            .collect();
         let target_v_predicate = origin_pattern
             .get_vertex_predicate(target_v_id)
             .cloned();
-        pb::Auxilia {
-            params: Some(query_params(
-                vec![target_v_label.into()],
-                target_v_properties,
-                target_v_predicate,
-            )),
-            alias: Some((target_v_id as i32).into()),
-        }
+        pb::Select { predicate: target_v_predicate }
     }
 }
 /// Get all the subsets of given Vec<T>

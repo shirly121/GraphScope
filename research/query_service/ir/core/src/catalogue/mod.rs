@@ -71,5 +71,4 @@ pub mod pattern;
 
 pub mod pattern_meta;
 
-#[cfg(test)]
-pub(crate) mod test_cases;
+pub mod test_cases;

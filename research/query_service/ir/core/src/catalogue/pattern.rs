@@ -183,10 +183,6 @@ pub struct Pattern {
     edge_tag_map: BiBTreeMap<NameOrId, PatternId>,
     /// Key: vertex's Tag info, Value: vertex id
     vertex_tag_map: BiBTreeMap<NameOrId, PatternId>,
-    /// Key: edge id, Value: properties the edge required
-    edge_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
-    /// Key: vertex id, Value: properties the vertex required
-    vertex_properties_map: BTreeMap<PatternId, Vec<NameOrId>>,
     /// Key: edge id, Value: predicate of the edge
     edge_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
     /// Key: vertex id, Value: predicate of the vertex
@@ -225,8 +221,6 @@ impl From<PatternVertex> for Pattern {
             vertex_label_map: BTreeMap::from([(vertex.label, BTreeSet::from([vertex.id]))]),
             edge_tag_map: BiBTreeMap::new(),
             vertex_tag_map: BiBTreeMap::new(),
-            edge_properties_map: BTreeMap::new(),
-            vertex_properties_map: BTreeMap::new(),
             edge_predicate_map: BTreeMap::new(),
             vertex_predicate_map: BTreeMap::new(),
         }
@@ -246,8 +240,6 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                 vertex_label_map: BTreeMap::new(),
                 edge_tag_map: BiBTreeMap::new(),
                 vertex_tag_map: BiBTreeMap::new(),
-                edge_properties_map: BTreeMap::new(),
-                vertex_properties_map: BTreeMap::new(),
                 edge_predicate_map: BTreeMap::new(),
                 vertex_predicate_map: BTreeMap::new(),
             };
@@ -337,8 +329,6 @@ impl Pattern {
         let mut tag_v_id_map: BTreeMap<NameOrId, PatternId> = BTreeMap::new();
         // record the label for each vertex from the pb pattern
         let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
-        // record the edges from the pb pattern has properties
-        let mut e_id_properties_map: BTreeMap<PatternId, Vec<NameOrId>> = BTreeMap::new();
         // record the edges from the pb pattern has predicates
         let mut e_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         for sentence in &pb_pattern.sentences {
@@ -468,18 +458,6 @@ impl Pattern {
                                     None => {
                                         tag_v_id_map.insert(tag, dst_vertex_id);
                                     }
-                                }
-                            }
-                            // add edge properties(column)
-                            for property in params.columns.iter() {
-                                if let Some(item) = property.item.as_ref() {
-                                    e_id_properties_map
-                                        .entry(edge_id)
-                                        .or_insert(Vec::new())
-                                        .push(match item {
-                                            TagItem::Name(name) => NameOrId::Str(name.clone()),
-                                            TagItem::Id(id) => NameOrId::Id(*id),
-                                        });
                                 }
                             }
                             // add edge predicate
@@ -671,7 +649,6 @@ impl Pattern {
         }
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             pattern.vertex_tag_map = tag_v_id_map.into_iter().collect();
-            pattern.edge_properties_map = e_id_properties_map;
             pattern.edge_predicate_map = e_id_predicate_map;
             Ok(pattern)
         })
@@ -874,75 +851,11 @@ impl Pattern {
         }
     }
 
-    // /// Compute at least how many bits are needed to represent vertices with the same label
-    // /// At least 1 bit
-    // pub fn get_min_vertex_rank_bit_num(&self) -> usize {
-    //     // iterate through the hashmap and compute how many vertices have the same label in one set
-    //     let mut min_rank_bit_num: usize = 1;
-    //     for (_, value) in self.vertex_label_map.iter() {
-    //         let same_label_vertex_num = value.len() as u64;
-    //         min_rank_bit_num =
-    //             std::cmp::max((64 - same_label_vertex_num.leading_zeros()) as usize, min_rank_bit_num);
-    //     }
-    //     min_rank_bit_num
-    // }
-
     /// Compute at least how many bits are needed to represent vertices with the same label
     /// At least 1 bit
-    pub fn get_min_vertex_rank_bit_num(&self) -> usize {
-        // plus 1 since rank (dfs id) starts from 1 instead of 0
-        let vertex_num = self.get_vertex_num() + 1;
-        let mut min_rank_bit_num: usize = 1;
-        let mut rank_range = 2;
-        while rank_range < vertex_num {
-            rank_range = rank_range * 2;
-            min_rank_bit_num += 1;
-        }
-
-        min_rank_bit_num
-    }
-
-    /// Check whether the edge has property or not
-    pub fn edge_has_property(&self, edge_id: PatternId) -> bool {
-        self.edge_properties_map.contains_key(&edge_id)
-    }
-
-    /// Check whether the vertex has property or not
-    pub fn vertex_has_property(&self, vertex_id: PatternId) -> bool {
-        self.vertex_properties_map
-            .contains_key(&vertex_id)
-    }
-
-    /// Iterate over a PatternEdge's all required properties
-    pub fn edge_properties_iter(&self, edge_id: PatternId) -> DynIter<&NameOrId> {
-        match self.edge_properties_map.get(&edge_id) {
-            Some(properties) => Box::new(properties.iter()),
-            None => Box::new(std::iter::empty()),
-        }
-    }
-
-    /// Iterate over a PatternVertex's all required properties
-    pub fn vertex_properties_iter(&self, vertex_id: PatternId) -> DynIter<&NameOrId> {
-        match self.vertex_properties_map.get(&vertex_id) {
-            Some(properties) => Box::new(properties.iter()),
-            None => Box::new(std::iter::empty()),
-        }
-    }
-
-    /// Add a new property requirement to the PatternEdge
-    pub fn add_edge_property(&mut self, edge_id: PatternId, property: NameOrId) {
-        self.edge_properties_map
-            .entry(edge_id)
-            .or_insert(Vec::new())
-            .push(property);
-    }
-
-    /// Add a new property requirement to the PatternVertex
-    pub fn add_vertex_property(&mut self, vertex_id: PatternId, property: NameOrId) {
-        self.vertex_properties_map
-            .entry(vertex_id)
-            .or_insert(Vec::new())
-            .push(property);
+    pub fn get_min_vertex_id_bit_num(&self) -> usize {
+        let vertex_num = self.get_vertex_num();
+        std::cmp::max((64 - vertex_num.leading_zeros()) as usize, 1)
     }
 
     /// Check whether the edge has predicate or not
@@ -2042,9 +1955,6 @@ impl Pattern {
             // delete in vertex tag map
             self.vertex_tag_map
                 .remove_by_right(&target_vertex_id);
-            // delete in vertex property map
-            self.vertex_properties_map
-                .remove(&target_vertex_id);
             // delete in vertex predicate map
             self.vertex_predicate_map
                 .remove(&target_vertex_id);
@@ -2073,9 +1983,6 @@ impl Pattern {
                 // delete in edge tag map
                 self.edge_tag_map
                     .remove_by_right(&adjacent_edge_id);
-                // delete in edge property map
-                self.edge_properties_map
-                    .remove(&adjacent_edge_id);
                 // delete in edge predicate map
                 self.edge_predicate_map
                     .remove(&adjacent_edge_id);

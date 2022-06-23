@@ -120,7 +120,7 @@ impl Encoder {
     pub fn init_by_pattern(pattern: &Pattern, vertex_rank_bit_num: usize) -> Encoder {
         let min_edge_label_bit_num = pattern.get_min_edge_label_bit_num();
         let min_vertex_label_bit_num = pattern.get_min_vertex_label_bit_num();
-        let mut min_vertex_rank_bit_num = pattern.get_min_vertex_rank_bit_num();
+        let mut min_vertex_rank_bit_num = pattern.get_min_vertex_id_bit_num();
         // Apply the user defined vertex_rank_bit_num only if it is larger than the minimum value needed for the pattern
         if vertex_rank_bit_num > min_vertex_rank_bit_num {
             min_vertex_rank_bit_num = vertex_rank_bit_num;
