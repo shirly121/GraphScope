@@ -24,7 +24,7 @@ use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{Entry, Record, RecordExpandIter, RecordPathExpandIter};
+use crate::process::record::{Entry, Record, RecordElement, RecordExpandIter, RecordPathExpandIter};
 
 pub struct EdgeExpandOperator<E: Into<Entry>> {
     start_v_tag: Option<KeyId>,
@@ -48,7 +48,7 @@ impl<E: Into<Entry> + 'static> FlatMapFunction<Record, Record> for EdgeExpandOpe
             let iter = self.stmt.exec(id)?;
             if self.getv_flag {
                 let neighbors_iter = iter.map(|e| match e.into() {
-                    GraphObject::E(e) => Vertex::new(
+                    Entry::Element(RecordElement::OnGraph(GraphObject::E(e))) => Vertex::new(
                         e.get_other_id(),
                         e.get_other_label().cloned(),
                         DynDetails::new(DefaultDetails::default()),

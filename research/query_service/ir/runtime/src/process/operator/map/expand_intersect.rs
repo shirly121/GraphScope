@@ -16,6 +16,8 @@
 use std::convert::TryInto;
 use std::sync::Arc;
 
+use graph_proxy::apis::graph::element::{Element, GraphElement, GraphObject};
+use graph_proxy::apis::{Direction, Statement, ID};
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 use ir_common::KeyId;
@@ -24,8 +26,6 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
 use crate::process::record::{Entry, Record, RecordElement};
-use graph_proxy::apis::graph::element::{Element, GraphElement, GraphObject};
-use graph_proxy::apis::{Direction, Statement, ID};
 
 /// An ExpandOrIntersect operator to expand neighbors
 /// and intersect with the ones of the same tag found previously (if exists).
@@ -104,7 +104,7 @@ fn do_intersection<E: Into<GraphObject> + 'static, Iter: Iterator<Item = E>>(
 impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
     fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
         let entry = input
-            .get(Some(&self.start_v_tag))
+            .get(Some(self.start_v_tag))
             .ok_or(FnExecError::get_tag_error(&format!(
                 "start_v_tag {:?} in ExpandOrIntersect",
                 self.start_v_tag
@@ -190,9 +190,10 @@ impl FilterMapFuncGen for algebra_pb::EdgeExpand {
 
 #[cfg(test)]
 mod tests {
-    use super::{do_intersection, RecordElement};
     use graph_proxy::apis::graph::element::Element;
     use graph_proxy::apis::ID;
+
+    use super::{do_intersection, RecordElement};
 
     #[test]
     fn intersect_test_01() {

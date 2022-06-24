@@ -657,6 +657,7 @@ fn add_intersect_job_builder(
             builder.repartition(key_pb.encode_to_vec());
         }
         let auxilia = pb::logical_plan::Operator::from(pb::Auxilia {
+            tag: None,
             params: Some(auxilia_param),
             alias: intersect_tag.cloned(),
         });
@@ -1608,39 +1609,39 @@ mod test {
     fn intersection_as_physical() {
         let source_opr = pb::Scan {
             scan_opt: 0,
-            alias: Some("A".into()),
+            alias: Some(0.into()),
             params: Some(query_params(vec![], vec![])),
             idx_predicate: None,
         };
 
-        // extend A->B
+        // extend 0->1
         let expand_ab_opr = pb::EdgeExpand {
-            v_tag: Some("A".into()),
+            v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec![])),
             is_edge: false,
-            alias: Some("B".into()),
+            alias: Some(1.into()),
         };
 
-        // extend A->C, B->C, and intersect on C
+        // extend 0->2, 1->2, and intersect on 2
         let expand_ac_opr = pb::EdgeExpand {
-            v_tag: Some("A".into()),
+            v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec![])),
             is_edge: false,
-            alias: Some("C".into()),
+            alias: Some(2.into()),
         };
 
         let expand_bc_opr = pb::EdgeExpand {
-            v_tag: Some("B".into()),
+            v_tag: Some(1.into()),
             direction: 0,
             params: Some(query_params(vec!["knows".into()], vec![])),
             is_edge: false,
-            alias: Some("C".into()),
+            alias: Some(2.into()),
         };
 
         // parents are expand_ac_opr and expand_bc_opr
-        let intersect_opr = pb::Intersect { parents: vec![2, 3], key: Some("C".into()) };
+        let intersect_opr = pb::Intersect { parents: vec![2, 3], key: Some(2.into()) };
 
         let mut logical_plan = LogicalPlan::with_root(Node::new(0, source_opr.clone().into()));
         logical_plan
@@ -1661,7 +1662,7 @@ mod test {
             .add_job_builder(&mut builder, &mut plan_meta)
             .unwrap();
 
-        let unfold_opr = pb::Unfold { tag: Some("C".into()), alias: Some("C".into()) };
+        let unfold_opr = pb::Unfold { tag: Some(2.into()), alias: Some(2.into()) };
 
         let mut expected_builder = JobBuilder::default();
         expected_builder.add_source(pb::logical_plan::Operator::from(source_opr).encode_to_vec());
@@ -1676,39 +1677,39 @@ mod test {
     fn intersection_with_auxilia_as_physical() {
         let source_opr = pb::Scan {
             scan_opt: 0,
-            alias: Some("A".into()),
+            alias: Some(0.into()),
             params: Some(query_params(vec![], vec![])),
             idx_predicate: None,
         };
 
-        // extend A->B
+        // extend 0->1
         let expand_ab_opr = pb::EdgeExpand {
-            v_tag: Some("A".into()),
+            v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec![])),
             is_edge: false,
-            alias: Some("B".into()),
+            alias: Some(1.into()),
         };
 
-        // extend A->C, B->C, and intersect on C (where C has required columns)
+        // extend 0->2, 1->2, and intersect on 2 (where 2 has required columns)
         let mut expand_ac_opr = pb::EdgeExpand {
-            v_tag: Some("A".into()),
+            v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec!["id".into()])),
             is_edge: false,
-            alias: Some("C".into()),
+            alias: Some(2.into()),
         };
 
         let mut expand_bc_opr = pb::EdgeExpand {
-            v_tag: Some("B".into()),
+            v_tag: Some(1.into()),
             direction: 0,
             params: Some(query_params(vec!["knows".into()], vec!["name".into()])),
             is_edge: false,
-            alias: Some("C".into()),
+            alias: Some(2.into()),
         };
 
         // parents are expand_ac_opr and expand_bc_opr
-        let intersect_opr = pb::Intersect { parents: vec![2, 3], key: Some("C".into()) };
+        let intersect_opr = pb::Intersect { parents: vec![2, 3], key: Some(2.into()) };
 
         let mut logical_plan = LogicalPlan::with_root(Node::new(0, source_opr.clone().into()));
         logical_plan
@@ -1729,13 +1730,14 @@ mod test {
             .add_job_builder(&mut builder, &mut plan_meta)
             .unwrap();
 
-        let unfold_opr = pb::Unfold { tag: Some("C".into()), alias: None };
+        let unfold_opr = pb::Unfold { tag: Some(2.into()), alias: None };
         let mut auxilia_param = pb::QueryParams::default();
         merge_query_params(&mut auxilia_param, expand_ac_opr.params.as_mut().unwrap());
         merge_query_params(&mut auxilia_param, expand_bc_opr.params.as_mut().unwrap());
         let auxilia_opr = pb::logical_plan::Operator::from(pb::Auxilia {
+            tag: None,
             params: Some(auxilia_param),
-            alias: Some("C".into()),
+            alias: Some(2.into()),
         });
 
         let mut expected_builder = JobBuilder::default();

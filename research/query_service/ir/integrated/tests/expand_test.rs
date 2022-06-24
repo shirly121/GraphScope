@@ -609,11 +609,7 @@ mod test {
             vec![expected_collection.clone(), expected_collection.clone(), expected_collection];
         let mut result_collections: Vec<Vec<usize>> = vec![];
         while let Some(Ok(record)) = result.next() {
-            if let Some(collection) = record
-                .get(Some(&TAG_C))
-                .unwrap()
-                .as_collection()
-            {
+            if let Some(collection) = record.get(Some(TAG_C)).unwrap().as_collection() {
                 let mut result_collection: Vec<usize> = collection
                     .clone()
                     .into_iter()
@@ -686,11 +682,7 @@ mod test {
         let expected_collections = vec![vec![v4]];
         let mut result_collections = vec![];
         while let Some(Ok(record)) = result.next() {
-            if let Some(collection) = record
-                .get(Some(&TAG_C))
-                .unwrap()
-                .as_collection()
-            {
+            if let Some(collection) = record.get(Some(TAG_C)).unwrap().as_collection() {
                 let mut result_collection: Vec<DefaultId> = collection
                     .clone()
                     .into_iter()
