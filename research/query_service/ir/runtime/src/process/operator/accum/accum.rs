@@ -320,7 +320,7 @@ mod tests {
             RecordElement::OnGraph(init_vertex2().into()),
         ]);
         if let Some(Ok(record)) = result.next() {
-            if let Some(entry) = record.get(Some(&TAG_A.into())) {
+            if let Some(entry) = record.get(Some(TAG_A)) {
                 fold_result = entry.as_ref().clone();
             }
         }
@@ -339,7 +339,7 @@ mod tests {
         let mut result = fold_test(init_source(), fold_opr_pb);
         let mut cnt = 0;
         if let Some(Ok(record)) = result.next() {
-            if let Some(entry) = record.get(Some(&TAG_A.into())) {
+            if let Some(entry) = record.get(Some(TAG_A)) {
                 cnt = match entry.as_ref() {
                     Entry::Element(RecordElement::OffGraph(CommonObject::Count(cnt))) => *cnt,
                     _ => {
@@ -376,12 +376,12 @@ mod tests {
         );
         if let Some(Ok(record)) = result.next() {
             let collection_entry = record
-                .get(Some(&TAG_A.into()))
+                .get(Some(TAG_A))
                 .unwrap()
                 .as_ref()
                 .clone();
             let count_entry = record
-                .get(Some(&TAG_B.into()))
+                .get(Some(TAG_B))
                 .unwrap()
                 .as_ref()
                 .clone();
@@ -404,7 +404,7 @@ mod tests {
         let mut result = fold_test(vec![r1, r2], fold_opr_pb);
         let mut res = 0.into();
         if let Some(Ok(record)) = result.next() {
-            if let Some(entry) = record.get(Some(&TAG_A.into())) {
+            if let Some(entry) = record.get(Some(TAG_A)) {
                 res = match entry.as_ref() {
                     // this is Prop, since get_entry returns entry type of prop
                     Entry::Element(RecordElement::OffGraph(CommonObject::Prop(obj))) => obj.clone(),
@@ -431,7 +431,7 @@ mod tests {
         let mut result = fold_test(vec![r1, r2], fold_opr_pb);
         let mut res = "".into();
         if let Some(Ok(record)) = result.next() {
-            if let Some(entry) = record.get(Some(&TAG_A.into())) {
+            if let Some(entry) = record.get(Some(TAG_A)) {
                 res = match entry.as_ref() {
                     // this is Prop, since get_entry returns entry type of prop
                     Entry::Element(RecordElement::OffGraph(CommonObject::Prop(obj))) => obj.clone(),
@@ -463,7 +463,7 @@ mod tests {
         let mut result = fold_test(vec![r1, r2, r3, r4], fold_opr_pb);
         let mut cnt = 0;
         if let Some(Ok(record)) = result.next() {
-            if let Some(entry) = record.get(Some(&TAG_A.into())) {
+            if let Some(entry) = record.get(Some(TAG_A)) {
                 cnt = match entry.as_ref() {
                     Entry::Element(RecordElement::OffGraph(CommonObject::Count(cnt))) => *cnt,
                     _ => {
@@ -495,7 +495,7 @@ mod tests {
             RecordElement::OnGraph(init_vertex2().into()),
         ]);
         if let Some(Ok(record)) = result.next() {
-            if let Some(entry) = record.get(Some(&TAG_A.into())) {
+            if let Some(entry) = record.get(Some(TAG_A)) {
                 fold_result = entry.as_ref().clone();
             }
         }
