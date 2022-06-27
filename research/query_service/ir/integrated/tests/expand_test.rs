@@ -836,4 +836,82 @@ mod test {
         expected_ids.sort();
         assert_eq!(result_ids, expected_ids)
     }
+
+    // A <-> B; A <-> C; B <-> C; with filters of 'weight > 0.5' on edge A<->C
+    #[test]
+    fn expand_and_intersection_unfold_test_03() {
+        // A <-> B;
+        let expand_opr1 = pb::EdgeExpand {
+            v_tag: Some(TAG_A.into()),
+            direction: 2, // both
+            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
+            is_edge: false,
+            alias: Some(TAG_B.into()),
+        };
+
+        // A <-> C: expand C;
+        let expand_opr2 = pb::EdgeExpand {
+            v_tag: Some(TAG_A.into()),
+            direction: 2, // both
+            params: Some(query_params(
+                vec!["knows".into(), "created".into()],
+                vec![],
+                str_to_expr_pb("@.weight > 0.5".to_string()).ok(),
+            )),
+            is_edge: false,
+            alias: Some(TAG_C.into()),
+        };
+
+        // B <-> C: expand C and intersect on C;
+        let expand_opr3 = pb::EdgeExpand {
+            v_tag: Some(TAG_B.into()),
+            direction: 2, // both
+            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
+            is_edge: false,
+            alias: Some(TAG_C.into()),
+        };
+
+        // unfold tag C
+        let unfold_opr = pb::Unfold { tag: Some(TAG_C.into()), alias: Some(TAG_C.into()) };
+
+        let conf = JobConf::new("expand_filter_and_intersection_unfold_test");
+        let mut result = pegasus::run(conf, || {
+            let expand1 = expand_opr1.clone();
+            let expand2 = expand_opr2.clone();
+            let expand3 = expand_opr3.clone();
+            let unfold = unfold_opr.clone();
+            |input, output| {
+                // source vertex: marko
+                let source_iter = source_gen_with_scan_opr(pb::Scan {
+                    scan_opt: 0,
+                    alias: Some(TAG_A.into()),
+                    params: None,
+                    idx_predicate: Some(vec![1].into()),
+                });
+                let mut stream = input.input_from(source_iter)?;
+                let flatmap_func1 = expand1.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| flatmap_func1.exec(input))?;
+                let map_func2 = expand2.gen_filter_map().unwrap();
+                stream = stream.filter_map(move |input| map_func2.exec(input))?;
+                let map_func3 = expand3.gen_filter_map().unwrap();
+                stream = stream.filter_map(move |input| map_func3.exec(input))?;
+                let unfold_func = unfold.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| unfold_func.exec(input))?;
+                stream.sink_into(output)
+            }
+        })
+        .expect("build job failure");
+
+        let v4: DefaultId = LDBCVertexParser::to_global_id(4, 0);
+        let mut expected_ids = vec![v4];
+        let mut result_ids = vec![];
+        while let Some(Ok(record)) = result.next() {
+            if let Some(element) = record.get(None).unwrap().as_graph_vertex() {
+                result_ids.push(element.id() as usize);
+            }
+        }
+        result_ids.sort();
+        expected_ids.sort();
+        assert_eq!(result_ids, expected_ids)
+    }
 }
