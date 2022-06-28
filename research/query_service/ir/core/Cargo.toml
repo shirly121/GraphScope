@@ -18,7 +18,7 @@ pegasus = { path = "../../../engine/pegasus/pegasus" }
 graph_proxy = { path = "../graph_proxy" }
 graph_store = { path = "../../../graph_store" }
 runtime = { path = "../runtime" }
-prost = "0.9"
+prost = "0.10"
 serde = "1.0"
 serde_json = "1.0"
 vec_map = { version = "0.8.2", features = ["serde"] }
