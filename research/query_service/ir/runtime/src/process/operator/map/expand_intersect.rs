@@ -17,7 +17,7 @@ use std::convert::TryInto;
 use std::sync::Arc;
 
 use graph_proxy::apis::graph::element::{Element, GraphElement, GraphObject};
-use graph_proxy::apis::{Direction, Statement, ID};
+use graph_proxy::apis::{DefaultDetails, Direction, DynDetails, QueryParams, Statement, Vertex, ID};
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 use ir_common::KeyId;
@@ -111,7 +111,17 @@ impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for Expan
             )))?;
         if let Some(v) = entry.as_graph_vertex() {
             let id = v.id();
-            let iter = self.stmt.exec(id)?;
+            let iter = self.stmt.exec(id)?.map(|e| match e.into() {
+                GraphObject::V(v) => v,
+                GraphObject::E(e) => Vertex::new(
+                    e.get_other_id(),
+                    e.get_other_label().cloned(),
+                    DynDetails::new(DefaultDetails::default()),
+                ),
+                GraphObject::P(_) => {
+                    unreachable!()
+                }
+            });
             if let Some(pre_entry) = input.get_column_mut(&self.edge_or_end_v_tag) {
                 // the case of expansion and intersection
                 match pre_entry {
@@ -171,19 +181,26 @@ impl FilterMapFuncGen for algebra_pb::EdgeExpand {
         let direction_pb: algebra_pb::edge_expand::Direction =
             unsafe { ::std::mem::transmute(self.direction) };
         let direction = Direction::from(direction_pb);
-        let query_params = self.params.try_into()?;
+        let query_params: QueryParams = self.params.try_into()?;
         debug!(
             "Runtime expand collection operator of edge with start_v_tag {:?}, edge_tag {:?}, direction {:?}, query_params {:?}",
             start_v_tag, edge_or_end_v_tag, direction, query_params
         );
         if self.is_edge {
-            let stmt = graph.prepare_explore_edge(direction, &query_params)?;
-            let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
-            Ok(Box::new(edge_expand_operator))
+            Err(FnGenError::unsupported_error("expand edges in ExpandIntersection"))
         } else {
-            let stmt = graph.prepare_explore_vertex(direction, &query_params)?;
-            let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
-            Ok(Box::new(edge_expand_operator))
+            if query_params.filter.is_some() {
+                // Expand vertices with filters on edges.
+                // This can be regarded as a combination of EdgeExpand (with is_edge = true) + GetV
+                let stmt = graph.prepare_explore_edge(direction, &query_params)?;
+                let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                Ok(Box::new(edge_expand_operator))
+            } else {
+                // Expand vertices without any filters
+                let stmt = graph.prepare_explore_vertex(direction, &query_params)?;
+                let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                Ok(Box::new(edge_expand_operator))
+            }
         }
     }
 }
