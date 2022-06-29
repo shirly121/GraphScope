@@ -10,6 +10,9 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
 RUN apt-get -y install locales &&\
     sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen
+ENV LANG en_US.UTF-8  
+ENV LANGUAGE en_US:en  
+ENV LC_ALL en_US.UTF-8
 
 # install cmake/clang/protobuf-compiler/rustfmt
 RUN apt-get install -y cmake=3.18.4-2+deb11u1  && \
