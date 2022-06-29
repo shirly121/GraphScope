@@ -18,8 +18,8 @@ RUN apt-get install -y cmake=3.18.4-2+deb11u1  && \
     rustup component add rustfmt
 
 # install Java Dependencies
-RUN apt-get install openjdk-11-jdk=11.0.15+10-1~deb11u1 && \
-    apt-get install maven=3.6.3-5
+RUN apt-get install -y openjdk-11-jdk=11.0.15+10-1~deb11u1 && \
+    apt-get install -y maven=3.6.3-5
 
 # git clone GraphScope to opt and compile
 RUN cd /opt && \
