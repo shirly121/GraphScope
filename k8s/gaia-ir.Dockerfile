@@ -29,6 +29,8 @@ RUN cd /opt && \
     git checkout ir_catalog_dev && \
     cargo build --release
 
+# set environment
+ENV RUST_LOG info
+
 # start RPC Server
-RUN cd /opt/GraphScope/research/query_service/ir && \
-    RUST_LOG=info ./target/release/start_rpc_server --config ./integrated/config/
+CMD ["/opt/GraphScope/research/query_service/ir/target/release/start_rpc_server", "--config", "/opt/GraphScope/research/query_service/ir/integrated/config/"]
