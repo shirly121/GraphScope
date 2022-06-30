@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-host: localhost
+host: 0.0.0.0
 port: 8182
 evaluationTimeout: 300000
 channelizer: com.alibaba.graphscope.gremlin.service.IrWsAndHttpChannelizer
