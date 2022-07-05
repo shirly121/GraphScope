@@ -407,15 +407,8 @@ impl Pattern {
                             let edge_id = assign_edge_id;
                             assign_edge_id += 1;
                             // check whether the current pattern is the head or tail of the pb pattern sentence
-                            let (is_head, is_tail) = if sentence.binders.len() == 1 {
-                                (true, true)
-                            } else if i == 0 {
-                                (true, false)
-                            } else if i == sentence.binders.len() - 1 {
-                                (false, true)
-                            } else {
-                                (false, false)
-                            };
+                            let is_head = i == 0;
+                            let is_tail = i == sentence.binders.len() - 1;
                             // assign/pick the souce vertex id and destination vertex id of the pattern edge
                             // the situation is classified as whether it is the head/tail of the sentence
                             let src_vertex_id: PatternId;
@@ -433,32 +426,28 @@ impl Pattern {
                                     assign_vertex_id += 1;
                                 }
                             } else {
-                                dst_vertex_id = assign_vertex_id;
-                                pre_dst_vertex_id = dst_vertex_id;
-                                assign_vertex_id += 1;
-                            }
-                            // check alias tag
-                            if let Some(alias_tag) = edge_expand
-                                .alias
-                                .as_ref()
-                                .and_then(|name_or_id| name_or_id.item.as_ref())
-                            {
-                                let tag = match alias_tag {
-                                    TagItem::Name(name) => NameOrId::Str(name.clone()),
-                                    TagItem::Id(id) => NameOrId::Id(*id),
-                                };
-                                match tag_v_id_map.get(&tag) {
-                                    Some(v_id) => {
-                                        if *v_id != dst_vertex_id {
-                                            return Err(IrError::InvalidPattern(
-                                                "Two vertices use same tag".to_string(),
-                                            ));
-                                        }
-                                    }
-                                    None => {
+                                // check alias tag
+                                if let Some(alias_tag) = edge_expand
+                                    .alias
+                                    .as_ref()
+                                    .and_then(|name_or_id| name_or_id.item.as_ref())
+                                {
+                                    let tag = match alias_tag {
+                                        TagItem::Name(name) => NameOrId::Str(name.clone()),
+                                        TagItem::Id(id) => NameOrId::Id(*id),
+                                    };
+                                    if let Some(v_id) = tag_v_id_map.get(&tag) {
+                                        dst_vertex_id = *v_id;
+                                    } else {
+                                        dst_vertex_id = assign_vertex_id;
                                         tag_v_id_map.insert(tag, dst_vertex_id);
+                                        assign_vertex_id += 1;
                                     }
+                                } else {
+                                    dst_vertex_id = assign_vertex_id;
+                                    assign_vertex_id += 1;
                                 }
+                                pre_dst_vertex_id = dst_vertex_id;
                             }
                             // add edge predicate
                             if let Some(expr) = params.predicate.as_ref() {
