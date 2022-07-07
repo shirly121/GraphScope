@@ -20,3 +20,4 @@ bit-set = "0.5.0"
 [features]
 default = []
 proto_inplace = ["ir_common/proto_inplace", "pegasus_server/gcip"]
+with_v6d = ["graph_proxy/with_v6d"]

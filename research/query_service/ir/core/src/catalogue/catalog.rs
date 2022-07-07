@@ -601,7 +601,11 @@ fn build_logical_plan(
                 .vertices_with_tag_iter()
                 .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
                 .collect(),
-            id_name_mappings: vec![],
+            sink_target: Some(pb::sink::SinkTarget {
+                inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
+                    id_name_mappings: vec![],
+                })),
+            }),
         }
     };
     match_plan

@@ -53,7 +53,6 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{c_void, CStr};
-use std::fs::File;
 use std::os::raw::c_char;
 
 use ir_common::expr_parse::str_to_expr_pb;
@@ -67,7 +66,6 @@ use crate::error::IrError;
 use crate::plan::logical::{LogicalPlan, NodeId};
 use crate::plan::meta::{set_schema_from_json, KeyType};
 use crate::plan::physical::AsPhysical;
-use crate::JsonIO;
 
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -686,14 +684,6 @@ pub extern "C" fn destroy_logical_plan(ptr_plan: *const c_void) {
     destroy_ptr::<LogicalPlan>(ptr_plan)
 }
 
-/// To release a FfiError
-#[no_mangle]
-pub extern "C" fn destroy_ffi_error(error: FfiError) {
-    if !error.msg.is_null() {
-        let _ = unsafe { std::ffi::CString::from_raw(error.msg as *mut c_char) };
-    }
-}
-
 /// To release a FfiData
 #[no_mangle]
 pub extern "C" fn destroy_ffi_data(data: FfiData) {
@@ -761,14 +751,24 @@ fn append_operator(
 }
 
 #[no_mangle]
-pub extern "C" fn write_plan_to_json(ptr_plan: *const c_void, cstr_file: *const c_char) {
+pub extern "C" fn print_plan_as_json(ptr_plan: *const c_void) -> FfiError {
     let box_plan = unsafe { Box::from_raw(ptr_plan as *mut LogicalPlan) };
-    let plan = box_plan.as_ref().clone();
-    let file = cstr_to_string(cstr_file).expect("C String to Rust String error!");
-    plan.into_json(File::create(&file).expect(&format!("Create json file: {:?} error", file)))
-        .expect("Write to json error");
-
+    let pb_plan: pb::LogicalPlan = box_plan.as_ref().clone().into();
+    let mut result = FfiError::success();
+    let json_result = serde_json::to_string_pretty(&pb_plan);
+    if json_result.is_err() {
+        result = FfiError::new(ResultCode::Others, json_result.err().unwrap().to_string());
+    } else {
+        let cstr_result = string_to_cstr(json_result.unwrap());
+        if cstr_result.is_err() {
+            result = cstr_result.err().unwrap().into();
+        } else {
+            result.msg = cstr_result.unwrap();
+        }
+    }
     std::mem::forget(box_plan);
+
+    result
 }
 
 /// Define the target operator/parameter while setting certain parameters
@@ -1696,10 +1696,34 @@ mod as_opr {
 mod sink {
     use super::*;
 
-    /// To initialize an Sink operator
+    /// To initialize an Sink operator with target of SinkDefault (i.e., sink to client)
     #[no_mangle]
     pub extern "C" fn init_sink_operator() -> *const c_void {
-        let sink_opr = Box::new(pb::Sink { tags: vec![], id_name_mappings: vec![] });
+        let sink_opr = Box::new(pb::Sink {
+            tags: vec![],
+            sink_target: Some(pb::sink::SinkTarget {
+                inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
+                    id_name_mappings: vec![],
+                })),
+            }),
+        });
+        Box::into_raw(sink_opr) as *const c_void
+    }
+
+    /// To initialize an Sink operator with target of a Graph (now it is Vineyard as a default option)
+    #[no_mangle]
+    pub extern "C" fn init_sink_graph_operator(graph_name: *const c_char) -> *const c_void {
+        let graph_name = cstr_to_string(graph_name).expect("C String to Rust String error!");
+        let sink_opr = Box::new(pb::Sink {
+            // sink head by default
+            tags: vec![common_pb::NameOrIdKey { key: None }],
+            sink_target: Some(pb::sink::SinkTarget {
+                inner: Some(pb::sink::sink_target::Inner::SinkVineyard(pb::SinkVineyard {
+                    graph_name,
+                    graph_schema: None,
+                })),
+            }),
+        });
         Box::into_raw(sink_opr) as *const c_void
     }
 

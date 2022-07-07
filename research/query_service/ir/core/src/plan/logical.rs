@@ -17,7 +17,6 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
-use std::io;
 use std::rc::Rc;
 
 use ir_common::error::ParsePbError;
@@ -30,7 +29,6 @@ use vec_map::VecMap;
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::{ColumnsOpt, PlanMeta, Schema, StoreMeta, TagId, INVALID_META_ID, STORE_META};
 use crate::plan::patmat::{MatchingStrategy, NaiveStrategy};
-use crate::JsonIO;
 
 // Note that protobuf only support signed integer, while we actually requires the nodes'
 // id being non-negative
@@ -597,20 +595,6 @@ impl LogicalPlan {
             }
             _ => None,
         }
-    }
-}
-
-impl JsonIO for LogicalPlan {
-    fn into_json<W: io::Write>(self, writer: W) -> io::Result<()> {
-        let plan_pb: pb::LogicalPlan = self.into();
-        serde_json::to_writer_pretty(writer, &plan_pb)?;
-
-        Ok(())
-    }
-
-    fn from_json<R: io::Read>(reader: R) -> io::Result<Self> {
-        let plan_pb = serde_json::from_reader::<_, pb::LogicalPlan>(reader)?;
-        Self::try_from(plan_pb).map_err(|_| io::Error::from(io::ErrorKind::InvalidData))
     }
 }
 
@@ -1343,6 +1327,7 @@ mod test {
 
     use super::*;
     use crate::plan::meta::Schema;
+    use crate::JsonIO;
 
     #[allow(dead_code)]
     fn query_params(
@@ -2704,7 +2689,11 @@ mod test {
 
         let sink = pb::Sink {
             tags: vec![common_pb::NameOrIdKey { key: Some("name".into()) }],
-            id_name_mappings: vec![],
+            sink_target: Some(pb::sink::SinkTarget {
+                inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
+                    id_name_mappings: vec![],
+                })),
+            }),
         };
         plan.append_operator_as_node(sink.into(), vec![3])
             .unwrap();
@@ -2727,18 +2716,18 @@ mod test {
         }
     }
 
-    /// The plan looks like:
-    ///       root
-    ///       / \
-    ///      1    2
-    ///     / \   |
-    ///    3   4  |
-    ///    \   /  |
-    ///      5    |
-    ///       \  /
-    ///         6
-    ///         |
-    ///         7
+    // The plan looks like:
+    //       root
+    //       / \
+    //      1    2
+    //     / \   |
+    //    3   4  |
+    //    \   /  |
+    //      5    |
+    //       \  /
+    //         6
+    //         |
+    //         7
     fn create_logical_plan1() -> LogicalPlan {
         let opr = pb::logical_plan::Operator {
             opr: Some(pb::logical_plan::operator::Opr::As(pb::As { alias: None })),
@@ -2764,14 +2753,14 @@ mod test {
         plan
     }
 
-    /// The plan looks like:
-    ///         root
-    ///      /   |   \
-    ///     1    2    3
-    ///     \   /    /  
-    ///       4     /
-    ///        \   /
-    ///          5
+    // The plan looks like:
+    //         root
+    //      /   |   \
+    //     1    2    3
+    //     \   /    /
+    //       4     /
+    //        \   /
+    //          5
     fn create_logical_plan2() -> LogicalPlan {
         let opr = pb::logical_plan::Operator {
             opr: Some(pb::logical_plan::operator::Opr::As(pb::As { alias: None })),
@@ -2792,14 +2781,14 @@ mod test {
         plan
     }
 
-    /// The plan looks like:
-    ///         root
-    ///      /   |   \
-    ///     1    2    3
-    ///     \   / \   /  
-    ///       4     5
-    ///        \   /
-    ///          6
+    // The plan looks like:
+    //         root
+    //      /   |   \
+    //     1    2    3
+    //     \   / \   /
+    //       4     5
+    //        \   /
+    //          6
     fn create_logical_plan3() -> LogicalPlan {
         let opr = pb::logical_plan::Operator {
             opr: Some(pb::logical_plan::operator::Opr::As(pb::As { alias: None })),
