@@ -27,7 +27,7 @@ import java.util.Set;
 
 public class RemoteTestGraphProvider extends AbstractGraphProvider {
     private static String GREMLIN_ENDPOINT = "gremlin.endpoint";
-    private static String DEFAULT_VALUE = "0.0.0.0:8182";
+    private static String DEFAULT_VALUE = "localhost:8182";
     private String gremlinEndpoint;
 
     public RemoteTestGraphProvider() {
@@ -49,8 +49,7 @@ public class RemoteTestGraphProvider extends AbstractGraphProvider {
 
     @Override
     public void clear(Graph graph, Configuration configuration) throws Exception {
-        if (graph != null)
-            graph.close();
+        if (graph != null) graph.close();
     }
 
     @Override

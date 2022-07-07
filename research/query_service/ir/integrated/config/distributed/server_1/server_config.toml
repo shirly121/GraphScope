@@ -44,9 +44,13 @@ servers_size = 2
 # If the cluster is standalone, the size of addresses should be equal to [server_size] set above, and the addresses
 # should be in order, the fisrt address would be server 0.
 [[network.servers]]
-ip = '0.0.0.0'
+ip = '127.0.0.1'
 port = 11234
 
 [[network.servers]]
-ip = '0.0.0.0'
+ip = '127.0.0.1'
 port = 11235
+
+
+
+

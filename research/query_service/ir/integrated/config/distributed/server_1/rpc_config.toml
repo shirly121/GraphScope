@@ -1,6 +1,6 @@
 # Set ip address the RPC server will start;
 # It is set to "0.0.0.0" by default;
-rpc_host = "0.0.0.0"
+rpc_host = "127.0.0.1"
 # Set port the RPC service will listen on;
 # It is set to 0 use random port by default;
 rpc_port = 1235
