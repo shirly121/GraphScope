@@ -60,6 +60,7 @@ pub mod generated {
 }
 
 pub type KeyId = i32;
+type TagId = u32;
 pub const SPLITTER: &'static str = ".";
 pub const VAR_PREFIX: &'static str = "@";
 
@@ -195,6 +196,18 @@ impl TryFrom<common_pb::NameOrId> for KeyId {
     }
 }
 
+impl TryInto<TagId> for common_pb::NameOrId {
+    type Error = ParsePbError;
+
+    fn try_into(self) -> Result<TagId, Self::Error> {
+        let name_or_id: NameOrId = self.try_into()?;
+        match name_or_id {
+            NameOrId::Str(_) => Err(ParsePbError::ParseError("Parse string to TagID".to_string())),
+            NameOrId::Id(id) => Ok(id as TagId),
+        }
+    }
+}
+
 impl From<NameOrId> for common_pb::NameOrId {
     fn from(tag: NameOrId) -> Self {
         let name_or_id = match tag {
@@ -310,6 +323,13 @@ impl From<Vec<String>> for common_pb::Value {
 impl From<i32> for common_pb::NameOrId {
     fn from(i: i32) -> Self {
         common_pb::NameOrId { item: Some(common_pb::name_or_id::Item::Id(i)) }
+    }
+}
+
+impl From<u32> for common_pb::NameOrId {
+    fn from(tag: u32) -> Self {
+        let name_or_id = common_pb::name_or_id::Item::Id(tag as i32);
+        common_pb::NameOrId { item: Some(name_or_id) }
     }
 }
 

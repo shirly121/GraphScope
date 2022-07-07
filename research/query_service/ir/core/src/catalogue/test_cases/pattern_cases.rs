@@ -18,7 +18,6 @@ use std::convert::TryFrom;
 
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
-use ir_common::KeyId;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -27,14 +26,12 @@ use crate::catalogue::pattern::*;
 use crate::catalogue::test_cases::pattern_meta_cases::*;
 use crate::catalogue::{PatternId, PatternLabelId};
 use crate::error::IrError;
+use crate::plan::meta::TagId;
 
-pub const TAG_A: KeyId = 0;
-pub const TAG_B: KeyId = 1;
-pub const TAG_C: KeyId = 2;
-pub const TAG_D: KeyId = 3;
-pub const TAG_E: KeyId = 4;
-pub const TAG_F: KeyId = 5;
-pub const TAG_H: KeyId = 6;
+pub const TAG_A: TagId = 0;
+pub const TAG_B: TagId = 1;
+pub const TAG_C: TagId = 2;
+pub const TAG_D: TagId = 3;
 
 fn gen_edge_label_map(edges: Vec<String>) -> HashMap<String, PatternLabelId> {
     let mut rng = StdRng::from_seed([0; 32]);
@@ -680,109 +677,6 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
                     item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
                 }],
                 end: Some(TAG_C.into()),
-                join_kind: 0,
-            },
-        ],
-    };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
-}
-
-pub fn build_ldbc_bi11() -> Result<Pattern, IrError> {
-    let ldbc_pattern_mata = get_ldbc_pattern_meta();
-    // define pb pattern message
-    let expand_opr0 = pb::EdgeExpand {
-        v_tag: None,
-        direction: 2, // both
-        params: Some(query_params(vec!["KNOWS".into()], vec![], None)),
-        is_edge: false,
-        alias: None,
-    };
-    let expand_opr1 = pb::EdgeExpand {
-        v_tag: None,
-        direction: 0, // out
-        params: Some(query_params(vec!["ISLOCATEDIN".into()], vec![], None)),
-        is_edge: false,
-        alias: None,
-    };
-    let expand_opr2 = pb::EdgeExpand {
-        v_tag: None,
-        direction: 0, // out
-        params: Some(query_params(vec!["ISPARTOF".into()], vec![], None)),
-        is_edge: false,
-        alias: None,
-    };
-    let pattern = pb::Pattern {
-        sentences: vec![
-            pb::pattern::Sentence {
-                start: Some(TAG_A.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
-                }],
-                end: Some(TAG_B.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_A.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
-                }],
-                end: Some(TAG_C.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_B.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
-                }],
-                end: Some(TAG_C.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_A.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
-                }],
-                end: Some(TAG_D.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_B.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
-                }],
-                end: Some(TAG_E.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_C.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
-                }],
-                end: Some(TAG_F.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_D.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
-                }],
-                end: Some(TAG_H.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_E.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
-                }],
-                end: Some(TAG_H.into()),
-                join_kind: 0,
-            },
-            pb::pattern::Sentence {
-                start: Some(TAG_F.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
-                }],
-                end: Some(TAG_H.into()),
                 join_kind: 0,
             },
         ],

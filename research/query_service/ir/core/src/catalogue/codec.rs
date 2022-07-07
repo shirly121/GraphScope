@@ -118,9 +118,18 @@ impl Encoder {
     /// Initialize the Encoder by Analyzing a Pattern
     /// The vertex_rank_bit_num can be a user defined value if it is applicable to the pattern
     pub fn init_by_pattern(pattern: &Pattern, vertex_rank_bit_num: usize) -> Encoder {
-        let min_edge_label_bit_num = pattern.get_min_edge_label_bit_num();
-        let min_vertex_label_bit_num = pattern.get_min_vertex_label_bit_num();
-        let mut min_vertex_rank_bit_num = pattern.get_min_vertex_id_bit_num();
+        let min_edge_label_bit_num = if let Some(max_edge_label) = pattern.get_max_edge_label() {
+            std::cmp::max((32 - max_edge_label.leading_zeros()) as usize, 1)
+        } else {
+            1
+        };
+        let min_vertex_label_bit_num = if let Some(max_vertex_label) = pattern.get_max_vertex_label() {
+            std::cmp::max((32 - max_vertex_label.leading_zeros()) as usize, 1)
+        } else {
+            1
+        };
+        let mut min_vertex_rank_bit_num =
+            std::cmp::max((64 - pattern.get_vertex_num().leading_zeros()) as usize, 1);
         // Apply the user defined vertex_rank_bit_num only if it is larger than the minimum value needed for the pattern
         if vertex_rank_bit_num > min_vertex_rank_bit_num {
             min_vertex_rank_bit_num = vertex_rank_bit_num;
