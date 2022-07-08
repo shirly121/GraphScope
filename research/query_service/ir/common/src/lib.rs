@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::io;
 
 use dyn_type::{BorrowObject, Object};
@@ -62,7 +62,6 @@ pub mod generated {
 }
 
 pub type KeyId = i32;
-type TagId = u32;
 
 /// Refer to a key of a relation or a graph element, by either a string-type name or an identifier
 #[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
@@ -192,18 +191,6 @@ impl TryFrom<common_pb::NameOrId> for KeyId {
             }
         } else {
             Err(ParsePbError::from("empty content provided"))
-        }
-    }
-}
-
-impl TryInto<TagId> for common_pb::NameOrId {
-    type Error = ParsePbError;
-
-    fn try_into(self) -> Result<TagId, Self::Error> {
-        let name_or_id: NameOrId = self.try_into()?;
-        match name_or_id {
-            NameOrId::Str(_) => Err(ParsePbError::ParseError("Parse string to TagID".to_string())),
-            NameOrId::Id(id) => Ok(id as TagId),
         }
     }
 }

@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
+use ir_common::KeyId;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use rand::rngs::StdRng;
@@ -26,12 +27,11 @@ use crate::catalogue::pattern::*;
 use crate::catalogue::test_cases::pattern_meta_cases::*;
 use crate::catalogue::{PatternId, PatternLabelId};
 use crate::error::IrError;
-use crate::plan::meta::TagId;
 
-pub const TAG_A: TagId = 0;
-pub const TAG_B: TagId = 1;
-pub const TAG_C: TagId = 2;
-pub const TAG_D: TagId = 3;
+pub const TAG_A: KeyId = 0;
+pub const TAG_B: KeyId = 1;
+pub const TAG_C: KeyId = 2;
+pub const TAG_D: KeyId = 3;
 
 fn gen_edge_label_map(edges: Vec<String>) -> HashMap<String, PatternLabelId> {
     let mut rng = StdRng::from_seed([0; 32]);

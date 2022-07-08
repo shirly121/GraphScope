@@ -268,7 +268,7 @@ where
     set_collections
 }
 
-pub fn limit_repeated_element_num<'a, T, U>(
+pub(crate) fn limit_repeated_element_num<'a, T, U>(
     add_element: &'a U, subset_to_be_added: T, limit_num: usize,
 ) -> bool
 where
@@ -285,10 +285,6 @@ where
         }
     }
     false
-}
-
-pub fn limit_subset_size<'a, T>(subset_to_be_added: Vec<T>, size_limit: usize) -> bool {
-    subset_to_be_added.len() >= size_limit
 }
 
 #[cfg(test)]

@@ -184,13 +184,6 @@ impl From<i32> for common_pb::NameOrId {
     }
 }
 
-impl From<u32> for common_pb::NameOrId {
-    fn from(tag: u32) -> Self {
-        let name_or_id = common_pb::name_or_id::Item::Id(tag as i32);
-        common_pb::NameOrId { item: Some(name_or_id) }
-    }
-}
-
 impl From<&str> for common_pb::NameOrId {
     fn from(str: &str) -> Self {
         common_pb::NameOrId { item: Some(common_pb::name_or_id::Item::Name(str.to_string())) }

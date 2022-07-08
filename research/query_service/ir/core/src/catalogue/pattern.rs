@@ -15,7 +15,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use bimap::BiBTreeMap;
@@ -51,6 +51,20 @@ pub struct PatternVertex {
     out_degree: usize,
     /// How many in edges adjacent to this vertex
     in_degree: usize,
+}
+
+impl PatternVertex {
+    pub fn new(id: PatternId, label: PatternLabelId) -> PatternVertex {
+        PatternVertex {
+            id,
+            label,
+            rank: 0,
+            adjacent_edges: BTreeMap::new(),
+            adjacent_vertices: BTreeMap::new(),
+            out_degree: 0,
+            in_degree: 0
+        }
+    }
 }
 
 /// Methods to access the fields of a PatternVertex
@@ -195,30 +209,18 @@ pub struct Pattern {
 /// Initialize a Pattern containing only one vertex from the vertex's label
 impl From<PatternLabelId> for Pattern {
     fn from(vertex_label: PatternLabelId) -> Pattern {
-        let vertex = PatternVertex {
-            id: 0,
-            label: vertex_label,
-            rank: 0,
-            adjacent_edges: BTreeMap::new(),
-            adjacent_vertices: BTreeMap::new(),
-            out_degree: 0,
-            in_degree: 0,
-        };
+        let vertex = PatternVertex::new(0, vertex_label);
         Pattern::from(vertex)
     }
 }
 
 /// Initialze a Pattern from just a single Pattern Vertex
+/// The Pattern Vertex's id and label is kept and all other info is cleared
 impl From<PatternVertex> for Pattern {
-    fn from(mut vertex: PatternVertex) -> Pattern {
-        vertex.rank = 0;
-        vertex.adjacent_edges.clear();
-        vertex.adjacent_vertices.clear();
-        vertex.in_degree = 0;
-        vertex.out_degree = 0;
+    fn from(vertex: PatternVertex) -> Pattern {
         Pattern {
             edges: VecMap::new(),
-            vertices: VecMap::from_iter([(vertex.id, vertex.clone())]),
+            vertices: VecMap::from_iter([(vertex.id, PatternVertex::new(vertex.id, vertex.label))]),
             edge_label_map: BTreeMap::new(),
             vertex_label_map: BTreeMap::from([(vertex.label, BTreeSet::from([vertex.id]))]),
             edge_tag_map: BiBTreeMap::new(),
@@ -338,13 +340,19 @@ impl Pattern {
                 return Err(IrError::InvalidPattern("Match sentence is empty".to_string()));
             }
             // pb pattern sentence must have start tag
-            let start_tag: TagId = sentence
+            let start_tag: TagId = match sentence
                 .start
                 .clone()
                 .ok_or(IrError::InvalidPattern("Match sentence's start tag is None".to_string()))?
-                .try_into()
-                .map_err(|err| IrError::ParsePbError(err))?;
-
+                .item
+            {
+                Some(common_pb::name_or_id::Item::Id(tag)) => tag as TagId,
+                _ => {
+                    return Err(IrError::InvalidPattern(
+                        "Match sentence's start tag is illegal".to_string(),
+                    ))
+                }
+            };
             // assgin a vertex id to the start vertex of a pb pattern sentence
             let start_tag_v_id: PatternId;
             // situation that the start tag is already found in other pb pattern sentence
@@ -359,10 +367,14 @@ impl Pattern {
             // check whether the start tag label is already determined or not
             let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
             // it is allowed that the pb pattern sentence doesn't have an end tag
-            let end_tag: Option<TagId> = sentence
-                .end
-                .clone()
-                .and_then(|name_or_id| name_or_id.try_into().ok());
+            let end_tag: Option<TagId> =
+                sentence
+                    .end
+                    .clone()
+                    .and_then(|name_or_id| match name_or_id.item {
+                        Some(common_pb::name_or_id::Item::Id(tag)) => Some(tag as TagId),
+                        _ => None,
+                    });
 
             // if the end tag exists, assign the end vertex with an id
             let end_tag_v_id: Option<PatternId>;
@@ -432,7 +444,10 @@ impl Pattern {
                                 if let Some(tag) = edge_expand
                                     .alias
                                     .clone()
-                                    .and_then(|name_or_id| name_or_id.try_into().ok())
+                                    .and_then(|name_or_id| match name_or_id.item {
+                                        Some(common_pb::name_or_id::Item::Id(tag)) => Some(tag as TagId),
+                                        _ => None,
+                                    })
                                 {
                                     if let Some(v_id) = tag_v_id_map.get(&tag) {
                                         dst_vertex_id = *v_id;
@@ -451,15 +466,23 @@ impl Pattern {
                             if let Some(expr) = params.predicate.as_ref() {
                                 e_id_predicate_map.insert(edge_id, expr.clone());
                             }
+
+                            let edge_direction = unsafe {
+                                if edge_expand.direction < 0 || edge_expand.direction > 2 {
+                                    return Err(IrError::InvalidPattern("Invalid Direction".to_string()));
+                                }
+                                std::mem::transmute::<i32, pb::edge_expand::Direction>(
+                                    edge_expand.direction,
+                                )
+                            };
                             // assign vertices labels
                             // firstly, pick all candidate labels that can be assigned to the src/dst vertex
                             let vertex_labels_candies: DynIter<(
                                 PatternLabelId,
                                 PatternLabelId,
                                 PatternDirection,
-                            )> = match edge_expand.direction {
-                                // Outgoing
-                                0 => Box::new(
+                            )> = match edge_direction {
+                                pb::edge_expand::Direction::Out => Box::new(
                                     pattern_meta
                                         .associated_vlabels_iter_by_elabel(edge_label_id)
                                         .map(|(src_v_label, dst_v_label)| {
@@ -467,7 +490,7 @@ impl Pattern {
                                         }),
                                 ),
                                 // Incoming
-                                1 => Box::new(
+                                pb::edge_expand::Direction::In => Box::new(
                                     pattern_meta
                                         .associated_vlabels_iter_by_elabel(edge_label_id)
                                         .map(|(src_v_label, dst_v_label)| {
@@ -475,7 +498,7 @@ impl Pattern {
                                         }),
                                 ),
                                 // Both
-                                2 => Box::new(
+                                pb::edge_expand::Direction::Both => Box::new(
                                     pattern_meta
                                         .associated_vlabels_iter_by_elabel(edge_label_id)
                                         .map(|(src_v_label, dst_v_label)| {
@@ -489,9 +512,6 @@ impl Pattern {
                                                 }),
                                         ),
                                 ),
-                                _ => {
-                                    return Err(IrError::InvalidPattern("Invalid Direction".to_string()));
-                                }
                             };
                             // check which label candidate can connect to the previous determined partial pattern
                             let mut src_vertex_label: Option<PatternLabelId> = None;
@@ -716,16 +736,16 @@ impl Pattern {
     }
 
     /// Get PatternEdge Reference from Given Tag
-    pub fn get_edge_from_tag(&self, edge_tag: &TagId) -> Option<&PatternEdge> {
+    pub fn get_edge_from_tag(&self, edge_tag: TagId) -> Option<&PatternEdge> {
         self.edge_tag_map
-            .get_by_left(edge_tag)
+            .get_by_left(&edge_tag)
             .and_then(|id| self.edges.get(*id))
     }
 
     /// Get PatternVertex Reference from Given Tag
-    pub fn get_vertex_from_tag(&self, vertex_tag: &TagId) -> Option<&PatternEdge> {
+    pub fn get_vertex_from_tag(&self, vertex_tag: TagId) -> Option<&PatternEdge> {
         self.vertex_tag_map
-            .get_by_left(vertex_tag)
+            .get_by_left(&vertex_tag)
             .and_then(|id| self.edges.get(*id))
     }
 
@@ -744,13 +764,13 @@ impl Pattern {
     }
 
     /// Assign a PatternEdge of the Pattern with the Given Tag
-    pub fn add_edge_tag(&mut self, edge_tag: &TagId, edge_id: PatternId) {
+    pub fn add_edge_tag(&mut self, edge_tag: TagId, edge_id: PatternId) {
         self.edge_tag_map
             .insert(edge_tag.clone(), edge_id);
     }
 
     /// Assign a PatternVertex of th Pattern with the Given Tag
-    pub fn add_vertex_tag(&mut self, vertex_tag: &TagId, vertex_id: PatternId) {
+    pub fn add_vertex_tag(&mut self, vertex_tag: TagId, vertex_id: PatternId) {
         self.vertex_tag_map
             .insert(vertex_tag.clone(), vertex_id);
     }
@@ -2028,6 +2048,12 @@ mod tests {
     use crate::catalogue::pattern::PatternVertex;
     use crate::catalogue::test_cases::pattern_cases::*;
     use crate::catalogue::PatternId;
+    use crate::plan::meta::TagId;
+
+    const TAG_A: TagId = 0;
+    const TAG_B: TagId = 1;
+    const TAG_C: TagId = 2;
+    const TAG_D: TagId = 3;
 
     /// Test whether the structure of pattern_case1 is the same as our previous description
     #[test]
@@ -2124,9 +2150,9 @@ mod tests {
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_A).unwrap().id, 0);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_B).unwrap().id, 1);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_C).unwrap().id, 2);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_A).unwrap().id, 0);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_B).unwrap().id, 1);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_C).unwrap().id, 2);
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -2158,9 +2184,9 @@ mod tests {
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_A).unwrap().id, 0);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_B).unwrap().id, 1);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_C).unwrap().id, 2);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_A).unwrap().id, 0);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_B).unwrap().id, 1);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_C).unwrap().id, 2);
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -2199,10 +2225,10 @@ mod tests {
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_A).unwrap().id, 0);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_B).unwrap().id, 1);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_C).unwrap().id, 2);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_D).unwrap().id, 3);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_A).unwrap().id, 0);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_B).unwrap().id, 1);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_C).unwrap().id, 2);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_D).unwrap().id, 3);
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -2241,10 +2267,10 @@ mod tests {
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_A).unwrap().id, 0);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_B).unwrap().id, 2);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_C).unwrap().id, 1);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_D).unwrap().id, 3);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_A).unwrap().id, 0);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_B).unwrap().id, 2);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_C).unwrap().id, 1);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_D).unwrap().id, 3);
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -2283,9 +2309,9 @@ mod tests {
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_A).unwrap().id, 0);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_B).unwrap().id, 1);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_C).unwrap().id, 3);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_A).unwrap().id, 0);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_B).unwrap().id, 1);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_C).unwrap().id, 3);
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
@@ -2334,9 +2360,9 @@ mod tests {
             let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_A).unwrap().id, 0);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_B).unwrap().id, 1);
-            assert_eq!(pattern.get_vertex_from_tag(&TAG_C).unwrap().id, 4);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_A).unwrap().id, 0);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_B).unwrap().id, 1);
+            assert_eq!(pattern.get_vertex_from_tag(TAG_C).unwrap().id, 4);
         } else if let Err(error) = pattern_result {
             panic!("Build pattern from pb message failed: {:?}", error)
         }
