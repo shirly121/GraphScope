@@ -17,13 +17,12 @@ use std::collections::{BTreeMap, VecDeque};
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
-use crate::catalogue::{DynIter, PatternDirection, PatternLabelId, PatternRankId};
+use ir_common::generated::algebra as pb;
 
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, PatternId};
+use crate::catalogue::{DynIter, PatternDirection, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
-
-use ir_common::generated::algebra as pb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExtendEdge {

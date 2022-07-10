@@ -20,14 +20,13 @@ use ascii::AsciiChar;
 use ascii::AsciiString;
 use ascii::ToAsciiChar;
 
+use super::pattern_meta::PatternMeta;
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern::PatternEdge;
 use crate::catalogue::PatternDirection;
 use crate::catalogue::{PatternId, PatternLabelId, PatternRankId};
 use crate::error::IrError;
-
-use super::pattern_meta::PatternMeta;
 
 pub trait Cipher<T>: Sized {
     fn encode_to(&self, encoder: &Encoder) -> T;

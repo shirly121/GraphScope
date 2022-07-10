@@ -13,12 +13,15 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
 use std::convert::TryInto;
+
+use ir_common::generated::algebra as pb;
+use ir_common::generated::common as common_pb;
+use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
+use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 
 use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
@@ -26,9 +29,6 @@ use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
 use crate::error::{IrError, IrResult};
-
-use ir_common::generated::algebra as pb;
-use ir_common::generated::common as common_pb;
 
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;

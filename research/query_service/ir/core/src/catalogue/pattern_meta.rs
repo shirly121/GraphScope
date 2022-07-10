@@ -13,8 +13,9 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use bimap::BiBTreeMap;
 use std::collections::{BTreeMap, BTreeSet};
+
+use bimap::BiBTreeMap;
 
 use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
 use crate::plan::meta::Schema;

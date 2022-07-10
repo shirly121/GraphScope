@@ -13,9 +13,10 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::collections::HashMap;
+
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
-use std::collections::HashMap;
 
 type PatternId = usize;
 type PatternLabelId = ir_common::KeyId;
