@@ -322,16 +322,18 @@ impl Pattern {
     pub fn from_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Pattern> {
         use ir_common::generated::common::name_or_id::Item as TagItem;
         use pb::pattern::binder::Item as BinderItem;
-        // vertex id assign to the vertex picked from the pb pattern
-        let mut assign_vertex_id = 0;
-        // edge id assign to the edge picked from the pb pattern
-        let mut assign_edge_id = 0;
+        // next vertex id assign to the vertex picked from the pb pattern
+        let mut next_vertex_id = 0;
+        // next edge id assign to the edge picked from the pb pattern
+        let mut next_edge_id = 0;
         // pattern edges picked from the pb pattern
         let mut pattern_edges = vec![];
         // record the vertices from the pb pattern having tags
         let mut tag_v_id_map: BTreeMap<TagId, PatternId> = BTreeMap::new();
         // record the label for each vertex from the pb pattern
         let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
+        // record the vertices from the pb pattern has predicates
+        let mut v_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         // record the edges from the pb pattern has predicates
         let mut e_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         for sentence in &pb_pattern.sentences {
@@ -359,9 +361,9 @@ impl Pattern {
                 start_tag_v_id = *v_id;
             } else {
                 // assign the start vertex with a new id
-                start_tag_v_id = assign_vertex_id;
-                tag_v_id_map.insert(start_tag.clone(), assign_vertex_id);
-                assign_vertex_id += 1;
+                start_tag_v_id = next_vertex_id;
+                tag_v_id_map.insert(start_tag.clone(), next_vertex_id);
+                next_vertex_id += 1;
             }
             // check whether the start tag label is already determined or not
             let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
@@ -383,9 +385,9 @@ impl Pattern {
                     end_tag_v_id = Some(*v_id);
                 } else {
                     // assign the end vertex with a new id
-                    end_tag_v_id = Some(assign_vertex_id);
-                    tag_v_id_map.insert(tag.clone(), assign_vertex_id);
-                    assign_vertex_id += 1;
+                    end_tag_v_id = Some(next_vertex_id);
+                    tag_v_id_map.insert(tag.clone(), next_vertex_id);
+                    next_vertex_id += 1;
                 }
             } else {
                 end_tag_v_id = None;
@@ -393,9 +395,34 @@ impl Pattern {
             // check the end tag label is already determined or not
             let end_tag_label = end_tag_v_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
             // record previous pattern edge's destinated vertex's id
-            let mut pre_dst_vertex_id: PatternId = PatternId::default();
+            // init as start vertex's id
+            let mut pre_dst_vertex_id: PatternId = start_tag_v_id;
             // record previous pattern edge's destinated vertex's label
-            let mut pre_dst_vertex_label: PatternLabelId = PatternLabelId::default();
+            // if start vertex's label is determined, init as start vertex's label
+            let mut pre_dst_vertex_label: PatternLabelId =
+                if let Some(tag_label) = start_tag_label { tag_label } else { PatternLabelId::default() };
+            // find the first edge expand's index and last edge expand's index;
+            let first_edge_index = match sentence
+                .binders
+                .iter()
+                .enumerate()
+                .filter(|(_, binder)| binder.is_edge_expand())
+                .next()
+            {
+                Some((id, _)) => Some(id),
+                _ => None,
+            };
+            let last_edge_index = match sentence
+                .binders
+                .iter()
+                .enumerate()
+                .rev()
+                .filter(|(_, binder)| binder.is_edge_expand())
+                .next()
+            {
+                Some((id, _)) => Some(id),
+                _ => None,
+            };
             for (i, binder) in sentence.binders.iter().enumerate() {
                 if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
                     if edge_expand.is_edge {
@@ -417,26 +444,21 @@ impl Pattern {
                             }
                         };
                         // assign the new pattern edge with a new id
-                        let edge_id = assign_edge_id;
-                        assign_edge_id += 1;
+                        let edge_id = next_edge_id;
+                        next_edge_id += 1;
                         // check whether the current pattern is the head or tail of the pb pattern sentence
-                        let is_head = i == 0;
-                        let is_tail = i == sentence.binders.len() - 1;
+                        let is_head = i == first_edge_index.unwrap();
+                        let is_tail = i == last_edge_index.unwrap();
                         // assign/pick the souce vertex id and destination vertex id of the pattern edge
                         // the situation is classified as whether it is the head/tail of the sentence
-                        let src_vertex_id: PatternId;
-                        let dst_vertex_id: PatternId;
-                        if is_head {
-                            src_vertex_id = start_tag_v_id;
-                        } else {
-                            src_vertex_id = pre_dst_vertex_id;
-                        }
-                        if is_tail {
+                        let src_vertex_id = pre_dst_vertex_id;
+                        let dst_vertex_id = if is_tail {
                             if let Some(v_id) = end_tag_v_id {
-                                dst_vertex_id = v_id;
+                                v_id
                             } else {
-                                dst_vertex_id = assign_vertex_id;
-                                assign_vertex_id += 1;
+                                let v_id = next_vertex_id;
+                                next_vertex_id += 1;
+                                v_id
                             }
                         } else {
                             // check alias tag
@@ -448,19 +470,21 @@ impl Pattern {
                                     _ => None,
                                 })
                             {
-                                if let Some(v_id) = tag_v_id_map.get(&tag) {
-                                    dst_vertex_id = *v_id;
+                                if let Some(&v_id) = tag_v_id_map.get(&tag) {
+                                    v_id
                                 } else {
-                                    dst_vertex_id = assign_vertex_id;
-                                    tag_v_id_map.insert(tag, dst_vertex_id);
-                                    assign_vertex_id += 1;
+                                    let v_id = next_vertex_id;
+                                    tag_v_id_map.insert(tag, v_id);
+                                    next_vertex_id += 1;
+                                    v_id
                                 }
                             } else {
-                                dst_vertex_id = assign_vertex_id;
-                                assign_vertex_id += 1;
+                                let v_id = next_vertex_id;
+                                next_vertex_id += 1;
+                                v_id
                             }
-                            pre_dst_vertex_id = dst_vertex_id;
-                        }
+                        };
+                        pre_dst_vertex_id = dst_vertex_id;
                         // add edge predicate
                         if let Some(expr) = params.predicate.as_ref() {
                             e_id_predicate_map.insert(edge_id, expr.clone());
@@ -641,6 +665,18 @@ impl Pattern {
                             "FuzzyPattern: edge expand doesn't have parameters".to_string(),
                         ));
                     }
+                } else if let Some(BinderItem::Select(select)) = binder.item.as_ref() {
+                    if let Some(predicate) = select.predicate.as_ref() {
+                        let vertex_id = pre_dst_vertex_id;
+                        if v_id_predicate_map.contains_key(&vertex_id) {
+                            v_id_predicate_map
+                                .get_mut(&vertex_id)
+                                .unwrap()
+                                .and_with(predicate);
+                        } else {
+                            v_id_predicate_map.insert(vertex_id, predicate.clone());
+                        }
+                    }
                 } else {
                     return Err(IrError::MissingData("pb::pattern::binder::Item".to_string()));
                 }
@@ -649,6 +685,7 @@ impl Pattern {
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             pattern.vertex_tag_map = tag_v_id_map.into_iter().collect();
             pattern.edge_predicate_map = e_id_predicate_map;
+            pattern.vertex_predicate_map = v_id_predicate_map;
             Ok(pattern)
         })
     }
