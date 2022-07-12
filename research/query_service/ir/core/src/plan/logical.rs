@@ -1564,11 +1564,11 @@ mod test {
         plan_meta.refer_to_nodes(0, vec![0]);
 
         let meta = StoreMeta {
-            schema: Some(Schema::from((
+            schema: Some(Schema::new(
                 vec![("person".to_string(), 0), ("software".to_string(), 1)],
                 vec![("knows".to_string(), 0), ("creates".to_string(), 1)],
                 vec![("id".to_string(), 0), ("name".to_string(), 1), ("age".to_string(), 2)],
-            ))),
+            )),
             catalogue: None,
             pattern_meta: None,
         };
@@ -1721,11 +1721,11 @@ mod test {
         plan_meta.refer_to_nodes(0, vec![0]);
 
         let meta = StoreMeta {
-            schema: Some(Schema::from((
+            schema: Some(Schema::new(
                 vec![("person".to_string(), 0), ("software".to_string(), 1)],
                 vec![("knows".to_string(), 0), ("creates".to_string(), 1)],
                 vec![("id".to_string(), 0), ("name".to_string(), 1), ("age".to_string(), 2)],
-            ))),
+            )),
             catalogue: None,
             pattern_meta: None,
         };

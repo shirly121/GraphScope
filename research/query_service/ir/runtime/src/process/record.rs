@@ -16,6 +16,7 @@
 use std::borrow::BorrowMut;
 use std::convert::{TryFrom, TryInto};
 use std::hash::Hash;
+use std::ops::Add;
 use std::sync::Arc;
 
 use dyn_type::{BorrowObject, Object};
@@ -38,8 +39,6 @@ pub enum CommonObject {
     Prop(Object),
     /// count
     Count(u64),
-    /// aggregate of sum/max/min/avg
-    Agg(Object),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
@@ -64,6 +63,20 @@ impl RecordElement {
     }
 
     fn as_graph_path(&self) -> Option<&GraphPath> {
+        match self {
+            RecordElement::OnGraph(GraphObject::P(graph_path)) => Some(graph_path),
+            _ => None,
+        }
+    }
+
+    fn as_common_object(&self) -> Option<&CommonObject> {
+        match self {
+            RecordElement::OffGraph(common_obj) => Some(common_obj),
+            _ => None,
+        }
+    }
+
+    fn as_mut_graph_path(&mut self) -> Option<&mut GraphPath> {
         match self {
             RecordElement::OnGraph(GraphObject::P(graph_path)) => Some(graph_path),
             _ => None,
@@ -98,10 +111,16 @@ impl Entry {
             _ => None,
         }
     }
-
-    pub fn as_collection(&self) -> Option<&Vec<RecordElement>> {
+    pub fn as_common_object(&self) -> Option<&CommonObject> {
         match self {
-            Entry::Collection(record_collection) => Some(record_collection),
+            Entry::Element(record_element) => record_element.as_common_object(),
+            _ => None,
+        }
+    }
+
+    pub fn as_mut_graph_path(&mut self) -> Option<&mut GraphPath> {
+        match self {
+            Entry::Element(record_element) => record_element.as_mut_graph_path(),
             _ => None,
         }
     }
@@ -286,7 +305,6 @@ impl Element for RecordElement {
                 CommonObject::None => 0,
                 CommonObject::Prop(obj) => obj.len(),
                 CommonObject::Count(_) => 1,
-                CommonObject::Agg(obj) => obj.len(),
             },
         }
     }
@@ -296,7 +314,7 @@ impl Element for RecordElement {
             RecordElement::OnGraph(graph_obj) => graph_obj.as_borrow_object(),
             RecordElement::OffGraph(obj_element) => match obj_element {
                 CommonObject::None => BorrowObject::None,
-                CommonObject::Prop(obj) | CommonObject::Agg(obj) => obj.as_borrow(),
+                CommonObject::Prop(obj) => obj.as_borrow(),
                 CommonObject::Count(cnt) => (*cnt).into(),
             },
         }
@@ -402,10 +420,6 @@ impl Encode for CommonObject {
                 writer.write_u8(2)?;
                 writer.write_u64(*cnt)?;
             }
-            CommonObject::Agg(agg) => {
-                writer.write_u8(3)?;
-                agg.write_to(writer)?;
-            }
         }
         Ok(())
     }
@@ -423,10 +437,6 @@ impl Decode for CommonObject {
             2 => {
                 let cnt = <u64>::read_from(reader)?;
                 Ok(CommonObject::Count(cnt))
-            }
-            3 => {
-                let object = <Object>::read_from(reader)?;
-                Ok(CommonObject::Agg(object))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "unreachable")),
         }
@@ -597,5 +607,39 @@ impl TryFrom<result_pb::Element> for RecordElement {
         } else {
             Err(ParsePbError::EmptyFieldError("element inner is empty".to_string()))?
         }
+    }
+}
+
+impl Add for CommonObject {
+    type Output = CommonObject;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (CommonObject::Prop(o1), CommonObject::Prop(o2)) => match (o1, o2) {
+                (Object::Primitive(p1), Object::Primitive(p2)) => {
+                    CommonObject::Prop(Object::Primitive(p1.add(p2)))
+                }
+                (o1, Object::None) => CommonObject::Prop(o1),
+                (Object::None, o2) => CommonObject::Prop(o2),
+                _ => CommonObject::Prop(Object::None),
+            },
+            (CommonObject::Count(c1), CommonObject::Count(c2)) => CommonObject::Count(c1 + c2),
+            (o1, CommonObject::None) => o1,
+            (CommonObject::None, o2) => o2,
+            _ => CommonObject::None,
+        }
+    }
+}
+
+impl Add for Entry {
+    type Output = Entry;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if let Entry::Element(RecordElement::OffGraph(o1)) = self {
+            if let Entry::Element(RecordElement::OffGraph(o2)) = rhs {
+                return o1.add(o2).into();
+            }
+        }
+        CommonObject::None.into()
     }
 }

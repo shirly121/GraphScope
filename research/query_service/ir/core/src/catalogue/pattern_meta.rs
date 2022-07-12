@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use bimap::BiBTreeMap;
 
 use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
+use crate::plan::meta::KeyType;
 use crate::plan::meta::Schema;
 
 #[derive(Debug, Clone)]
@@ -45,7 +46,7 @@ pub struct PatternMeta {
 impl From<Schema> for PatternMeta {
     /// Pick necessary info from schema and reorganize them into the generated PatternMeta
     fn from(src_schema: Schema) -> PatternMeta {
-        let (table_map, relation_labels) = src_schema.get_pattern_schema_info();
+        let (table_map, relation_labels) = src_schema.get_pattern_meta_info();
         let mut pattern_meta = PatternMeta {
             vertex_label_map: BiBTreeMap::new(),
             edge_label_map: BiBTreeMap::new(),
@@ -53,52 +54,52 @@ impl From<Schema> for PatternMeta {
             e2vertices_meta: BTreeMap::new(),
             vv2edges_meta: BTreeMap::new(),
         };
-        for (name, (_, id)) in &table_map {
-            match relation_labels.get(name) {
+        for (name, (key_type, id)) in &table_map {
+            if let KeyType::Relation = key_type {
                 // Case that this is an edge label
-                Some(connections) => {
+                let connections = relation_labels
+                    .get(id)
+                    .expect("Schema relation_bound_labels doesn't store edge info");
+                pattern_meta
+                    .edge_label_map
+                    .insert(name.clone(), *id);
+                for (start_v_meta, end_v_meta) in connections {
+                    let start_v_name = start_v_meta.get_name();
+                    let end_v_name = end_v_meta.get_name();
+                    let start_v_id = src_schema.get_table_id(&start_v_name).unwrap();
+                    let end_v_id = src_schema.get_table_id(&end_v_name).unwrap();
+                    // Update connect information
                     pattern_meta
-                        .edge_label_map
-                        .insert(name.clone(), *id);
-                    for (start_v_meta, end_v_meta) in connections {
-                        let start_v_name = start_v_meta.get_name();
-                        let end_v_name = end_v_meta.get_name();
-                        let start_v_id = src_schema.get_table_id(&start_v_name).unwrap();
-                        let end_v_id = src_schema.get_table_id(&end_v_name).unwrap();
-                        // Update connect information
-                        pattern_meta
-                            .v2edges_meta
-                            .entry(start_v_id)
-                            .or_insert(BTreeSet::new())
-                            .insert((*id, PatternDirection::Out));
-                        pattern_meta
-                            .v2edges_meta
-                            .entry(end_v_id)
-                            .or_insert(BTreeSet::new())
-                            .insert((*id, PatternDirection::In));
-                        pattern_meta
-                            .e2vertices_meta
-                            .entry(*id)
-                            .or_insert(vec![])
-                            .push((start_v_id, end_v_id));
-                        pattern_meta
-                            .vv2edges_meta
-                            .entry((start_v_id, end_v_id))
-                            .or_insert(vec![])
-                            .push((*id, PatternDirection::Out));
-                        pattern_meta
-                            .vv2edges_meta
-                            .entry((end_v_id, start_v_id))
-                            .or_insert(vec![])
-                            .push((*id, PatternDirection::In));
-                    }
+                        .v2edges_meta
+                        .entry(start_v_id)
+                        .or_insert(BTreeSet::new())
+                        .insert((*id, PatternDirection::Out));
+                    pattern_meta
+                        .v2edges_meta
+                        .entry(end_v_id)
+                        .or_insert(BTreeSet::new())
+                        .insert((*id, PatternDirection::In));
+                    pattern_meta
+                        .e2vertices_meta
+                        .entry(*id)
+                        .or_insert(vec![])
+                        .push((start_v_id, end_v_id));
+                    pattern_meta
+                        .vv2edges_meta
+                        .entry((start_v_id, end_v_id))
+                        .or_insert(vec![])
+                        .push((*id, PatternDirection::Out));
+                    pattern_meta
+                        .vv2edges_meta
+                        .entry((end_v_id, start_v_id))
+                        .or_insert(vec![])
+                        .push((*id, PatternDirection::In));
                 }
+            } else if let KeyType::Entity = key_type {
                 // Case that this is an vertex label
-                None => {
-                    pattern_meta
-                        .vertex_label_map
-                        .insert(name.clone(), *id);
-                }
+                pattern_meta
+                    .vertex_label_map
+                    .insert(name.clone(), *id);
             }
         }
         pattern_meta
@@ -339,7 +340,7 @@ mod tests {
                     .collect::<Vec<PatternLabelId>>()
                     .len(),
             ldbc_graph_schema
-                .get_pattern_schema_info()
+                .get_pattern_meta_info()
                 .0
                 .len()
         );
