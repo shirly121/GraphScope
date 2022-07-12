@@ -25,7 +25,7 @@ use petgraph::Direction;
 
 use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
-use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
+use crate::catalogue::pattern::{Pattern, PatternEdge};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
 use crate::error::{IrError, IrResult};
@@ -251,7 +251,9 @@ impl Catalogue {
                 .map(|v| v.get_id())
             {
                 let vertex = pattern.get_vertex_from_id(vertex_id).unwrap();
-                for (adj_vertex_id, adj_connections) in vertex.adjacent_vertices_iter() {
+                for (adj_vertex_id, adj_connections) in
+                    pattern.vertex_adjacencies_iter_group_by_v_id(vertex_id)
+                {
                     // If ralaxed pattern contains adj vertex or it is already added as target vertex
                     // ignore the vertex
                     if relaxed_pattern_vertices.contains(&adj_vertex_id)
@@ -263,10 +265,8 @@ impl Catalogue {
                     // get all edges with dir between the source vertex and the target vertex
                     let mut add_edges_ids: DynIter<PatternId> =
                         Box::new(adj_connections.iter().map(|(e_id, _)| *e_id));
-                    for (adj_adj_vertex_id, adj_adj_connections) in pattern
-                        .get_vertex_from_id(adj_vertex_id)
-                        .unwrap()
-                        .adjacent_vertices_iter()
+                    for (adj_adj_vertex_id, adj_adj_connections) in
+                        pattern.vertex_adjacencies_iter_group_by_v_id(adj_vertex_id)
                     {
                         // if other vertex in the relaxed pattern has connection to the target vertex
                         // link the edge's id to the add_edge_ids for further build the extend edges
@@ -276,8 +276,8 @@ impl Catalogue {
                             add_edges_ids = Box::new(
                                 add_edges_ids.chain(
                                     adj_adj_connections
-                                        .iter()
-                                        .map(|(e_id, _)| *e_id),
+                                        .into_iter()
+                                        .map(|(e_id, _)| e_id),
                                 ),
                             );
                         }
@@ -332,7 +332,9 @@ impl Catalogue {
                         .get_label();
                     // generate new extend step
                     let extend_step = ExtendStep::new(target_v_label, extend_edges);
+                    println!("{:?}", extend_step);
                     let extend_step_code: Vec<u8> = Cipher::encode_to(&extend_step, &self.encoder);
+                    println!("{:?}", extend_step_code);
                     if !existed {
                         self.pattern_v_locate_map
                             .insert(new_pattern_code, new_pattern_index);
@@ -418,18 +420,26 @@ impl Pattern {
         let mut trace_pattern = self.clone();
         let mut definite_extend_steps = vec![];
         while trace_pattern.get_vertex_num() > 1 {
-            let mut all_vertices: Vec<&PatternVertex> = trace_pattern.vertices_iter().collect();
+            let mut all_vertex_ids: Vec<PatternId> = trace_pattern
+                .vertices_iter()
+                .map(|v| v.get_id())
+                .collect();
             // Sort the vertices by order/incoming order/ out going order
             // Vertex with larger degree will be extended later
-            all_vertices.sort_by(|&v1, &v2| {
-                let degree_order = v1.get_degree().cmp(&v2.get_degree());
+            all_vertex_ids.sort_by(|&v1_id, &v2_id| {
+                let degree_order = self
+                    .get_vertex_degree(v1_id)
+                    .unwrap()
+                    .cmp(&self.get_vertex_degree(v2_id).unwrap());
                 if let Ordering::Equal = degree_order {
-                    v1.get_out_degree().cmp(&v2.get_out_degree())
+                    self.get_vertex_out_degree(v1_id)
+                        .unwrap()
+                        .cmp(&self.get_vertex_out_degree(v2_id).unwrap())
                 } else {
                     degree_order
                 }
             });
-            let select_vertex_id = all_vertices.first().unwrap().get_id();
+            let select_vertex_id = *all_vertex_ids.first().unwrap();
             let definite_extend_step = trace_pattern
                 .generate_definite_extend_step_by_v_id(select_vertex_id)
                 .unwrap();
@@ -710,7 +720,11 @@ mod test {
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+        for vertex in ldbc_pattern.vertices_iter() {
+            println!("{:?}", vertex);
+        }
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        println!("{:?}", catalog.store);
         assert_eq!(3, catalog.store.node_count());
         assert_eq!(5, catalog.store.edge_count());
     }
