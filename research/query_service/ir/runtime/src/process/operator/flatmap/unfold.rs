@@ -26,6 +26,9 @@ use crate::process::operator::flatmap::FlatMapFuncGen;
 use crate::process::record::{Entry, Record, RecordElement};
 
 #[derive(Debug)]
+/// Unfold the Collection entry referred by a given `tag`.
+/// Notice that unfold will remove the Collection entry from the Record,
+/// and append items in collection as new entries.
 pub struct UnfoldOperator {
     tag: Option<KeyId>,
     alias: Option<KeyId>,
@@ -42,20 +45,13 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
         let mut entry = input
             .take(self.tag.as_ref())
             .ok_or(FnExecError::get_tag_error(&format!("tag {:?} in UnfoldOperator", self.tag)))?;
+        // take head in case that head entry is an arc clone of `self.tag`;
+        // besides, head will be replaced by the items in collections anyway.
+        input.take(None);
         if let Some(entry) = Arc::get_mut(&mut entry) {
             match entry {
                 Entry::Element(e) => match e {
                     RecordElement::OnGraph(GraphObject::P(_graph_path)) => {
-                        // let path = graph_path.get_path_mut().ok_or(FnExecError::unexpected_data_error(
-                        //     "get path failed in UnfoldOperator",
-                        // ))?;
-                        // let mut res = Vec::with_capacity(path.len());
-                        // for item in path.drain(..) {
-                        //     let mut new_entry = input.clone();
-                        //     new_entry.append(item, self.alias);
-                        //     res.push(new_entry);
-                        // }
-                        // Ok(Box::new(res.into_iter()))
                         // TODO: to support path_unwinding
                         Err(FnExecError::unsupported_error(&format!(
                             "unfold path entry {:?} in UnfoldOperator",
@@ -108,25 +104,18 @@ mod tests {
     use ir_common::generated::algebra as pb;
     use ir_common::generated::common as common_pb;
     use pegasus::api::{Fold, Map, Sink};
+    use pegasus::result::ResultStream;
     use pegasus::JobConf;
 
     use crate::process::functions::FoldGen;
     use crate::process::operator::accum::accumulator::Accumulator;
     use crate::process::operator::flatmap::FlatMapFuncGen;
     use crate::process::operator::tests::{init_source, TAG_A};
+    use crate::process::record::Record;
 
-    #[test]
-    fn unfold_fold_test() {
-        let conf = JobConf::new("unfold_test");
-        // g.V().fold().as('a')
-        let function = pb::group_by::AggFunc {
-            vars: vec![common_pb::Variable::from("@".to_string())],
-            aggregate: 5, // ToList
-            alias: Some(TAG_A.into()),
-        };
-        let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
-        let unfold_opr_pb = pb::Unfold { tag: Some(TAG_A.into()), alias: None };
-        let mut result = pegasus::run(conf, || {
+    fn fold_unfold_test(fold_opr_pb: pb::GroupBy, unfold_opr_pb: pb::Unfold) -> ResultStream<Record> {
+        let conf = JobConf::new("fold_unfold_test");
+        pegasus::run(conf, || {
             let source = init_source().clone();
             let fold_opr = fold_opr_pb.clone();
             let unfold_opr = unfold_opr_pb.clone();
@@ -147,7 +136,20 @@ mod tests {
                 stream.sink_into(output)
             }
         })
-        .expect("build job failure");
+        .expect("build job failure")
+    }
+
+    #[test]
+    // g.V().fold().as('a').unfold('a')
+    fn fold_as_a_unfold_a_test() {
+        let function = pb::group_by::AggFunc {
+            vars: vec![common_pb::Variable::from("@".to_string())],
+            aggregate: 5, // ToList
+            alias: Some(TAG_A.into()),
+        };
+        let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
+        let unfold_opr_pb = pb::Unfold { tag: Some(TAG_A.into()), alias: None };
+        let mut result = fold_unfold_test(fold_opr_pb, unfold_opr_pb);
 
         let expected_result = vec![1, 2];
         let mut result_ids = vec![];
@@ -158,5 +160,53 @@ mod tests {
         }
         result_ids.sort();
         assert_eq!(result_ids, expected_result);
+    }
+
+    #[test]
+    // g.V().fold().unfold()
+    fn fold_as_head_unfold_head_test() {
+        let function = pb::group_by::AggFunc {
+            vars: vec![common_pb::Variable::from("@".to_string())],
+            aggregate: 5, // ToList
+            alias: None,
+        };
+        let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
+        let unfold_opr_pb = pb::Unfold { tag: None, alias: None };
+        let mut result = fold_unfold_test(fold_opr_pb, unfold_opr_pb);
+
+        let expected_result = vec![1, 2];
+        let mut result_ids = vec![];
+        while let Some(Ok(res)) = result.next() {
+            if let Some(v) = res.get(None).unwrap().as_graph_vertex() {
+                result_ids.push(v.id());
+            }
+        }
+        result_ids.sort();
+        assert_eq!(result_ids, expected_result);
+    }
+
+    #[test]
+    // g.V().fold().as('a').unfold(head)
+    // This is not expected, since we can only unfold 'head', while collection tagged 'a' is still in the record.
+    fn fold_as_a_unfold_head_fail_test() {
+        let function = pb::group_by::AggFunc {
+            vars: vec![common_pb::Variable::from("@".to_string())],
+            aggregate: 5, // ToList
+            alias: Some(TAG_A.into()),
+        };
+        let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
+        let unfold_opr_pb = pb::Unfold { tag: None, alias: None };
+
+        let mut result = fold_unfold_test(fold_opr_pb, unfold_opr_pb);
+        if let Some(result) = result.next() {
+            match result {
+                Ok(_) => {
+                    assert!(false)
+                }
+                Err(_) => {
+                    assert!(true)
+                }
+            }
+        }
     }
 }
