@@ -149,13 +149,11 @@ impl From<PatternLabelId> for Pattern {
 /// The Pattern Vertex's id and label is kept and all other info is cleared
 impl From<PatternVertex> for Pattern {
     fn from(vertex: PatternVertex) -> Pattern {
-        let vertex_id = vertex.id;
-        let vertex_label = vertex.label;
         Pattern {
             edges: VecMap::new(),
-            vertices: VecMap::from_iter([(vertex_id, vertex)]),
+            vertices: VecMap::from_iter([(vertex.id, PatternVertex::new(vertex.id, vertex.label))]),
             edge_label_map: BTreeMap::new(),
-            vertex_label_map: BTreeMap::from([(vertex_label, BTreeSet::from([vertex_id]))]),
+            vertex_label_map: BTreeMap::from([(vertex.label, BTreeSet::from([vertex.id]))]),
             edge_tag_map: BiBTreeMap::new(),
             vertex_tag_map: BiBTreeMap::new(),
             edge_predicate_map: BTreeMap::new(),
@@ -988,16 +986,10 @@ impl Pattern {
         for vertex in self.vertices_iter() {
             unknown_vertex_set.insert(vertex.get_id());
         }
-        for vertex in self.vertices_iter() {
-            println!("{:?}", vertex.rank);
-        }
         // Set initial ranks by considering the labels & in/out degrees
         let mut is_rank_changed: bool = self
             .set_initial_rank(&vertex_neighbor_edges_map, &mut unknown_vertex_set)
             .unwrap();
-        for vertex in self.vertices_iter() {
-            println!("{:?}", vertex.rank);
-        }
         loop {
             // Stop until the ranks can no longer be updated
             if !is_rank_changed {
@@ -1009,9 +1001,6 @@ impl Pattern {
             is_rank_changed = self
                 .update_rank(&vertex_neighbor_edges_map, &mut unknown_vertex_set)
                 .unwrap();
-        }
-        for vertex in self.vertices_iter() {
-            println!("{:?}", vertex.rank);
         }
     }
 
@@ -1031,19 +1020,17 @@ impl Pattern {
             Vec<(PatternId, PatternId, PatternDirection)>,
         > = HashMap::new();
         for v_id in self.vertices_iter().map(|v| v.id) {
-            let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> =
-                Vec::with_capacity(self.get_vertex_out_degree(v_id).unwrap());
-            let mut incoming_edges: Vec<(PatternId, PatternId, PatternDirection)> =
-                Vec::with_capacity(self.get_vertex_in_degree(v_id).unwrap());
-            for (end_v_id, e_id) in self.vertex_out_adjacencies_iter(v_id) {
-                outgoing_edges.push((e_id, end_v_id, PatternDirection::Out));
-            }
-            for (end_v_id, e_id) in self.vertex_in_adjacencies_iter(v_id) {
-                outgoing_edges.push((e_id, end_v_id, PatternDirection::In));
-            }
+            let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> = self
+                .vertex_out_adjacencies_iter(v_id)
+                .map(|(end_v_id, e_id)| (e_id, end_v_id, PatternDirection::Out))
+                .collect();
+            let mut incoming_edges: Vec<(PatternId, PatternId, PatternDirection)> = self
+                .vertex_in_adjacencies_iter(v_id)
+                .map(|(end_v_id, e_id)| (e_id, end_v_id, PatternDirection::In))
+                .collect();
             // Sort the edges
-            outgoing_edges.sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
-            incoming_edges.sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
+            outgoing_edges.sort_by(|&(e1_id, _, _), &(e2_id, _, _)| self.cmp_edges(e1_id, e2_id));
+            incoming_edges.sort_by(|&(e1_id, _, _), &(e2_id, _, _)| self.cmp_edges(e1_id, e2_id));
             // Concat two edge info vector
             outgoing_edges.append(&mut incoming_edges);
             // Insert into the Hashmap
@@ -1063,7 +1050,6 @@ impl Pattern {
         vertex_neighbor_edges_map: &HashMap<PatternId, Vec<(PatternId, PatternId, PatternDirection)>>,
         unknown_vertex_set: &mut HashSet<PatternId>,
     ) -> IrResult<bool> {
-        println!("{:?}", vertex_neighbor_edges_map);
         // Mark whether there is a change of vertex rank
         let mut is_rank_changed: bool = false;
         // Stores vertex labels that have been dealth with
@@ -1117,9 +1103,6 @@ impl Pattern {
         // Remove vertices that have fixed rank
         for v_id in fixed_rank_vertex_vec {
             unknown_vertex_set.remove(&v_id);
-        }
-        for vertex in self.vertices_iter() {
-            println!("{:?}", vertex.rank);
         }
         // Update vertex rank on the pattern
         for (v_id, v_rank) in vertex_rank_map.iter() {

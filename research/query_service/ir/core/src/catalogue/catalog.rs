@@ -332,9 +332,7 @@ impl Catalogue {
                         .get_label();
                     // generate new extend step
                     let extend_step = ExtendStep::new(target_v_label, extend_edges);
-                    println!("{:?}", extend_step);
                     let extend_step_code: Vec<u8> = Cipher::encode_to(&extend_step, &self.encoder);
-                    println!("{:?}", extend_step_code);
                     if !existed {
                         self.pattern_v_locate_map
                             .insert(new_pattern_code, new_pattern_index);
@@ -720,11 +718,7 @@ mod test {
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        for vertex in ldbc_pattern.vertices_iter() {
-            println!("{:?}", vertex);
-        }
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        println!("{:?}", catalog.store);
         assert_eq!(3, catalog.store.node_count());
         assert_eq!(5, catalog.store.edge_count());
     }
