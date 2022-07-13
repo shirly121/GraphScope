@@ -425,14 +425,19 @@ impl Pattern {
             // Sort the vertices by order/incoming order/ out going order
             // Vertex with larger degree will be extended later
             all_vertex_ids.sort_by(|&v1_id, &v2_id| {
-                let degree_order = self
+                let degree_order = trace_pattern
                     .get_vertex_degree(v1_id)
                     .unwrap()
-                    .cmp(&self.get_vertex_degree(v2_id).unwrap());
+                    .cmp(&trace_pattern.get_vertex_degree(v2_id).unwrap());
                 if let Ordering::Equal = degree_order {
-                    self.get_vertex_out_degree(v1_id)
+                    trace_pattern
+                        .get_vertex_out_degree(v1_id)
                         .unwrap()
-                        .cmp(&self.get_vertex_out_degree(v2_id).unwrap())
+                        .cmp(
+                            &trace_pattern
+                                .get_vertex_out_degree(v2_id)
+                                .unwrap(),
+                        )
                 } else {
                     degree_order
                 }
