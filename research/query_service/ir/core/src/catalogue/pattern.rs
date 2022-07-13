@@ -1,7 +1,7 @@
 //
 //! Copyright 2020 Alibaba Group Holding Limited.
 //!
-//! Licensed under the Apache License, Version 2.0 (the "License");
+//! Li&censed under the Apache License, Version 2.0 (the "License");
 //! you may not use this file except in compliance with the License.
 //! You may obtain a copy of the License at
 //!
@@ -38,31 +38,11 @@ pub struct PatternVertex {
     label: PatternLabelId,
     /// Used to Identify vertices with same label
     rank: PatternRankId,
-    /// Key: edge id, Value: (vertex id, direction)
-    /// Usage: 1. this map stores all adjacent edges of this vertex
-    ///        2. given an adjacent edge id, find the adjacent vertex id through this edge with direction
-    adjacent_edges: BTreeMap<PatternId, (PatternId, PatternDirection)>,
-    /// Key: vertex id, Value: Vec<(edge id, direction)>
-    /// Usage: 1. this map stores all adjacent vertices of this vertex
-    ///        2. given an adjacent vertex id, find all possible edges connecting two vertices with direction
-    adjacent_vertices: BTreeMap<PatternId, Vec<(PatternId, PatternDirection)>>,
-    /// How many out edges adjacent to this vertex
-    out_degree: usize,
-    /// How many in edges adjacent to this vertex
-    in_degree: usize,
 }
 
 impl PatternVertex {
     pub fn new(id: PatternId, label: PatternLabelId) -> PatternVertex {
-        PatternVertex {
-            id,
-            label,
-            rank: 0,
-            adjacent_edges: BTreeMap::new(),
-            adjacent_vertices: BTreeMap::new(),
-            out_degree: 0,
-            in_degree: 0,
-        }
+        PatternVertex { id, label, rank: 0 }
     }
 }
 
@@ -78,56 +58,6 @@ impl PatternVertex {
 
     pub fn get_rank(&self) -> PatternRankId {
         self.rank
-    }
-
-    pub fn adjacent_edges_iter(&self) -> DynIter<(PatternId, PatternId, PatternDirection)> {
-        Box::new(
-            self.adjacent_edges
-                .iter()
-                .map(|(e, (v, dir))| (*e, *v, *dir)),
-        )
-    }
-
-    pub fn adjacent_vertices_iter(&self) -> DynIter<(PatternId, &Vec<(PatternId, PatternDirection)>)> {
-        Box::new(
-            self.adjacent_vertices
-                .iter()
-                .map(|(vertex, edge_with_dir)| (*vertex, edge_with_dir)),
-        )
-    }
-
-    pub fn get_out_degree(&self) -> usize {
-        self.out_degree
-    }
-
-    pub fn get_in_degree(&self) -> usize {
-        self.in_degree
-    }
-
-    /// Get how many connections(both out and in) the current pattern vertex has
-    pub fn get_degree(&self) -> usize {
-        self.out_degree + self.in_degree
-    }
-
-    /// Given a edge id, get the vertex adjacent to the current vertex through the edge with the direction
-    pub fn get_adjacent_vertex_by_edge_id(
-        &self, edge_id: PatternId,
-    ) -> Option<(PatternId, PatternDirection)> {
-        self.adjacent_edges.get(&edge_id).cloned()
-    }
-
-    /// Given a vertex id, iterate all the edges connecting the given vertex and current vertex with the direction
-    pub fn adjacent_edges_iter_by_vertex_id(
-        &self, vertex_id: PatternId,
-    ) -> DynIter<(PatternId, PatternDirection)> {
-        match self.adjacent_vertices.get(&vertex_id) {
-            Some(adjacent_edges) => Box::new(
-                adjacent_edges
-                    .iter()
-                    .map(|adjacent_edge| *adjacent_edge),
-            ),
-            None => Box::new(std::iter::empty()),
-        }
     }
 
     /// Setters
@@ -202,6 +132,8 @@ pub struct Pattern {
     edge_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
     /// Key: vertex id, Value: predicate of the vertex
     vertex_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
+    /// Key: (vertex id, pattern direction), Value: Vec<(vertex id, edge id)>
+    vertex_adjacencies_map: BTreeMap<(PatternId, PatternDirection), Vec<(PatternId, PatternId)>>,
 }
 
 /// Initializers of Pattern
@@ -226,6 +158,7 @@ impl From<PatternVertex> for Pattern {
             vertex_tag_map: BiBTreeMap::new(),
             edge_predicate_map: BTreeMap::new(),
             vertex_predicate_map: BTreeMap::new(),
+            vertex_adjacencies_map: BTreeMap::new(),
         }
     }
 }
@@ -245,6 +178,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                 vertex_tag_map: BiBTreeMap::new(),
                 edge_predicate_map: BTreeMap::new(),
                 vertex_predicate_map: BTreeMap::new(),
+                vertex_adjacencies_map: BTreeMap::new(),
             };
             for edge in edges {
                 // Add the new Pattern Edge to the new Pattern
@@ -255,59 +189,38 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                     .or_insert(BTreeSet::new());
                 edge_set.insert(edge.id);
                 // Add or update the start vertex to the new Pattern
-                let start_vertex = new_pattern
+                new_pattern
                     .vertices
                     .entry(edge.start_v_id)
-                    .or_insert(PatternVertex {
-                        id: edge.start_v_id,
-                        label: edge.start_v_label,
-                        rank: 0,
-                        adjacent_edges: BTreeMap::new(),
-                        adjacent_vertices: BTreeMap::new(),
-                        out_degree: 0,
-                        in_degree: 0,
-                    });
-                start_vertex
-                    .adjacent_edges
-                    .insert(edge.id, (edge.end_v_id, PatternDirection::Out));
-                start_vertex
-                    .adjacent_vertices
-                    .entry(edge.end_v_id)
-                    .or_insert(vec![])
-                    .push((edge.id, PatternDirection::Out));
-                start_vertex.out_degree += 1;
+                    .or_insert(PatternVertex { id: edge.start_v_id, label: edge.start_v_label, rank: 0 });
                 new_pattern
                     .vertex_label_map
                     .entry(edge.start_v_label)
                     .or_insert(BTreeSet::new())
                     .insert(edge.start_v_id);
                 // Add or update the end vertex to the new Pattern
-                let end_vertex = new_pattern
+                new_pattern
                     .vertices
                     .entry(edge.end_v_id)
-                    .or_insert(PatternVertex {
-                        id: edge.end_v_id,
-                        label: edge.end_v_label,
-                        rank: 0,
-                        adjacent_edges: BTreeMap::new(),
-                        adjacent_vertices: BTreeMap::new(),
-                        out_degree: 0,
-                        in_degree: 0,
-                    });
-                end_vertex
-                    .adjacent_edges
-                    .insert(edge.id, (edge.start_v_id, PatternDirection::In));
-                end_vertex
-                    .adjacent_vertices
-                    .entry(edge.start_v_id)
-                    .or_insert(vec![])
-                    .push((edge.id, PatternDirection::In));
-                end_vertex.in_degree += 1;
+                    .or_insert(PatternVertex { id: edge.end_v_id, label: edge.end_v_label, rank: 0 });
                 new_pattern
                     .vertex_label_map
                     .entry(edge.end_v_label)
                     .or_insert(BTreeSet::new())
                     .insert(edge.end_v_id);
+                // Update the vertex adjacencies map info
+                // start vertex's outgoing info
+                new_pattern
+                    .vertex_adjacencies_map
+                    .entry((edge.start_v_id, PatternDirection::Out))
+                    .or_insert(vec![])
+                    .push((edge.end_v_id, edge.id));
+                // end vertex's incoming info
+                new_pattern
+                    .vertex_adjacencies_map
+                    .entry((edge.end_v_id, PatternDirection::In))
+                    .or_insert(vec![])
+                    .push((edge.start_v_id, edge.id));
             }
 
             new_pattern.vertex_ranking();
@@ -904,6 +817,89 @@ impl Pattern {
     pub fn get_vertices_from_label(&self, label: PatternLabelId) -> Option<&BTreeSet<PatternId>> {
         self.vertex_label_map.get(&label)
     }
+
+    pub fn get_vertex_out_degree(&self, vertex_id: PatternId) -> Option<usize> {
+        if let Some(adjacencies) = self
+            .vertex_adjacencies_map
+            .get(&(vertex_id, PatternDirection::Out))
+        {
+            Some(adjacencies.len())
+        } else if self.vertices.contains_key(vertex_id) {
+            Some(0)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_vertex_in_degree(&self, vertex_id: PatternId) -> Option<usize> {
+        if let Some(adjacencies) = self
+            .vertex_adjacencies_map
+            .get(&(vertex_id, PatternDirection::In))
+        {
+            Some(adjacencies.len())
+        } else if self.vertices.contains_key(vertex_id) {
+            Some(0)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_vertex_degree(&self, vertex_id: PatternId) -> Option<usize> {
+        if let (Some(out_degree), Some(in_degree)) =
+            (self.get_vertex_out_degree(vertex_id), self.get_vertex_in_degree(vertex_id))
+        {
+            Some(out_degree + in_degree)
+        } else {
+            None
+        }
+    }
+
+    pub fn vertex_out_adjacencies_iter(&self, vertex_id: PatternId) -> DynIter<(PatternId, PatternId)> {
+        if let Some(adjacencies) = self
+            .vertex_adjacencies_map
+            .get(&(vertex_id, PatternDirection::Out))
+        {
+            Box::new(adjacencies.iter().cloned())
+        } else {
+            Box::new(std::iter::empty())
+        }
+    }
+
+    pub fn vertex_in_adjacencies_iter(&self, vertex_id: PatternId) -> DynIter<(PatternId, PatternId)> {
+        if let Some(adjacencies) = self
+            .vertex_adjacencies_map
+            .get(&(vertex_id, PatternDirection::In))
+        {
+            Box::new(adjacencies.iter().cloned())
+        } else {
+            Box::new(std::iter::empty())
+        }
+    }
+
+    pub fn vertex_adjacencies_iter(
+        &self, vertex_id: PatternId,
+    ) -> DynIter<(PatternId, PatternId, PatternDirection)> {
+        let out_adajecties = self
+            .vertex_out_adjacencies_iter(vertex_id)
+            .map(|(v_id, e_id)| (v_id, e_id, PatternDirection::Out));
+        let in_adajecties = self
+            .vertex_in_adjacencies_iter(vertex_id)
+            .map(|(v_id, e_id)| (v_id, e_id, PatternDirection::In));
+        Box::new(out_adajecties.chain(in_adajecties))
+    }
+
+    pub fn vertex_adjacencies_iter_group_by_v_id(
+        &self, vertex_id: PatternId,
+    ) -> DynIter<(PatternId, Vec<(PatternId, PatternDirection)>)> {
+        let mut categories = BTreeMap::new();
+        for (v_id, e_id, dir) in self.vertex_adjacencies_iter(vertex_id) {
+            categories
+                .entry(v_id)
+                .or_insert(vec![])
+                .push((e_id, dir));
+        }
+        Box::new(categories.into_iter())
+    }
 }
 
 /// Methods for PatternEdge Reordering inside a Pattern
@@ -1023,21 +1019,18 @@ impl Pattern {
             PatternId,
             Vec<(PatternId, PatternId, PatternDirection)>,
         > = HashMap::new();
-        for vertex in self.vertices_iter() {
-            let v_id: PatternId = vertex.get_id();
-            let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> =
-                Vec::with_capacity(vertex.get_out_degree());
-            let mut incoming_edges: Vec<(PatternId, PatternId, PatternDirection)> =
-                Vec::with_capacity(vertex.get_in_degree());
-            for (e_id, end_v_id, edge_dir) in vertex.adjacent_edges_iter() {
-                match edge_dir {
-                    PatternDirection::Out => outgoing_edges.push((e_id, end_v_id, edge_dir)),
-                    PatternDirection::In => incoming_edges.push((e_id, end_v_id, edge_dir)),
-                }
-            }
+        for v_id in self.vertices_iter().map(|v| v.id) {
+            let mut outgoing_edges: Vec<(PatternId, PatternId, PatternDirection)> = self
+                .vertex_out_adjacencies_iter(v_id)
+                .map(|(end_v_id, e_id)| (e_id, end_v_id, PatternDirection::Out))
+                .collect();
+            let mut incoming_edges: Vec<(PatternId, PatternId, PatternDirection)> = self
+                .vertex_in_adjacencies_iter(v_id)
+                .map(|(end_v_id, e_id)| (e_id, end_v_id, PatternDirection::In))
+                .collect();
             // Sort the edges
-            outgoing_edges.sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
-            incoming_edges.sort_by(|e1, e2| self.cmp_edges(e1.0, e2.0));
+            outgoing_edges.sort_by(|&(e1_id, _, _), &(e2_id, _, _)| self.cmp_edges(e1_id, e2_id));
+            incoming_edges.sort_by(|&(e1_id, _, _), &(e2_id, _, _)| self.cmp_edges(e1_id, e2_id));
             // Concat two edge info vector
             outgoing_edges.append(&mut incoming_edges);
             // Insert into the Hashmap
@@ -1328,13 +1321,21 @@ impl Pattern {
             _ => (),
         }
         // Compare Vertex Out Degree
-        match v1.get_out_degree().cmp(&v2.get_out_degree()) {
+        match self
+            .get_vertex_out_degree(v1_id)
+            .unwrap()
+            .cmp(&self.get_vertex_out_degree(v2_id).unwrap())
+        {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
             _ => (),
         }
         // Compare Vertex In Degree
-        match v1.get_in_degree().cmp(&v2.get_in_degree()) {
+        match self
+            .get_vertex_in_degree(v1_id)
+            .unwrap()
+            .cmp(&self.get_vertex_in_degree(v2_id).unwrap())
+        {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
             _ => (),
@@ -1624,15 +1625,8 @@ impl Pattern {
     pub fn extend(&self, extend_step: &ExtendStep) -> Option<Pattern> {
         let mut new_pattern = self.clone();
         let target_v_label = extend_step.get_target_v_label();
-        let mut new_pattern_vertex = PatternVertex {
-            id: new_pattern.get_next_pattern_vertex_id(),
-            label: target_v_label,
-            rank: 0,
-            adjacent_edges: BTreeMap::new(),
-            adjacent_vertices: BTreeMap::new(),
-            out_degree: 0,
-            in_degree: 0,
-        };
+        let new_pattern_vertex =
+            PatternVertex { id: new_pattern.get_next_pattern_vertex_id(), label: target_v_label, rank: 0 };
         for ((v_label, v_rank), extend_edges) in extend_step.iter() {
             // Get all the vertices which can be used to extend with these extend edges
             let vertices_can_use = self.get_equivalent_vertices(*v_label, *v_rank);
@@ -1667,32 +1661,17 @@ impl Pattern {
                     end_v_label,
                 };
                 // update newly extended pattern vertex's adjacency info
-                new_pattern_vertex
-                    .adjacent_edges
-                    .insert(new_pattern_edge.id, (extend_vertex_id, extend_dir.reverse()));
-                new_pattern_vertex
-                    .adjacent_vertices
-                    .insert(extend_vertex_id, vec![(new_pattern_edge.id, extend_dir.reverse())]);
-                if let PatternDirection::Out = extend_dir {
-                    new_pattern_vertex.in_degree += 1;
-                } else {
-                    new_pattern_vertex.out_degree += 1
-                }
+                new_pattern
+                    .vertex_adjacencies_map
+                    .entry((new_pattern_vertex.id, extend_dir.reverse()))
+                    .or_insert(vec![])
+                    .push((extend_vertex_id, new_pattern_edge.id));
                 // update extend vertex's adjacancy info
-                let extend_vertex = new_pattern
-                    .get_vertex_mut_from_id(extend_vertex_id)
-                    .unwrap();
-                extend_vertex
-                    .adjacent_edges
-                    .insert(new_pattern_edge.id, (new_pattern_vertex.id, extend_dir));
-                extend_vertex
-                    .adjacent_vertices
-                    .insert(new_pattern_vertex.id, vec![(new_pattern_edge.id, extend_dir)]);
-                if let PatternDirection::Out = extend_dir {
-                    extend_vertex.out_degree += 1;
-                } else {
-                    extend_vertex.in_degree += 1
-                }
+                new_pattern
+                    .vertex_adjacencies_map
+                    .entry((extend_vertex_id, extend_dir))
+                    .or_insert(vec![])
+                    .push((new_pattern_vertex.id, new_pattern_edge.id));
                 // Add the new pattern edge info to the new Pattern
                 new_pattern
                     .edge_label_map
@@ -1789,73 +1768,46 @@ impl Pattern {
             self.get_vertex_from_id(edge.get_end_vertex_id()),
         ) {
             return Err(IrError::InvalidCode("The adding edge cannot connect to the pattern".to_string()));
-        } else if let None = self.get_vertex_from_id(edge.get_start_vertex_id()) {
+        } else if let None = self.get_vertex_from_id(edge.start_v_id) {
             // end vertex already exists in the pattern, use it to connect
-            let start_vertex_id = edge.get_start_vertex_id();
-            let start_vertex_label = edge.get_start_vertex_label();
             // add start vertex
             self.vertices.insert(
-                start_vertex_id,
-                PatternVertex {
-                    id: start_vertex_id,
-                    label: start_vertex_label,
-                    rank: 0,
-                    adjacent_edges: BTreeMap::new(),
-                    adjacent_vertices: BTreeMap::new(),
-                    out_degree: 0,
-                    in_degree: 0,
-                },
+                edge.start_v_id,
+                PatternVertex { id: edge.start_v_id, label: edge.start_v_label, rank: 0 },
             );
             // add start vertex label
             self.vertex_label_map
-                .entry(start_vertex_label)
+                .entry(edge.start_v_label)
                 .or_insert(BTreeSet::new())
-                .insert(start_vertex_id);
-        } else if let None = self.get_vertex_from_id(edge.get_end_vertex_id()) {
+                .insert(edge.start_v_id);
+        } else if let None = self.get_vertex_from_id(edge.end_v_id) {
             // start vertex already exists in the pattern, use it to connect
-            let end_vertex_id = edge.get_end_vertex_id();
-            let end_vertex_label = edge.get_end_vertex_label();
             // add end vertex
             self.vertices.insert(
-                end_vertex_id,
-                PatternVertex {
-                    id: end_vertex_id,
-                    label: end_vertex_label,
-                    rank: 0,
-                    adjacent_edges: BTreeMap::new(),
-                    adjacent_vertices: BTreeMap::new(),
-                    out_degree: 0,
-                    in_degree: 0,
-                },
+                edge.end_v_id,
+                PatternVertex { id: edge.end_v_id, label: edge.end_v_label, rank: 0 },
             );
             self.vertex_label_map
-                .entry(end_vertex_label)
+                .entry(edge.end_v_label)
                 .or_insert(BTreeSet::new())
-                .insert(end_vertex_id);
+                .insert(edge.end_v_id);
         }
         // update start vertex's connection info
-        if let Some(start_vertex) = self.get_vertex_mut_from_id(edge.get_start_vertex_id()) {
-            start_vertex
-                .adjacent_edges
-                .insert(edge.get_id(), (edge.get_end_vertex_id(), PatternDirection::Out));
-            start_vertex
-                .adjacent_vertices
-                .entry(edge.get_end_vertex_id())
+        if self
+            .get_vertex_from_id(edge.start_v_id)
+            .is_some()
+        {
+            self.vertex_adjacencies_map
+                .entry((edge.start_v_id, PatternDirection::Out))
                 .or_insert(vec![])
-                .push((edge.get_id(), PatternDirection::Out));
-            start_vertex.out_degree += 1;
+                .push((edge.end_v_id, edge.id));
         }
         // update end vertex's connection info
-        if let Some(end_vertex) = self.get_vertex_mut_from_id(edge.get_end_vertex_id()) {
-            end_vertex
-                .adjacent_edges
-                .insert(edge.get_id(), (edge.get_start_vertex_id(), PatternDirection::In));
-            end_vertex
-                .adjacent_vertices
-                .entry(edge.get_start_vertex_id())
+        if self.get_vertex_from_id(edge.end_v_id).is_some() {
+            self.vertex_adjacencies_map
+                .entry((edge.end_v_id, PatternDirection::In))
                 .or_insert(vec![])
-                .push((edge.get_id(), PatternDirection::In));
-            end_vertex.in_degree += 1;
+                .push((edge.start_v_id, edge.id));
         }
         // add edge to the pattern
         self.edges.insert(edge.get_id(), edge.clone());
@@ -1890,14 +1842,18 @@ impl Pattern {
         let target_v_label = extend_step.get_target_v_label();
         // mark all the vertices with the same label as the extend step's target vertex as the candidates
         for target_v_cand in self.vertices_iter_by_label(target_v_label) {
-            if target_v_cand.get_degree() != extend_step.get_extend_edges_num() {
+            let target_v_cand_id = target_v_cand.id;
+            if self
+                .get_vertex_degree(target_v_cand_id)
+                .unwrap()
+                != extend_step.get_extend_edges_num()
+            {
                 continue;
             }
             // compare whether the candidate vertex has the same connection info as the extend step
             let cand_src_v_e_label_dir_set: BTreeSet<(PatternLabelId, PatternLabelId, PatternDirection)> =
-                target_v_cand
-                    .adjacent_edges_iter()
-                    .map(|(edge_id, vertex_id, dir)| {
+                self.vertex_adjacencies_iter(target_v_cand_id)
+                    .map(|(vertex_id, edge_id, dir)| {
                         (
                             self.get_vertex_from_id(vertex_id)
                                 .unwrap()
@@ -1938,36 +1894,38 @@ impl Pattern {
 
     /// Remove a vertex with all its adjacent edges in the current pattern
     pub fn remove_vertex(&mut self, vertex_id: PatternId) {
-        if let Some(target_vertex) = self.get_vertex_from_id(vertex_id) {
-            let target_vertex_id = target_vertex.get_id();
-            let target_vertex_label = target_vertex.get_label();
-            let adjacent_edges_vertices_dirs: Vec<(PatternId, PatternId, PatternDirection)> =
-                target_vertex.adjacent_edges_iter().collect();
+        if let Some(vertex) = self.get_vertex_from_id(vertex_id) {
+            let vertex_label = vertex.get_label();
+            let adjacent_vertices_edges_dirs: Vec<(PatternId, PatternId, PatternDirection)> = self
+                .vertex_adjacencies_iter(vertex_id)
+                .collect();
             // delete target vertex
             // delete in vertices
-            self.vertices.remove(target_vertex_id);
+            self.vertices.remove(vertex_id);
             // delete in vertex label map
             self.vertex_label_map
-                .get_mut(&target_vertex_label)
+                .get_mut(&vertex_label)
                 .unwrap()
-                .remove(&target_vertex_id);
+                .remove(&vertex_id);
             if self
                 .vertex_label_map
-                .get(&target_vertex_label)
+                .get(&vertex_label)
                 .unwrap()
                 .len()
                 == 0
             {
-                self.vertex_label_map
-                    .remove(&target_vertex_label);
+                self.vertex_label_map.remove(&vertex_label);
             }
             // delete in vertex tag map
-            self.vertex_tag_map
-                .remove_by_right(&target_vertex_id);
+            self.vertex_tag_map.remove_by_right(&vertex_id);
             // delete in vertex predicate map
-            self.vertex_predicate_map
-                .remove(&target_vertex_id);
-            for (adjacent_edge_id, adjacent_vertex_id, dir) in adjacent_edges_vertices_dirs {
+            self.vertex_predicate_map.remove(&vertex_id);
+            // delete in vertex adjacencies map
+            self.vertex_adjacencies_map
+                .remove(&(vertex_id, PatternDirection::Out));
+            self.vertex_adjacencies_map
+                .remove(&(vertex_id, PatternDirection::In));
+            for (adjacent_vertex_id, adjacent_edge_id, dir) in adjacent_vertices_edges_dirs {
                 let adjacent_edge_label = self
                     .get_edge_from_id(adjacent_edge_id)
                     .unwrap()
@@ -1996,23 +1954,10 @@ impl Pattern {
                 self.edge_predicate_map
                     .remove(&adjacent_edge_id);
                 // update adjcent vertices's info
-                let adjacent_vertex = self
-                    .get_vertex_mut_from_id(adjacent_vertex_id)
-                    .unwrap();
-                // delete edge in adjacent edges
-                adjacent_vertex
-                    .adjacent_edges
-                    .remove(&adjacent_edge_id);
-                // delete target vertex in adjacent vertices
-                adjacent_vertex
-                    .adjacent_vertices
-                    .remove(&target_vertex_id);
-                // update out_degree/ in_degree info
-                if let PatternDirection::Out = dir {
-                    adjacent_vertex.in_degree -= 1;
-                } else {
-                    adjacent_vertex.out_degree -= 1;
-                }
+                self.vertex_adjacencies_map
+                    .get_mut(&(adjacent_vertex_id, dir.reverse()))
+                    .unwrap()
+                    .retain(|(_, e_id)| *e_id != adjacent_edge_id);
             }
             self.vertex_ranking();
         }
@@ -2039,7 +1984,7 @@ impl Pattern {
         if let Some(target_vertex) = self.get_vertex_from_id(target_v_id) {
             let target_v_label = target_vertex.get_label();
             let mut extend_edges = vec![];
-            for (edge_id, _, dir) in target_vertex.adjacent_edges_iter() {
+            for (_, edge_id, dir) in self.vertex_adjacencies_iter(target_v_id) {
                 let edge = self.get_edge_from_id(edge_id).unwrap();
                 if let PatternDirection::In = dir {
                     extend_edges.push(DefiniteExtendEdge::new(
@@ -2119,41 +2064,29 @@ mod tests {
         let vertex_0 = pattern_case1.vertices.get(0).unwrap();
         assert_eq!(vertex_0.id, 0);
         assert_eq!(vertex_0.label, 0);
-        assert_eq!(vertex_0.adjacent_edges.len(), 2);
-        let mut vertex_0_adjacent_edges_iter = vertex_0.adjacent_edges.iter();
-        let (v0_e0, (v0_v0, v0_d0)) = vertex_0_adjacent_edges_iter.next().unwrap();
-        assert_eq!(*v0_e0, 0);
-        assert_eq!(*v0_v0, 1);
-        assert_eq!(*v0_d0, PatternDirection::Out);
-        let (v0_e1, (v0_v1, v0_d1)) = vertex_0_adjacent_edges_iter.next().unwrap();
-        assert_eq!(*v0_e1, 1);
-        assert_eq!(*v0_v1, 1);
-        assert_eq!(*v0_d1, PatternDirection::In);
-        assert_eq!(vertex_0.adjacent_vertices.len(), 1);
-        let edges_connect_v0_v1 = vertex_0.adjacent_vertices.get(&1).unwrap();
-        assert_eq!(edges_connect_v0_v1.len(), 2);
-        let mut edges_connect_v0_v1_iter = edges_connect_v0_v1.iter();
-        assert_eq!(*edges_connect_v0_v1_iter.next().unwrap(), (0, PatternDirection::Out));
-        assert_eq!(*edges_connect_v0_v1_iter.next().unwrap(), (1, PatternDirection::In));
+        assert_eq!(pattern_case1.get_vertex_degree(0).unwrap(), 2);
+        let mut vertex_0_adjacent_edges_iter = pattern_case1.vertex_adjacencies_iter(0);
+        let (v0_v0, v0_e0, v0_d0) = vertex_0_adjacent_edges_iter.next().unwrap();
+        assert_eq!(v0_e0, 0);
+        assert_eq!(v0_v0, 1);
+        assert_eq!(v0_d0, PatternDirection::Out);
+        let (v0_v1, v0_e1, v0_d1) = vertex_0_adjacent_edges_iter.next().unwrap();
+        assert_eq!(v0_e1, 1);
+        assert_eq!(v0_v1, 1);
+        assert_eq!(v0_d1, PatternDirection::In);
         let vertex_1 = pattern_case1.vertices.get(1).unwrap();
         assert_eq!(vertex_1.id, 1);
         assert_eq!(vertex_1.label, 0);
-        assert_eq!(vertex_1.adjacent_edges.len(), 2);
-        let mut vertex_1_adjacent_edges_iter = vertex_1.adjacent_edges.iter();
-        let (v1_e0, (v1_v0, v1_d0)) = vertex_1_adjacent_edges_iter.next().unwrap();
-        assert_eq!(*v1_e0, 0);
-        assert_eq!(*v1_v0, 0);
-        assert_eq!(*v1_d0, PatternDirection::In);
-        let (v1_e1, (v1_v1, v1_d1)) = vertex_1_adjacent_edges_iter.next().unwrap();
-        assert_eq!(*v1_e1, 1);
-        assert_eq!(*v1_v1, 0);
-        assert_eq!(*v1_d1, PatternDirection::Out);
-        assert_eq!(vertex_1.adjacent_vertices.len(), 1);
-        let edges_connect_v1_v0 = vertex_1.adjacent_vertices.get(&0).unwrap();
-        assert_eq!(edges_connect_v1_v0.len(), 2);
-        let mut edges_connect_v1_v0_iter = edges_connect_v1_v0.iter();
-        assert_eq!(*edges_connect_v1_v0_iter.next().unwrap(), (0, PatternDirection::In));
-        assert_eq!(*edges_connect_v1_v0_iter.next().unwrap(), (1, PatternDirection::Out));
+        assert_eq!(pattern_case1.get_vertex_degree(1).unwrap(), 2);
+        let mut vertex_1_adjacent_edges_iter = pattern_case1.vertex_adjacencies_iter(1);
+        let (v1_v0, v1_e0, v1_d0) = vertex_1_adjacent_edges_iter.next().unwrap();
+        assert_eq!(v1_e0, 1);
+        assert_eq!(v1_v0, 0);
+        assert_eq!(v1_d0, PatternDirection::Out);
+        let (v1_v1, v1_e1, v1_d1) = vertex_1_adjacent_edges_iter.next().unwrap();
+        assert_eq!(v1_e1, 0);
+        assert_eq!(v1_v1, 0);
+        assert_eq!(v1_d1, PatternDirection::In);
     }
 
     #[test]

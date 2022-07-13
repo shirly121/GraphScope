@@ -15,7 +15,6 @@
 
 use std::collections::HashSet;
 use std::convert::{TryFrom, TryInto};
-use std::sync::Arc;
 
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
