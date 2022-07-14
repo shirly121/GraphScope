@@ -250,12 +250,12 @@ pub fn build_pattern_case9() -> Pattern {
 // Pattern from modern schema file
 // Person only Pattern
 pub fn build_modern_pattern_case1() -> Pattern {
-    Pattern::from(0)
+    Pattern::from(PatternVertex::new(0, 0))
 }
 
 // Software only Pattern
 pub fn build_modern_pattern_case2() -> Pattern {
-    Pattern::from(1)
+    Pattern::from(PatternVertex::new(0, 1))
 }
 
 // Person -> knows -> Person

@@ -25,7 +25,7 @@ use petgraph::Direction;
 
 use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
-use crate::catalogue::pattern::{Pattern, PatternEdge};
+use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
 use crate::error::{IrError, IrResult};
@@ -128,7 +128,7 @@ impl Catalogue {
         let mut queue = VecDeque::new();
         // The one-vertex patterns are the starting points
         for vertex_label in pattern_meta.vertex_label_ids_iter() {
-            let new_pattern = Pattern::from(vertex_label);
+            let new_pattern = Pattern::from(PatternVertex::new(0, vertex_label));
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
             let new_pattern_index = catalog.store.add_node(VertexWeight {
                 code: new_pattern_code.clone(),
@@ -263,8 +263,11 @@ impl Catalogue {
                     }
                     // the adj_vertex is regarded as target vertex
                     // get all edges with dir between the source vertex and the target vertex
-                    let mut add_edges_ids: DynIter<PatternId> =
-                        Box::new(adj_connections.iter().map(|(e_id, _)| *e_id));
+                    let mut add_edges_ids: DynIter<PatternId> = Box::new(
+                        adj_connections
+                            .iter()
+                            .map(|adj| adj.get_edge_id()),
+                    );
                     for (adj_adj_vertex_id, adj_adj_connections) in
                         pattern.vertex_adjacencies_iter_group_by_v_id(adj_vertex_id)
                     {
@@ -277,7 +280,7 @@ impl Catalogue {
                                 add_edges_ids.chain(
                                     adj_adj_connections
                                         .into_iter()
-                                        .map(|(e_id, _)| e_id),
+                                        .map(|adj| adj.get_edge_id()),
                                 ),
                             );
                         }
@@ -427,17 +430,11 @@ impl Pattern {
             all_vertex_ids.sort_by(|&v1_id, &v2_id| {
                 let degree_order = trace_pattern
                     .get_vertex_degree(v1_id)
-                    .unwrap()
-                    .cmp(&trace_pattern.get_vertex_degree(v2_id).unwrap());
+                    .cmp(&trace_pattern.get_vertex_degree(v2_id));
                 if let Ordering::Equal = degree_order {
                     trace_pattern
                         .get_vertex_out_degree(v1_id)
-                        .unwrap()
-                        .cmp(
-                            &trace_pattern
-                                .get_vertex_out_degree(v2_id)
-                                .unwrap(),
-                        )
+                        .cmp(&trace_pattern.get_vertex_out_degree(v2_id))
                 } else {
                     degree_order
                 }
