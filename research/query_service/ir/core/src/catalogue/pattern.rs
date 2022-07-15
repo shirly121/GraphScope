@@ -174,6 +174,7 @@ pub struct Pattern {
 }
 
 /// Initialze a Pattern from just a single Pattern Vertex
+///
 /// The Pattern Vertex's id and label is kept and all other info is cleared
 impl From<PatternVertex> for Pattern {
     fn from(mut vertex: PatternVertex) -> Pattern {
@@ -375,6 +376,7 @@ impl Pattern {
                 }
             }
         }
+
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             pattern.vertex_tag_map = tag_v_id_map.into_iter().collect();
             pattern.edge_predicate_map = e_id_predicate_map;
@@ -575,9 +577,10 @@ fn get_vertex_labels_candies(
 
 /// Based on the vertex labels candidates and required src/dst vertex label,
 /// assign the src and dst vertex with vertex labels meeting the requirement
-/// - for a chosen candidates:
-///   - if the required src label is some, its src vertex label must match the requirement
-///   - if the required dst label is some, its dst vertex label must match the requirement
+///
+/// For a chosen candidates:
+/// - if the required src label is some, its src vertex label must match the requirement
+/// - if the required dst label is some, its dst vertex label must match the requirement
 fn assign_src_dst_vertex_labels<T: Iterator<Item = (PatternLabelId, PatternLabelId, PatternDirection)>>(
     mut vertex_labels_candis: T, required_src_label: Option<PatternLabelId>,
     required_dst_label: Option<PatternLabelId>,
@@ -1430,6 +1433,7 @@ impl Pattern {
 /// Find a unique sequence of edges in DFS order and assign each vertex with a unique DFS id for easier decoding process
 impl Pattern {
     /// Return the ID of the starting vertex of DFS.
+    ///
     /// In our case, It's the vertex with the smallest label and rank
     fn get_dfs_starting_vertex(&self) -> PatternId {
         // Step-1: Find the smallest vertex label
@@ -1572,6 +1576,7 @@ impl Pattern {
 /// Methods for Pattern Extension
 impl Pattern {
     /// Get all the vertices(id) with the same vertex label and vertex rank
+    ///
     /// These vertices are equivalent in the Pattern
     fn get_equivalent_vertices(&self, v_label: PatternLabelId, v_rank: PatternRankId) -> Vec<PatternId> {
         let mut equivalent_vertices = vec![];
@@ -1609,11 +1614,12 @@ impl Pattern {
     }
 
     /// Extend the current Pattern to a new Pattern with the given ExtendStep
-    /// If the ExtendStep is not matched with the current Pattern, the function will return None
-    /// Else, it will return the new Pattern after the extension
+    /// - If the ExtendStep is not matched with the current Pattern, the function will return None
+    /// - Else, it will return the new Pattern after the extension
+    ///
     /// The ExtendStep is not mathced with the current Pattern if:
     /// 1. Some extend edges of the ExtendStep cannot find a correponsponding source vertex in current Pattern
-    /// (the required source vertex doesn't exist or already occupied by other extend edges)
+    ///    (the required source vertex doesn't exist or already occupied by other extend edges)
     /// 2. Or meet some limitations(e.g. limit the length of Pattern)
     pub fn extend(&self, extend_step: &ExtendStep) -> Option<Pattern> {
         let mut new_pattern = self.clone();
@@ -1980,7 +1986,8 @@ impl Pattern {
     }
 
     /// Delete a extend step from current pattern to get a new pattern
-    /// the new pattern's code should be the same as the target pattern code
+    ///
+    /// The code of the new pattern should be the same as the target pattern code
     pub fn de_extend(
         &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
     ) -> Option<Pattern> {

@@ -84,16 +84,17 @@ impl Cipher<AsciiString> for ExtendStep {
     }
 }
 /// Unique Pattern Identity Encoder
-/// Member Variables:
-/// Contains the bit number that each variable in the encoding unit occupies
+///
+/// Member Variables include the bit numbers that each variable in the encoding unit occupies
 #[derive(Debug, Clone)]
 pub struct Encoder {
-    // Bit Number for Edge Label Storage
+    /// Bit Number for Edge Label Storage
     edge_label_bit_num: usize,
-    // Bit Number for Vertex Label Storage
+    /// Bit Number for Vertex Label Storage
     vertex_label_bit_num: usize,
-    // Bit Number for Edge Direction Storage
+    /// Bit Number for Edge Direction Storage
     direction_bit_num: usize,
+    /// Bit Number for Vertex Rank Storage
     vertex_rank_bit_num: usize,
 }
 
@@ -113,6 +114,7 @@ impl Encoder {
     }
 
     /// Initialize the Encoder by Analyzing a Pattern
+    ///
     /// The vertex_rank_bit_num can be a user defined value if it is applicable to the pattern
     pub fn init_by_pattern(pattern: &Pattern, vertex_rank_bit_num: usize) -> Encoder {
         let min_edge_label_bit_num = if let Some(max_edge_label) = pattern.get_max_edge_label() {
@@ -178,12 +180,27 @@ impl Encoder {
 /// Methods for Encode and Decode
 impl Encoder {
     /// Compute the u8 value for each storage unit (AsciiChar or u8)
-    /// Example:
-    /// value = 3, value head = 8, value tail = 7, storage_unit_valid_bit_num = 8, storage_unit_rank = 0
-    /// Our expectation code: |00000001|10000000| (3 = bin(11))
-    ///                     (head = 8)^ ^(tail = 7)
-    ///                 unit_rank = 1  unit_rank = 0
-    /// Our goal is to put some parts of the value(3 = bin(11)) to the appointed storage unit (= 0 by rank)
+    ///
+    /// ## Example:
+    ///
+    /// Given the input as follows:
+    /// ```text
+    ///     value = 3, value head = 8, value tail = 7
+    ///     storage_unit_valid_bit_num = 8,
+    ///     storage_unit_rank = 0
+    /// ```
+    /// Our expectation is:
+    /// ```text
+    ///     output: 128 (bin 10000000)
+    /// ```
+    /// Explanation:
+    /// ```text
+    ///           |00000001|10000000| (3 = bin(11))
+    ///         (head = 8)^ ^(tail = 7)
+    ///     unit_rank = 1  unit_rank = 0
+    /// ```
+    /// Our goal is to put some parts of the value (3 = bin(11)) to the appointed storage unit (= 0 by rank)
+    ///
     /// At this case, unit_rank = 0, we would have this storage unit += 128(bin 10000000) to achieve the goal
     pub fn get_encode_numerical_value(
         value: i32, value_head: usize, value_tail: usize, storage_unit_valid_bit_num: usize,
@@ -221,20 +238,31 @@ impl Encoder {
         } else {
             panic!("Error in Converting Encode Unit to ASCII String: No Such Value Exists");
         }
-        return output as u8;
+
+        output as u8
     }
 
     /// Truncate some parts from the source code (&[u8]) and transform the truncation into i32
-    /// Example:
-    /// source code: |00000001|10000000|, head = 8, tail = 7, storage_unit_bit_num = 8
-    ///            (head = 8)^ ^(tail = 7)
-    /// Our expected decode value = 3 = bin(11)
+    ///
+    /// ## Example:
+    ///
+    /// Given the source code:
+    /// ```text
+    ///      |00000001|10000000|, head = 8, tail = 7, storage_unit_bit_num = 8
+    ///    (head = 8)^ ^(tail = 7)
+    /// ```
+    ///
+    /// Our expectation is:
+    /// ```text
+    ///     decode_value = 3 = bin(11)
+    /// ```
     pub fn get_decode_value_by_head_tail(
         src_code: &[u8], head: usize, tail: usize, storage_unit_bit_num: usize,
     ) -> i32 {
         if head < tail {
             panic!("The head must be at least larger or equal to tail");
         }
+
         let mut output;
         //   |00000001|10000000|
         // (head = 8)^ ^(tail = 7)
@@ -244,11 +272,9 @@ impl Encoder {
         let head_offset = head % storage_unit_bit_num;
         let tail_rank = src_code.len() - 1 - (tail / storage_unit_bit_num) as usize;
         let tail_offset = tail % storage_unit_bit_num;
-
         if head_rank >= src_code.len() || tail_rank >= src_code.len() {
             panic!("The head and tail values are out of range");
         }
-
         // Case that head and tail are in the same storage unit
         if head_rank == tail_rank {
             output = (src_code[head_rank] << (8 - 1 - head_offset) >> (8 - 1 - head_offset + tail_offset))
@@ -265,13 +291,33 @@ impl Encoder {
             output += ((src_code[head_rank] << (8 - 1 - head_offset) >> (8 - 1 - head_offset)) as i32)
                 << (storage_unit_bit_num - tail_offset + (rank_diff - 1) * storage_unit_bit_num);
         }
+
         output
     }
 
     /// Get the effective bits of the given source code
-    /// Example:
-    /// source code: |00001000|00000001|
-    /// the effective bots num is 12, as the four 0s can be deleted |(0000)1000|00000001|
+    ///
+    /// ## Example:
+    ///
+    /// Given the source code as follows:
+    /// ```text
+    ///     source code: |00001000|00000001|
+    /// ```
+    /// We can call this function in this way:
+    /// ```rust
+    /// use ir_core::catalogue::codec::Encoder;
+    ///
+    /// let src_code: Vec<u8> = vec![8, 1];
+    /// let storage_unit_bit_num: usize = 8;
+    /// let effective_bit_num: usize = Encoder::get_src_code_effective_bit_num(&src_code, storage_unit_bit_num);
+    /// assert_eq!(effective_bit_num, 12);
+    /// ```
+    /// The effective bots num is 12, as the four zeros should be deleted
+    /// ```text
+    ///     |(0000)1000|00000001|
+    ///         ^
+    ///  Ineffective Zeros
+    /// ```
     pub fn get_src_code_effective_bit_num(src_code: &[u8], storage_unit_bit_num: usize) -> usize {
         let mut start_pos = 0;
         for i in start_pos..src_code.len() {
@@ -291,16 +337,25 @@ impl Encoder {
                 break;
             }
         }
+
         (src_code.len() - start_pos - 1) * storage_unit_bit_num + start_pos_pos
     }
 }
 
 /// Design the EnocodeUnit for the abstraction of the encode behavior
-/// Example:
-/// values = [4, 5, 6, 7]
-/// heads = [0, 3, 6, 9]
-/// tails = [2, 5, 8, 11]
-/// encode value = |0000(111)(1|10)(101)(100)|
+///
+/// ## Example:
+///
+/// Given a EncodeUnit with the following fields:
+/// ```text
+///     values = vec![4, 5, 6, 7]
+///     heads = vec![0, 3, 6, 9]
+///     tails = vec![2, 5, 8, 11]
+/// ```
+/// The binary format of the encoded value is as below, and we can get the values of two u8: 15 and 172.
+/// ```text
+///     |0000(111)(1|10)(101)(100)|
+/// ```
 pub struct EncodeUnit {
     /// A series of value to be encoded
     values: Vec<i32>,
@@ -311,6 +366,7 @@ pub struct EncodeUnit {
 }
 
 /// Initializers
+///
 /// Build EncodeUnit for structs which needs to be encoded
 impl EncodeUnit {
     pub fn init() -> Self {
@@ -347,7 +403,7 @@ impl EncodeUnit {
         EncodeUnit { values, heads, tails }
     }
 
-    /// Latest Version for DFS Sorting
+    /// The Latest Version for DFS Sorting
     fn from_pattern_edge_dfs(
         pattern_edge: &PatternEdge, encoder: &Encoder,
         vertex_dfs_id_map: &HashMap<PatternId, PatternRankId>,
@@ -363,11 +419,9 @@ impl EncodeUnit {
             .get(&pattern_edge.get_end_vertex_id())
             .expect("Unknown vertex id in vertex -- dfs id map")
             as PatternRankId;
-
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
         let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
         let vertex_rank_bit_num = encoder.get_vertex_rank_bit_num();
-
         let values: Vec<i32> = vec![end_v_rank, start_v_rank, end_v_label, start_v_label, edge_label];
         let heads: Vec<usize> = vec![
             vertex_rank_bit_num - 1,
@@ -383,6 +437,7 @@ impl EncodeUnit {
             vertex_label_bit_num + 2 * vertex_rank_bit_num,
             2 * vertex_label_bit_num + 2 * vertex_rank_bit_num,
         ];
+
         EncodeUnit { values, heads, tails }
     }
 
@@ -413,17 +468,15 @@ impl EncodeUnit {
         }
     }
 
-    pub fn from_extend_edge(extend_edge: &ExtendEdge, encoder: &Encoder) -> Self {
+    fn from_extend_edge(extend_edge: &ExtendEdge, encoder: &Encoder) -> Self {
         let start_v_label = extend_edge.get_start_vertex_label();
         let start_v_rank = extend_edge.get_start_vertex_rank();
         let edge_label = extend_edge.get_edge_label();
         let dir = extend_edge.get_direction();
-
         let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
         let vertex_rank_bit_num = encoder.get_vertex_rank_bit_num();
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
         let direction_bit_num = encoder.get_direction_bit_num();
-
         let values = vec![dir as i32, edge_label, start_v_rank, start_v_label];
         let heads = vec![
             direction_bit_num - 1,
@@ -437,6 +490,7 @@ impl EncodeUnit {
             edge_label_bit_num + direction_bit_num,
             vertex_rank_bit_num + edge_label_bit_num + direction_bit_num,
         ];
+
         EncodeUnit { values, heads, tails }
     }
 
@@ -448,6 +502,7 @@ impl EncodeUnit {
                 extend_step_encode_unit.extend_by_another_unit(&extend_edge_encode_unit);
             }
         }
+
         extend_step_encode_unit.extend_by_value_and_length(
             extend_step.get_target_v_label(),
             encoder.get_vertex_label_bit_num(),
@@ -497,6 +552,7 @@ impl EncodeUnit {
             }
             encode_vec.push(unit_value);
         }
+
         // add add one for extra bits indicating the end of the code
         encode_vec[0] += Encoder::get_encode_numerical_value(
             1,
@@ -522,6 +578,7 @@ impl EncodeUnit {
 /// Methods for EncodeUnit to extend
 impl EncodeUnit {
     /// Add a new value to this EncodeUnit
+    ///
     /// The head and tail info are also added based on the given length
     pub fn extend_by_value_and_length(&mut self, value: i32, length: usize) {
         let self_unit_len = self.values.len();
@@ -532,8 +589,10 @@ impl EncodeUnit {
     }
 
     /// Extend this EncodeUnit by another EncodeUnit
-    /// another EncodeUnit's value will be added to this EncodeUnit
-    /// another EncodeUnit's head and tails will be modified based on the new start and then added to this EncodeUnit
+    ///
+    /// Another EncodeUnit's value will be added to this EncodeUnit
+    ///
+    /// Another EncodeUnit's head and tails will be modified based on the new start and then added to this EncodeUnit
     pub fn extend_by_another_unit(&mut self, other: &EncodeUnit) {
         let self_unit_len = self.values.len();
         self.values.extend(other.get_values());
@@ -553,20 +612,29 @@ impl EncodeUnit {
     }
 }
 
-/// Design the DecodeUnit for the abstraction of decode behavior
+/// Design the DecodeUnit for the abstraction of decoding behavior
+///
 /// We assume that the code is organized by several units and an extra parts
-/// Example:
-/// As for the ExtendStep, its code is like:
-/// vertex(edge)(edge)(edge)......, the vertex is the extra parts, the edge is the repeated unit
+///
+/// ## Example:
+///
+/// As for the ExtendStep, its codes look like:
+/// ```text
+///     vertex (edge) (edge) (edge)..
+/// ```
+/// The vertex is the extra parts, the edge is the repeated unit
 /// For both units and extra parts, there are some fields which occupy some bits, like:
-/// edge:    001      010           011           100
-///       direction edge_label vertex_rank vertex label
-/// unit_bits store each field's bit num
-/// extra bits store each field's bit num of extra part
+/// ```text
+///     edge:    001         010           011           100
+///               ^           ^             ^             ^
+///           direction    edge_label   vertex_rank   vertex label
+/// ```
 pub struct DecodeUnit {
     /// Bits num of one unit
     unit_bits: Vec<usize>,
     /// Bits num of extra parts of the code
+    ///
+    /// Now the extra bits only exists for decoding extend steps
     extra_bits: Vec<usize>,
 }
 
@@ -607,7 +675,7 @@ impl DecodeUnit {
     }
 }
 
-/// Methods for access some fields of DecodeUnit
+/// Methods for access fields of DecodeUnit
 impl DecodeUnit {
     pub fn get_unit_bits(&self) -> &Vec<usize> {
         &self.unit_bits
@@ -840,43 +908,6 @@ mod tests {
         assert_eq!(encode_vec_2.len(), 2);
         assert_eq!(encode_vec_2, expected_encode_vec_2);
     }
-
-    // #[test]
-    // fn encode_pattern_to_asciistring_case_6() {
-    //     let pattern_edge1 = PatternEdge::new(0, 1, 0, 1, 1, 2);
-    //     let pattern_edge2 = PatternEdge::new(1, 2, 0, 2, 1, 3);
-    //     let pattern_vec = vec![pattern_edge1, pattern_edge2];
-    //     let pattern = Pattern::try_from(pattern_vec).unwrap();
-    //     let encoder = Encoder::init(2, 2, 2, 2);
-    //     let encode_value = <Pattern as Cipher<AsciiString>>::encode_to(&pattern, &encoder);
-    //     let mut connect_encode_unit = EncodeUnit::from_pattern_edge(&pattern, &pattern_edge2, &encoder);
-    //     connect_encode_unit.extend_by_another_unit(&EncodeUnit::from_pattern_edge(
-    //         &pattern,
-    //         &pattern_edge1,
-    //         &encoder,
-    //     ));
-    //     let expected_encode_value = connect_encode_unit.to_ascii_string();
-    //     assert_eq!(encode_value, expected_encode_value);
-    // }
-
-    // #[test]
-    // fn encode_pattern_to_vec_u8_case_6() {
-    //     let pattern_edge1 = PatternEdge::new(0, 1, 0, 1, 1, 2);
-    //     let pattern_edge2 = PatternEdge::new(1, 2, 0, 2, 1, 3);
-    //     let pattern_vec = vec![pattern_edge1, pattern_edge2];
-    //     let pattern = Pattern::try_from(pattern_vec).unwrap();
-    //     let encoder = Encoder::init(2, 2, 2, 2);
-    //     let encode_value = <Pattern as Cipher<Vec<u8>>>::encode_to(&pattern, &encoder);
-    //     let mut connect_encode_unit = EncodeUnit::from_pattern_edge(&pattern, &pattern_edge2, &encoder);
-    //     connect_encode_unit.extend_by_another_unit(&EncodeUnit::from_pattern_edge(
-    //         &pattern,
-    //         &pattern_edge1,
-    //         &encoder,
-    //     ));
-    //     // let connect_encode_unit = EncodeUnit::from_pattern(&pattern, &encoder);
-    //     let expected_encode_value = connect_encode_unit.to_vec_u8(8);
-    //     assert_eq!(encode_value, expected_encode_value);
-    // }
 
     #[test]
     fn test_get_decode_value_by_head_tail_vec8() {

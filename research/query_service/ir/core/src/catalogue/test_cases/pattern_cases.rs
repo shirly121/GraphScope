@@ -71,29 +71,43 @@ pub fn query_params(
     }
 }
 
-// The pattern looks like:
-// A <-> A
-// where <-> means two edges
-// A's label's id is 0
-// The edges's labels' id are both 0
-// The left A has id 0
-// The right A has id 1
+/// The pattern looks like:
+/// ```text
+///      A <-> A
+/// ```
+/// where <-> means two edges
+///
+/// A's label's id is 0
+///
+/// The edges's labels' id are both 0
+///
+/// The left A has id 0
+///
+/// The right A has id 1
 pub fn build_pattern_case1() -> Pattern {
     let pattern_vec = vec![PatternEdge::new(0, 0, 0, 1, 0, 0), PatternEdge::new(1, 0, 1, 0, 0, 0)];
     Pattern::try_from(pattern_vec).unwrap()
 }
 
-// The pattern looks like:
-//         B
-//       /   \
-//      A <-> A
-// where <-> means two edges
-// A's label id is 0, B's label id is 1
-// The edges between two As have label id 0
-// The edges between A and B have label id 1
-// The left A has id 0
-// The right A has id 1
-// B has id 2
+/// The pattern looks like:
+/// ```text
+///         B
+///       /   \
+///      A <-> A
+/// ```
+/// where <-> means two edges
+///
+/// A's label id is 0, B's label id is 1
+///
+/// The edges between two As have label id 0
+///
+/// The edges between A and B have label id 1
+///
+/// The left A has id 0
+///
+/// The right A has id 1
+///
+/// B has id 2
 pub fn build_pattern_case2() -> Pattern {
     let pattern_vec = vec![
         PatternEdge::new(0, 0, 0, 1, 0, 0),
@@ -104,15 +118,22 @@ pub fn build_pattern_case2() -> Pattern {
     Pattern::try_from(pattern_vec).unwrap()
 }
 
-// The pattern looks like:
-//     B(2) -> B(3)
-//     |       |
-//     A(0) -> A(1)
-// where <-> means two edges
-// Vertex Label Map:
-//     A: 0, B: 1,
-// Edge Label Map:
-//     A-A: 0, A->B: 1, B-B: 2,
+/// The pattern looks like:
+/// ```text
+///    B(2) -> B(3)
+///     |       |
+///     A(0) -> A(1)
+/// ```
+/// where <-> means two edges
+///
+/// Vertex Label Map:
+/// ```text
+///     A: 0, B: 1,
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A-A: 0, A->B: 1, B-B: 2,
+/// ```
 pub fn build_pattern_case3() -> Pattern {
     let edge_ids = gen_group_ids(3);
     let pattern_vec = vec![
@@ -124,15 +145,22 @@ pub fn build_pattern_case3() -> Pattern {
     Pattern::try_from(pattern_vec).unwrap()
 }
 
-// The pattern looks like:
-//     B(2)  -> B(3)
-//     |        |
-//     A(0) <-> A(1)
-// where <-> means two edges
-// Vertex Label Map:
-//     A: 0, B: 1,
-// Edge Label Map:
-//     A-A: 0, A->B: 1, B-B: 2,
+/// The pattern looks like:
+/// ```text
+///     B(2)  -> B(3)
+///     |        |
+///     A(0) <-> A(1)
+/// ```
+/// where <-> means two edges
+///
+/// Vertex Label Map:
+/// ```text
+///     A: 0, B: 1,
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A-A: 0, A->B: 1, B-B: 2,
+/// ```
 pub fn build_pattern_case4() -> Pattern {
     let edge_ids = gen_group_ids(4);
     let pattern_vec = vec![
@@ -145,17 +173,24 @@ pub fn build_pattern_case4() -> Pattern {
     Pattern::try_from(pattern_vec).unwrap()
 }
 
-// The pattern looks like
-//         A(0) -> B(0)    A(1) <-> A(2)
-//         |               |
-// C(0) -> B(1) <- A(3) -> B(2) <- C(1) <- D(0)
-//         |
-//         C(2)
-// where <-> means bidirectional edges
-// Vertex Label Map
-//     A: 3, B: 2, C: 1, D: 0
-// Edge Label Map:
-//     A-A: 20, A-B: 30, B-C: 15, C-D: 5
+/// The pattern looks like
+/// ```text
+///         A(0) -> B(0)    A(1) <-> A(2)
+///         |               |
+/// C(0) -> B(1) <- A(3) -> B(2) <- C(1) <- D(0)
+///         |
+///         C(2)
+/// ```
+/// where <-> means bidirectional edges
+///
+/// Vertex Label Map
+/// ```text
+///     A: 3, B: 2, C: 1, D: 0
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A-A: 20, A-B: 30, B-C: 15, C-D: 5
+/// ```
 pub fn build_pattern_case5() -> Pattern {
     let label_a = 3;
     let label_b = 2;
@@ -182,12 +217,18 @@ pub fn build_pattern_case5() -> Pattern {
     Pattern::try_from(pattern_vec).unwrap()
 }
 
-// The pattern looks like:
-// B <- A -> C
-// Vertex Label Map:
-// A: 1, B: 2, C: 3
-// Edge Label Map:
-// A->B: 1, A->C: 2
+/// The pattern looks like:
+/// ```text
+///     B <- A -> C
+/// ```
+/// Vertex Label Map:
+/// ```text
+///     A: 1, B: 2, C: 3
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A->B: 1, A->C: 2
+/// ```
 pub fn build_pattern_case6() -> Pattern {
     let pattern_edge1 = PatternEdge::new(0, 1, 0, 1, 1, 2);
     let pattern_edge2 = PatternEdge::new(1, 2, 0, 2, 1, 3);
@@ -195,16 +236,22 @@ pub fn build_pattern_case6() -> Pattern {
     Pattern::try_from(pattern_vec).unwrap()
 }
 
-// The pattern looks like:
-//         A
-//        /|\
-//       / D \
-//      //  \ \
-//     B  ->  C
-// Vertex Label Map:
-// A: 1, B: 2, C: 3, D: 4
-// Edge Label Map:
-// A->B: 0, A->C: 1, B->C: 2, A->D: 3, B->D: 4, D->C: 5
+/// The pattern looks like:
+/// ```text
+///         A
+///        /|\
+///       / D \
+///      //  \ \
+///     B  ->  C
+/// ```
+/// Vertex Label Map:
+/// ```text
+///     A: 1, B: 2, C: 3, D: 4
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A->B: 0, A->C: 1, B->C: 2, A->D: 3, B->D: 4, D->C: 5
+/// ```
 pub fn build_pattern_case7() -> Pattern {
     let edge_1 = PatternEdge::new(0, 1, 0, 1, 1, 2);
     let edge_2 = PatternEdge::new(1, 2, 0, 2, 1, 3);
@@ -216,12 +263,18 @@ pub fn build_pattern_case7() -> Pattern {
     Pattern::try_from(pattern_edges).unwrap()
 }
 
-// The pattern looks like:
-// A -> A -> B
-// Vertex Label Map:
-// A: 1, B: 2
-// Edge Label Map:
-// A->A: 0, A->B: 3
+/// The pattern looks like:
+/// ```text
+///     A -> A -> B
+/// ```
+/// Vertex Label Map:
+/// ```text
+///     A: 1, B: 2
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A->A: 0, A->B: 3
+/// ```
 pub fn build_pattern_case8() -> Pattern {
     let edge_1 = PatternEdge::new(0, 0, 0, 1, 1, 1);
     let edge_2 = PatternEdge::new(1, 3, 1, 2, 1, 2);
@@ -229,14 +282,20 @@ pub fn build_pattern_case8() -> Pattern {
     Pattern::try_from(pattern_edges).unwrap()
 }
 
-// The pattern looks like:
-//       C
-//    /  |   \
-//  A -> A -> B
-// Vertex Label Map:
-// A: 1, B: 2, C: 3
-// Edge Label Map:
-// A->A: 0, A->C: 1, B->C: 2, A->B: 3
+/// The pattern looks like:
+/// ```text
+///          C
+///       /  |   \
+///     A -> A -> B
+/// ```
+/// Vertex Label Map:
+/// ```text
+///     A: 1, B: 2, C: 3
+/// ```
+/// Edge Label Map:
+/// ```text
+///     A->A: 0, A->C: 1, B->C: 2, A->B: 3
+/// ```
 pub fn build_pattern_case9() -> Pattern {
     let edge_1 = PatternEdge::new(0, 0, 0, 1, 1, 1);
     let edge_2 = PatternEdge::new(1, 3, 1, 2, 1, 2);
@@ -247,32 +306,45 @@ pub fn build_pattern_case9() -> Pattern {
     Pattern::try_from(pattern_edges).unwrap()
 }
 
-// Pattern from modern schema file
-// Person only Pattern
+/// Pattern from modern schema file
+///
+/// Person only Pattern
 pub fn build_modern_pattern_case1() -> Pattern {
     Pattern::from(PatternVertex::new(0, 0))
 }
 
-// Software only Pattern
+/// Software only Pattern
 pub fn build_modern_pattern_case2() -> Pattern {
     Pattern::from(PatternVertex::new(0, 1))
 }
 
-// Person -> knows -> Person
+/// The pattern looks like:
+/// ```text
+///     Person -> knows -> Person
+/// ```
 pub fn build_modern_pattern_case3() -> Pattern {
     let pattern_edge = PatternEdge::new(0, 0, 0, 1, 0, 0);
     Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
-// Person -> created -> Software
+/// The pattern looks like:
+/// ```text
+///     Person -> created -> Software
+/// ```
 pub fn build_modern_pattern_case4() -> Pattern {
     let pattern_edge = PatternEdge::new(0, 1, 0, 1, 0, 1);
     Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
-//          Software
-//   create/         \create
-// Person -> knows -> Person
+/// The pattern looks like:
+///```text
+///           Software
+///   create/         \create
+///  Person -> knows -> Person
+/// ```
+/// create and knows are edge labels
+///
+/// Software and Person are vertex labels
 pub fn build_modern_pattern_case5() -> Pattern {
     let pattern_edge1 = PatternEdge::new(0, 0, 0, 1, 0, 0);
     let pattern_edge2 = PatternEdge::new(1, 1, 0, 2, 0, 1);
@@ -280,17 +352,24 @@ pub fn build_modern_pattern_case5() -> Pattern {
     Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap()
 }
 
-// Pattern from ldbc schema file
-// Person -> knows -> Person
+/// Pattern from ldbc schema file
+/// ```text
+///     Person -> knows -> Person
+/// ```
 pub fn build_ldbc_pattern_case1() -> Pattern {
     let pattern_edge = PatternEdge::new(0, 12, 0, 1, 1, 1);
     Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
-// Pattern from ldbc schema file and build from pb::Pattern message
-//           Person
-//     knows/      \knows
-//      Person -> Person
+/// Pattern from ldbc schema file and build from pb::Pattern message
+/// ```text
+///           Person
+///     knows/      \knows
+///     Person  ->  Person
+/// ```
+/// knows is the edge label
+///
+/// Person is the vertex label
 pub fn build_ldbc_pattern_from_pb_case1() -> Result<Pattern, IrError> {
     let ldbc_pattern_mata = get_ldbc_pattern_meta();
     // define pb pattern message
@@ -332,10 +411,12 @@ pub fn build_ldbc_pattern_from_pb_case1() -> Result<Pattern, IrError> {
     Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
 }
 
-// Pattern from ldbc schema file and build from pb::Pattern message
-//           University
-//     study at/      \study at
-//      Person   ->    Person
+/// Pattern from ldbc schema file and build from pb::Pattern message
+/// ```text
+///           University
+///     study at/      \study at
+///        Person  ->   Person
+/// ```
 pub fn build_ldbc_pattern_from_pb_case2() -> Result<Pattern, IrError> {
     let ldbc_pattern_mata = get_ldbc_pattern_meta();
     // define pb pattern message
@@ -391,8 +472,8 @@ pub fn build_ldbc_pattern_from_pb_case2() -> Result<Pattern, IrError> {
     Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
 }
 
-// Pattern from ldbc schema file and build from pb::Pattern message
-// 4 Persons know each other
+/// Pattern from ldbc schema file and build from pb::Pattern message
+/// 4 Persons know each other
 pub fn build_ldbc_pattern_from_pb_case3() -> Result<Pattern, IrError> {
     let ldbc_pattern_mata = get_ldbc_pattern_meta();
     // define pb pattern message
@@ -458,12 +539,14 @@ pub fn build_ldbc_pattern_from_pb_case3() -> Result<Pattern, IrError> {
     Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
 }
 
-// Pattern from ldbc schema file and build from pb::Pattern message
-//             City
-//      lives/     \lives
-//     Person      Person
-//     likes \      / has creator
-//           Comment
+/// Pattern from ldbc schema file and build from pb::Pattern message
+/// ```text
+///             City
+///      lives/     \lives
+///     Person      Person
+///     likes \      / has creator
+///           Comment
+/// ```
 pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
     let ldbc_pattern_mata = get_ldbc_pattern_meta();
     // define pb pattern message
@@ -534,11 +617,14 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
     Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
 }
 
-// Pattern from ldbc schema file and build from pb::Pattern message
-//           Person
-//     knows/      \knows
-//    knows/       \knows
-//   Person knows->knows Person
+/// Pattern from ldbc schema file and build from pb::Pattern message
+/// ```text
+///           Person
+///     knows/      \knows
+///    knows/       \knows
+///   Person knows->knows Person
+/// ```
+/// knows->knows represents there are two edges with "knows" label between two people
 pub fn build_ldbc_pattern_from_pb_case5() -> Result<Pattern, IrError> {
     let ldbc_pattern_mata = get_ldbc_pattern_meta();
     // define pb pattern message
