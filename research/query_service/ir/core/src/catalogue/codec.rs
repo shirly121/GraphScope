@@ -183,7 +183,7 @@ impl Encoder {
     /// Our expectation code: |00000001|10000000| (3 = bin(11))
     ///                     (head = 8)^ ^(tail = 7)
     ///                 unit_rank = 1  unit_rank = 0
-    ///  Our goal is to put some parts of the value(3 = bin(11)) to the appointed storage unit (= 0 by rank)
+    /// Our goal is to put some parts of the value(3 = bin(11)) to the appointed storage unit (= 0 by rank)
     /// At this case, unit_rank = 0, we would have this storage unit += 128(bin 10000000) to achieve the goal
     pub fn get_encode_numerical_value(
         value: i32, value_head: usize, value_tail: usize, storage_unit_valid_bit_num: usize,
@@ -402,7 +402,7 @@ impl EncodeUnit {
         // Store them in DFS sequence for easier decoding process
         else {
             let mut pattern_encode_unit = EncodeUnit::init();
-            let (dfs_edge_sequence, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence();
+            let (dfs_edge_sequence, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence().unwrap();
             for edge_id in dfs_edge_sequence {
                 let edge = pattern.get_edge_from_id(edge_id).unwrap();
                 let edge_encode_unit = EncodeUnit::from_pattern_edge_dfs(edge, encoder, &vertex_dfs_id_map);

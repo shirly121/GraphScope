@@ -234,40 +234,6 @@ impl Decode for result_pb::Results {
     }
 }
 
-impl generated::algebra::pattern::Binder {
-    pub fn is_edge_expand(&self) -> bool {
-        if let Some(generated::algebra::pattern::binder::Item::Edge(_)) = self.item.as_ref() {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_path_expand(&self) -> bool {
-        if let Some(generated::algebra::pattern::binder::Item::Path(_)) = self.item.as_ref() {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_get_v(&self) -> bool {
-        if let Some(generated::algebra::pattern::binder::Item::Vertex(_)) = self.item.as_ref() {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_select(&self) -> bool {
-        if let Some(generated::algebra::pattern::binder::Item::Select(_)) = self.item.as_ref() {
-            true
-        } else {
-            false
-        }
-    }
-}
-
 impl generated::common::Expression {
     pub fn and_with(&mut self, expr: &generated::common::Expression) {
         let mut and_expr_operators = Vec::with_capacity(expr.operators.len() + 3);

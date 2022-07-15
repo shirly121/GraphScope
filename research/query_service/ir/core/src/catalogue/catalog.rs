@@ -250,9 +250,9 @@ impl Catalogue {
                 .vertices_iter()
                 .map(|v| v.get_id())
             {
-                let vertex = pattern.get_vertex_from_id(vertex_id).unwrap();
-                for (adj_vertex_id, adj_connections) in
-                    pattern.vertex_adjacencies_iter_group_by_v_id(vertex_id)
+                for adj_vertex_id in pattern
+                    .adjacencies_iter(vertex_id)
+                    .map(|adj| adj.get_adj_vertex_id())
                 {
                     // If ralaxed pattern contains adj vertex or it is already added as target vertex
                     // ignore the vertex
@@ -262,37 +262,21 @@ impl Catalogue {
                         continue;
                     }
                     // the adj_vertex is regarded as target vertex
-                    // get all edges with dir between the source vertex and the target vertex
-                    let mut add_edges_ids: DynIter<PatternId> = Box::new(
-                        adj_connections
-                            .iter()
-                            .map(|adj| adj.get_edge_id()),
-                    );
-                    for (adj_adj_vertex_id, adj_adj_connections) in
-                        pattern.vertex_adjacencies_iter_group_by_v_id(adj_vertex_id)
-                    {
-                        // if other vertex in the relaxed pattern has connection to the target vertex
-                        // link the edge's id to the add_edge_ids for further build the extend edges
-                        if adj_adj_vertex_id != vertex.get_id()
-                            && relaxed_pattern_vertices.contains(&adj_adj_vertex_id)
-                        {
-                            add_edges_ids = Box::new(
-                                add_edges_ids.chain(
-                                    adj_adj_connections
-                                        .into_iter()
-                                        .map(|adj| adj.get_edge_id()),
-                                ),
-                            );
-                        }
-                    }
-                    // transform the add_edge_ids to add_edges
-                    let add_edges: Vec<&PatternEdge> = add_edges_ids
-                        .map(|edge_id| pattern.get_edge_from_id(edge_id).unwrap())
+                    // back link to the relaxed pattern to find all edges to be added
+                    let add_edges: Vec<PatternEdge> = pattern
+                        .adjacencies_iter(adj_vertex_id)
+                        .filter(|adj| relaxed_pattern_vertices.contains(&adj.get_adj_vertex_id()))
+                        .map(|adj| {
+                            pattern
+                                .get_edge_from_id(adj.get_edge_id())
+                                .unwrap()
+                                .clone()
+                        })
                         .collect();
                     // generate the new pattern with add_edges(extend edges)
                     let new_pattern = relaxed_pattern
                         .clone()
-                        .extend_by_edges(add_edges.iter().map(|&e| e))
+                        .extend_by_edges(add_edges.iter())
                         .unwrap();
                     let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
                     // check whether the catalog graph has the newly generate pattern
