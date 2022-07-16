@@ -233,24 +233,3 @@ impl Decode for result_pb::Results {
             .map_err(|_e| std::io::Error::new(std::io::ErrorKind::Other, "decoding result_pb failed!"))
     }
 }
-
-impl generated::common::Expression {
-    pub fn and_with(&mut self, expr: &generated::common::Expression) {
-        let mut and_expr_operators = Vec::with_capacity(expr.operators.len() + 3);
-        and_expr_operators.push(generated::common::ExprOpr {
-            item: Some(generated::common::expr_opr::Item::Logical(generated::common::Logical::And as i32)),
-        });
-        and_expr_operators.push(generated::common::ExprOpr {
-            item: Some(generated::common::expr_opr::Item::Brace(
-                generated::common::expr_opr::Brace::LeftBrace as i32,
-            )),
-        });
-        and_expr_operators.extend(expr.operators.clone());
-        and_expr_operators.push(generated::common::ExprOpr {
-            item: Some(generated::common::expr_opr::Item::Brace(
-                generated::common::expr_opr::Brace::RightBrace as i32,
-            )),
-        });
-        self.operators.extend(and_expr_operators);
-    }
-}
