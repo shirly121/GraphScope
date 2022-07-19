@@ -1,7 +1,7 @@
 //
 //! Copyright 2020 Alibaba Group Holding Limited.
 //!
-//! Licensed under the Apache License, Version 2.0 (the "License");
+//! Li&censed under the Apache License, Version 2.0 (the "License");
 //! you may not use this file except in compliance with the License.
 //! You may obtain a copy of the License at
 //!
@@ -17,8 +17,8 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
+use std::vec;
 
-use bimap::BiBTreeMap;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use vec_map::VecMap;
@@ -32,26 +32,18 @@ use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId, Pat
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::TagId;
 
-/// PatternVertex represents a vertex within a pattern
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PatternVertex {
     id: PatternId,
     label: PatternLabelId,
-    /// Used to Identify vertices with same label
-    rank: PatternRankId,
 }
 
 impl PatternVertex {
-    /// Create a new PatternVertex with user-defined ID and vertex label
-    ///
-    /// The rank is initially set as 0
-    pub fn new(id: PatternId, label: PatternLabelId) -> PatternVertex {
-        PatternVertex { id, label, rank: 0 }
+    /// Initializer of PatternVertex
+    pub fn new(id: PatternId, label: PatternLabelId) -> Self {
+        PatternVertex { id, label }
     }
-}
 
-/// Methods to access the fields of PatternVertex
-impl PatternVertex {
     pub fn get_id(&self) -> PatternId {
         self.id
     }
@@ -59,41 +51,34 @@ impl PatternVertex {
     pub fn get_label(&self) -> PatternLabelId {
         self.label
     }
-
-    /// Get the rank of the PatternVertex
-    pub fn get_rank(&self) -> PatternRankId {
-        self.rank
-    }
-
-    /// Set the rank of the PatternVertex
-    pub fn set_rank(&mut self, rank: PatternRankId) {
-        self.rank = rank;
-    }
 }
 
-#[derive(Debug, Clone, Copy)]
+/// PatternVertex represents a vertex within a pattern
+#[derive(Debug, Clone, Default)]
+struct PatternVertexData {
+    rank: PatternRankId,
+    out_adjacencies: Vec<Adjacency>,
+    in_adjacencies: Vec<Adjacency>,
+    tag: Option<TagId>,
+    predicate: Option<common_pb::Expression>,
+}
+
+#[derive(Debug, Clone)]
 pub struct PatternEdge {
     id: PatternId,
     label: PatternLabelId,
-    start_v_id: PatternId,
-    end_v_id: PatternId,
-    start_v_label: PatternLabelId,
-    end_v_label: PatternLabelId,
+    start_vertex: PatternVertex,
+    end_vertex: PatternVertex,
 }
 
-/// Initializers of PatternEdge
 impl PatternEdge {
-    /// Initializer
+    /// Initializer of Pattern Edge
     pub fn new(
-        id: PatternId, label: PatternLabelId, start_v_id: PatternId, end_v_id: PatternId,
-        start_v_label: PatternLabelId, end_v_label: PatternLabelId,
+        id: PatternId, label: PatternLabelId, start_vertex: PatternVertex, end_vertex: PatternVertex,
     ) -> PatternEdge {
-        PatternEdge { id, label, start_v_id, end_v_id, start_v_label, end_v_label }
+        PatternEdge { id, label, start_vertex, end_vertex }
     }
-}
 
-/// Methods to access the fields of a PatternEdge
-impl PatternEdge {
     pub fn get_id(&self) -> PatternId {
         self.id
     }
@@ -102,44 +87,64 @@ impl PatternEdge {
         self.label
     }
 
-    pub fn get_start_vertex_id(&self) -> PatternId {
-        self.start_v_id
+    pub fn get_start_vertex(&self) -> PatternVertex {
+        self.start_vertex
     }
 
-    pub fn get_end_vertex_id(&self) -> PatternId {
-        self.end_v_id
+    pub fn get_end_vertex(&self) -> PatternVertex {
+        self.end_vertex
     }
+}
 
-    pub fn get_start_vertex_label(&self) -> PatternLabelId {
-        self.start_v_label
-    }
-
-    pub fn get_end_vertex_label(&self) -> PatternLabelId {
-        self.end_v_label
-    }
+#[derive(Debug, Clone, Default)]
+struct PatternEdgeData {
+    tag: Option<TagId>,
+    predicate: Option<common_pb::Expression>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Adjacency {
     /// the source vertex connect to the adjacent vertex through this edge
     edge_id: PatternId,
+    /// connecting edge's label
+    edge_label: PatternLabelId,
     /// the adjacent vertex
-    adj_vertex_id: PatternId,
+    adj_vertex: PatternVertex,
     /// the connecting direction: outgoing or incoming
     direction: PatternDirection,
 }
 
 impl Adjacency {
-    pub fn new(edge_id: PatternId, end_vertex_id: PatternId, direction: PatternDirection) -> Self {
-        Adjacency { edge_id, adj_vertex_id: end_vertex_id, direction }
+    pub fn new(src_vertex: &PatternVertex, edge: &PatternEdge) -> IrResult<Self> {
+        if *src_vertex == edge.get_start_vertex() {
+            Ok(Adjacency {
+                edge_id: edge.get_id(),
+                edge_label: edge.get_label(),
+                adj_vertex: edge.get_end_vertex(),
+                direction: PatternDirection::Out,
+            })
+        } else if *src_vertex == edge.get_end_vertex() {
+            Ok(Adjacency {
+                edge_id: edge.get_id(),
+                edge_label: edge.get_label(),
+                adj_vertex: edge.get_start_vertex(),
+                direction: PatternDirection::In,
+            })
+        } else {
+            Err(IrError::InvalidPattern("Build Adjacency from a disconnected vertex and edge".to_string()))
+        }
     }
 
     pub fn get_edge_id(&self) -> PatternId {
         self.edge_id
     }
 
-    pub fn get_adj_vertex_id(&self) -> PatternId {
-        self.adj_vertex_id
+    pub fn get_edge_label(&self) -> PatternLabelId {
+        self.edge_label
+    }
+
+    pub fn get_adj_vertex(&self) -> PatternVertex {
+        self.adj_vertex
     }
 
     pub fn get_direction(&self) -> PatternDirection {
@@ -147,49 +152,36 @@ impl Adjacency {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Pattern {
     /// Key: edge id, Value: struct PatternEdge
     edges: VecMap<PatternEdge>,
-    /// Key: vertex id, Value: struct PatternVertex
+    /// Key: vertex id, Value: the vertex in the pattern
     vertices: VecMap<PatternVertex>,
-    /// Key: edge label id, Value: BTreeSet<edge id>
-    edge_label_map: BTreeMap<PatternLabelId, BTreeSet<PatternId>>,
-    /// Key: vertex label id, Value: BTreeSet<vertex id>
-    vertex_label_map: BTreeMap<PatternLabelId, BTreeSet<PatternId>>,
+    /// Key: edge id, Value: struct PatternEdgeData
+    /// - store data attaching to PatternEdge
+    edges_data: VecMap<PatternEdgeData>,
+    /// Key: vertex id, Value: struct PatternVertexData
+    /// - store data attaching to PatternVertex
+    vertices_data: VecMap<PatternVertexData>,
     /// Key: edge's Tag info, Value: edge id
-    edge_tag_map: BiBTreeMap<TagId, PatternId>,
+    /// - use a Tag to locate an Edge
+    edge_tag_map: BTreeMap<TagId, PatternId>,
     /// Key: vertex's Tag info, Value: vertex id
-    vertex_tag_map: BiBTreeMap<TagId, PatternId>,
-    /// Key: edge id, Value: predicate of the edge
-    edge_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
-    /// Key: vertex id, Value: predicate of the vertex
-    vertex_predicate_map: BTreeMap<PatternId, common_pb::Expression>,
-    /// Key: vertex id, Value: struct Vec<Adjacency>
-    /// - store outgoing adjacent info of each vertex
-    out_adjacencies_map: VecMap<Vec<Adjacency>>,
-    /// Key: vertex id, Value: Vec<Adjacency>
-    /// - stroe incoming adjacent info of each vertex
-    in_adjacencies_map: VecMap<Vec<Adjacency>>,
+    /// - use a Tag to locate a vertex
+    vertex_tag_map: BTreeMap<TagId, PatternId>,
 }
 
 /// Initialze a Pattern from just a single Pattern Vertex
-///
-/// The Pattern Vertex's id and label is kept and all other info is cleared
 impl From<PatternVertex> for Pattern {
-    fn from(mut vertex: PatternVertex) -> Pattern {
-        vertex.rank = 0;
+    fn from(vertex: PatternVertex) -> Pattern {
         Pattern {
             edges: VecMap::new(),
             vertices: VecMap::from_iter([(vertex.id, vertex)]),
-            edge_label_map: BTreeMap::new(),
-            vertex_label_map: BTreeMap::from([(vertex.label, BTreeSet::from([vertex.id]))]),
-            edge_tag_map: BiBTreeMap::new(),
-            vertex_tag_map: BiBTreeMap::new(),
-            edge_predicate_map: BTreeMap::new(),
-            vertex_predicate_map: BTreeMap::new(),
-            out_adjacencies_map: VecMap::new(),
-            in_adjacencies_map: VecMap::new(),
+            edges_data: VecMap::new(),
+            vertices_data: VecMap::from_iter([(vertex.id, PatternVertexData::default())]),
+            edge_tag_map: BTreeMap::new(),
+            vertex_tag_map: BTreeMap::new(),
         }
     }
 }
@@ -198,63 +190,40 @@ impl From<PatternVertex> for Pattern {
 impl TryFrom<Vec<PatternEdge>> for Pattern {
     type Error = IrError;
 
-    fn try_from(edges: Vec<PatternEdge>) -> IrResult<Self> {
+    fn try_from(edges: Vec<PatternEdge>) -> IrResult<Pattern> {
         if !edges.is_empty() {
-            let mut new_pattern = Pattern {
-                edges: VecMap::new(),
-                vertices: VecMap::new(),
-                edge_label_map: BTreeMap::new(),
-                vertex_label_map: BTreeMap::new(),
-                edge_tag_map: BiBTreeMap::new(),
-                vertex_tag_map: BiBTreeMap::new(),
-                edge_predicate_map: BTreeMap::new(),
-                vertex_predicate_map: BTreeMap::new(),
-                out_adjacencies_map: VecMap::new(),
-                in_adjacencies_map: VecMap::new(),
-            };
+            let mut new_pattern = Pattern::default();
             for edge in edges {
                 // Add the new Pattern Edge to the new Pattern
-                new_pattern.edges.insert(edge.id, edge);
-                let edge_set = new_pattern
-                    .edge_label_map
-                    .entry(edge.label)
-                    .or_insert(BTreeSet::new());
-                edge_set.insert(edge.id);
+                new_pattern.edges.insert(edge.id, edge.clone());
+                new_pattern
+                    .edges_data
+                    .insert(edge.id, PatternEdgeData::default());
                 // Add or update the start vertex to the new Pattern
-                new_pattern
+                let start_vertex = new_pattern
                     .vertices
-                    .entry(edge.start_v_id)
-                    .or_insert(PatternVertex { id: edge.start_v_id, label: edge.start_v_label, rank: 0 });
+                    .entry(edge.start_vertex.id)
+                    .or_insert(edge.start_vertex);
+                // Update start vertex's outgoing info
                 new_pattern
-                    .vertex_label_map
-                    .entry(edge.start_v_label)
-                    .or_insert(BTreeSet::new())
-                    .insert(edge.start_v_id);
+                    .vertices_data
+                    .entry(start_vertex.id)
+                    .or_insert(PatternVertexData::default())
+                    .out_adjacencies
+                    .push(Adjacency::new(start_vertex, &edge)?);
                 // Add or update the end vertex to the new Pattern
-                new_pattern
+                let end_vertex = new_pattern
                     .vertices
-                    .entry(edge.end_v_id)
-                    .or_insert(PatternVertex { id: edge.end_v_id, label: edge.end_v_label, rank: 0 });
+                    .entry(edge.end_vertex.id)
+                    .or_insert(edge.end_vertex.into());
+                // Update end vertex's incoming info
                 new_pattern
-                    .vertex_label_map
-                    .entry(edge.end_v_label)
-                    .or_insert(BTreeSet::new())
-                    .insert(edge.end_v_id);
-                // Update the vertex adjacencies map info
-                // start vertex's outgoing info
-                new_pattern
-                    .out_adjacencies_map
-                    .entry(edge.start_v_id)
-                    .or_insert(vec![])
-                    .push(Adjacency::new(edge.id, edge.end_v_id, PatternDirection::Out));
-                // end vertex's incoming info
-                new_pattern
-                    .in_adjacencies_map
-                    .entry(edge.end_v_id)
-                    .or_insert(vec![])
-                    .push(Adjacency::new(edge.id, edge.start_v_id, PatternDirection::In));
+                    .vertices_data
+                    .entry(end_vertex.id)
+                    .or_insert(PatternVertexData::default())
+                    .in_adjacencies
+                    .push(Adjacency::new(end_vertex, &edge)?);
             }
-
             new_pattern.vertex_ranking();
             Ok(new_pattern)
         } else {
@@ -263,6 +232,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
     }
 }
 
+/// Initialize a Pattern from a protobuf Pattern
 impl Pattern {
     pub fn from_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Pattern> {
         use pb::pattern::binder::Item as BinderItem;
@@ -380,9 +350,15 @@ impl Pattern {
         }
 
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
-            pattern.vertex_tag_map = tag_v_id_map.into_iter().collect();
-            pattern.edge_predicate_map = e_id_predicate_map;
-            pattern.vertex_predicate_map = v_id_predicate_map;
+            for (tag, v_id) in tag_v_id_map {
+                pattern.set_vertex_tag(tag, v_id)?;
+            }
+            for (v_id, predicate) in v_id_predicate_map {
+                pattern.set_vertex_predicate(v_id, predicate)?;
+            }
+            for (e_id, predicate) in e_id_predicate_map {
+                pattern.set_edge_predicate(e_id, predicate)?;
+            }
             Ok(pattern)
         })
     }
@@ -509,10 +485,6 @@ fn assign_expand_dst_vertex_id(
 
 /// Based on the vertex labels candidates and required src/dst vertex label,
 /// assign the src and dst vertex with vertex labels meeting the requirement
-///
-/// For a chosen candidates:
-/// - if the required src label is some, its src vertex label must match the requirement
-/// - if the required dst label is some, its dst vertex label must match the requirement
 fn assign_src_dst_vertex_labels(
     pattern_meta: &PatternMeta, edge_label: PatternLabelId, edge_direction: pb::edge_expand::Direction,
     required_src_label: Option<PatternLabelId>, required_dst_label: Option<PatternLabelId>,
@@ -552,6 +524,9 @@ fn assign_src_dst_vertex_labels(
                     ),
             ),
         };
+    // For a chosen candidates:
+    // - if the required src label is some, its src vertex label must match the requirement
+    // - if the required dst label is some, its dst vertex label must match the requirement
     (if let (Some(src_label), Some(dst_label)) = (required_src_label, required_dst_label) {
         vertex_labels_candis
             .filter(|&(src_label_candi, dst_label_candi, _)| {
@@ -577,99 +552,203 @@ fn generate_new_pattern_edge(
     edge_id: PatternId, edge_label: PatternLabelId, src_vertex_id: PatternId, dst_vertex_id: PatternId,
     src_vertex_label: PatternLabelId, dst_vertex_label: PatternLabelId, direction: PatternDirection,
 ) -> PatternEdge {
-    if let PatternDirection::Out = direction {
-        PatternEdge::new(
-            edge_id,
-            edge_label,
-            src_vertex_id,
-            dst_vertex_id,
-            src_vertex_label,
-            dst_vertex_label,
+    let (start_vertex, end_vertex) = if let PatternDirection::Out = direction {
+        (
+            PatternVertex::new(src_vertex_id, src_vertex_label),
+            PatternVertex::new(dst_vertex_id, dst_vertex_label),
         )
     } else {
-        PatternEdge::new(
-            edge_id,
-            edge_label,
-            dst_vertex_id,
-            src_vertex_id,
-            dst_vertex_label,
-            src_vertex_label,
+        (
+            PatternVertex::new(dst_vertex_id, dst_vertex_label),
+            PatternVertex::new(src_vertex_id, src_vertex_label),
         )
+    };
+    PatternEdge::new(edge_id, edge_label, start_vertex, end_vertex)
+}
+
+/// Getters of fields of Pattern
+impl Pattern {
+    /// Get a PatternEdge struct from an edge id
+    pub fn get_edge(&self, edge_id: PatternId) -> Option<PatternEdge> {
+        self.edges.get(edge_id).cloned()
+    }
+
+    /// Get PatternTuple for Edge from Given Tag
+    pub fn get_edge_from_tag(&self, edge_tag: TagId) -> Option<PatternEdge> {
+        self.edge_tag_map
+            .get(&edge_tag)
+            .and_then(|&edge_id| self.get_edge(edge_id))
+    }
+
+    /// Get the total number of edges in the pattern
+    pub fn get_edges_num(&self) -> usize {
+        self.edges.len()
+    }
+
+    /// Get the minimum edge label id of the current pattern
+    pub fn get_min_edge_label(&self) -> Option<PatternLabelId> {
+        self.edges
+            .iter()
+            .map(|(_, edge)| edge.label)
+            .min()
+    }
+
+    /// Get the maximum edge label id of the current pattern
+    pub fn get_max_edge_label(&self) -> Option<PatternLabelId> {
+        self.edges
+            .iter()
+            .map(|(_, edge)| edge.label)
+            .max()
+    }
+
+    /// Get a PatternEdge's Tag info
+    pub fn get_edge_tag(&self, edge_id: PatternId) -> Option<TagId> {
+        self.edges_data
+            .get(edge_id)
+            .and_then(|edge_data| edge_data.tag)
+    }
+
+    /// Get the predicate requirement of a PatternEdge
+    pub fn get_edge_predicate(&self, edge_id: PatternId) -> Option<&common_pb::Expression> {
+        if let Some(edge_data) = self.edges_data.get(edge_id) {
+            edge_data.predicate.as_ref()
+        } else {
+            None
+        }
+    }
+
+    /// Get a PatternVertex struct from a vertex id
+    pub fn get_vertex(&self, vertex_id: PatternId) -> Option<PatternVertex> {
+        self.vertices.get(vertex_id).cloned()
+    }
+
+    /// Get PatternVertex Reference from Given Tag
+    pub fn get_vertex_from_tag(&self, vertex_tag: TagId) -> Option<PatternVertex> {
+        self.vertex_tag_map
+            .get(&vertex_tag)
+            .and_then(|&vertex_id| self.get_vertex(vertex_id))
+    }
+
+    /// Get the total number of vertices in the pattern
+    pub fn get_vertices_num(&self) -> usize {
+        self.vertices.len()
+    }
+
+    pub fn get_min_vertex_label(&self) -> Option<PatternLabelId> {
+        self.vertices
+            .iter()
+            .map(|(_, vertex)| vertex.label)
+            .min()
+    }
+
+    /// Get the maximum vertex label id of the current pattern
+    pub fn get_max_vertex_label(&self) -> Option<PatternLabelId> {
+        self.vertices
+            .iter()
+            .map(|(_, vertex)| vertex.label)
+            .max()
+    }
+
+    /// Get Vertex Rank from Vertex ID Reference
+    pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<PatternRankId> {
+        self.vertices_data
+            .get(vertex_id)
+            .map(|vertex_data| vertex_data.rank)
+    }
+
+    pub fn get_vertex_tag(&self, vertex_id: PatternId) -> Option<TagId> {
+        self.vertices_data
+            .get(vertex_id)
+            .and_then(|vertex_data| vertex_data.tag)
+    }
+
+    /// Get the predicate requirement of a PatternVertex
+    pub fn get_vertex_predicate(&self, vertex_id: PatternId) -> Option<&common_pb::Expression> {
+        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
+            vertex_data.predicate.as_ref()
+        } else {
+            None
+        }
+    }
+
+    /// Count how many outgoing edges connect to this vertex
+    pub fn get_vertex_out_degree(&self, vertex_id: PatternId) -> usize {
+        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
+            vertex_data.out_adjacencies.len()
+        } else {
+            0
+        }
+    }
+
+    /// Count how many incoming edges connect to this vertex
+    pub fn get_vertex_in_degree(&self, vertex_id: PatternId) -> usize {
+        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
+            vertex_data.in_adjacencies.len()
+        } else {
+            0
+        }
+    }
+
+    /// Count how many edges connect to this vertex
+    pub fn get_vertex_degree(&self, vertex_id: PatternId) -> usize {
+        self.get_vertex_out_degree(vertex_id) + self.get_vertex_in_degree(vertex_id)
     }
 }
 
 /// Iterators of fields of Pattern
 impl Pattern {
     /// Iterate Edges
-    pub fn edges_iter(&self) -> DynIter<&PatternEdge> {
-        Box::new(self.edges.iter().map(|(_, edge)| edge))
-    }
-
-    /// Iterate Vertices
-    pub fn vertices_iter(&self) -> DynIter<&PatternVertex> {
-        Box::new(self.vertices.iter().map(|(_, vertex)| vertex))
+    pub fn edges_iter(&self) -> DynIter<PatternEdge> {
+        Box::new(self.edges.iter().map(|(_, edge)| edge.clone()))
     }
 
     /// Iterate Edges with the given edge label
-    pub fn edges_iter_by_label(&self, edge_label: PatternLabelId) -> DynIter<&PatternEdge> {
-        match self.edge_label_map.get(&edge_label) {
-            Some(edges_set) => Box::new(
-                edges_set
-                    .iter()
-                    .map(move |edge_id| self.edges.get(*edge_id).unwrap()),
-            ),
-            None => Box::new(std::iter::empty()),
-        }
-    }
-
-    /// Iterate Vertices with the given vertex label
-    pub fn vertices_iter_by_label(&self, vertex_label: PatternLabelId) -> DynIter<&PatternVertex> {
-        match self.vertex_label_map.get(&vertex_label) {
-            Some(vertices_set) => Box::new(
-                vertices_set
-                    .iter()
-                    .map(move |vertex_id| self.vertices.get(*vertex_id).unwrap()),
-            ),
-            None => Box::new(std::iter::empty()),
-        }
-    }
-
-    /// Iterate Edge Labels with Edges has this Label
-    pub fn edge_label_map_iter(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
+    pub fn edges_iter_by_label(&self, edge_label: PatternLabelId) -> DynIter<PatternEdge> {
         Box::new(
-            self.edge_label_map
+            self.edges
                 .iter()
-                .map(|(edge_label, edges)| (*edge_label, edges)),
-        )
-    }
-
-    /// Iterate Vertex Labels with Vertices has this Label
-    pub fn vertex_label_map_iter(&self) -> DynIter<(PatternLabelId, &BTreeSet<PatternId>)> {
-        Box::new(
-            self.vertex_label_map
-                .iter()
-                .map(|(vertex_label, vertices)| (*vertex_label, vertices)),
+                .filter(move |(_, edge)| edge.label == edge_label)
+                .map(|(_, edge)| edge.clone()),
         )
     }
 
     /// Iterate over edges that has tag
-    pub fn edges_with_tag_iter(&self) -> DynIter<PatternId> {
-        Box::new(self.edge_tag_map.iter().map(|(_, e_id)| *e_id))
+    pub fn edges_with_tag_iter(&self) -> DynIter<PatternEdge> {
+        Box::new(
+            self.edge_tag_map
+                .iter()
+                .map(move |(_, &edge_id)| self.get_edge(edge_id).unwrap()),
+        )
+    }
+
+    /// Iterate Vertices
+    pub fn vertices_iter(&self) -> DynIter<PatternVertex> {
+        Box::new(self.vertices.iter().map(|(_, &vertex)| vertex))
+    }
+
+    /// Iterate Vertices with the given vertex label
+    pub fn vertices_iter_by_label(&self, vertex_label: PatternLabelId) -> DynIter<PatternVertex> {
+        Box::new(
+            self.vertices
+                .iter()
+                .filter(move |(_, vertex)| vertex.label == vertex_label)
+                .map(|(_, vertex)| vertex.clone()),
+        )
     }
 
     /// Iterate over vertices that has tag
-    pub fn vertices_with_tag_iter(&self) -> DynIter<PatternId> {
+    pub fn vertices_with_tag_iter(&self) -> DynIter<PatternVertex> {
         Box::new(
             self.vertex_tag_map
                 .iter()
-                .map(|(_, v_id)| *v_id),
+                .map(move |(_, &vertex_id)| self.get_vertex(vertex_id).unwrap()),
         )
     }
 
     /// Iterate all outgoing edges from the given vertex
     pub fn out_adjacencies_iter(&self, vertex_id: PatternId) -> DynIter<Adjacency> {
-        if let Some(adjacencies) = self.out_adjacencies_map.get(vertex_id) {
-            Box::new(adjacencies.iter().cloned())
+        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
+            Box::new(vertex_data.out_adjacencies.iter().cloned())
         } else {
             Box::new(std::iter::empty())
         }
@@ -677,8 +756,8 @@ impl Pattern {
 
     /// Iterate all incoming edges to the given vertex
     pub fn in_adjacencies_iter(&self, vertex_id: PatternId) -> DynIter<Adjacency> {
-        if let Some(adjacencies) = self.in_adjacencies_map.get(vertex_id) {
-            Box::new(adjacencies.iter().cloned())
+        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
+            Box::new(vertex_data.in_adjacencies.iter().cloned())
         } else {
             Box::new(std::iter::empty())
         }
@@ -693,167 +772,100 @@ impl Pattern {
     }
 }
 
-/// Methods to access the fields of a Pattern or get some info from Pattern
+/// Setters of fields of Pattern
 impl Pattern {
-    /// Get PatternEdge Reference from Edge ID
-    pub fn get_edge_from_id(&self, edge_id: PatternId) -> Option<&PatternEdge> {
-        self.edges.get(edge_id)
-    }
-
-    /// Get PatternEdge Mutable Reference from Edge ID
-    pub fn get_edge_mut_from_id(&mut self, edge_id: PatternId) -> Option<&mut PatternEdge> {
-        self.edges.get_mut(edge_id)
-    }
-
-    /// Get PatternVertex Reference from Vertex ID
-    pub fn get_vertex_from_id(&self, vertex_id: PatternId) -> Option<&PatternVertex> {
-        self.vertices.get(vertex_id)
-    }
-
-    /// Get PatternVertex Mutable Reference from Vertex ID
-    pub fn get_vertex_mut_from_id(&mut self, vertex_id: PatternId) -> Option<&mut PatternVertex> {
-        self.vertices.get_mut(vertex_id)
-    }
-
-    /// Get PatternEdge Reference from Given Tag
-    pub fn get_edge_from_tag(&self, edge_tag: TagId) -> Option<&PatternEdge> {
-        self.edge_tag_map
-            .get_by_left(&edge_tag)
-            .and_then(|id| self.edges.get(*id))
-    }
-
-    /// Get PatternVertex Reference from Given Tag
-    pub fn get_vertex_from_tag(&self, vertex_tag: TagId) -> Option<&PatternEdge> {
-        self.vertex_tag_map
-            .get_by_left(&vertex_tag)
-            .and_then(|id| self.edges.get(*id))
-    }
-
     /// Assign a PatternEdge of the Pattern with the Given Tag
-    pub fn add_edge_tag(&mut self, edge_tag: TagId, edge_id: PatternId) {
-        self.edge_tag_map
-            .insert(edge_tag.clone(), edge_id);
-    }
-
-    /// Assign a PatternVertex of th Pattern with the Given Tag
-    pub fn add_vertex_tag(&mut self, vertex_tag: TagId, vertex_id: PatternId) {
-        self.vertex_tag_map
-            .insert(vertex_tag.clone(), vertex_id);
-    }
-
-    /// Get Vertex Index from Vertex ID Reference
-    pub fn get_vertex_rank(&self, v_id: PatternId) -> PatternRankId {
-        self.vertices.get(v_id).unwrap().get_rank()
-    }
-
-    /// Get the rank of both start and end vertices of an edge
-    pub fn get_edge_vertices_rank(&self, edge_id: PatternId) -> Option<(PatternRankId, PatternRankId)> {
-        if let Some(edge) = self.get_edge_from_id(edge_id) {
-            let start_v_rank = self.get_vertex_rank(edge.get_start_vertex_id());
-            let end_v_rank = self.get_vertex_rank(edge.get_end_vertex_id());
-            Some((start_v_rank, end_v_rank))
+    pub fn set_edge_tag(&mut self, edge_tag: TagId, edge_id: PatternId) -> IrResult<()> {
+        // If the tag is previously assigned to another edge, remove it
+        if let Some(&old_edge_id) = self.edge_tag_map.get(&edge_tag) {
+            self.edges_data
+                .get_mut(old_edge_id)
+                .ok_or(IrError::MissingData(format!(
+                    "Edge with id {} required to edit is nonexistent in the pattern",
+                    old_edge_id
+                )))?
+                .tag = None;
+        }
+        // Assign the tag to the edge
+        if let Some(edge_data) = self.edges_data.get_mut(edge_id) {
+            self.edge_tag_map.insert(edge_tag, edge_id);
+            edge_data.tag = Some(edge_tag);
+            Ok(())
         } else {
-            None
+            Err(IrError::MissingData(format!(
+                "Edge with id {} required to edit is nonexistent in the pattern",
+                edge_id
+            )))
         }
     }
 
-    /// Get the total number of edges in the pattern
-    pub fn get_edge_num(&self) -> usize {
-        self.edges.len()
-    }
-
-    /// Get the total number of vertices in the pattern
-    pub fn get_vertex_num(&self) -> usize {
-        self.vertices.len()
-    }
-
-    /// Get the total number of edge labels in the pattern
-    pub fn get_edge_label_num(&self) -> usize {
-        self.edge_label_map.len()
-    }
-
-    /// Get the total number of vertex labels in the pattern
-    pub fn get_vertex_label_num(&self) -> usize {
-        self.vertex_label_map.len()
-    }
-
-    /// Get the maximum edge label id of the current pattern
-    pub fn get_max_edge_label(&self) -> Option<PatternLabelId> {
-        match self.edge_label_map.iter().last() {
-            Some((max_label, _)) => Some(*max_label),
-            None => None,
-        }
-    }
-
-    /// Get the maximum vertex label id of the current pattern
-    pub fn get_max_vertex_label(&self) -> Option<PatternLabelId> {
-        match self.vertex_label_map.iter().last() {
-            Some((max_label, _)) => Some(*max_label),
-            None => None,
-        }
-    }
-
-    /// Check whether the edge has predicate or not
-    pub fn edge_has_predicate(&self, edge_id: PatternId) -> bool {
-        self.edge_predicate_map.contains_key(&edge_id)
-    }
-
-    /// Check whether the edge has predicate or not
-    pub fn vertex_has_predicate(&self, vertex_id: PatternId) -> bool {
-        self.vertex_predicate_map
-            .contains_key(&vertex_id)
-    }
-
-    /// Get the predicate requirement of a PatternEdge
-    pub fn get_edge_predicate(&self, edge_id: PatternId) -> Option<&common_pb::Expression> {
-        self.edge_predicate_map.get(&edge_id)
-    }
-
-    /// Get the predicate requirement of a PatternVertex
-    pub fn get_vertex_predicate(&self, vertex_id: PatternId) -> Option<&common_pb::Expression> {
-        self.vertex_predicate_map.get(&vertex_id)
-    }
-
-    /// Add predicate requirement to a PatternEdge
-    pub fn add_edge_predicate(&mut self, edge_id: PatternId, predicate: common_pb::Expression) {
-        self.edge_predicate_map
-            .insert(edge_id, predicate);
-    }
-
-    /// Add predicate requirement to a PatternVertex
-    pub fn add_vertex_predicate(&mut self, vertex_id: PatternId, predicate: common_pb::Expression) {
-        self.vertex_predicate_map
-            .insert(vertex_id, predicate);
-    }
-
-    /// Given a vertex label, return all vertices with the label
-    pub fn get_vertices_from_label(&self, vertex_label: PatternLabelId) -> Option<&BTreeSet<PatternId>> {
-        self.vertex_label_map.get(&vertex_label)
-    }
-
-    /// Given an edge label, return all edges with the label
-    pub fn get_edges_from_label(&self, edge_label: PatternLabelId) -> Option<&BTreeSet<PatternId>> {
-        self.edge_label_map.get(&edge_label)
-    }
-
-    pub fn get_vertex_out_degree(&self, vertex_id: PatternId) -> usize {
-        if let Some(adjacencies) = self.out_adjacencies_map.get(vertex_id) {
-            adjacencies.len()
+    /// Set predicate requirement of a PatternEdge
+    pub fn set_edge_predicate(
+        &mut self, edge_id: PatternId, predicate: common_pb::Expression,
+    ) -> IrResult<()> {
+        if let Some(edge_data) = self.edges_data.get_mut(edge_id) {
+            edge_data.predicate = Some(predicate);
+            Ok(())
         } else {
-            0
+            Err(IrError::MissingData(format!(
+                "Edge with id {} required to edit is nonexistent in the pattern",
+                edge_id
+            )))
         }
     }
 
-    pub fn get_vertex_in_degree(&self, vertex_id: PatternId) -> usize {
-        if let Some(adjacencies) = self.in_adjacencies_map.get(vertex_id) {
-            adjacencies.len()
+    /// Assign a PatternVertex with the given rank
+    pub fn set_vertex_rank(&mut self, rank: PatternRankId, vertex_id: PatternId) -> IrResult<()> {
+        if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
+            vertex_data.rank = rank;
+            Ok(())
         } else {
-            0
+            Err(IrError::MissingData(format!(
+                "Vertex with id {} required to edit is nonexistent in the pattern",
+                vertex_id
+            )))
         }
     }
 
-    pub fn get_vertex_degree(&self, vertex_id: PatternId) -> usize {
-        self.get_vertex_out_degree(vertex_id) + self.get_vertex_in_degree(vertex_id)
+    /// Assign a PatternVertex with the given tag
+    pub fn set_vertex_tag(&mut self, vertex_tag: TagId, vertex_id: PatternId) -> IrResult<()> {
+        // If the tag is previously assigned to another vertex, remove it
+        if let Some(&old_vertex_id) = self.vertex_tag_map.get(&vertex_tag) {
+            self.vertices_data
+                .get_mut(old_vertex_id)
+                .ok_or(IrError::MissingData(format!(
+                    "Vertex with id {} required to edit is nonexistent in the pattern",
+                    old_vertex_id
+                )))?
+                .tag = None;
+        }
+        // Assign the tag to the vertex
+        if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
+            self.vertex_tag_map
+                .insert(vertex_tag, vertex_id);
+            vertex_data.tag = Some(vertex_tag);
+            Ok(())
+        } else {
+            Err(IrError::MissingData(format!(
+                "Vertex with id {} required to edit is nonexistent in the pattern",
+                vertex_id
+            )))
+        }
+    }
+
+    /// Set predicate requirement of a PatternVertex
+    pub fn set_vertex_predicate(
+        &mut self, vertex_id: PatternId, predicate: common_pb::Expression,
+    ) -> IrResult<()> {
+        if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
+            vertex_data.predicate = Some(predicate);
+            Ok(())
+        } else {
+            Err(IrError::MissingData(format!(
+                "Vertex with id {} required to edit is nonexistent in the pattern",
+                vertex_id
+            )))
+        }
     }
 }
 
@@ -862,47 +874,60 @@ impl Pattern {
     /// Get the Order of two PatternEdges in a Pattern
     /// Vertex Indices are taken into consideration
     fn cmp_edges(&self, e1_id: PatternId, e2_id: PatternId) -> Ordering {
+        let e1 = self
+            .get_edge(e1_id)
+            .expect(&format!("Edge with id {} is nonexistent in the pattern", e1_id));
+        let e2 = self
+            .get_edge(e2_id)
+            .expect(&format!("Edge with id {} is nonexistent in the pattern", e2_id));
         if e1_id == e2_id {
             return Ordering::Equal;
         }
-        let e1 = self.edges.get(e1_id).unwrap();
-        let e2 = self.edges.get(e2_id).unwrap();
         // Compare the label of starting vertex
-        match e1.start_v_label.cmp(&e2.start_v_label) {
+        match e1
+            .start_vertex
+            .label
+            .cmp(&e2.start_vertex.label)
+        {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Compare the label of ending vertex
-        match e1.end_v_label.cmp(&e2.end_v_label) {
+        match e1.end_vertex.label.cmp(&e2.end_vertex.label) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Compare Edge Label
         match e1.label.cmp(&e2.label) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
-        // Get orders for starting vertex
-        let (e1_start_v_rank, e1_end_v_rank) = self
-            .get_edge_vertices_rank(e1.get_id())
-            .unwrap();
-        let (e2_start_v_rank, e2_end_v_rank) = self
-            .get_edge_vertices_rank(e2.get_id())
-            .unwrap();
         // Compare the order of the starting vertex
+        let e1_start_v_rank = self
+            .get_vertex_rank(e1.start_vertex.id)
+            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e1.start_vertex.id));
+        let e2_start_v_rank = self
+            .get_vertex_rank(e2.start_vertex.id)
+            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e2.start_vertex.id));
         match e1_start_v_rank.cmp(&e2_start_v_rank) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Compare the order of ending vertex
+        let e1_end_v_rank = self
+            .get_vertex_rank(e1.end_vertex.id)
+            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e1.end_vertex.id));
+        let e2_end_v_rank = self
+            .get_vertex_rank(e2.end_vertex.id)
+            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e2.end_vertex.id));
         match e1_end_v_rank.cmp(&e2_end_v_rank) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Return as equal if still cannot distinguish
         Ordering::Equal
@@ -921,20 +946,14 @@ impl Pattern {
         let mut vertex_adjacencies_map: HashMap<PatternId, Vec<Adjacency>> =
             self.get_vertex_adjacencies_map();
         // Initially, mark all the vertices as unfixed
-        let mut vertices_with_unfixed_rank: HashSet<PatternId> = HashSet::new();
-        for vertex in self.vertices_iter() {
-            vertices_with_unfixed_rank.insert(vertex.get_id());
-        }
+        let mut vertices_with_unfixed_rank: BTreeSet<PatternVertex> = self.vertices_iter().collect();
         // Set initial ranks by comparing the labels & in/out degrees
         let mut is_rank_changed: bool = self
             .set_rank_by_neighbor_info(&vertex_adjacencies_map, &mut vertices_with_unfixed_rank)
             .unwrap();
         // Keep updating ranks by ranks computed in the last iteration
-        loop {
-            // Stop until the ranks can no longer be updated
-            if !is_rank_changed {
-                break;
-            }
+        // Stop until the ranks can no longer be updated
+        while is_rank_changed {
             // Update the Order of Neighbor Edges Based on the ranks of end vertices only
             self.update_neighbor_edges_map(&mut vertex_adjacencies_map);
             // Update vertex ranks by newly updated ranks in the last iteration
@@ -951,26 +970,17 @@ impl Pattern {
     /// The vector of neighbor edges consists of two parts: outgoing edges and incoming edges
     ///
     /// Each neighbor edge element stores 3 values: edge id, target vertex id, and edge direction
-    pub fn get_vertex_adjacencies_map(&self) -> HashMap<PatternId, Vec<Adjacency>> {
+    fn get_vertex_adjacencies_map(&self) -> HashMap<PatternId, Vec<Adjacency>> {
         let mut vertex_adjacencies_map = HashMap::new();
-        for v_id in self.vertices_iter().map(|v| v.id) {
-            let mut outgoing_edges = self
-                .out_adjacencies_map
-                .get(v_id)
-                .cloned()
-                .unwrap_or(vec![]);
-            let mut incoming_edges = self
-                .in_adjacencies_map
-                .get(v_id)
-                .cloned()
-                .unwrap_or(vec![]);
+        for v_id in self.vertices_iter().map(|v| v.get_id()) {
+            let mut adjacencies: Vec<Adjacency> = self.adjacencies_iter(v_id).collect();
             // Sort the edges
-            outgoing_edges.sort_by(|adj1, adj2| self.cmp_edges(adj1.get_edge_id(), adj2.get_edge_id()));
-            incoming_edges.sort_by(|adj1, adj2| self.cmp_edges(adj1.get_edge_id(), adj2.get_edge_id()));
-            // Concat two edge info vector
-            outgoing_edges.append(&mut incoming_edges);
-            // Insert into the Hashmap
-            vertex_adjacencies_map.insert(v_id, outgoing_edges);
+            adjacencies.sort_by(|adj1, adj2| match adj1.get_direction().cmp(&adj2.get_direction()) {
+                Ordering::Less => Ordering::Less,
+                Ordering::Greater => Ordering::Greater,
+                Ordering::Equal => self.cmp_edges(adj1.get_edge_id(), adj2.get_edge_id()),
+            });
+            vertex_adjacencies_map.insert(v_id, adjacencies);
         }
 
         vertex_adjacencies_map
@@ -983,34 +993,27 @@ impl Pattern {
     /// If nothing changed, we conclude that the ranks of all vertices have been set and are stable
     fn set_rank_by_neighbor_info(
         &mut self, vertex_adjacencies_map: &HashMap<PatternId, Vec<Adjacency>>,
-        vertices_with_unfixed_rank: &mut HashSet<PatternId>,
+        vertices_with_unfixed_rank: &mut BTreeSet<PatternVertex>,
     ) -> IrResult<bool> {
         // Mark whether there is a change of vertex rank
         let mut is_rank_changed: bool = false;
         // Stores vertex labels that have been dealth with
         let mut visited_labels: HashSet<PatternLabelId> = HashSet::new();
         // Store vertices that should be removed from the set of unfixed vertices
-        let mut vertices_with_fixed_rank: Vec<PatternId> = Vec::new();
+        let mut vertices_with_fixed_rank: Vec<PatternVertex> = Vec::new();
         // Store the mapping from vertex id to rank
         let mut vertex_rank_map: HashMap<PatternId, PatternRankId> = HashMap::new();
-        for v_id in vertices_with_unfixed_rank.iter() {
-            let v_label: PatternLabelId = self
-                .get_vertex_from_id(*v_id)
-                .unwrap()
-                .get_label();
+        for v_label in vertices_with_unfixed_rank
+            .iter()
+            .map(|vertex| vertex.get_label())
+        {
             if visited_labels.contains(&v_label) {
                 continue;
             }
             visited_labels.insert(v_label);
             // Collect all vertices with the specified label
-            let same_label_vertex_set: &BTreeSet<PatternId> =
-                self.get_vertices_from_label(v_label).unwrap();
-            let vertex_num = same_label_vertex_set.len();
-            // Tranform set to vector
-            let mut same_label_vertex_vec: Vec<PatternId> = Vec::with_capacity(vertex_num);
-            for vertex_id in same_label_vertex_set.iter() {
-                same_label_vertex_vec.push(*vertex_id);
-            }
+            let same_label_vertex_vec: Vec<PatternVertex> = self.vertices_iter_by_label(v_label).collect();
+            let vertex_num = same_label_vertex_vec.len();
             // Record the rank and is_rank_fixed properties for each vertex
             let mut vertex_rank_vec: Vec<PatternRankId> = vec![0; vertex_num];
             let mut is_rank_fixed_vec: Vec<bool> = vec![true; vertex_num];
@@ -1018,8 +1021,8 @@ impl Pattern {
             for i in 0..vertex_num {
                 for j in (i + 1)..vertex_num {
                     match self.cmp_vertices_by_neighbor_info(
-                        same_label_vertex_vec[i],
-                        same_label_vertex_vec[j],
+                        same_label_vertex_vec[i].get_id(),
+                        same_label_vertex_vec[j].get_id(),
                         vertex_adjacencies_map,
                     ) {
                         Ordering::Greater => vertex_rank_vec[i] += 1,
@@ -1035,20 +1038,18 @@ impl Pattern {
                     vertices_with_fixed_rank.push(same_label_vertex_vec[i]);
                 }
                 // Update Vertex Rank on the map
-                vertex_rank_map.insert(same_label_vertex_vec[i], vertex_rank_vec[i]);
+                vertex_rank_map.insert(same_label_vertex_vec[i].get_id(), vertex_rank_vec[i]);
             }
         }
         // Remove vertices that have fixed rank
-        for v_id in vertices_with_fixed_rank {
-            vertices_with_unfixed_rank.remove(&v_id);
+        for v_tuple in vertices_with_fixed_rank {
+            vertices_with_unfixed_rank.remove(&v_tuple);
         }
         // Update vertex ranks on pattern
         for (v_id, v_rank) in vertex_rank_map.iter() {
             if *v_rank != 0 {
                 is_rank_changed = true;
-                self.get_vertex_mut_from_id(*v_id)
-                    .unwrap()
-                    .set_rank(*v_rank);
+                self.set_vertex_rank(*v_rank, *v_id)?;
             }
         }
 
@@ -1062,7 +1063,7 @@ impl Pattern {
     /// If nothing changed, we conclude that the ranks of all vertices have been set and are stable
     fn update_rank(
         &mut self, vertex_adjacencies_map: &HashMap<PatternId, Vec<Adjacency>>,
-        vertices_with_unfixed_rank: &mut HashSet<PatternId>,
+        vertices_with_unfixed_rank: &mut BTreeSet<PatternVertex>,
     ) -> IrResult<bool> {
         if vertices_with_unfixed_rank.len() == 0 {
             return Ok(false);
@@ -1074,50 +1075,50 @@ impl Pattern {
         // Store vertices that should be removed from unknown vertex set
         // fixed rank means that the vertex has a unique rank and
         // no other vertices with the same label share the same rank with it
-        let mut vertices_with_fixed_rank: Vec<PatternId> = Vec::new();
+        let mut vertices_with_fixed_rank: Vec<PatternVertex> = Vec::new();
         // Store the mapping from vertex id to its rank
         let mut vertex_rank_map: HashMap<PatternId, PatternRankId> = HashMap::new();
         // We only focus on vertices with unfixed ranks
-        for v_id in vertices_with_unfixed_rank.iter() {
-            let v_label: PatternLabelId = self
-                .get_vertex_from_id(*v_id)
-                .unwrap()
-                .get_label();
+        for v_label in vertices_with_unfixed_rank
+            .iter()
+            .map(|tuple| tuple.label)
+        {
             if visited_labels.contains(&v_label) {
                 continue;
             }
             visited_labels.insert(v_label);
-            // Collect all the vertices with the given label
-            let same_label_vertex_set: &BTreeSet<PatternId> =
-                self.get_vertices_from_label(v_label).unwrap();
             // Store vertices with the same rank and the same label
-            let mut same_rank_vertex_map: HashMap<PatternRankId, (Vec<PatternId>, Vec<PatternId>)> =
+            let mut same_rank_vertex_map: HashMap<PatternRankId, (Vec<PatternVertex>, Vec<PatternVertex>)> =
                 HashMap::new();
             // Separate vertices according to their ranks
-            for vertex_id in same_label_vertex_set.iter() {
-                if vertices_with_unfixed_rank.contains(vertex_id) {
-                    let v_rank: PatternRankId = self
-                        .get_vertex_from_id(*vertex_id)
-                        .unwrap()
-                        .get_rank();
+            for vertex in self.vertices_iter_by_label(v_label) {
+                if vertices_with_unfixed_rank.contains(&vertex) {
+                    let v_rank = self
+                        .get_vertex_rank(vertex.get_id())
+                        .ok_or(IrError::MissingData(format!(
+                            "Vertex with id {} is nonexistent in the pattern",
+                            vertex.get_id()
+                        )))?;
                     if !same_rank_vertex_map.contains_key(&v_rank) {
                         same_rank_vertex_map.insert(v_rank, (Vec::new(), Vec::new()));
                     }
                     // Mark if anyone of the neighbor vertices have fixed rank
                     let mut has_fixed_rank_neighbor: bool = false;
-                    let vertex_neighbor_edges = vertex_adjacencies_map.get(vertex_id).unwrap();
+                    let vertex_neighbor_edges = vertex_adjacencies_map
+                        .get(&vertex.get_id())
+                        .unwrap();
                     // Store vertices with neighbor vertices having fixed ranks in the first element of the tuple
                     // Otherwise, store in the second element of the tuple
-                    for adj_v_id in vertex_neighbor_edges
+                    for adj_vertex in vertex_neighbor_edges
                         .iter()
-                        .map(|adj| adj.get_adj_vertex_id())
+                        .map(|adj| adj.get_adj_vertex())
                     {
-                        if !vertices_with_unfixed_rank.contains(&adj_v_id) {
+                        if !vertices_with_unfixed_rank.contains(&adj_vertex) {
                             has_fixed_rank_neighbor = true;
                             if let Some((same_rank_vertices_with_fixed_rank_neighbor, _)) =
                                 same_rank_vertex_map.get_mut(&v_rank)
                             {
-                                same_rank_vertices_with_fixed_rank_neighbor.push(*vertex_id);
+                                same_rank_vertices_with_fixed_rank_neighbor.push(vertex);
                             } else {
                                 return Err(IrError::Unsupported(
                                     "Failed to find vertices with the same rank".to_string(),
@@ -1130,7 +1131,7 @@ impl Pattern {
                         if let Some((_, same_rank_vertices_without_fixed_rank_neighbor)) =
                             same_rank_vertex_map.get_mut(&v_rank)
                         {
-                            same_rank_vertices_without_fixed_rank_neighbor.push(*vertex_id);
+                            same_rank_vertices_without_fixed_rank_neighbor.push(vertex);
                         } else {
                             return Err(IrError::Unsupported(
                                 "Failed to find vertices with the same rank".to_string(),
@@ -1145,10 +1146,12 @@ impl Pattern {
             {
                 // Case-1: All vertices have no fixed rank neighbor
                 if vertex_set_with_fixed_rank_neighbor.len() == 0 {
-                    let old_rank: PatternRankId = self
-                        .get_vertex_from_id(vertex_set_without_fixed_rank_neighbor[0])
-                        .unwrap()
-                        .get_rank();
+                    let old_rank = self
+                        .get_vertex_rank(vertex_set_without_fixed_rank_neighbor[0].id)
+                        .ok_or(IrError::MissingData(format!(
+                            "Vertex with id {} is nonexistent in the pattern",
+                            vertex_set_without_fixed_rank_neighbor[0].id
+                        )))?;
                     let vertex_num = vertex_set_without_fixed_rank_neighbor.len();
                     let mut vertex_rank_vec: Vec<PatternRankId> = vec![old_rank; vertex_num];
                     let mut is_rank_fixed_vec: Vec<bool> = vec![true; vertex_num];
@@ -1156,8 +1159,8 @@ impl Pattern {
                     for i in 0..vertex_num {
                         for j in (i + 1)..vertex_num {
                             match self.cmp_vertices_by_rank(
-                                vertex_set_without_fixed_rank_neighbor[i],
-                                vertex_set_without_fixed_rank_neighbor[j],
+                                vertex_set_without_fixed_rank_neighbor[i].id,
+                                vertex_set_without_fixed_rank_neighbor[j].id,
                                 vertex_adjacencies_map,
                             ) {
                                 Ordering::Greater => vertex_rank_vec[i] += 1,
@@ -1174,16 +1177,18 @@ impl Pattern {
                         }
                         // Update Vertex Rank on the map
                         vertex_rank_map
-                            .insert(vertex_set_without_fixed_rank_neighbor[i], vertex_rank_vec[i]);
+                            .insert(vertex_set_without_fixed_rank_neighbor[i].id, vertex_rank_vec[i]);
                     }
                 }
                 // Case-2: There exists vertex having fixed rank neighbor
                 else {
                     let old_rank: PatternRankId = self
-                        .get_vertex_from_id(vertex_set_with_fixed_rank_neighbor[0])
-                        .unwrap()
-                        .get_rank();
-                    let mut vertices_for_ranking: Vec<PatternId> =
+                        .get_vertex_rank(vertex_set_with_fixed_rank_neighbor[0].id)
+                        .ok_or(IrError::MissingData(format!(
+                            "Vertex with id {} is nonexistent in the pattern",
+                            vertex_set_with_fixed_rank_neighbor[0].id
+                        )))?;
+                    let mut vertices_for_ranking: Vec<PatternVertex> =
                         vertex_set_with_fixed_rank_neighbor.clone();
                     // Take one vertex that has no fixed rank neighbor to represent all such vertices
                     if vertex_set_without_fixed_rank_neighbor.len() > 0 {
@@ -1196,8 +1201,8 @@ impl Pattern {
                     for i in 0..vertex_num {
                         for j in (i + 1)..vertex_num {
                             match self.cmp_vertices_by_rank(
-                                vertices_for_ranking[i],
-                                vertices_for_ranking[j],
+                                vertices_for_ranking[i].id,
+                                vertices_for_ranking[j].id,
                                 vertex_adjacencies_map,
                             ) {
                                 Ordering::Greater => {
@@ -1230,11 +1235,12 @@ impl Pattern {
                     }
                     // Update Vertex Rank on the map
                     for i in 0..vertex_set_with_fixed_rank_neighbor.len() {
-                        vertex_rank_map.insert(vertex_set_with_fixed_rank_neighbor[i], vertex_rank_vec[i]);
+                        vertex_rank_map
+                            .insert(vertex_set_with_fixed_rank_neighbor[i].id, vertex_rank_vec[i]);
                     }
                     for j in 0..vertex_set_without_fixed_rank_neighbor.len() {
                         vertex_rank_map.insert(
-                            vertex_set_without_fixed_rank_neighbor[j],
+                            vertex_set_without_fixed_rank_neighbor[j].id,
                             vertex_rank_vec[vertex_num - 1],
                         );
                     }
@@ -1249,14 +1255,14 @@ impl Pattern {
         // Update vertex rank on the pattern
         for (v_id, v_rank) in vertex_rank_map.iter() {
             let old_rank: PatternRankId = self
-                .get_vertex_from_id(*v_id)
-                .unwrap()
-                .get_rank();
+                .get_vertex_rank(*v_id)
+                .ok_or(IrError::MissingData(format!(
+                    "Vertex with id {} is nonexistent in the pattern",
+                    v_id
+                )))?;
             if *v_rank != old_rank {
                 is_rank_changed = true;
-                self.get_vertex_mut_from_id(*v_id)
-                    .unwrap()
-                    .set_rank(*v_rank);
+                self.set_vertex_rank(*v_rank, *v_id)?;
             }
         }
 
@@ -1272,12 +1278,12 @@ impl Pattern {
         &self, v1_id: PatternId, v2_id: PatternId,
         vertex_adjacencies_map: &HashMap<PatternId, Vec<Adjacency>>,
     ) -> Ordering {
-        let v1 = self.vertices.get(v1_id).unwrap();
-        let v2 = self.vertices.get(v2_id).unwrap();
-        match v1.get_label().cmp(&v2.get_label()) {
+        let v1_label = self.get_vertex(v1_id).unwrap().get_label();
+        let v2_label = self.get_vertex(v2_id).unwrap().get_label();
+        match v1_label.cmp(&v2_label) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Compare Vertex Out Degree
         match self
@@ -1286,7 +1292,7 @@ impl Pattern {
         {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Compare Vertex In Degree
         match self
@@ -1295,40 +1301,32 @@ impl Pattern {
         {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
 
         let v1_adjacencies = vertex_adjacencies_map.get(&v1_id).unwrap();
         let v2_adjacencies = vertex_adjacencies_map.get(&v2_id).unwrap();
         for adj_index in 0..v1_adjacencies.len() {
             // Compare the label of adjacent vertex
-            let v1_adj_v_label = self
-                .get_vertex_from_id(v1_adjacencies[adj_index].get_adj_vertex_id())
-                .unwrap()
+            let v1_adj_v_label = v1_adjacencies[adj_index]
+                .get_adj_vertex()
                 .get_label();
-            let v2_adj_v_label = self
-                .get_vertex_from_id(v2_adjacencies[adj_index].get_adj_vertex_id())
-                .unwrap()
+            let v2_adj_v_label = v2_adjacencies[adj_index]
+                .get_adj_vertex()
                 .get_label();
             match v1_adj_v_label.cmp(&v2_adj_v_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
-                _ => (),
+                Ordering::Equal => (),
             }
 
             // Compare the label of adjacent edges
-            let v1_adj_edge_label = self
-                .get_edge_from_id(v1_adjacencies[adj_index].get_edge_id())
-                .unwrap()
-                .get_label();
-            let v2_adj_edge_label = self
-                .get_edge_from_id(v2_adjacencies[adj_index].get_edge_id())
-                .unwrap()
-                .get_label();
+            let v1_adj_edge_label = v1_adjacencies[adj_index].get_edge_label();
+            let v2_adj_edge_label = v2_adjacencies[adj_index].get_edge_label();
             match v1_adj_edge_label.cmp(&v2_adj_edge_label) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
-                _ => (),
+                Ordering::Equal => (),
             }
         }
 
@@ -1343,30 +1341,42 @@ impl Pattern {
         &self, v1_id: PatternId, v2_id: PatternId,
         vertex_adjacencies_map: &HashMap<PatternId, Vec<Adjacency>>,
     ) -> Ordering {
-        let v1 = self.vertices.get(v1_id).unwrap();
-        let v2 = self.vertices.get(v2_id).unwrap();
+        let v1_rank = self.get_vertex_rank(v1_id).unwrap();
+        let v2_rank = self.get_vertex_rank(v2_id).unwrap();
         // Compare the ranks
-        match v1.get_rank().cmp(&v2.get_rank()) {
+        match v1_rank.cmp(&v2_rank) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
-            _ => (),
+            Ordering::Equal => (),
         }
         // Compare End Vertex Rank
         let v1_adjacencies = vertex_adjacencies_map.get(&v1_id).unwrap();
         let v2_adjacencies = vertex_adjacencies_map.get(&v2_id).unwrap();
         for adj_index in 0..v1_adjacencies.len() {
-            let v1_adj_v_rank: PatternRankId = self
-                .get_vertex_from_id(v1_adjacencies[adj_index].get_adj_vertex_id())
-                .unwrap()
-                .get_rank();
-            let v2_adj_v_rank: PatternRankId = self
-                .get_vertex_from_id(v2_adjacencies[adj_index].get_adj_vertex_id())
-                .unwrap()
-                .get_rank();
+            let v1_adj_v_rank = self
+                .get_vertex_rank(
+                    v1_adjacencies[adj_index]
+                        .get_adj_vertex()
+                        .get_id(),
+                )
+                .expect(&format!(
+                    "Vertex with id {} is nonexistent in the pattern",
+                    v1_adjacencies[adj_index].get_adj_vertex().id
+                ));
+            let v2_adj_v_rank = self
+                .get_vertex_rank(
+                    v2_adjacencies[adj_index]
+                        .get_adj_vertex()
+                        .get_id(),
+                )
+                .expect(&format!(
+                    "Vertex with id {} is nonexistent in the pattern",
+                    v2_adjacencies[adj_index].get_adj_vertex().id
+                ));
             match v1_adj_v_rank.cmp(&v2_adj_v_rank) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
-                _ => (),
+                Ordering::Equal => (),
             }
         }
 
@@ -1376,21 +1386,11 @@ impl Pattern {
 
     // Update the Order of Neighbor Vertices Based on the ranks of end vertices only
     fn update_neighbor_edges_map(&self, vertex_adjacencies_map: &mut HashMap<PatternId, Vec<Adjacency>>) {
-        for vertex in self.vertices_iter() {
-            vertex_adjacencies_map
-                .get_mut(&vertex.get_id())
-                .unwrap()
-                .sort_by(|e1, e2| {
-                    self.get_vertex_from_id(e1.get_adj_vertex_id())
-                        .unwrap()
-                        .get_rank()
-                        .cmp(
-                            &self
-                                .get_vertex_from_id(e2.get_adj_vertex_id())
-                                .unwrap()
-                                .get_rank(),
-                        )
-                });
+        for (_, adjacencies) in vertex_adjacencies_map.iter_mut() {
+            adjacencies.sort_by(|e1, e2| {
+                self.get_vertex_rank(e1.get_adj_vertex().get_id())
+                    .cmp(&self.get_vertex_rank(e2.get_adj_vertex().get_id()))
+            })
         }
     }
 }
@@ -1404,29 +1404,22 @@ impl Pattern {
     /// In our case, It's the vertex with the smallest label and rank
     fn get_dfs_starting_vertex(&self) -> PatternId {
         // Step-1: Find the smallest vertex label
-        let mut min_v_label: PatternLabelId = PatternLabelId::MAX;
-        let mut min_label_vertices: &BTreeSet<PatternId> = &BTreeSet::new();
-        for (v_label, vertices) in self.vertex_label_map_iter() {
-            if v_label < min_v_label {
-                min_v_label = v_label;
-                min_label_vertices = vertices;
-            }
-        }
+        let min_v_label = self
+            .get_min_vertex_label()
+            .expect("The pattern doesn't provide vertex label info");
         // Step-2: Find the vertex with the smallest rank
-        let mut starting_v_id: PatternId = 0;
-        let mut min_v_rank: PatternRankId = PatternRankId::MAX;
-        for v_id in min_label_vertices.iter() {
-            let current_v_rank: PatternRankId = self
-                .get_vertex_from_id(*v_id)
-                .unwrap()
-                .get_rank();
-            if current_v_rank < min_v_rank {
-                starting_v_id = *v_id;
-                min_v_rank = current_v_rank;
-            }
-        }
-
-        starting_v_id
+        self.vertices_iter_by_label(min_v_label)
+            .map(|vertex| vertex.get_id())
+            .min_by(|&v1_id, &v2_id| {
+                let v1_rank = self
+                    .get_vertex_rank(v1_id)
+                    .expect(&format!("Vertex with id {} is nonexistent in the pattern", v1_id));
+                let v2_rank = self
+                    .get_vertex_rank(v2_id)
+                    .expect(&format!("Vertex with id {} is nonexistent in the pattern", v2_id));
+                v1_rank.cmp(&v2_rank)
+            })
+            .expect("The pattern's minimum label doesn't have a vertex matching to it")
     }
 
     /// Perform DFS Sorting to Pattern Edges Based on Labels and Ranks
@@ -1453,8 +1446,7 @@ impl Pattern {
         let mut vertex_stack: VecDeque<PatternId> = VecDeque::new();
         vertex_stack.push_back(starting_v_id);
         // Perform DFS on vertices
-        while vertex_stack.len() > 0 {
-            let current_v_id: PatternId = *vertex_stack.back().unwrap();
+        while let Some(&current_v_id) = vertex_stack.back() {
             let vertex_adjacencies = vertex_adjacencies_map
                 .get(&current_v_id)
                 .expect(&format!("Unknown ID {}", current_v_id));
@@ -1462,7 +1454,9 @@ impl Pattern {
             let mut adj_index: usize = 0;
             while adj_index < vertex_adjacencies.len() {
                 let mut edge_id = vertex_adjacencies[adj_index].get_edge_id();
-                let mut end_v_id = vertex_adjacencies[adj_index].get_adj_vertex_id();
+                let mut end_v_id = vertex_adjacencies[adj_index]
+                    .get_adj_vertex()
+                    .get_id();
                 let e_dir = vertex_adjacencies[adj_index].get_direction();
                 if !visited_edges.contains(&edge_id) {
                     found_next_edge = true;
@@ -1478,7 +1472,9 @@ impl Pattern {
                         while adj_index < vertex_adjacencies.len() - 1 {
                             adj_index += 1;
                             let adj_edge_id = vertex_adjacencies[adj_index].get_edge_id();
-                            let adj_v_id = vertex_adjacencies[adj_index].get_adj_vertex_id();
+                            let adj_v_id = vertex_adjacencies[adj_index]
+                                .get_adj_vertex()
+                                .get_id();
                             let adj_edge_dir = vertex_adjacencies[adj_index].get_direction();
                             if visited_edges.contains(&adj_edge_id) {
                                 continue;
@@ -1529,9 +1525,9 @@ impl Pattern {
         }
 
         // Check if dfs sorting fails
-        if visited_edges.len() == self.get_edge_num()
-            && dfs_edge_sequence.len() == self.get_edge_num()
-            && vertex_dfs_id_map.len() == self.get_vertex_num()
+        if visited_edges.len() == self.get_edges_num()
+            && dfs_edge_sequence.len() == self.get_edges_num()
+            && vertex_dfs_id_map.len() == self.get_vertices_num()
         {
             Ok((dfs_edge_sequence, vertex_dfs_id_map))
         } else {
@@ -1545,19 +1541,14 @@ impl Pattern {
     /// Get all the vertices(id) with the same vertex label and vertex rank
     ///
     /// These vertices are equivalent in the Pattern
-    fn get_equivalent_vertices(&self, v_label: PatternLabelId, v_rank: PatternRankId) -> Vec<PatternId> {
-        let mut equivalent_vertices = vec![];
-        if let Some(vs_with_same_label) = self.vertex_label_map.get(&v_label) {
-            for v_id in vs_with_same_label {
-                if let Some(vertex) = self.vertices.get(*v_id) {
-                    if vertex.rank == v_rank {
-                        equivalent_vertices.push(*v_id);
-                    }
-                }
-            }
-        }
-
-        equivalent_vertices
+    fn get_equivalent_vertices(
+        &self, v_label: PatternLabelId, v_rank: PatternRankId,
+    ) -> Vec<PatternVertex> {
+        self.vertices_iter()
+            .filter(|vertex| {
+                vertex.get_label() == v_label && self.get_vertex_rank(vertex.get_id()).unwrap() == v_rank
+            })
+            .collect()
     }
 
     /// Get the legal id for the future incoming vertex
@@ -1591,8 +1582,8 @@ impl Pattern {
     pub fn extend(&self, extend_step: &ExtendStep) -> Option<Pattern> {
         let mut new_pattern = self.clone();
         let target_v_label = extend_step.get_target_v_label();
-        let new_pattern_vertex =
-            PatternVertex { id: new_pattern.get_next_pattern_vertex_id(), label: target_v_label, rank: 0 };
+        let new_pattern_vertex = PatternVertex::new(self.get_next_pattern_vertex_id(), target_v_label);
+        let mut new_pattern_vertex_data = PatternVertexData::default();
         for ((v_label, v_rank), extend_edges) in extend_step.iter() {
             // Get all the vertices which can be used to extend with these extend edges
             let vertices_can_use = self.get_equivalent_vertices(*v_label, *v_rank);
@@ -1602,84 +1593,56 @@ impl Pattern {
             }
             // Connect each vertex can be use to each extend edge
             for (i, extend_edge) in extend_edges.iter().enumerate() {
-                let extend_vertex_id = vertices_can_use[i];
+                let extend_vertex = vertices_can_use[i];
                 let extend_dir = extend_edge.get_direction();
                 // new pattern edge info
-                let (mut start_v_id, mut end_v_id, mut start_v_label, mut end_v_label) = (
-                    extend_vertex_id,
-                    new_pattern_vertex.id,
-                    self.vertices
-                        .get(vertices_can_use[i])
-                        .unwrap()
-                        .label,
-                    new_pattern_vertex.label,
-                );
-                if let PatternDirection::In = extend_dir {
-                    std::mem::swap(&mut start_v_id, &mut end_v_id);
-                    std::mem::swap(&mut start_v_label, &mut end_v_label);
-                }
-                let new_pattern_edge = PatternEdge {
-                    id: new_pattern.get_next_pattern_edge_id(),
-                    label: extend_edge.get_edge_label(),
-                    start_v_id,
-                    end_v_id,
-                    start_v_label,
-                    end_v_label,
-                };
-                if let PatternDirection::Out = extend_dir {
-                    // update newly extended pattern vertex's adjacency info
-                    new_pattern
-                        .in_adjacencies_map
-                        .entry(new_pattern_vertex.id)
-                        .or_insert(vec![])
-                        .push(Adjacency::new(new_pattern_edge.id, extend_vertex_id, PatternDirection::In));
-                    // update extend vertex's adjacancy info
-                    new_pattern
-                        .out_adjacencies_map
-                        .entry(extend_vertex_id)
-                        .or_insert(vec![])
-                        .push(Adjacency::new(
-                            new_pattern_edge.id,
-                            new_pattern_vertex.id,
-                            PatternDirection::Out,
-                        ));
+                let (start_vertex, end_vertex) = if let PatternDirection::Out = extend_dir {
+                    (extend_vertex, new_pattern_vertex)
                 } else {
-                    new_pattern
-                        .out_adjacencies_map
-                        .entry(new_pattern_vertex.id)
-                        .or_insert(vec![])
-                        .push(Adjacency::new(new_pattern_edge.id, extend_vertex_id, PatternDirection::Out));
-                    // update extend vertex's adjacancy info
-                    new_pattern
-                        .in_adjacencies_map
-                        .entry(extend_vertex_id)
-                        .or_insert(vec![])
-                        .push(Adjacency::new(
-                            new_pattern_edge.id,
-                            new_pattern_vertex.id,
-                            PatternDirection::In,
-                        ));
+                    (new_pattern_vertex, extend_vertex)
+                };
+                let new_pattern_edge_id = new_pattern.get_next_pattern_edge_id();
+                let new_pattern_edge_label = extend_edge.get_edge_label();
+                let new_pattern_edge =
+                    PatternEdge::new(new_pattern_edge_id, new_pattern_edge_label, start_vertex, end_vertex);
+                let extend_vertex_data = new_pattern
+                    .vertices_data
+                    .get_mut(extend_vertex.get_id())
+                    .unwrap();
+                let new_pattern_vertex_adj =
+                    Adjacency::new(&new_pattern_vertex, &new_pattern_edge).unwrap();
+                let extend_vertex_adj = Adjacency::new(&extend_vertex, &new_pattern_edge).unwrap();
+                if let PatternDirection::Out = extend_dir {
+                    new_pattern_vertex_data
+                        .in_adjacencies
+                        .push(new_pattern_vertex_adj);
+                    extend_vertex_data
+                        .out_adjacencies
+                        .push(extend_vertex_adj);
+                } else {
+                    new_pattern_vertex_data
+                        .out_adjacencies
+                        .push(new_pattern_vertex_adj);
+                    extend_vertex_data
+                        .in_adjacencies
+                        .push(extend_vertex_adj);
                 }
                 // Add the new pattern edge info to the new Pattern
                 new_pattern
-                    .edge_label_map
-                    .entry(new_pattern_edge.label)
-                    .or_insert(BTreeSet::new())
-                    .insert(new_pattern_edge.id);
-                new_pattern
                     .edges
-                    .insert(new_pattern_edge.id, new_pattern_edge);
+                    .insert(new_pattern_edge_id, new_pattern_edge);
+                new_pattern
+                    .edges_data
+                    .insert(new_pattern_edge_id, PatternEdgeData::default());
             }
         }
         // Add the newly extended pattern vertex to the new pattern
         new_pattern
-            .vertex_label_map
-            .entry(new_pattern_vertex.label)
-            .or_insert(BTreeSet::new())
-            .insert(new_pattern_vertex.id);
-        new_pattern
             .vertices
-            .insert(new_pattern_vertex.id, new_pattern_vertex);
+            .insert(new_pattern_vertex.get_id(), new_pattern_vertex);
+        new_pattern
+            .vertices_data
+            .insert(new_pattern_vertex.get_id(), new_pattern_vertex_data);
         new_pattern.vertex_ranking();
         Some(new_pattern)
     }
@@ -1692,11 +1655,17 @@ impl Pattern {
         // Get all vertex labels from pattern meta as the possible extend target vertex
         let target_v_labels = pattern_meta.vertex_label_ids_iter();
         // For every possible extend target vertex label, find its all adjacent edges to the current pattern
+        // Count each vertex's label number
+        let mut vertex_label_count_map: HashMap<PatternLabelId, usize> = HashMap::new();
+        for vertex in self.vertices_iter() {
+            *vertex_label_count_map
+                .entry(vertex.get_label())
+                .or_insert(0) += 1;
+        }
         for target_v_label in target_v_labels {
-            if self
-                .vertex_label_map
+            if vertex_label_count_map
                 .get(&target_v_label)
-                .map(|v_ids| v_ids.len())
+                .cloned()
                 .unwrap_or(0)
                 >= same_label_vertex_limit
             {
@@ -1708,16 +1677,17 @@ impl Pattern {
             for (_, src_vertex) in &self.vertices {
                 // check whether there are some edges between the target vertex and the current source vertex
                 let adjacent_edges =
-                    pattern_meta.associated_elabels_iter_by_vlabel(src_vertex.label, target_v_label);
+                    pattern_meta.associated_elabels_iter_by_vlabel(src_vertex.get_label(), target_v_label);
                 // Transform all the adjacent edges to ExtendEdge and add to extend_edges_with_src_id
                 for (adjacent_edge_label, adjacent_edge_dir) in adjacent_edges {
                     let extend_edge = ExtendEdge::new(
-                        src_vertex.label,
-                        src_vertex.rank,
+                        src_vertex.get_label(),
+                        self.get_vertex_rank(src_vertex.get_id())
+                            .unwrap(),
                         adjacent_edge_label,
                         adjacent_edge_dir,
                     );
-                    extend_edges_with_src_id.push((extend_edge, src_vertex.id));
+                    extend_edges_with_src_id.push((extend_edge, src_vertex.get_id()));
                 }
             }
             // Get the subsets of extend_edges_with_src_id, and add every subset to the extend edgess
@@ -1751,75 +1721,55 @@ impl Pattern {
             return Err(IrError::InvalidCode("The adding edge already existed".to_string()));
         }
         // Error that cannot connect the edge to the pattern
-        if let (None, None) = (
-            self.get_vertex_from_id(edge.get_start_vertex_id()),
-            self.get_vertex_from_id(edge.get_end_vertex_id()),
-        ) {
+        if let (None, None) =
+            (self.vertices.get(edge.start_vertex.id), self.vertices.get(edge.end_vertex.id))
+        {
             return Err(IrError::InvalidCode("The adding edge cannot connect to the pattern".to_string()));
-        } else if let None = self.get_vertex_from_id(edge.start_v_id) {
+        } else if let None = self.vertices.get(edge.start_vertex.id) {
             // end vertex already exists in the pattern, use it to connect
             // add start vertex
-            self.vertices.insert(
-                edge.start_v_id,
-                PatternVertex { id: edge.start_v_id, label: edge.start_v_label, rank: 0 },
-            );
-            // add start vertex label
-            self.vertex_label_map
-                .entry(edge.start_v_label)
-                .or_insert(BTreeSet::new())
-                .insert(edge.start_v_id);
-        } else if let None = self.get_vertex_from_id(edge.end_v_id) {
+            self.vertices
+                .insert(edge.get_start_vertex().get_id(), edge.get_start_vertex());
+            self.vertices_data
+                .insert(edge.get_start_vertex().get_id(), PatternVertexData::default());
+        } else if let None = self.vertices.get(edge.end_vertex.id) {
             // start vertex already exists in the pattern, use it to connect
             // add end vertex
-            self.vertices.insert(
-                edge.end_v_id,
-                PatternVertex { id: edge.end_v_id, label: edge.end_v_label, rank: 0 },
-            );
-            self.vertex_label_map
-                .entry(edge.end_v_label)
-                .or_insert(BTreeSet::new())
-                .insert(edge.end_v_id);
+            self.vertices
+                .insert(edge.get_end_vertex().get_id(), edge.get_end_vertex());
+            self.vertices_data
+                .insert(edge.get_end_vertex().get_id(), PatternVertexData::default());
         }
         // update start vertex's connection info
-        if self
-            .get_vertex_from_id(edge.start_v_id)
-            .is_some()
-        {
-            self.out_adjacencies_map
-                .entry(edge.start_v_id)
-                .or_insert(vec![])
-                .push(Adjacency::new(edge.id, edge.end_v_id, PatternDirection::Out));
+        if let Some(start_vertex_data) = self.vertices_data.get_mut(edge.start_vertex.id) {
+            start_vertex_data
+                .out_adjacencies
+                .push(Adjacency::new(&edge.start_vertex, &edge).unwrap());
         }
         // update end vertex's connection info
-        if self.get_vertex_from_id(edge.end_v_id).is_some() {
-            self.in_adjacencies_map
-                .entry(edge.end_v_id)
-                .or_insert(vec![])
-                .push(Adjacency::new(edge.id, edge.start_v_id, PatternDirection::In));
+        if let Some(end_vertex_data) = self.vertices_data.get_mut(edge.end_vertex.id) {
+            end_vertex_data
+                .in_adjacencies
+                .push(Adjacency::new(&edge.end_vertex, &edge).unwrap());
         }
         // add edge to the pattern
         self.edges.insert(edge.get_id(), edge.clone());
-        // add edge label to the pattern
-        self.edge_label_map
-            .entry(edge.get_label())
-            .or_insert(BTreeSet::new())
-            .insert(edge.get_id());
+        self.edges_data
+            .insert(edge.get_id(), PatternEdgeData::default());
         Ok(())
     }
 
     /// Add a series of edges to the current pattern to get a new pattern
-    pub fn extend_by_edges<'a, T>(&self, edges: T) -> Option<Pattern>
+    pub fn extend_by_edges<'a, T>(&self, edges: T) -> IrResult<Pattern>
     where
         T: Iterator<Item = &'a PatternEdge>,
     {
         let mut new_pattern = self.clone();
         for edge in edges {
-            if let Err(_) = new_pattern.add_edge(edge) {
-                return None;
-            }
+            new_pattern.add_edge(edge)?;
         }
         new_pattern.vertex_ranking();
-        Some(new_pattern)
+        Ok(new_pattern)
     }
 
     /// Locate a vertex(id) from the pattern based on the given extend step and target pattern code
@@ -1830,21 +1780,16 @@ impl Pattern {
         let target_v_label = extend_step.get_target_v_label();
         // mark all the vertices with the same label as the extend step's target vertex as the candidates
         for target_v_cand in self.vertices_iter_by_label(target_v_label) {
-            let target_v_cand_id = target_v_cand.id;
-            if self.get_vertex_degree(target_v_cand_id) != extend_step.get_extend_edges_num() {
+            if self.get_vertex_degree(target_v_cand.get_id()) != extend_step.get_extend_edges_num() {
                 continue;
             }
             // compare whether the candidate vertex has the same connection info as the extend step
             let cand_src_v_e_label_dir_set: BTreeSet<(PatternLabelId, PatternLabelId, PatternDirection)> =
-                self.adjacencies_iter(target_v_cand_id)
+                self.adjacencies_iter(target_v_cand.get_id())
                     .map(|adjacency| {
                         (
-                            self.get_vertex_from_id(adjacency.get_adj_vertex_id())
-                                .unwrap()
-                                .get_label(),
-                            self.get_edge_from_id(adjacency.get_edge_id())
-                                .unwrap()
-                                .get_label(),
+                            adjacency.get_adj_vertex().get_label(),
+                            adjacency.get_edge_label(),
                             adjacency.get_direction().reverse(),
                         )
                     })
@@ -1878,73 +1823,37 @@ impl Pattern {
 
     /// Remove a vertex with all its adjacent edges in the current pattern
     pub fn remove_vertex(&mut self, vertex_id: PatternId) {
-        if let Some(vertex) = self.get_vertex_from_id(vertex_id) {
-            let vertex_label = vertex.get_label();
+        if self.get_vertex(vertex_id).is_some() {
             let adjacencies: Vec<Adjacency> = self.adjacencies_iter(vertex_id).collect();
             // delete target vertex
             // delete in vertices
             self.vertices.remove(vertex_id);
-            // delete in vertex label map
-            self.vertex_label_map
-                .get_mut(&vertex_label)
-                .unwrap()
-                .remove(&vertex_id);
-            if self
-                .vertex_label_map
-                .get(&vertex_label)
-                .unwrap()
-                .len()
-                == 0
-            {
-                self.vertex_label_map.remove(&vertex_label);
-            }
             // delete in vertex tag map
-            self.vertex_tag_map.remove_by_right(&vertex_id);
-            // delete in vertex predicate map
-            self.vertex_predicate_map.remove(&vertex_id);
-            // delete in vertex adjacencies map
-            self.out_adjacencies_map.remove(vertex_id);
-            self.in_adjacencies_map.remove(vertex_id);
+            if let Some(tag) = self.get_vertex_tag(vertex_id) {
+                self.vertex_tag_map.remove(&tag);
+            }
             for adjacency in adjacencies {
-                let adjacent_vertex_id = adjacency.get_adj_vertex_id();
+                let adjacent_vertex_id = adjacency.get_adj_vertex().get_id();
                 let adjacent_edge_id = adjacency.get_edge_id();
-                let adjacent_edge_label = self
-                    .get_edge_from_id(adjacent_edge_id)
-                    .unwrap()
-                    .get_label();
                 // delete adjacent edges
                 // delete in edges
                 self.edges.remove(adjacent_edge_id);
-                // delete in edge label map
-                self.edge_label_map
-                    .get_mut(&adjacent_edge_label)
-                    .unwrap()
-                    .remove(&adjacent_edge_id);
-                if self
-                    .edge_label_map
-                    .get(&adjacent_edge_label)
-                    .unwrap()
-                    .len()
-                    == 0
-                {
-                    self.edge_label_map.remove(&adjacent_edge_label);
-                }
                 // delete in edge tag map
-                self.edge_tag_map
-                    .remove_by_right(&adjacent_edge_id);
-                // delete in edge predicate map
-                self.edge_predicate_map
-                    .remove(&adjacent_edge_id);
+                if let Some(tag) = self.get_edge_tag(adjacent_edge_id) {
+                    self.edge_tag_map.remove(&tag);
+                }
                 // update adjcent vertices's info
                 if let PatternDirection::Out = adjacency.get_direction() {
-                    self.in_adjacencies_map
+                    self.vertices_data
                         .get_mut(adjacent_vertex_id)
                         .unwrap()
+                        .in_adjacencies
                         .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
                 } else {
-                    self.out_adjacencies_map
+                    self.vertices_data
                         .get_mut(adjacent_vertex_id)
                         .unwrap()
+                        .out_adjacencies
                         .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
                 }
             }
@@ -1971,23 +1880,23 @@ impl Pattern {
     pub fn generate_definite_extend_step_by_v_id(
         &self, target_v_id: PatternId,
     ) -> Option<DefiniteExtendStep> {
-        if let Some(target_vertex) = self.get_vertex_from_id(target_v_id) {
+        if let Some(target_vertex) = self.get_vertex(target_v_id) {
             let target_v_label = target_vertex.get_label();
             let mut extend_edges = vec![];
             for adjacency in self.adjacencies_iter(target_v_id) {
                 let edge_id = adjacency.get_edge_id();
                 let dir = adjacency.get_direction();
-                let edge = self.get_edge_from_id(edge_id).unwrap();
+                let edge = self.edges.get(edge_id).unwrap();
                 if let PatternDirection::In = dir {
                     extend_edges.push(DefiniteExtendEdge::new(
-                        edge.get_start_vertex_id(),
+                        edge.get_start_vertex().get_id(),
                         edge_id,
                         edge.get_label(),
                         PatternDirection::Out,
                     ));
                 } else {
                     extend_edges.push(DefiniteExtendEdge::new(
-                        edge.get_end_vertex_id(),
+                        edge.end_vertex.id,
                         edge_id,
                         edge.get_label(),
                         PatternDirection::In,
@@ -2004,8 +1913,6 @@ impl Pattern {
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
-
-    use vec_map::VecMap;
 
     use super::Pattern;
     use super::PatternDirection;
@@ -2029,55 +1936,51 @@ mod tests {
         assert_eq!(edges_num, 2);
         let vertices_num = pattern_case1.vertices.len();
         assert_eq!(vertices_num, 2);
-        let edges_with_label_0 = pattern_case1.edge_label_map.get(&0).unwrap();
+        let edges_with_label_0: Vec<PatternEdge> = pattern_case1.edges_iter_by_label(0).collect();
         assert_eq!(edges_with_label_0.len(), 2);
-        let mut edges_with_label_0_iter = edges_with_label_0.iter();
-        assert_eq!(*edges_with_label_0_iter.next().unwrap(), 0);
-        assert_eq!(*edges_with_label_0_iter.next().unwrap(), 1);
-        let vertices_with_label_0 = pattern_case1.vertex_label_map.get(&0).unwrap();
+        let vertices_with_label_0: Vec<PatternVertex> = pattern_case1
+            .vertices_iter_by_label(0)
+            .collect();
         assert_eq!(vertices_with_label_0.len(), 2);
-        let mut vertices_with_label_0_iter = vertices_with_label_0.iter();
-        assert_eq!(*vertices_with_label_0_iter.next().unwrap(), 0);
-        assert_eq!(*vertices_with_label_0_iter.next().unwrap(), 1);
         let edge_0 = pattern_case1.edges.get(0).unwrap();
-        assert_eq!(edge_0.id, 0);
-        assert_eq!(edge_0.label, 0);
-        assert_eq!(edge_0.start_v_id, 0);
-        assert_eq!(edge_0.end_v_id, 1);
-        assert_eq!(edge_0.start_v_label, 0);
-        assert_eq!(edge_0.end_v_label, 0);
+        assert_eq!(edge_0.get_id(), 0);
+        assert_eq!(edge_0.get_label(), 0);
+        assert_eq!(edge_0.get_start_vertex().get_id(), 0);
+        assert_eq!(edge_0.get_end_vertex().get_id(), 1);
+        assert_eq!(edge_0.get_start_vertex().get_label(), 0);
+        assert_eq!(edge_0.get_end_vertex().get_label(), 0);
         let edge_1 = pattern_case1.edges.get(1).unwrap();
-        assert_eq!(edge_1.id, 1);
-        assert_eq!(edge_1.label, 0);
-        assert_eq!(edge_1.start_v_id, 1);
-        assert_eq!(edge_1.end_v_id, 0);
-        assert_eq!(edge_1.start_v_label, 0);
-        assert_eq!(edge_1.end_v_label, 0);
+        assert_eq!(edge_1.get_id(), 1);
+        assert_eq!(edge_1.get_label(), 0);
+        assert_eq!(edge_1.get_start_vertex().get_id(), 1);
+        assert_eq!(edge_1.get_end_vertex().get_id(), 0);
+        assert_eq!(edge_1.get_start_vertex().get_label(), 0);
+        assert_eq!(edge_1.get_end_vertex().get_label(), 0);
         let vertex_0 = pattern_case1.vertices.get(0).unwrap();
-        assert_eq!(vertex_0.id, 0);
-        assert_eq!(vertex_0.label, 0);
+        assert_eq!(vertex_0.get_id(), 0);
+        assert_eq!(vertex_0.get_label(), 0);
         assert_eq!(pattern_case1.get_vertex_degree(0), 2);
         let mut vertex_0_adjacent_edges_iter = pattern_case1.adjacencies_iter(0);
         let vertex_0_adjacency_0 = vertex_0_adjacent_edges_iter.next().unwrap();
         assert_eq!(vertex_0_adjacency_0.get_edge_id(), 0);
-        assert_eq!(vertex_0_adjacency_0.get_adj_vertex_id(), 1);
+        assert_eq!(vertex_0_adjacency_0.get_adj_vertex().get_id(), 1);
         assert_eq!(vertex_0_adjacency_0.get_direction(), PatternDirection::Out);
         let vertex_0_adjacency_1 = vertex_0_adjacent_edges_iter.next().unwrap();
         assert_eq!(vertex_0_adjacency_1.get_edge_id(), 1);
-        assert_eq!(vertex_0_adjacency_1.get_adj_vertex_id(), 1);
+        assert_eq!(vertex_0_adjacency_1.get_adj_vertex().get_id(), 1);
         assert_eq!(vertex_0_adjacency_1.get_direction(), PatternDirection::In);
         let vertex_1 = pattern_case1.vertices.get(1).unwrap();
-        assert_eq!(vertex_1.id, 1);
-        assert_eq!(vertex_1.label, 0);
+        assert_eq!(vertex_1.get_id(), 1);
+        assert_eq!(vertex_1.get_label(), 0);
         assert_eq!(pattern_case1.get_vertex_degree(1), 2);
         let mut vertex_1_adjacent_edges_iter = pattern_case1.adjacencies_iter(1);
         let vertex_1_adjacency_0 = vertex_1_adjacent_edges_iter.next().unwrap();
         assert_eq!(vertex_1_adjacency_0.get_edge_id(), 1);
-        assert_eq!(vertex_1_adjacency_0.get_adj_vertex_id(), 0);
+        assert_eq!(vertex_1_adjacency_0.get_adj_vertex().get_id(), 0);
         assert_eq!(vertex_1_adjacency_0.get_direction(), PatternDirection::Out);
         let vertex_1_adjacency_1 = vertex_1_adjacent_edges_iter.next().unwrap();
         assert_eq!(vertex_1_adjacency_1.get_edge_id(), 0);
-        assert_eq!(vertex_1_adjacency_1.get_adj_vertex_id(), 0);
+        assert_eq!(vertex_1_adjacency_1.get_adj_vertex().get_id(), 0);
         assert_eq!(vertex_1_adjacency_1.get_direction(), PatternDirection::In);
     }
 
@@ -2088,14 +1991,29 @@ mod tests {
             assert_eq!(pattern.vertices.len(), 3);
             assert_eq!(pattern.edges.len(), 3);
             // 3 Person vertices
-            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 3);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                3
+            );
             // 3 knows edges
-            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 3);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(12)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                3
+            );
             // check structure
             // build identical pattern for comparison
-            let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);
-            let pattern_edge2 = PatternEdge::new(1, 12, 0, 2, 1, 1);
-            let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
+            let pattern_vertex1 = PatternVertex::new(0, 1);
+            let pattern_vertex2 = PatternVertex::new(1, 1);
+            let pattern_vertex3 = PatternVertex::new(2, 1);
+            let pattern_edge1 = PatternEdge::new(0, 12, pattern_vertex1, pattern_vertex2);
+            let pattern_edge2 = PatternEdge::new(1, 12, pattern_vertex1, pattern_vertex3);
+            let pattern_edge3 = PatternEdge::new(2, 12, pattern_vertex2, pattern_vertex3);
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
             // check whether the two pattern has the same code
@@ -2119,17 +2037,44 @@ mod tests {
             assert_eq!(pattern.vertices.len(), 3);
             assert_eq!(pattern.edges.len(), 3);
             // 2 Person vertices
-            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 2);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                2
+            );
             // 1 University vertex
-            assert_eq!(pattern.vertex_label_map.get(&12).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(12)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                1
+            );
             // 1 knows edge
-            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(12)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                1
+            );
             // 2 studyat edges
-            assert_eq!(pattern.edge_label_map.get(&15).unwrap().len(), 2);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(15)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                2
+            );
             // check structure
-            let pattern_edge1 = PatternEdge::new(0, 15, 1, 0, 1, 12);
-            let pattern_edge2 = PatternEdge::new(1, 15, 2, 0, 1, 12);
-            let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
+            let pattern_vertex1 = PatternVertex::new(0, 12);
+            let pattern_vertex2 = PatternVertex::new(1, 1);
+            let pattern_vertex3 = PatternVertex::new(2, 1);
+            let pattern_edge1 = PatternEdge::new(0, 15, pattern_vertex2, pattern_vertex1);
+            let pattern_edge2 = PatternEdge::new(1, 15, pattern_vertex3, pattern_vertex1);
+            let pattern_edge3 = PatternEdge::new(2, 12, pattern_vertex2, pattern_vertex3);
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
             // check whether the two pattern has the same code
@@ -2153,17 +2098,33 @@ mod tests {
             assert_eq!(pattern.vertices.len(), 4);
             assert_eq!(pattern.edges.len(), 6);
             // 4 Person vertices
-            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 4);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                4
+            );
             // 6 knows edges
-            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 6);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(12)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                6
+            );
             // check structure
             // build identical pattern for comparison
-            let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);
-            let pattern_edge2 = PatternEdge::new(1, 12, 0, 2, 1, 1);
-            let pattern_edge3 = PatternEdge::new(2, 12, 1, 2, 1, 1);
-            let pattern_edge4 = PatternEdge::new(3, 12, 0, 3, 1, 1);
-            let pattern_edge5 = PatternEdge::new(4, 12, 1, 3, 1, 1);
-            let pattern_edge6 = PatternEdge::new(5, 12, 2, 3, 1, 1);
+            let pattern_vertex1 = PatternVertex::new(0, 1);
+            let pattern_vertex2 = PatternVertex::new(1, 1);
+            let pattern_vertex3 = PatternVertex::new(2, 1);
+            let pattern_vertex4 = PatternVertex::new(3, 1);
+            let pattern_edge1 = PatternEdge::new(0, 12, pattern_vertex1, pattern_vertex2);
+            let pattern_edge2 = PatternEdge::new(1, 12, pattern_vertex1, pattern_vertex3);
+            let pattern_edge3 = PatternEdge::new(2, 12, pattern_vertex2, pattern_vertex3);
+            let pattern_edge4 = PatternEdge::new(3, 12, pattern_vertex1, pattern_vertex4);
+            let pattern_edge5 = PatternEdge::new(4, 12, pattern_vertex2, pattern_vertex4);
+            let pattern_edge6 = PatternEdge::new(5, 12, pattern_vertex3, pattern_vertex4);
             let pattern_for_comparison = Pattern::try_from(vec![
                 pattern_edge1,
                 pattern_edge2,
@@ -2195,23 +2156,63 @@ mod tests {
             assert_eq!(pattern.vertices.len(), 4);
             assert_eq!(pattern.edges.len(), 4);
             // 2 Person vertices
-            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 2);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                2
+            );
             // 1 City vertex
-            assert_eq!(pattern.vertex_label_map.get(&9).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(9)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                1
+            );
             // 1 Comment vertex
-            assert_eq!(pattern.vertex_label_map.get(&2).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                2
+            );
             // 1 has creator edge
-            assert_eq!(pattern.edge_label_map.get(&0).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(0)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                1
+            );
             // 1 likes edge
-            assert_eq!(pattern.edge_label_map.get(&13).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(13)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                1
+            );
             // 2 islocated edges
-            assert_eq!(pattern.edge_label_map.get(&11).unwrap().len(), 2);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(11)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                2
+            );
             // check structure
             // build identical pattern for comparison
-            let pattern_edge1 = PatternEdge::new(0, 11, 0, 1, 1, 9);
-            let pattern_edge2 = PatternEdge::new(1, 11, 2, 1, 1, 9);
-            let pattern_edge3 = PatternEdge::new(2, 13, 0, 3, 1, 2);
-            let pattern_edge4 = PatternEdge::new(3, 0, 3, 2, 2, 1);
+            let pattern_vertex1 = PatternVertex::new(0, 1);
+            let pattern_vertex2 = PatternVertex::new(1, 9);
+            let pattern_vertex3 = PatternVertex::new(2, 1);
+            let pattern_vertex4 = PatternVertex::new(3, 2);
+            let pattern_edge1 = PatternEdge::new(0, 11, pattern_vertex1, pattern_vertex2);
+            let pattern_edge2 = PatternEdge::new(1, 11, pattern_vertex3, pattern_vertex2);
+            let pattern_edge3 = PatternEdge::new(2, 13, pattern_vertex1, pattern_vertex4);
+            let pattern_edge4 = PatternEdge::new(3, 0, pattern_vertex4, pattern_vertex3);
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3, pattern_edge4])
                     .unwrap();
@@ -2237,17 +2238,35 @@ mod tests {
             assert_eq!(pattern.vertices.len(), 6);
             assert_eq!(pattern.edges.len(), 6);
             // 6 Person vertices
-            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 6);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                6
+            );
             // 6 knows edges
-            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 6);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(12)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                6
+            );
             // check structure
             // build identical pattern for comparison
-            let pattern_edge1 = PatternEdge::new(0, 12, 0, 1, 1, 1);
-            let pattern_edge2 = PatternEdge::new(1, 12, 2, 1, 1, 1);
-            let pattern_edge3 = PatternEdge::new(2, 12, 2, 3, 1, 1);
-            let pattern_edge4 = PatternEdge::new(3, 12, 4, 3, 1, 1);
-            let pattern_edge5 = PatternEdge::new(4, 12, 4, 5, 1, 1);
-            let pattern_edge6 = PatternEdge::new(5, 12, 0, 5, 1, 1);
+            let pattern_vertex1 = PatternVertex::new(0, 1);
+            let pattern_vertex2 = PatternVertex::new(1, 1);
+            let pattern_vertex3 = PatternVertex::new(2, 1);
+            let pattern_vertex4 = PatternVertex::new(3, 1);
+            let pattern_vertex5 = PatternVertex::new(4, 1);
+            let pattern_vertex6 = PatternVertex::new(5, 1);
+            let pattern_edge1 = PatternEdge::new(0, 12, pattern_vertex1, pattern_vertex2);
+            let pattern_edge2 = PatternEdge::new(1, 12, pattern_vertex3, pattern_vertex2);
+            let pattern_edge3 = PatternEdge::new(2, 12, pattern_vertex3, pattern_vertex4);
+            let pattern_edge4 = PatternEdge::new(3, 12, pattern_vertex5, pattern_vertex4);
+            let pattern_edge5 = PatternEdge::new(4, 12, pattern_vertex5, pattern_vertex6);
+            let pattern_edge6 = PatternEdge::new(5, 12, pattern_vertex1, pattern_vertex6);
             let pattern_for_comparison = Pattern::try_from(vec![
                 pattern_edge1,
                 pattern_edge2,
@@ -2278,27 +2297,75 @@ mod tests {
             assert_eq!(pattern.vertices.len(), 6);
             assert_eq!(pattern.edges.len(), 6);
             // 4 Persons vertices
-            assert_eq!(pattern.vertex_label_map.get(&1).unwrap().len(), 4);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(1)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                4
+            );
             // 1 City vertex
-            assert_eq!(pattern.vertex_label_map.get(&9).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(9)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                1
+            );
             // 1 Comment vertex
-            assert_eq!(pattern.vertex_label_map.get(&2).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .vertices_iter_by_label(2)
+                    .collect::<Vec<PatternVertex>>()
+                    .len(),
+                1
+            );
             // 1 has creator edge
-            assert_eq!(pattern.edge_label_map.get(&0).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(0)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                1
+            );
             // 1 likes edge
-            assert_eq!(pattern.edge_label_map.get(&13).unwrap().len(), 1);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(13)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                1
+            );
             // 2 islocated edges
-            assert_eq!(pattern.edge_label_map.get(&11).unwrap().len(), 2);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(11)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                2
+            );
             // 2 knows edges
-            assert_eq!(pattern.edge_label_map.get(&12).unwrap().len(), 2);
+            assert_eq!(
+                pattern
+                    .edges_iter_by_label(12)
+                    .collect::<Vec<PatternEdge>>()
+                    .len(),
+                2
+            );
             // check structure
             // build identical pattern for comparison
-            let pattern_edge1 = PatternEdge::new(0, 11, 0, 1, 1, 9);
-            let pattern_edge2 = PatternEdge::new(1, 11, 2, 1, 1, 9);
-            let pattern_edge3 = PatternEdge::new(2, 12, 2, 3, 1, 1);
-            let pattern_edge4 = PatternEdge::new(3, 12, 3, 4, 1, 1);
-            let pattern_edge5 = PatternEdge::new(4, 0, 5, 4, 2, 1);
-            let pattern_edge6 = PatternEdge::new(5, 13, 0, 5, 1, 2);
+            let pattern_vertex1 = PatternVertex::new(0, 1);
+            let pattern_vertex2 = PatternVertex::new(1, 9);
+            let pattern_vertex3 = PatternVertex::new(2, 1);
+            let pattern_vertex4 = PatternVertex::new(3, 1);
+            let pattern_vertex5 = PatternVertex::new(4, 1);
+            let pattern_vertex6 = PatternVertex::new(5, 2);
+            let pattern_edge1 = PatternEdge::new(0, 11, pattern_vertex1, pattern_vertex2);
+            let pattern_edge2 = PatternEdge::new(1, 11, pattern_vertex3, pattern_vertex2);
+            let pattern_edge3 = PatternEdge::new(2, 12, pattern_vertex3, pattern_vertex4);
+            let pattern_edge4 = PatternEdge::new(3, 12, pattern_vertex4, pattern_vertex5);
+            let pattern_edge5 = PatternEdge::new(4, 0, pattern_vertex6, pattern_vertex5);
+            let pattern_edge6 = PatternEdge::new(5, 13, pattern_vertex1, pattern_vertex6);
             let pattern_for_comparison = Pattern::try_from(vec![
                 pattern_edge1,
                 pattern_edge2,
@@ -2325,38 +2392,34 @@ mod tests {
     #[test]
     fn set_accurate_rank_case1() {
         let pattern = build_pattern_case1();
-        let vertices: VecMap<&PatternVertex> = pattern.vertices_iter().enumerate().collect();
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
+        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
     }
 
     #[test]
     fn set_accurate_rank_case2() {
         let pattern = build_pattern_case2();
-        let vertices = &pattern.vertices;
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(2).unwrap().get_rank(), 0);
+        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(2).unwrap(), 0);
     }
 
     #[test]
     fn set_accurate_rank_case3() {
         let pattern = build_pattern_case3();
-        let vertices = &pattern.vertices;
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(2).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(3).unwrap().get_rank(), 0);
+        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(2).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_rank(3).unwrap(), 0);
     }
 
     #[test]
     fn set_accurate_rank_case4() {
         let pattern = build_pattern_case4();
-        let vertices = &pattern.vertices;
-        assert_eq!(vertices.get(0).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(1).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(2).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(3).unwrap().get_rank(), 0);
+        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(2).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_rank(3).unwrap(), 0);
     }
 
     #[test]
@@ -2366,40 +2429,36 @@ mod tests {
         let id_vec_b: Vec<PatternId> = vec![10, 20, 30];
         let id_vec_c: Vec<PatternId> = vec![1, 2, 3];
         let id_vec_d: Vec<PatternId> = vec![1000];
-        let vertices = &pattern.vertices;
         // A
-        assert_eq!(vertices.get(id_vec_a[0]).unwrap().get_rank(), 1);
-        assert_eq!(vertices.get(id_vec_a[1]).unwrap().get_rank(), 3);
-        assert_eq!(vertices.get(id_vec_a[2]).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(id_vec_a[3]).unwrap().get_rank(), 2);
+        assert_eq!(pattern.get_vertex_rank(id_vec_a[0]).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_rank(id_vec_a[1]).unwrap(), 3);
+        assert_eq!(pattern.get_vertex_rank(id_vec_a[2]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(id_vec_a[3]).unwrap(), 2);
         // B
-        assert_eq!(vertices.get(id_vec_b[0]).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(id_vec_b[1]).unwrap().get_rank(), 2);
-        assert_eq!(vertices.get(id_vec_b[2]).unwrap().get_rank(), 1);
+        assert_eq!(pattern.get_vertex_rank(id_vec_b[0]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(id_vec_b[1]).unwrap(), 2);
+        assert_eq!(pattern.get_vertex_rank(id_vec_b[2]).unwrap(), 1);
         // C
-        assert_eq!(vertices.get(id_vec_c[0]).unwrap().get_rank(), 0);
-        assert_eq!(vertices.get(id_vec_c[1]).unwrap().get_rank(), 2);
-        assert_eq!(vertices.get(id_vec_c[2]).unwrap().get_rank(), 0);
+        assert_eq!(pattern.get_vertex_rank(id_vec_c[0]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_rank(id_vec_c[1]).unwrap(), 2);
+        assert_eq!(pattern.get_vertex_rank(id_vec_c[2]).unwrap(), 0);
         // D
-        assert_eq!(vertices.get(id_vec_d[0]).unwrap().get_rank(), 0);
+        assert_eq!(pattern.get_vertex_rank(id_vec_d[0]).unwrap(), 0);
     }
 
     #[test]
     fn rank_ranking_case1() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case1();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2407,19 +2466,16 @@ mod tests {
     #[test]
     fn rank_ranking_case2() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case2();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2427,26 +2483,22 @@ mod tests {
     #[test]
     fn rank_ranking_case3() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case3();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2454,26 +2506,22 @@ mod tests {
     #[test]
     fn rank_ranking_case4() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case4();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             1
         );
     }
@@ -2481,26 +2529,22 @@ mod tests {
     #[test]
     fn rank_ranking_case5() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case5();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2508,26 +2552,22 @@ mod tests {
     #[test]
     fn rank_ranking_case6() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case6();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2535,26 +2575,22 @@ mod tests {
     #[test]
     fn rank_ranking_case7() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case7();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2562,33 +2598,28 @@ mod tests {
     #[test]
     fn rank_ranking_case8() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case8();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2596,33 +2627,28 @@ mod tests {
     #[test]
     fn rank_ranking_case9() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case9();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2630,33 +2656,28 @@ mod tests {
     #[test]
     fn rank_ranking_case10() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case10();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2664,40 +2685,34 @@ mod tests {
     #[test]
     fn rank_ranking_case11() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case11();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2705,47 +2720,40 @@ mod tests {
     #[test]
     fn rank_ranking_case12() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case12();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B3").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2753,47 +2761,40 @@ mod tests {
     #[test]
     fn rank_ranking_case13() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case13();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2801,54 +2802,46 @@ mod tests {
     #[test]
     fn rank_ranking_case14() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case14();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B3").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("C0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -2856,68 +2849,58 @@ mod tests {
     #[test]
     fn rank_ranking_case15() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case15();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("C0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("C1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("C1").unwrap())
+                .unwrap(),
             1
         );
     }
@@ -2925,75 +2908,64 @@ mod tests {
     #[test]
     fn rank_ranking_case16() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case16();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("C0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("C1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("C1").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("D0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("D0").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3001,47 +2973,40 @@ mod tests {
     #[test]
     fn rank_ranking_case17() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             5
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             4
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3049,54 +3014,46 @@ mod tests {
     #[test]
     fn rank_ranking_case17_even_num_chain() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_even_num_chain();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             5
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             6
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             4
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A6").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A6").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3104,82 +3061,70 @@ mod tests {
     #[test]
     fn rank_ranking_case17_long_chain() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             5
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             7
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             9
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             10
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A6").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A6").unwrap())
+                .unwrap(),
             8
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A7").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A7").unwrap())
+                .unwrap(),
             6
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A8").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A8").unwrap())
+                .unwrap(),
             4
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A9").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A9").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A10").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A10").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3187,47 +3132,40 @@ mod tests {
     #[test]
     fn vertex_ranking_case17_special_id_situation_1() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_1();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             5
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             4
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3235,47 +3173,40 @@ mod tests {
     #[test]
     fn vertex_ranking_case17_special_id_situation_2() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_2();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             5
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             4
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3283,47 +3214,40 @@ mod tests {
     #[test]
     fn vertex_ranking_case18() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case18();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3331,103 +3255,88 @@ mod tests {
     #[test]
     fn vertex_ranking_case19() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case19();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             8
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             9
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             2
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A5").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A6").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A6").unwrap())
+                .unwrap(),
             4
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A7").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A7").unwrap())
+                .unwrap(),
             6
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A8").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A8").unwrap())
+                .unwrap(),
             5
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A9").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A9").unwrap())
+                .unwrap(),
             7
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("B0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("C0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("D0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("D0").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("E0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("E0").unwrap())
+                .unwrap(),
             0
         );
     }
@@ -3435,40 +3344,34 @@ mod tests {
     #[test]
     fn vertex_ranking_case20() {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case20();
-        let vertices = &pattern.vertices;
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A0").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A1").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .unwrap(),
             3
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A2").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A3").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .unwrap(),
             0
         );
         assert_eq!(
-            vertices
-                .get(*vertex_id_map.get("A4").unwrap())
-                .unwrap()
-                .get_rank(),
+            pattern
+                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .unwrap(),
             0
         );
     }

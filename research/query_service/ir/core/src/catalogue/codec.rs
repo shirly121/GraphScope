@@ -25,6 +25,7 @@ use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::{PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::IrError;
+use crate::error::IrResult;
 
 pub trait Cipher<T>: Sized {
     fn encode_to(&self, encoder: &Encoder) -> T;
@@ -128,7 +129,7 @@ impl Encoder {
             1
         };
         let mut min_vertex_rank_bit_num =
-            std::cmp::max((64 - pattern.get_vertex_num().leading_zeros()) as usize, 1);
+            std::cmp::max((64 - pattern.get_vertices_num().leading_zeros()) as usize, 1);
         // Apply the user defined vertex_rank_bit_num only if it is larger than the minimum value needed for the pattern
         if vertex_rank_bit_num > min_vertex_rank_bit_num {
             min_vertex_rank_bit_num = vertex_rank_bit_num;
@@ -373,50 +374,20 @@ impl EncodeUnit {
         EncodeUnit { values: vec![], heads: vec![], tails: vec![] }
     }
 
-    /// This is the old version that exists for previous testcases
-    pub fn from_pattern_edge(pattern: &Pattern, pattern_edge: &PatternEdge, encoder: &Encoder) -> Self {
-        let edge_label: PatternLabelId = pattern_edge.get_label();
-        let start_v_label: PatternLabelId = pattern_edge.get_start_vertex_label();
-        let end_v_label: PatternLabelId = pattern_edge.get_end_vertex_label();
-        let start_v_rank = pattern.get_vertex_rank(pattern_edge.get_start_vertex_id());
-        let end_v_rank = pattern.get_vertex_rank(pattern_edge.get_end_vertex_id());
-
-        let edge_label_bit_num = encoder.get_edge_label_bit_num();
-        let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
-        let vertex_rank_bit_num = encoder.get_vertex_rank_bit_num();
-
-        let values = vec![end_v_rank, start_v_rank, end_v_label, start_v_label, edge_label];
-        let heads = vec![
-            vertex_rank_bit_num - 1,
-            2 * vertex_rank_bit_num - 1,
-            vertex_label_bit_num + 2 * vertex_rank_bit_num - 1,
-            2 * vertex_label_bit_num + 2 * vertex_rank_bit_num - 1,
-            edge_label_bit_num + 2 * vertex_label_bit_num + 2 * vertex_rank_bit_num - 1,
-        ];
-        let tails = vec![
-            0,
-            vertex_rank_bit_num,
-            2 * vertex_rank_bit_num,
-            vertex_label_bit_num + 2 * vertex_rank_bit_num,
-            2 * vertex_label_bit_num + 2 * vertex_rank_bit_num,
-        ];
-        EncodeUnit { values, heads, tails }
-    }
-
     /// The Latest Version for DFS Sorting
     fn from_pattern_edge_dfs(
         pattern_edge: &PatternEdge, encoder: &Encoder,
         vertex_dfs_id_map: &HashMap<PatternId, PatternRankId>,
     ) -> Self {
         let edge_label: PatternLabelId = pattern_edge.get_label();
-        let start_v_label: PatternLabelId = pattern_edge.get_start_vertex_label();
-        let end_v_label: PatternLabelId = pattern_edge.get_end_vertex_label();
+        let start_v_label: PatternLabelId = pattern_edge.get_start_vertex().get_label();
+        let end_v_label: PatternLabelId = pattern_edge.get_end_vertex().get_label();
         let start_v_rank: PatternRankId = *vertex_dfs_id_map
-            .get(&pattern_edge.get_start_vertex_id())
+            .get(&pattern_edge.get_start_vertex().get_id())
             .expect("Unknown vertex id in vertex -- dfs id map")
             as PatternRankId;
         let end_v_rank: PatternRankId = *vertex_dfs_id_map
-            .get(&pattern_edge.get_end_vertex_id())
+            .get(&pattern_edge.get_end_vertex().get_id())
             .expect("Unknown vertex id in vertex -- dfs id map")
             as PatternRankId;
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
@@ -444,12 +415,8 @@ impl EncodeUnit {
     pub fn from_pattern(pattern: &Pattern, encoder: &Encoder) -> Self {
         // Case-1: Pattern contains no edge
         // Store the label of the only vertex
-        if pattern.get_edge_num() == 0 {
-            let vertex_label = pattern
-                .vertex_label_map_iter()
-                .next()
-                .unwrap()
-                .0;
+        if pattern.get_edges_num() == 0 {
+            let vertex_label = pattern.get_min_vertex_label().unwrap();
             let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
             EncodeUnit { values: vec![vertex_label], heads: vec![vertex_label_bit_num - 1], tails: vec![0] }
         }
@@ -459,8 +426,9 @@ impl EncodeUnit {
             let mut pattern_encode_unit = EncodeUnit::init();
             let (dfs_edge_sequence, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence().unwrap();
             for edge_id in dfs_edge_sequence {
-                let edge = pattern.get_edge_from_id(edge_id).unwrap();
-                let edge_encode_unit = EncodeUnit::from_pattern_edge_dfs(edge, encoder, &vertex_dfs_id_map);
+                let edge = pattern.get_edge(edge_id).unwrap();
+                let edge_encode_unit =
+                    EncodeUnit::from_pattern_edge_dfs(&edge, encoder, &vertex_dfs_id_map);
                 pattern_encode_unit.extend_by_another_unit(&edge_encode_unit);
             }
 
@@ -744,7 +712,7 @@ impl DecodeUnit {
     }
 
     /// Transform a &[i32] decide value to a ExtendStep
-    pub fn to_extend_step(decode_vec: &[i32]) -> Result<ExtendStep, IrError> {
+    pub fn to_extend_step(decode_vec: &[i32]) -> IrResult<ExtendStep> {
         if decode_vec.len() % 4 == 1 {
             let mut extend_edges = Vec::with_capacity(decode_vec.len() / 4);
             for i in (0..decode_vec.len() - 4).step_by(4) {
@@ -762,7 +730,7 @@ impl DecodeUnit {
     }
 
     /// Transform a &[i32] decode value to a Pattern
-    pub fn to_pattern(decode_vec: &[i32]) -> Result<Pattern, IrError> {
+    pub fn to_pattern(decode_vec: &[i32]) -> IrResult<Pattern> {
         if decode_vec.len() == 1 {
             Ok(Pattern::from(PatternVertex::new(0, decode_vec[0])))
         } else if decode_vec.len() % 5 == 0 {
@@ -779,10 +747,8 @@ impl DecodeUnit {
                 pattern_edges.push(PatternEdge::new(
                     edge_id,
                     edge_label,
-                    start_v_id,
-                    end_v_id,
-                    start_v_label,
-                    end_v_label,
+                    PatternVertex::new(start_v_id, start_v_label),
+                    PatternVertex::new(end_v_id, end_v_label),
                 ));
             }
 
@@ -797,41 +763,41 @@ impl DecodeUnit {
 /// Unit Testing
 #[cfg(test)]
 mod tests {
-    use ascii::{self, AsciiString, ToAsciiChar};
-
+    // use ascii::{self, AsciiString, ToAsciiChar};
     use crate::catalogue::codec::*;
     use crate::catalogue::pattern::*;
     use crate::catalogue::test_cases::extend_step_cases::*;
     use crate::catalogue::test_cases::pattern_cases::*;
+    use ascii::{self, AsciiString};
 
     /// ### Generate AsciiString from Vector
-    fn generate_asciistring_from_vec(vec: &[u8]) -> AsciiString {
-        let mut output = AsciiString::new();
-        for value in vec {
-            output.push(value.to_ascii_char().unwrap());
-        }
-        output
-    }
+    // fn generate_asciistring_from_vec(vec: &[u8]) -> AsciiString {
+    //     let mut output = AsciiString::new();
+    //     for value in vec {
+    //         output.push(value.to_ascii_char().unwrap());
+    //     }
+    //     output
+    // }
 
-    #[test]
-    fn test_create_encode_unit_from_edge() {
-        let pattern = build_pattern_case6();
-        let edge1 = pattern.get_edge_from_id(0).unwrap();
-        let edge2 = pattern.get_edge_from_id(1).unwrap();
-        let encoder = Encoder::init_by_pattern(&pattern, 5);
-        let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
-        assert_eq!(encode_unit_1.values[4], 1);
-        assert_eq!(encode_unit_1.values[3], 1);
-        assert_eq!(encode_unit_1.values[2], 2);
-        assert_eq!(encode_unit_1.values[1], 0);
-        assert_eq!(encode_unit_1.values[0], 0);
-        let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
-        assert_eq!(encode_unit_2.values[4], 2);
-        assert_eq!(encode_unit_2.values[3], 1);
-        assert_eq!(encode_unit_2.values[2], 3);
-        assert_eq!(encode_unit_2.values[1], 0);
-        assert_eq!(encode_unit_2.values[0], 0);
-    }
+    // #[test]
+    // fn test_create_encode_unit_from_edge() {
+    //     let pattern = build_pattern_case6();
+    //     let edge1 = pattern.get_edge_from_id(0).unwrap();
+    //     let edge2 = pattern.get_edge_from_id(1).unwrap();
+    //     let encoder = Encoder::init_by_pattern(&pattern, 5);
+    //     let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
+    //     assert_eq!(encode_unit_1.values[4], 1);
+    //     assert_eq!(encode_unit_1.values[3], 1);
+    //     assert_eq!(encode_unit_1.values[2], 2);
+    //     assert_eq!(encode_unit_1.values[1], 0);
+    //     assert_eq!(encode_unit_1.values[0], 0);
+    //     let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
+    //     assert_eq!(encode_unit_2.values[4], 2);
+    //     assert_eq!(encode_unit_2.values[3], 1);
+    //     assert_eq!(encode_unit_2.values[2], 3);
+    //     assert_eq!(encode_unit_2.values[1], 0);
+    //     assert_eq!(encode_unit_2.values[0], 0);
+    // }
 
     #[test]
     fn test_initialize_encoder_from_parameter_case1() {
@@ -873,41 +839,41 @@ mod tests {
         assert_eq!(encoder.vertex_rank_bit_num, 3);
     }
 
-    #[test]
-    fn encode_unit_to_ascii_string() {
-        let pattern = build_pattern_case6();
-        let edge1 = pattern.get_edge_from_id(0).unwrap();
-        let edge2 = pattern.get_edge_from_id(1).unwrap();
-        let encoder = Encoder::init(2, 2, 2, 2);
-        let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
-        let encode_string_1 = encode_unit_1.to_ascii_string();
-        let expected_encode_string_1: AsciiString = generate_asciistring_from_vec(&vec![10, 96]);
-        assert_eq!(encode_string_1.len(), 2);
-        assert_eq!(encode_string_1, expected_encode_string_1);
-        let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
-        let encode_string_2 = encode_unit_2.to_ascii_string();
-        let expected_encode_string_2: AsciiString = generate_asciistring_from_vec(&vec![12, 112]);
-        assert_eq!(encode_string_2.len(), 2);
-        assert_eq!(encode_string_2, expected_encode_string_2);
-    }
+    // #[test]
+    // fn encode_unit_to_ascii_string() {
+    //     let pattern = build_pattern_case6();
+    //     let edge1 = pattern.get_edge_from_id(0).unwrap();
+    //     let edge2 = pattern.get_edge_from_id(1).unwrap();
+    //     let encoder = Encoder::init(2, 2, 2, 2);
+    //     let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
+    //     let encode_string_1 = encode_unit_1.to_ascii_string();
+    //     let expected_encode_string_1: AsciiString = generate_asciistring_from_vec(&vec![10, 96]);
+    //     assert_eq!(encode_string_1.len(), 2);
+    //     assert_eq!(encode_string_1, expected_encode_string_1);
+    //     let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
+    //     let encode_string_2 = encode_unit_2.to_ascii_string();
+    //     let expected_encode_string_2: AsciiString = generate_asciistring_from_vec(&vec![12, 112]);
+    //     assert_eq!(encode_string_2.len(), 2);
+    //     assert_eq!(encode_string_2, expected_encode_string_2);
+    // }
 
-    #[test]
-    fn encode_unit_to_vec_u8() {
-        let pattern = build_pattern_case6();
-        let edge1 = pattern.get_edge_from_id(0).unwrap();
-        let edge2 = pattern.get_edge_from_id(1).unwrap();
-        let encoder = Encoder::init(2, 2, 2, 2);
-        let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
-        let encode_vec_1 = encode_unit_1.to_vec_u8(8);
-        let expected_encode_vec_1: Vec<u8> = vec![5, 96];
-        assert_eq!(encode_vec_1.len(), 2);
-        assert_eq!(encode_vec_1, expected_encode_vec_1);
-        let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
-        let encode_vec_2 = encode_unit_2.to_vec_u8(8);
-        let expected_encode_vec_2: Vec<u8> = vec![6, 112];
-        assert_eq!(encode_vec_2.len(), 2);
-        assert_eq!(encode_vec_2, expected_encode_vec_2);
-    }
+    // #[test]
+    // fn encode_unit_to_vec_u8() {
+    //     let pattern = build_pattern_case6();
+    //     let edge1 = pattern.get_edge_from_id(0).unwrap();
+    //     let edge2 = pattern.get_edge_from_id(1).unwrap();
+    //     let encoder = Encoder::init(2, 2, 2, 2);
+    //     let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
+    //     let encode_vec_1 = encode_unit_1.to_vec_u8(8);
+    //     let expected_encode_vec_1: Vec<u8> = vec![5, 96];
+    //     assert_eq!(encode_vec_1.len(), 2);
+    //     assert_eq!(encode_vec_1, expected_encode_vec_1);
+    //     let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
+    //     let encode_vec_2 = encode_unit_2.to_vec_u8(8);
+    //     let expected_encode_vec_2: Vec<u8> = vec![6, 112];
+    //     assert_eq!(encode_vec_2.len(), 2);
+    //     assert_eq!(encode_vec_2, expected_encode_vec_2);
+    // }
 
     #[test]
     fn test_get_decode_value_by_head_tail_vec8() {
@@ -977,105 +943,105 @@ mod tests {
         assert_eq!(picked_value, 130677);
     }
 
-    #[test]
-    fn test_decode_from_encode_unit_to_vec_u8() {
-        let pattern = build_pattern_case6();
-        let edge1 = pattern.get_edge_from_id(0).unwrap();
-        let edge2 = pattern.get_edge_from_id(1).unwrap();
-        let encoder = Encoder::init(2, 2, 2, 2);
-        let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
-        let encode_vec_1 = encode_unit_1.to_vec_u8(8);
-        let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
-        let encode_vec_2 = encode_unit_2.to_vec_u8(8);
-        assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_1, 9, 8, 8), edge1.get_label());
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 7, 6, 8),
-            edge1.get_start_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 5, 4, 8),
-            edge1.get_end_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 3, 2, 8),
-            pattern.get_vertex_rank(edge1.get_start_vertex_id())
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 1, 0, 8),
-            pattern.get_vertex_rank(edge1.get_end_vertex_id())
-        );
-        assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_2, 9, 8, 8), edge2.get_label());
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 7, 6, 8),
-            edge2.get_start_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 5, 4, 8),
-            edge2.get_end_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 3, 2, 8),
-            pattern.get_vertex_rank(edge2.get_start_vertex_id())
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 1, 0, 8),
-            pattern.get_vertex_rank(edge2.get_end_vertex_id())
-        );
-    }
+    // #[test]
+    // fn test_decode_from_encode_unit_to_vec_u8() {
+    //     let pattern = build_pattern_case6();
+    //     let edge1 = pattern.get_edge_from_id(0).unwrap();
+    //     let edge2 = pattern.get_edge_from_id(1).unwrap();
+    //     let encoder = Encoder::init(2, 2, 2, 2);
+    //     let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
+    //     let encode_vec_1 = encode_unit_1.to_vec_u8(8);
+    //     let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
+    //     let encode_vec_2 = encode_unit_2.to_vec_u8(8);
+    //     assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_1, 9, 8, 8), edge1.get_label());
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 7, 6, 8),
+    //         edge1.get_start_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 5, 4, 8),
+    //         edge1.get_end_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 3, 2, 8),
+    //         pattern.get_vertex_rank(edge1.get_start_vertex_id())
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 1, 0, 8),
+    //         pattern.get_vertex_rank(edge1.get_end_vertex_id())
+    //     );
+    //     assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_2, 9, 8, 8), edge2.get_label());
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 7, 6, 8),
+    //         edge2.get_start_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 5, 4, 8),
+    //         edge2.get_end_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 3, 2, 8),
+    //         pattern.get_vertex_rank(edge2.get_start_vertex_id())
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 1, 0, 8),
+    //         pattern.get_vertex_rank(edge2.get_end_vertex_id())
+    //     );
+    // }
 
-    #[test]
-    fn test_decode_from_encode_unit_to_asciistring() {
-        let pattern = build_pattern_case6();
-        let edge1 = pattern.get_edge_from_id(0).unwrap();
-        let edge2 = pattern.get_edge_from_id(1).unwrap();
-        let encoder = Encoder::init(2, 2, 2, 2);
-        let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
-        let encode_string_1 = encode_unit_1.to_ascii_string();
-        let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
-        let encode_string_2 = encode_unit_2.to_ascii_string();
-        let encode_vec_1: Vec<u8> = encode_string_1
-            .into_iter()
-            .map(|ch| ch.as_byte())
-            .collect();
-        let encode_vec_2: Vec<u8> = encode_string_2
-            .into_iter()
-            .map(|ch| ch.as_byte())
-            .collect();
-        assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_1, 9, 8, 7), edge1.get_label());
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 7, 6, 7),
-            edge1.get_start_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 5, 4, 7),
-            edge1.get_end_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 3, 2, 7),
-            pattern.get_vertex_rank(edge1.get_start_vertex_id())
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_1, 1, 0, 7),
-            pattern.get_vertex_rank(edge1.get_end_vertex_id())
-        );
-        assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_2, 9, 8, 7), edge2.get_label());
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 7, 6, 7),
-            edge2.get_start_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 5, 4, 7),
-            edge2.get_end_vertex_label()
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 3, 2, 7),
-            pattern.get_vertex_rank(edge2.get_start_vertex_id())
-        );
-        assert_eq!(
-            Encoder::get_decode_value_by_head_tail(&encode_vec_2, 1, 0, 7),
-            pattern.get_vertex_rank(edge2.get_end_vertex_id())
-        );
-    }
+    // #[test]
+    // fn test_decode_from_encode_unit_to_asciistring() {
+    //     let pattern = build_pattern_case6();
+    //     let edge1 = pattern.get_edge_from_id(0).unwrap();
+    //     let edge2 = pattern.get_edge_from_id(1).unwrap();
+    //     let encoder = Encoder::init(2, 2, 2, 2);
+    //     let encode_unit_1 = EncodeUnit::from_pattern_edge(&pattern, edge1, &encoder);
+    //     let encode_string_1 = encode_unit_1.to_ascii_string();
+    //     let encode_unit_2 = EncodeUnit::from_pattern_edge(&pattern, edge2, &encoder);
+    //     let encode_string_2 = encode_unit_2.to_ascii_string();
+    //     let encode_vec_1: Vec<u8> = encode_string_1
+    //         .into_iter()
+    //         .map(|ch| ch.as_byte())
+    //         .collect();
+    //     let encode_vec_2: Vec<u8> = encode_string_2
+    //         .into_iter()
+    //         .map(|ch| ch.as_byte())
+    //         .collect();
+    //     assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_1, 9, 8, 7), edge1.get_label());
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 7, 6, 7),
+    //         edge1.get_start_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 5, 4, 7),
+    //         edge1.get_end_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 3, 2, 7),
+    //         pattern.get_vertex_rank(edge1.get_start_vertex_id())
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_1, 1, 0, 7),
+    //         pattern.get_vertex_rank(edge1.get_end_vertex_id())
+    //     );
+    //     assert_eq!(Encoder::get_decode_value_by_head_tail(&encode_vec_2, 9, 8, 7), edge2.get_label());
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 7, 6, 7),
+    //         edge2.get_start_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 5, 4, 7),
+    //         edge2.get_end_vertex_label()
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 3, 2, 7),
+    //         pattern.get_vertex_rank(edge2.get_start_vertex_id())
+    //     );
+    //     assert_eq!(
+    //         Encoder::get_decode_value_by_head_tail(&encode_vec_2, 1, 0, 7),
+    //         pattern.get_vertex_rank(edge2.get_end_vertex_id())
+    //     );
+    // }
 
     #[test]
     fn test_encode_decode_one_vertex_pattern() {

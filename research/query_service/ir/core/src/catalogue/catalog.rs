@@ -25,10 +25,12 @@ use petgraph::Direction;
 
 use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
-use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
+use crate::catalogue::pattern::{Pattern, PatternEdge};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
 use crate::error::{IrError, IrResult};
+
+use super::pattern::PatternVertex;
 
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
@@ -140,10 +142,9 @@ impl Catalogue {
                 .insert(new_pattern_code.clone(), new_pattern_index);
             queue.push_back((new_pattern, new_pattern_index));
         }
-        while queue.len() > 0 {
-            let (relaxed_pattern, relaxed_pattern_index) = queue.pop_front().unwrap();
+        while let Some((relaxed_pattern, relaxed_pattern_index)) = queue.pop_front() {
             // Filter out those patterns beyond the pattern size limitation
-            if relaxed_pattern.get_vertex_num() >= pattern_size_limit {
+            if relaxed_pattern.get_vertices_num() >= pattern_size_limit {
                 continue;
             }
             // Find possible extend steps of the relaxed pattern
@@ -216,7 +217,7 @@ impl Catalogue {
         let mut relaxed_patterns = BTreeSet::new();
         // one-vertex pattern is the starting point of the BFS
         for vertex in pattern.vertices_iter() {
-            let new_pattern = Pattern::from(vertex.clone());
+            let new_pattern = Pattern::from(vertex);
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
             let new_pattern_index =
                 if let Some(pattern_index) = self.pattern_v_locate_map.get(&new_pattern_code) {
@@ -252,7 +253,7 @@ impl Catalogue {
             {
                 for adj_vertex_id in pattern
                     .adjacencies_iter(vertex_id)
-                    .map(|adj| adj.get_adj_vertex_id())
+                    .map(|adj| adj.get_adj_vertex().get_id())
                 {
                     // If ralaxed pattern contains adj vertex or it is already added as target vertex
                     // ignore the vertex
@@ -265,10 +266,10 @@ impl Catalogue {
                     // back link to the relaxed pattern to find all edges to be added
                     let add_edges: Vec<PatternEdge> = pattern
                         .adjacencies_iter(adj_vertex_id)
-                        .filter(|adj| relaxed_pattern_vertices.contains(&adj.get_adj_vertex_id()))
+                        .filter(|adj| relaxed_pattern_vertices.contains(&adj.get_adj_vertex().get_id()))
                         .map(|adj| {
                             pattern
-                                .get_edge_from_id(adj.get_edge_id())
+                                .get_edge(adj.get_edge_id())
                                 .unwrap()
                                 .clone()
                         })
@@ -299,22 +300,24 @@ impl Catalogue {
                         .map(|add_edge| {
                             let add_edge_label = add_edge.get_label();
                             let (src_v_label, src_v_rank, dir) =
-                                if add_edge.get_end_vertex_id() == adj_vertex_id {
-                                    let src_vertex = relaxed_pattern
-                                        .get_vertex_from_id(add_edge.get_start_vertex_id())
+                                if add_edge.get_end_vertex().get_id() == adj_vertex_id {
+                                    let src_v_label = add_edge.get_start_vertex().get_label();
+                                    let src_v_rank = relaxed_pattern
+                                        .get_vertex_rank(add_edge.get_start_vertex().get_id())
                                         .unwrap();
-                                    (src_vertex.get_label(), src_vertex.get_rank(), PatternDirection::Out)
+                                    (src_v_label, src_v_rank, PatternDirection::Out)
                                 } else {
-                                    let src_vertex = relaxed_pattern
-                                        .get_vertex_from_id(add_edge.get_end_vertex_id())
+                                    let src_v_label = add_edge.get_end_vertex().get_label();
+                                    let src_v_rank = relaxed_pattern
+                                        .get_vertex_rank(add_edge.get_end_vertex().get_id())
                                         .unwrap();
-                                    (src_vertex.get_label(), src_vertex.get_rank(), PatternDirection::In)
+                                    (src_v_label, src_v_rank, PatternDirection::In)
                                 };
                             ExtendEdge::new(src_v_label, src_v_rank, add_edge_label, dir)
                         })
                         .collect();
                     let target_v_label = pattern
-                        .get_vertex_from_id(adj_vertex_id)
+                        .get_vertex(adj_vertex_id)
                         .unwrap()
                         .get_label();
                     // generate new extend step
@@ -404,7 +407,7 @@ impl Pattern {
     pub fn generate_simple_extend_match_plan(&self) -> IrResult<pb::LogicalPlan> {
         let mut trace_pattern = self.clone();
         let mut definite_extend_steps = vec![];
-        while trace_pattern.get_vertex_num() > 1 {
+        while trace_pattern.get_vertices_num() > 1 {
             let mut all_vertex_ids: Vec<PatternId> = trace_pattern
                 .vertices_iter()
                 .map(|v| v.get_id())
@@ -446,7 +449,7 @@ impl Pattern {
                 .get_pattern_weight(trace_pattern_index)
                 .unwrap();
             let mut definite_extend_steps = vec![];
-            while trace_pattern.get_vertex_num() > 1 {
+            while trace_pattern.get_vertices_num() > 1 {
                 let mut all_extends: Vec<(NodeIndex, &VertexWeight, &EdgeWeight)> = catalog
                     .pattern_in_connection_iter(trace_pattern_index)
                     .filter(|(_, _, edge_weight)| edge_weight.is_extend())
@@ -483,7 +486,10 @@ impl Pattern {
                     let target_vertex_id = trace_pattern
                         .locate_vertex(&extend_step, &pre_pattern_weight.code, &catalog.encoder)
                         .unwrap();
-                    if !trace_pattern.vertex_has_predicate(target_vertex_id) {
+                    if !trace_pattern
+                        .get_vertex_predicate(target_vertex_id)
+                        .is_some()
+                    {
                         let definite_extend_step = trace_pattern
                             .generate_definite_extend_step_by_v_id(target_vertex_id)
                             .unwrap();
@@ -593,7 +599,7 @@ fn build_logical_plan(
         pb::Sink {
             tags: origin_pattern
                 .vertices_with_tag_iter()
-                .map(|v_id| common_pb::NameOrIdKey { key: Some((v_id as i32).into()) })
+                .map(|v_tuple| common_pb::NameOrIdKey { key: Some((v_tuple.get_id() as i32).into()) })
                 .collect(),
             sink_target: Some(pb::sink::SinkTarget {
                 inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {

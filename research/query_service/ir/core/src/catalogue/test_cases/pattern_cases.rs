@@ -71,6 +71,15 @@ pub fn query_params(
     }
 }
 
+fn new_pattern_edge(
+    id: PatternId, label: PatternLabelId, start_v_id: PatternId, end_v_id: PatternId,
+    start_v_label: PatternLabelId, end_v_label: PatternLabelId,
+) -> PatternEdge {
+    let start_vertex = PatternVertex::new(start_v_id, start_v_label);
+    let end_vertex = PatternVertex::new(end_v_id, end_v_label);
+    PatternEdge::new(id, label, start_vertex, end_vertex)
+}
+
 /// The pattern looks like:
 /// ```text
 ///      A <-> A
@@ -85,7 +94,11 @@ pub fn query_params(
 ///
 /// The right A has id 1
 pub fn build_pattern_case1() -> Pattern {
-    let pattern_vec = vec![PatternEdge::new(0, 0, 0, 1, 0, 0), PatternEdge::new(1, 0, 1, 0, 0, 0)];
+    let vertex_1 = PatternVertex::new(0, 0);
+    let vertex_2 = PatternVertex::new(1, 0);
+    let edge_1 = PatternEdge::new(0, 0, vertex_1, vertex_2);
+    let edge_2 = PatternEdge::new(1, 0, vertex_2, vertex_1);
+    let pattern_vec = vec![edge_1, edge_2];
     Pattern::try_from(pattern_vec).unwrap()
 }
 
@@ -110,10 +123,10 @@ pub fn build_pattern_case1() -> Pattern {
 /// B has id 2
 pub fn build_pattern_case2() -> Pattern {
     let pattern_vec = vec![
-        PatternEdge::new(0, 0, 0, 1, 0, 0),
-        PatternEdge::new(1, 0, 1, 0, 0, 0),
-        PatternEdge::new(2, 1, 0, 2, 0, 1),
-        PatternEdge::new(3, 1, 1, 2, 0, 1),
+        new_pattern_edge(0, 0, 0, 1, 0, 0),
+        new_pattern_edge(1, 0, 1, 0, 0, 0),
+        new_pattern_edge(2, 1, 0, 2, 0, 1),
+        new_pattern_edge(3, 1, 1, 2, 0, 1),
     ];
     Pattern::try_from(pattern_vec).unwrap()
 }
@@ -137,10 +150,10 @@ pub fn build_pattern_case2() -> Pattern {
 pub fn build_pattern_case3() -> Pattern {
     let edge_ids = gen_group_ids(3);
     let pattern_vec = vec![
-        PatternEdge::new(edge_ids[0], 0, 0, 1, 0, 0),
-        PatternEdge::new(edge_ids[1], 1, 0, 2, 0, 1),
-        PatternEdge::new(edge_ids[2], 1, 1, 3, 0, 1),
-        PatternEdge::new(edge_ids[3], 2, 2, 3, 1, 1),
+        new_pattern_edge(edge_ids[0], 0, 0, 1, 0, 0),
+        new_pattern_edge(edge_ids[1], 1, 0, 2, 0, 1),
+        new_pattern_edge(edge_ids[2], 1, 1, 3, 0, 1),
+        new_pattern_edge(edge_ids[3], 2, 2, 3, 1, 1),
     ];
     Pattern::try_from(pattern_vec).unwrap()
 }
@@ -164,11 +177,11 @@ pub fn build_pattern_case3() -> Pattern {
 pub fn build_pattern_case4() -> Pattern {
     let edge_ids = gen_group_ids(4);
     let pattern_vec = vec![
-        PatternEdge::new(edge_ids[0], 0, 0, 1, 0, 0),
-        PatternEdge::new(edge_ids[1], 0, 1, 0, 0, 0),
-        PatternEdge::new(edge_ids[2], 1, 0, 2, 0, 1),
-        PatternEdge::new(edge_ids[3], 1, 1, 3, 0, 1),
-        PatternEdge::new(edge_ids[4], 2, 2, 3, 1, 1),
+        new_pattern_edge(edge_ids[0], 0, 0, 1, 0, 0),
+        new_pattern_edge(edge_ids[1], 0, 1, 0, 0, 0),
+        new_pattern_edge(edge_ids[2], 1, 0, 2, 0, 1),
+        new_pattern_edge(edge_ids[3], 1, 1, 3, 0, 1),
+        new_pattern_edge(edge_ids[4], 2, 2, 3, 1, 1),
     ];
     Pattern::try_from(pattern_vec).unwrap()
 }
@@ -202,17 +215,17 @@ pub fn build_pattern_case5() -> Pattern {
     let id_vec_d: Vec<PatternId> = vec![1000];
     let edge_ids = gen_group_ids(10);
     let pattern_vec = vec![
-        PatternEdge::new(edge_ids[0], 15, id_vec_c[0], id_vec_b[1], label_c, label_b),
-        PatternEdge::new(edge_ids[1], 30, id_vec_a[0], id_vec_b[1], label_a, label_b),
-        PatternEdge::new(edge_ids[2], 15, id_vec_c[2], id_vec_b[1], label_c, label_b),
-        PatternEdge::new(edge_ids[3], 30, id_vec_a[0], id_vec_b[0], label_a, label_b),
-        PatternEdge::new(edge_ids[4], 30, id_vec_a[3], id_vec_b[1], label_a, label_b),
-        PatternEdge::new(edge_ids[5], 30, id_vec_a[3], id_vec_b[2], label_a, label_b),
-        PatternEdge::new(edge_ids[6], 30, id_vec_a[1], id_vec_b[2], label_a, label_b),
-        PatternEdge::new(edge_ids[7], 20, id_vec_a[1], id_vec_a[2], label_a, label_a),
-        PatternEdge::new(edge_ids[8], 20, id_vec_a[2], id_vec_a[1], label_a, label_a),
-        PatternEdge::new(edge_ids[9], 15, id_vec_c[1], id_vec_b[2], label_c, label_b),
-        PatternEdge::new(edge_ids[10], 5, id_vec_d[0], id_vec_c[1], label_d, label_c),
+        new_pattern_edge(edge_ids[0], 15, id_vec_c[0], id_vec_b[1], label_c, label_b),
+        new_pattern_edge(edge_ids[1], 30, id_vec_a[0], id_vec_b[1], label_a, label_b),
+        new_pattern_edge(edge_ids[2], 15, id_vec_c[2], id_vec_b[1], label_c, label_b),
+        new_pattern_edge(edge_ids[3], 30, id_vec_a[0], id_vec_b[0], label_a, label_b),
+        new_pattern_edge(edge_ids[4], 30, id_vec_a[3], id_vec_b[1], label_a, label_b),
+        new_pattern_edge(edge_ids[5], 30, id_vec_a[3], id_vec_b[2], label_a, label_b),
+        new_pattern_edge(edge_ids[6], 30, id_vec_a[1], id_vec_b[2], label_a, label_b),
+        new_pattern_edge(edge_ids[7], 20, id_vec_a[1], id_vec_a[2], label_a, label_a),
+        new_pattern_edge(edge_ids[8], 20, id_vec_a[2], id_vec_a[1], label_a, label_a),
+        new_pattern_edge(edge_ids[9], 15, id_vec_c[1], id_vec_b[2], label_c, label_b),
+        new_pattern_edge(edge_ids[10], 5, id_vec_d[0], id_vec_c[1], label_d, label_c),
     ];
     Pattern::try_from(pattern_vec).unwrap()
 }
@@ -230,8 +243,8 @@ pub fn build_pattern_case5() -> Pattern {
 ///     A->B: 1, A->C: 2
 /// ```
 pub fn build_pattern_case6() -> Pattern {
-    let pattern_edge1 = PatternEdge::new(0, 1, 0, 1, 1, 2);
-    let pattern_edge2 = PatternEdge::new(1, 2, 0, 2, 1, 3);
+    let pattern_edge1 = new_pattern_edge(0, 1, 0, 1, 1, 2);
+    let pattern_edge2 = new_pattern_edge(1, 2, 0, 2, 1, 3);
     let pattern_vec = vec![pattern_edge1, pattern_edge2];
     Pattern::try_from(pattern_vec).unwrap()
 }
@@ -253,12 +266,12 @@ pub fn build_pattern_case6() -> Pattern {
 ///     A->B: 0, A->C: 1, B->C: 2, A->D: 3, B->D: 4, D->C: 5
 /// ```
 pub fn build_pattern_case7() -> Pattern {
-    let edge_1 = PatternEdge::new(0, 1, 0, 1, 1, 2);
-    let edge_2 = PatternEdge::new(1, 2, 0, 2, 1, 3);
-    let edge_3 = PatternEdge::new(2, 3, 1, 2, 2, 3);
-    let edge_4 = PatternEdge::new(3, 4, 0, 3, 1, 4);
-    let edge_5 = PatternEdge::new(4, 5, 1, 3, 2, 4);
-    let edge_6 = PatternEdge::new(5, 6, 3, 2, 4, 3);
+    let edge_1 = new_pattern_edge(0, 1, 0, 1, 1, 2);
+    let edge_2 = new_pattern_edge(1, 2, 0, 2, 1, 3);
+    let edge_3 = new_pattern_edge(2, 3, 1, 2, 2, 3);
+    let edge_4 = new_pattern_edge(3, 4, 0, 3, 1, 4);
+    let edge_5 = new_pattern_edge(4, 5, 1, 3, 2, 4);
+    let edge_6 = new_pattern_edge(5, 6, 3, 2, 4, 3);
     let pattern_edges = vec![edge_1, edge_2, edge_3, edge_4, edge_5, edge_6];
     Pattern::try_from(pattern_edges).unwrap()
 }
@@ -276,8 +289,8 @@ pub fn build_pattern_case7() -> Pattern {
 ///     A->A: 0, A->B: 3
 /// ```
 pub fn build_pattern_case8() -> Pattern {
-    let edge_1 = PatternEdge::new(0, 0, 0, 1, 1, 1);
-    let edge_2 = PatternEdge::new(1, 3, 1, 2, 1, 2);
+    let edge_1 = new_pattern_edge(0, 0, 0, 1, 1, 1);
+    let edge_2 = new_pattern_edge(1, 3, 1, 2, 1, 2);
     let pattern_edges = vec![edge_1, edge_2];
     Pattern::try_from(pattern_edges).unwrap()
 }
@@ -297,11 +310,11 @@ pub fn build_pattern_case8() -> Pattern {
 ///     A->A: 0, A->C: 1, B->C: 2, A->B: 3
 /// ```
 pub fn build_pattern_case9() -> Pattern {
-    let edge_1 = PatternEdge::new(0, 0, 0, 1, 1, 1);
-    let edge_2 = PatternEdge::new(1, 3, 1, 2, 1, 2);
-    let edge_3 = PatternEdge::new(2, 1, 0, 3, 1, 3);
-    let edge_4 = PatternEdge::new(3, 1, 1, 3, 1, 3);
-    let edge_5 = PatternEdge::new(4, 2, 2, 3, 2, 3);
+    let edge_1 = new_pattern_edge(0, 0, 0, 1, 1, 1);
+    let edge_2 = new_pattern_edge(1, 3, 1, 2, 1, 2);
+    let edge_3 = new_pattern_edge(2, 1, 0, 3, 1, 3);
+    let edge_4 = new_pattern_edge(3, 1, 1, 3, 1, 3);
+    let edge_5 = new_pattern_edge(4, 2, 2, 3, 2, 3);
     let pattern_edges = vec![edge_1, edge_2, edge_3, edge_4, edge_5];
     Pattern::try_from(pattern_edges).unwrap()
 }
@@ -323,7 +336,7 @@ pub fn build_modern_pattern_case2() -> Pattern {
 ///     Person -> knows -> Person
 /// ```
 pub fn build_modern_pattern_case3() -> Pattern {
-    let pattern_edge = PatternEdge::new(0, 0, 0, 1, 0, 0);
+    let pattern_edge = new_pattern_edge(0, 0, 0, 1, 0, 0);
     Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
@@ -332,7 +345,7 @@ pub fn build_modern_pattern_case3() -> Pattern {
 ///     Person -> created -> Software
 /// ```
 pub fn build_modern_pattern_case4() -> Pattern {
-    let pattern_edge = PatternEdge::new(0, 1, 0, 1, 0, 1);
+    let pattern_edge = new_pattern_edge(0, 1, 0, 1, 0, 1);
     Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
@@ -346,9 +359,9 @@ pub fn build_modern_pattern_case4() -> Pattern {
 ///
 /// Software and Person are vertex labels
 pub fn build_modern_pattern_case5() -> Pattern {
-    let pattern_edge1 = PatternEdge::new(0, 0, 0, 1, 0, 0);
-    let pattern_edge2 = PatternEdge::new(1, 1, 0, 2, 0, 1);
-    let pattern_edge3 = PatternEdge::new(2, 1, 1, 2, 0, 1);
+    let pattern_edge1 = new_pattern_edge(0, 0, 0, 1, 0, 0);
+    let pattern_edge2 = new_pattern_edge(1, 1, 0, 2, 0, 1);
+    let pattern_edge3 = new_pattern_edge(2, 1, 1, 2, 0, 1);
     Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap()
 }
 
@@ -357,7 +370,7 @@ pub fn build_modern_pattern_case5() -> Pattern {
 ///     Person -> knows -> Person
 /// ```
 pub fn build_ldbc_pattern_case1() -> Pattern {
-    let pattern_edge = PatternEdge::new(0, 12, 0, 1, 1, 1);
+    let pattern_edge = new_pattern_edge(0, 12, 0, 1, 1, 1);
     Pattern::try_from(vec![pattern_edge]).unwrap()
 }
 
@@ -780,7 +793,7 @@ pub fn build_pattern_rank_ranking_case1() -> (Pattern, HashMap<String, PatternId
     let vertex_ids = gen_group_ids(1);
     vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
     vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    let pattern_vec = vec![PatternEdge::new(
+    let pattern_vec = vec![new_pattern_edge(
         0,
         *edge_label_map.get("A->A").unwrap(),
         *vertex_id_map.get("A0").unwrap(),
@@ -802,7 +815,7 @@ pub fn build_pattern_rank_ranking_case2() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
     let edge_ids = gen_group_ids(1);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -810,7 +823,7 @@ pub fn build_pattern_rank_ranking_case2() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -835,7 +848,7 @@ pub fn build_pattern_rank_ranking_case3() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
     let edge_ids = gen_group_ids(1);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -843,7 +856,7 @@ pub fn build_pattern_rank_ranking_case3() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -868,7 +881,7 @@ pub fn build_pattern_rank_ranking_case4() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
     let edge_ids = gen_group_ids(2);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -876,7 +889,7 @@ pub fn build_pattern_rank_ranking_case4() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -884,7 +897,7 @@ pub fn build_pattern_rank_ranking_case4() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -909,7 +922,7 @@ pub fn build_pattern_rank_ranking_case5() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
     let edge_ids = gen_group_ids(2);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -917,7 +930,7 @@ pub fn build_pattern_rank_ranking_case5() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -925,7 +938,7 @@ pub fn build_pattern_rank_ranking_case5() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -950,7 +963,7 @@ pub fn build_pattern_rank_ranking_case6() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
     let edge_ids = gen_group_ids(3);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -958,7 +971,7 @@ pub fn build_pattern_rank_ranking_case6() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -966,7 +979,7 @@ pub fn build_pattern_rank_ranking_case6() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -974,7 +987,7 @@ pub fn build_pattern_rank_ranking_case6() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("B->A").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -999,7 +1012,7 @@ pub fn build_pattern_rank_ranking_case7() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
     let edge_ids = gen_group_ids(3);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1007,7 +1020,7 @@ pub fn build_pattern_rank_ranking_case7() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1015,7 +1028,7 @@ pub fn build_pattern_rank_ranking_case7() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1023,7 +1036,7 @@ pub fn build_pattern_rank_ranking_case7() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1049,7 +1062,7 @@ pub fn build_pattern_rank_ranking_case8() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
     let edge_ids = gen_group_ids(3);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1057,7 +1070,7 @@ pub fn build_pattern_rank_ranking_case8() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1065,7 +1078,7 @@ pub fn build_pattern_rank_ranking_case8() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1073,7 +1086,7 @@ pub fn build_pattern_rank_ranking_case8() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1099,7 +1112,7 @@ pub fn build_pattern_rank_ranking_case9() -> (Pattern, HashMap<String, PatternId
     vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
     let edge_ids = gen_group_ids(4);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1107,7 +1120,7 @@ pub fn build_pattern_rank_ranking_case9() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1115,7 +1128,7 @@ pub fn build_pattern_rank_ranking_case9() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1123,7 +1136,7 @@ pub fn build_pattern_rank_ranking_case9() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1131,7 +1144,7 @@ pub fn build_pattern_rank_ranking_case9() -> (Pattern, HashMap<String, PatternId
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1157,7 +1170,7 @@ pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
     let edge_ids = gen_group_ids(5);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1165,7 +1178,7 @@ pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1173,7 +1186,7 @@ pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1181,7 +1194,7 @@ pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1189,7 +1202,7 @@ pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1197,7 +1210,7 @@ pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1224,7 +1237,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("B2"), vertex_ids[4]);
     let edge_ids = gen_group_ids(6);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1232,7 +1245,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1240,7 +1253,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1248,7 +1261,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1256,7 +1269,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1264,7 +1277,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1272,7 +1285,7 @@ pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1300,7 +1313,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("B3"), vertex_ids[5]);
     let edge_ids = gen_group_ids(7);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1308,7 +1321,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1316,7 +1329,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1324,7 +1337,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1332,7 +1345,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1340,7 +1353,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1348,7 +1361,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1356,7 +1369,7 @@ pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1388,7 +1401,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("B2"), vertex_ids[5]);
     let edge_ids = gen_group_ids(7);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1396,7 +1409,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1404,7 +1417,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1412,7 +1425,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1420,7 +1433,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1428,7 +1441,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1436,7 +1449,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1444,7 +1457,7 @@ pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("B->A").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1478,7 +1491,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("C0"), vertex_ids[6]);
     let edge_ids = gen_group_ids(8);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1486,7 +1499,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1494,7 +1507,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1502,7 +1515,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1510,7 +1523,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1518,7 +1531,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1526,7 +1539,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1534,7 +1547,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("B->B").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1542,7 +1555,7 @@ pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[8],
             *edge_label_map.get("B->C").unwrap(),
             *vertex_id_map.get("B2").unwrap(),
@@ -1574,7 +1587,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("C1"), vertex_ids[9]);
     let edge_ids = gen_group_ids(8);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1582,7 +1595,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1590,7 +1603,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("B->C").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1598,7 +1611,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("C").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("B->C").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1606,7 +1619,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("C").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1614,7 +1627,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1622,7 +1635,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1630,7 +1643,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1638,7 +1651,7 @@ pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[8],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -1676,7 +1689,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("D0"), vertex_ids[9]);
     let edge_ids = gen_group_ids(9);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1684,7 +1697,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1692,7 +1705,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("B->C").unwrap(),
             *vertex_id_map.get("B0").unwrap(),
@@ -1700,7 +1713,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("C").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("B->C").unwrap(),
             *vertex_id_map.get("B1").unwrap(),
@@ -1708,7 +1721,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("B").unwrap(),
             *vertex_label_map.get("C").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1716,7 +1729,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1724,7 +1737,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1732,7 +1745,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1740,7 +1753,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[8],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -1748,7 +1761,7 @@ pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[9],
             *edge_label_map.get("C->D").unwrap(),
             *vertex_id_map.get("C1").unwrap(),
@@ -1775,7 +1788,7 @@ pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
     let edge_ids = gen_group_ids(4);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1783,7 +1796,7 @@ pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1791,7 +1804,7 @@ pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1799,7 +1812,7 @@ pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -1807,7 +1820,7 @@ pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -1835,7 +1848,7 @@ pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<S
     vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
     let edge_ids = gen_group_ids(5);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1843,7 +1856,7 @@ pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<S
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1851,7 +1864,7 @@ pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<S
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1859,7 +1872,7 @@ pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<S
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -1867,7 +1880,7 @@ pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<S
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -1875,7 +1888,7 @@ pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<S
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A5").unwrap(),
@@ -1907,7 +1920,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
     vertex_id_map.insert(String::from("A10"), vertex_ids[10]);
     let edge_ids = gen_group_ids(10);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -1915,7 +1928,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -1923,7 +1936,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -1931,7 +1944,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -1939,7 +1952,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -1947,7 +1960,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A5").unwrap(),
@@ -1955,7 +1968,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A6").unwrap(),
@@ -1963,7 +1976,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A7").unwrap(),
@@ -1971,7 +1984,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[8],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A8").unwrap(),
@@ -1979,7 +1992,7 @@ pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<Strin
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[9],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A9").unwrap(),
@@ -2004,7 +2017,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, H
     vertex_id_map.insert(String::from("A4"), 1);
     vertex_id_map.insert(String::from("A5"), 4);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             2,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2012,7 +2025,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             3,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2020,7 +2033,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             1,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -2028,7 +2041,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             4,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -2036,7 +2049,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             0,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -2061,7 +2074,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, H
     vertex_id_map.insert(String::from("A4"), 4);
     vertex_id_map.insert(String::from("A5"), 5);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             0,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2069,7 +2082,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             1,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2077,7 +2090,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             2,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -2085,7 +2098,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             4,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -2093,7 +2106,7 @@ pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, H
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             3,
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -2120,7 +2133,7 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
     let edge_ids = gen_group_ids(5);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2128,7 +2141,7 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2136,7 +2149,7 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -2144,7 +2157,7 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -2152,7 +2165,7 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -2160,7 +2173,7 @@ pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A5").unwrap(),
@@ -2204,7 +2217,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("E0"), vertex_ids[13]);
     let edge_ids = gen_group_ids(13);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2212,7 +2225,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2220,7 +2233,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2228,7 +2241,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2236,7 +2249,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2244,7 +2257,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2252,7 +2265,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -2260,7 +2273,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -2268,7 +2281,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[8],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -2276,7 +2289,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[9],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A5").unwrap(),
@@ -2284,7 +2297,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[10],
             *edge_label_map.get("A->B").unwrap(),
             *vertex_id_map.get("A6").unwrap(),
@@ -2292,7 +2305,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("B").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[11],
             *edge_label_map.get("A->D").unwrap(),
             *vertex_id_map.get("A7").unwrap(),
@@ -2300,7 +2313,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("D").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[12],
             *edge_label_map.get("A->C").unwrap(),
             *vertex_id_map.get("A8").unwrap(),
@@ -2308,7 +2321,7 @@ pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("C").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[13],
             *edge_label_map.get("A->E").unwrap(),
             *vertex_id_map.get("A9").unwrap(),
@@ -2334,7 +2347,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
     vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
     let edge_ids = gen_group_ids(11);
     let pattern_vec = vec![
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[0],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2342,7 +2355,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[1],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2350,7 +2363,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[2],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A0").unwrap(),
@@ -2358,7 +2371,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[3],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2366,7 +2379,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[4],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2374,7 +2387,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[5],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A1").unwrap(),
@@ -2382,7 +2395,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[6],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -2390,7 +2403,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[7],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A2").unwrap(),
@@ -2398,7 +2411,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[8],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -2406,7 +2419,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[9],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A3").unwrap(),
@@ -2414,7 +2427,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[10],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),
@@ -2422,7 +2435,7 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
             *vertex_label_map.get("A").unwrap(),
             *vertex_label_map.get("A").unwrap(),
         ),
-        PatternEdge::new(
+        new_pattern_edge(
             edge_ids[11],
             *edge_label_map.get("A->A").unwrap(),
             *vertex_id_map.get("A4").unwrap(),

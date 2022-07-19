@@ -174,7 +174,7 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
     type Error = IrError;
 
     fn try_from(pattern: Pattern) -> IrResult<Self> {
-        if pattern.get_vertex_num() == 1 {
+        if pattern.get_vertices_num() == 1 {
             let target_vertex = pattern.vertices_iter().last().unwrap();
             let target_v_id = target_vertex.get_id();
             let target_v_label = target_vertex.get_label();
@@ -252,8 +252,7 @@ where
     for (i, element) in origin_vec.iter().enumerate() {
         queue.push_back((vec![element.clone()], i + 1));
     }
-    while queue.len() > 0 {
-        let (subset, max_rank) = queue.pop_front().unwrap();
+    while let Some((subset, max_rank)) = queue.pop_front() {
         set_collections.push(subset.clone());
         for i in max_rank..n {
             let mut new_subset = subset.clone();
