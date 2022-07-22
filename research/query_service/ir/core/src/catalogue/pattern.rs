@@ -44,10 +44,12 @@ impl PatternVertex {
         PatternVertex { id, label }
     }
 
+    #[inline]
     pub fn get_id(&self) -> PatternId {
         self.id
     }
 
+    #[inline]
     pub fn get_label(&self) -> PatternLabelId {
         self.label
     }
@@ -79,18 +81,22 @@ impl PatternEdge {
         PatternEdge { id, label, start_vertex, end_vertex }
     }
 
+    #[inline]
     pub fn get_id(&self) -> PatternId {
         self.id
     }
 
+    #[inline]
     pub fn get_label(&self) -> PatternLabelId {
         self.label
     }
 
+    #[inline]
     pub fn get_start_vertex(&self) -> PatternVertex {
         self.start_vertex
     }
 
+    #[inline]
     pub fn get_end_vertex(&self) -> PatternVertex {
         self.end_vertex
     }
@@ -115,38 +121,42 @@ pub struct Adjacency {
 }
 
 impl Adjacency {
-    pub fn new(src_vertex: &PatternVertex, edge: &PatternEdge) -> IrResult<Self> {
+    pub fn new(src_vertex: &PatternVertex, edge: &PatternEdge) -> Option<Adjacency> {
         if *src_vertex == edge.get_start_vertex() {
-            Ok(Adjacency {
+            Some(Adjacency {
                 edge_id: edge.get_id(),
                 edge_label: edge.get_label(),
                 adj_vertex: edge.get_end_vertex(),
                 direction: PatternDirection::Out,
             })
         } else if *src_vertex == edge.get_end_vertex() {
-            Ok(Adjacency {
+            Some(Adjacency {
                 edge_id: edge.get_id(),
                 edge_label: edge.get_label(),
                 adj_vertex: edge.get_start_vertex(),
                 direction: PatternDirection::In,
             })
         } else {
-            Err(IrError::InvalidPattern("Build Adjacency from a disconnected vertex and edge".to_string()))
+            None
         }
     }
 
+    #[inline]
     pub fn get_edge_id(&self) -> PatternId {
         self.edge_id
     }
 
+    #[inline]
     pub fn get_edge_label(&self) -> PatternLabelId {
         self.edge_label
     }
 
+    #[inline]
     pub fn get_adj_vertex(&self) -> PatternVertex {
         self.adj_vertex
     }
 
+    #[inline]
     pub fn get_direction(&self) -> PatternDirection {
         self.direction
     }
@@ -195,34 +205,36 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
             let mut new_pattern = Pattern::default();
             for edge in edges {
                 // Add the new Pattern Edge to the new Pattern
-                new_pattern.edges.insert(edge.id, edge.clone());
+                new_pattern
+                    .edges
+                    .insert(edge.get_id(), edge.clone());
                 new_pattern
                     .edges_data
-                    .insert(edge.id, PatternEdgeData::default());
+                    .insert(edge.get_id(), PatternEdgeData::default());
                 // Add or update the start vertex to the new Pattern
                 let start_vertex = new_pattern
                     .vertices
-                    .entry(edge.start_vertex.id)
-                    .or_insert(edge.start_vertex);
+                    .entry(edge.get_start_vertex().get_id())
+                    .or_insert(edge.get_start_vertex());
                 // Update start vertex's outgoing info
                 new_pattern
                     .vertices_data
-                    .entry(start_vertex.id)
+                    .entry(start_vertex.get_id())
                     .or_insert(PatternVertexData::default())
                     .out_adjacencies
-                    .push(Adjacency::new(start_vertex, &edge)?);
+                    .push(Adjacency::new(start_vertex, &edge).unwrap());
                 // Add or update the end vertex to the new Pattern
                 let end_vertex = new_pattern
                     .vertices
-                    .entry(edge.end_vertex.id)
-                    .or_insert(edge.end_vertex.into());
+                    .entry(edge.get_end_vertex().get_id())
+                    .or_insert(edge.get_end_vertex());
                 // Update end vertex's incoming info
                 new_pattern
                     .vertices_data
-                    .entry(end_vertex.id)
+                    .entry(end_vertex.get_id())
                     .or_insert(PatternVertexData::default())
                     .in_adjacencies
-                    .push(Adjacency::new(end_vertex, &edge)?);
+                    .push(Adjacency::new(end_vertex, &edge).unwrap());
             }
             new_pattern.vertex_ranking();
             Ok(new_pattern)
@@ -252,14 +264,14 @@ impl Pattern {
         let mut e_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         for sentence in &pb_pattern.sentences {
             if sentence.binders.is_empty() {
-                return Err(IrError::MissingData("pb::pattern::sentence.binders".to_string()));
+                return Err(IrError::MissingData("pb::Pattern::Sentence::binders".to_string()));
             }
             // pb pattern sentence must have start tag
             let start_tag = get_tag_from_name_or_id(
                 sentence
                     .start
                     .clone()
-                    .ok_or(IrError::MissingData("pb::pattern::Sentence.start".to_string()))?,
+                    .ok_or(IrError::MissingData("pb::Pattern::Sentence::start".to_string()))?,
             )?;
             // assgin a vertex id to the start vertex of a pb pattern sentence
             let start_tag_v_id = assign_vertex_id_by_tag(start_tag, &mut tag_v_id_map, &mut next_vertex_id);
@@ -351,13 +363,13 @@ impl Pattern {
 
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             for (tag, v_id) in tag_v_id_map {
-                pattern.set_vertex_tag(tag, v_id)?;
+                pattern.set_vertex_tag(tag, v_id);
             }
             for (v_id, predicate) in v_id_predicate_map {
-                pattern.set_vertex_predicate(v_id, predicate)?;
+                pattern.set_vertex_predicate(v_id, predicate);
             }
             for (e_id, predicate) in e_id_predicate_map {
-                pattern.set_edge_predicate(e_id, predicate)?;
+                pattern.set_edge_predicate(e_id, predicate);
             }
             Ok(pattern)
         })
@@ -404,7 +416,7 @@ fn get_edge_expand_label(edge_expand: &pb::EdgeExpand) -> IrResult<PatternLabelI
     }
     if let Some(params) = edge_expand.params.as_ref() {
         // TODO: Support Fuzzy Pattern
-        if params.tables.len() == 0 {
+        if params.tables.is_empty() {
             return Err(IrError::Unsupported("FuzzyPattern: no specific edge expand label".to_string()));
         } else if params.tables.len() > 1 {
             return Err(IrError::Unsupported("FuzzyPattern: more than 1 edge expand label".to_string()));
@@ -569,39 +581,45 @@ fn generate_new_pattern_edge(
 /// Getters of fields of Pattern
 impl Pattern {
     /// Get a PatternEdge struct from an edge id
-    pub fn get_edge(&self, edge_id: PatternId) -> Option<PatternEdge> {
-        self.edges.get(edge_id).cloned()
+    #[inline]
+    pub fn get_edge(&self, edge_id: PatternId) -> Option<&PatternEdge> {
+        self.edges.get(edge_id)
     }
 
-    /// Get PatternTuple for Edge from Given Tag
-    pub fn get_edge_from_tag(&self, edge_tag: TagId) -> Option<PatternEdge> {
+    /// Get PatternEdge for Edge from Given Tag
+    #[inline]
+    pub fn get_edge_from_tag(&self, edge_tag: TagId) -> Option<&PatternEdge> {
         self.edge_tag_map
             .get(&edge_tag)
             .and_then(|&edge_id| self.get_edge(edge_id))
     }
 
     /// Get the total number of edges in the pattern
+    #[inline]
     pub fn get_edges_num(&self) -> usize {
         self.edges.len()
     }
 
     /// Get the minimum edge label id of the current pattern
+    #[inline]
     pub fn get_min_edge_label(&self) -> Option<PatternLabelId> {
         self.edges
             .iter()
-            .map(|(_, edge)| edge.label)
+            .map(|(_, edge)| edge.get_label())
             .min()
     }
 
     /// Get the maximum edge label id of the current pattern
+    #[inline]
     pub fn get_max_edge_label(&self) -> Option<PatternLabelId> {
         self.edges
             .iter()
-            .map(|(_, edge)| edge.label)
+            .map(|(_, edge)| edge.get_label())
             .max()
     }
 
     /// Get a PatternEdge's Tag info
+    #[inline]
     pub fn get_edge_tag(&self, edge_id: PatternId) -> Option<TagId> {
         self.edges_data
             .get(edge_id)
@@ -609,35 +627,39 @@ impl Pattern {
     }
 
     /// Get the predicate requirement of a PatternEdge
+    #[inline]
     pub fn get_edge_predicate(&self, edge_id: PatternId) -> Option<&common_pb::Expression> {
-        if let Some(edge_data) = self.edges_data.get(edge_id) {
-            edge_data.predicate.as_ref()
-        } else {
-            None
-        }
+        self.edges_data
+            .get(edge_id)
+            .and_then(|edge_data| edge_data.predicate.as_ref())
     }
 
     /// Get a PatternVertex struct from a vertex id
-    pub fn get_vertex(&self, vertex_id: PatternId) -> Option<PatternVertex> {
-        self.vertices.get(vertex_id).cloned()
+    #[inline]
+    pub fn get_vertex(&self, vertex_id: PatternId) -> Option<&PatternVertex> {
+        self.vertices.get(vertex_id)
     }
 
     /// Get PatternVertex Reference from Given Tag
-    pub fn get_vertex_from_tag(&self, vertex_tag: TagId) -> Option<PatternVertex> {
+    #[inline]
+    pub fn get_vertex_from_tag(&self, vertex_tag: TagId) -> Option<&PatternVertex> {
         self.vertex_tag_map
             .get(&vertex_tag)
             .and_then(|&vertex_id| self.get_vertex(vertex_id))
     }
 
     /// Get the total number of vertices in the pattern
+    #[inline]
     pub fn get_vertices_num(&self) -> usize {
         self.vertices.len()
     }
 
+    /// Get the minimum vertex label id of the current pattern
+    #[inline]
     pub fn get_min_vertex_label(&self) -> Option<PatternLabelId> {
         self.vertices
             .iter()
-            .map(|(_, vertex)| vertex.label)
+            .map(|(_, vertex)| vertex.get_label())
             .min()
     }
 
@@ -645,17 +667,20 @@ impl Pattern {
     pub fn get_max_vertex_label(&self) -> Option<PatternLabelId> {
         self.vertices
             .iter()
-            .map(|(_, vertex)| vertex.label)
+            .map(|(_, vertex)| vertex.get_label())
             .max()
     }
 
     /// Get Vertex Rank from Vertex ID Reference
+    #[inline]
     pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<PatternRankId> {
         self.vertices_data
             .get(vertex_id)
             .map(|vertex_data| vertex_data.rank)
     }
 
+    /// Get a PatternVertex's Tag info
+    #[inline]
     pub fn get_vertex_tag(&self, vertex_id: PatternId) -> Option<TagId> {
         self.vertices_data
             .get(vertex_id)
@@ -663,33 +688,33 @@ impl Pattern {
     }
 
     /// Get the predicate requirement of a PatternVertex
+    #[inline]
     pub fn get_vertex_predicate(&self, vertex_id: PatternId) -> Option<&common_pb::Expression> {
-        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
-            vertex_data.predicate.as_ref()
-        } else {
-            None
-        }
+        self.vertices_data
+            .get(vertex_id)
+            .and_then(|vertex_data| vertex_data.predicate.as_ref())
     }
 
     /// Count how many outgoing edges connect to this vertex
+    #[inline]
     pub fn get_vertex_out_degree(&self, vertex_id: PatternId) -> usize {
-        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
-            vertex_data.out_adjacencies.len()
-        } else {
-            0
-        }
+        self.vertices_data
+            .get(vertex_id)
+            .map(|vertex_data| vertex_data.out_adjacencies.len())
+            .unwrap_or(0)
     }
 
     /// Count how many incoming edges connect to this vertex
+    #[inline]
     pub fn get_vertex_in_degree(&self, vertex_id: PatternId) -> usize {
-        if let Some(vertex_data) = self.vertices_data.get(vertex_id) {
-            vertex_data.in_adjacencies.len()
-        } else {
-            0
-        }
+        self.vertices_data
+            .get(vertex_id)
+            .map(|vertex_data| vertex_data.in_adjacencies.len())
+            .unwrap_or(0)
     }
 
     /// Count how many edges connect to this vertex
+    #[inline]
     pub fn get_vertex_degree(&self, vertex_id: PatternId) -> usize {
         self.get_vertex_out_degree(vertex_id) + self.get_vertex_in_degree(vertex_id)
     }
@@ -698,22 +723,22 @@ impl Pattern {
 /// Iterators of fields of Pattern
 impl Pattern {
     /// Iterate Edges
-    pub fn edges_iter(&self) -> DynIter<PatternEdge> {
-        Box::new(self.edges.iter().map(|(_, edge)| edge.clone()))
+    pub fn edges_iter(&self) -> DynIter<&PatternEdge> {
+        Box::new(self.edges.iter().map(|(_, edge)| edge))
     }
 
     /// Iterate Edges with the given edge label
-    pub fn edges_iter_by_label(&self, edge_label: PatternLabelId) -> DynIter<PatternEdge> {
+    pub fn edges_iter_by_label(&self, edge_label: PatternLabelId) -> DynIter<&PatternEdge> {
         Box::new(
             self.edges
                 .iter()
-                .filter(move |(_, edge)| edge.label == edge_label)
-                .map(|(_, edge)| edge.clone()),
+                .map(|(_, edge)| edge)
+                .filter(move |edge| edge.get_label() == edge_label),
         )
     }
 
     /// Iterate over edges that has tag
-    pub fn edges_with_tag_iter(&self) -> DynIter<PatternEdge> {
+    pub fn edges_with_tag_iter(&self) -> DynIter<&PatternEdge> {
         Box::new(
             self.edge_tag_map
                 .iter()
@@ -722,22 +747,22 @@ impl Pattern {
     }
 
     /// Iterate Vertices
-    pub fn vertices_iter(&self) -> DynIter<PatternVertex> {
-        Box::new(self.vertices.iter().map(|(_, &vertex)| vertex))
+    pub fn vertices_iter(&self) -> DynIter<&PatternVertex> {
+        Box::new(self.vertices.iter().map(|(_, vertex)| vertex))
     }
 
     /// Iterate Vertices with the given vertex label
-    pub fn vertices_iter_by_label(&self, vertex_label: PatternLabelId) -> DynIter<PatternVertex> {
+    pub fn vertices_iter_by_label(&self, vertex_label: PatternLabelId) -> DynIter<&PatternVertex> {
         Box::new(
             self.vertices
                 .iter()
-                .filter(move |(_, vertex)| vertex.label == vertex_label)
-                .map(|(_, vertex)| vertex.clone()),
+                .map(|(_, vertex)| vertex)
+                .filter(move |vertex| vertex.get_label() == vertex_label),
         )
     }
 
     /// Iterate over vertices that has tag
-    pub fn vertices_with_tag_iter(&self) -> DynIter<PatternVertex> {
+    pub fn vertices_with_tag_iter(&self) -> DynIter<&PatternVertex> {
         Box::new(
             self.vertex_tag_map
                 .iter()
@@ -775,68 +800,42 @@ impl Pattern {
 /// Setters of fields of Pattern
 impl Pattern {
     /// Assign a PatternEdge of the Pattern with the Given Tag
-    pub fn set_edge_tag(&mut self, edge_tag: TagId, edge_id: PatternId) -> IrResult<()> {
+    pub fn set_edge_tag(&mut self, edge_tag: TagId, edge_id: PatternId) {
         // If the tag is previously assigned to another edge, remove it
         if let Some(&old_edge_id) = self.edge_tag_map.get(&edge_tag) {
             self.edges_data
                 .get_mut(old_edge_id)
-                .ok_or(IrError::MissingData(format!(
-                    "Edge with id {} required to edit is nonexistent in the pattern",
-                    old_edge_id
-                )))?
+                .unwrap()
                 .tag = None;
         }
         // Assign the tag to the edge
         if let Some(edge_data) = self.edges_data.get_mut(edge_id) {
             self.edge_tag_map.insert(edge_tag, edge_id);
             edge_data.tag = Some(edge_tag);
-            Ok(())
-        } else {
-            Err(IrError::MissingData(format!(
-                "Edge with id {} required to edit is nonexistent in the pattern",
-                edge_id
-            )))
         }
     }
 
     /// Set predicate requirement of a PatternEdge
-    pub fn set_edge_predicate(
-        &mut self, edge_id: PatternId, predicate: common_pb::Expression,
-    ) -> IrResult<()> {
+    pub fn set_edge_predicate(&mut self, edge_id: PatternId, predicate: common_pb::Expression) {
         if let Some(edge_data) = self.edges_data.get_mut(edge_id) {
             edge_data.predicate = Some(predicate);
-            Ok(())
-        } else {
-            Err(IrError::MissingData(format!(
-                "Edge with id {} required to edit is nonexistent in the pattern",
-                edge_id
-            )))
         }
     }
 
     /// Assign a PatternVertex with the given rank
-    pub fn set_vertex_rank(&mut self, rank: PatternRankId, vertex_id: PatternId) -> IrResult<()> {
+    pub fn set_vertex_rank(&mut self, rank: PatternRankId, vertex_id: PatternId) {
         if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
             vertex_data.rank = rank;
-            Ok(())
-        } else {
-            Err(IrError::MissingData(format!(
-                "Vertex with id {} required to edit is nonexistent in the pattern",
-                vertex_id
-            )))
         }
     }
 
     /// Assign a PatternVertex with the given tag
-    pub fn set_vertex_tag(&mut self, vertex_tag: TagId, vertex_id: PatternId) -> IrResult<()> {
+    pub fn set_vertex_tag(&mut self, vertex_tag: TagId, vertex_id: PatternId) {
         // If the tag is previously assigned to another vertex, remove it
         if let Some(&old_vertex_id) = self.vertex_tag_map.get(&vertex_tag) {
             self.vertices_data
                 .get_mut(old_vertex_id)
-                .ok_or(IrError::MissingData(format!(
-                    "Vertex with id {} required to edit is nonexistent in the pattern",
-                    old_vertex_id
-                )))?
+                .unwrap()
                 .tag = None;
         }
         // Assign the tag to the vertex
@@ -844,27 +843,13 @@ impl Pattern {
             self.vertex_tag_map
                 .insert(vertex_tag, vertex_id);
             vertex_data.tag = Some(vertex_tag);
-            Ok(())
-        } else {
-            Err(IrError::MissingData(format!(
-                "Vertex with id {} required to edit is nonexistent in the pattern",
-                vertex_id
-            )))
         }
     }
 
     /// Set predicate requirement of a PatternVertex
-    pub fn set_vertex_predicate(
-        &mut self, vertex_id: PatternId, predicate: common_pb::Expression,
-    ) -> IrResult<()> {
+    pub fn set_vertex_predicate(&mut self, vertex_id: PatternId, predicate: common_pb::Expression) {
         if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
             vertex_data.predicate = Some(predicate);
-            Ok(())
-        } else {
-            Err(IrError::MissingData(format!(
-                "Vertex with id {} required to edit is nonexistent in the pattern",
-                vertex_id
-            )))
         }
     }
 }
@@ -874,44 +859,44 @@ impl Pattern {
     /// Get the Order of two PatternEdges in a Pattern
     /// Vertex Indices are taken into consideration
     fn cmp_edges(&self, e1_id: PatternId, e2_id: PatternId) -> Ordering {
-        let e1 = self
-            .get_edge(e1_id)
-            .expect(&format!("Edge with id {} is nonexistent in the pattern", e1_id));
-        let e2 = self
-            .get_edge(e2_id)
-            .expect(&format!("Edge with id {} is nonexistent in the pattern", e2_id));
+        let e1 = self.get_edge(e1_id).unwrap();
+        let e2 = self.get_edge(e2_id).unwrap();
         if e1_id == e2_id {
             return Ordering::Equal;
         }
         // Compare the label of starting vertex
         match e1
-            .start_vertex
-            .label
-            .cmp(&e2.start_vertex.label)
+            .get_start_vertex()
+            .get_label()
+            .cmp(&e2.get_start_vertex().get_label())
         {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
             Ordering::Equal => (),
         }
         // Compare the label of ending vertex
-        match e1.end_vertex.label.cmp(&e2.end_vertex.label) {
+        match e1
+            .get_end_vertex()
+            .get_label()
+            .cmp(&e2.get_end_vertex().get_label())
+        {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
             Ordering::Equal => (),
         }
         // Compare Edge Label
-        match e1.label.cmp(&e2.label) {
+        match e1.get_label().cmp(&e2.get_label()) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
             Ordering::Equal => (),
         }
         // Compare the order of the starting vertex
         let e1_start_v_rank = self
-            .get_vertex_rank(e1.start_vertex.id)
-            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e1.start_vertex.id));
+            .get_vertex_rank(e1.get_start_vertex().get_id())
+            .unwrap();
         let e2_start_v_rank = self
-            .get_vertex_rank(e2.start_vertex.id)
-            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e2.start_vertex.id));
+            .get_vertex_rank(e2.get_start_vertex().get_id())
+            .unwrap();
         match e1_start_v_rank.cmp(&e2_start_v_rank) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
@@ -919,11 +904,11 @@ impl Pattern {
         }
         // Compare the order of ending vertex
         let e1_end_v_rank = self
-            .get_vertex_rank(e1.end_vertex.id)
-            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e1.end_vertex.id));
+            .get_vertex_rank(e1.get_end_vertex().get_id())
+            .unwrap();
         let e2_end_v_rank = self
-            .get_vertex_rank(e2.end_vertex.id)
-            .expect(&format!("Vertex with id {} is nonexistent in the pattern", e2.end_vertex.id));
+            .get_vertex_rank(e2.get_end_vertex().get_id())
+            .unwrap();
         match e1_end_v_rank.cmp(&e2_end_v_rank) {
             Ordering::Less => return Ordering::Less,
             Ordering::Greater => return Ordering::Greater,
@@ -946,7 +931,8 @@ impl Pattern {
         let mut vertex_adjacencies_map: HashMap<PatternId, Vec<Adjacency>> =
             self.get_vertex_adjacencies_map();
         // Initially, mark all the vertices as unfixed
-        let mut vertices_with_unfixed_rank: BTreeSet<PatternVertex> = self.vertices_iter().collect();
+        let mut vertices_with_unfixed_rank: BTreeSet<PatternVertex> =
+            self.vertices_iter().cloned().collect();
         // Set initial ranks by comparing the labels & in/out degrees
         let mut is_rank_changed: bool = self
             .set_rank_by_neighbor_info(&vertex_adjacencies_map, &mut vertices_with_unfixed_rank)
@@ -957,9 +943,7 @@ impl Pattern {
             // Update the Order of Neighbor Edges Based on the ranks of end vertices only
             self.update_neighbor_edges_map(&mut vertex_adjacencies_map);
             // Update vertex ranks by newly updated ranks in the last iteration
-            is_rank_changed = self
-                .update_rank(&vertex_adjacencies_map, &mut vertices_with_unfixed_rank)
-                .unwrap();
+            is_rank_changed = self.update_rank(&vertex_adjacencies_map, &mut vertices_with_unfixed_rank);
         }
     }
 
@@ -1012,7 +996,10 @@ impl Pattern {
             }
             visited_labels.insert(v_label);
             // Collect all vertices with the specified label
-            let same_label_vertex_vec: Vec<PatternVertex> = self.vertices_iter_by_label(v_label).collect();
+            let same_label_vertex_vec: Vec<PatternVertex> = self
+                .vertices_iter_by_label(v_label)
+                .cloned()
+                .collect();
             let vertex_num = same_label_vertex_vec.len();
             // Record the rank and is_rank_fixed properties for each vertex
             let mut vertex_rank_vec: Vec<PatternRankId> = vec![0; vertex_num];
@@ -1042,14 +1029,14 @@ impl Pattern {
             }
         }
         // Remove vertices that have fixed rank
-        for v_tuple in vertices_with_fixed_rank {
-            vertices_with_unfixed_rank.remove(&v_tuple);
+        for vertex in vertices_with_fixed_rank {
+            vertices_with_unfixed_rank.remove(&vertex);
         }
         // Update vertex ranks on pattern
         for (v_id, v_rank) in vertex_rank_map.iter() {
             if *v_rank != 0 {
                 is_rank_changed = true;
-                self.set_vertex_rank(*v_rank, *v_id)?;
+                self.set_vertex_rank(*v_rank, *v_id);
             }
         }
 
@@ -1064,9 +1051,9 @@ impl Pattern {
     fn update_rank(
         &mut self, vertex_adjacencies_map: &HashMap<PatternId, Vec<Adjacency>>,
         vertices_with_unfixed_rank: &mut BTreeSet<PatternVertex>,
-    ) -> IrResult<bool> {
+    ) -> bool {
         if vertices_with_unfixed_rank.len() == 0 {
-            return Ok(false);
+            return false;
         }
         // Mark whether there is a change of vertex rank
         let mut is_rank_changed: bool = false;
@@ -1081,7 +1068,7 @@ impl Pattern {
         // We only focus on vertices with unfixed ranks
         for v_label in vertices_with_unfixed_rank
             .iter()
-            .map(|tuple| tuple.label)
+            .map(|vertex| vertex.get_label())
         {
             if visited_labels.contains(&v_label) {
                 continue;
@@ -1093,12 +1080,7 @@ impl Pattern {
             // Separate vertices according to their ranks
             for vertex in self.vertices_iter_by_label(v_label) {
                 if vertices_with_unfixed_rank.contains(&vertex) {
-                    let v_rank = self
-                        .get_vertex_rank(vertex.get_id())
-                        .ok_or(IrError::MissingData(format!(
-                            "Vertex with id {} is nonexistent in the pattern",
-                            vertex.get_id()
-                        )))?;
+                    let v_rank = self.get_vertex_rank(vertex.get_id()).unwrap();
                     if !same_rank_vertex_map.contains_key(&v_rank) {
                         same_rank_vertex_map.insert(v_rank, (Vec::new(), Vec::new()));
                     }
@@ -1115,28 +1097,16 @@ impl Pattern {
                     {
                         if !vertices_with_unfixed_rank.contains(&adj_vertex) {
                             has_fixed_rank_neighbor = true;
-                            if let Some((same_rank_vertices_with_fixed_rank_neighbor, _)) =
-                                same_rank_vertex_map.get_mut(&v_rank)
-                            {
-                                same_rank_vertices_with_fixed_rank_neighbor.push(vertex);
-                            } else {
-                                return Err(IrError::Unsupported(
-                                    "Failed to find vertices with the same rank".to_string(),
-                                ));
-                            }
+                            let (same_rank_vertices_with_fixed_rank_neighbor, _) =
+                                same_rank_vertex_map.get_mut(&v_rank).unwrap();
+                            same_rank_vertices_with_fixed_rank_neighbor.push(*vertex);
                             break;
                         }
                     }
                     if !has_fixed_rank_neighbor {
-                        if let Some((_, same_rank_vertices_without_fixed_rank_neighbor)) =
-                            same_rank_vertex_map.get_mut(&v_rank)
-                        {
-                            same_rank_vertices_without_fixed_rank_neighbor.push(vertex);
-                        } else {
-                            return Err(IrError::Unsupported(
-                                "Failed to find vertices with the same rank".to_string(),
-                            ));
-                        }
+                        let (_, same_rank_vertices_without_fixed_rank_neighbor) =
+                            same_rank_vertex_map.get_mut(&v_rank).unwrap();
+                        same_rank_vertices_without_fixed_rank_neighbor.push(*vertex);
                     }
                 }
             }
@@ -1147,11 +1117,8 @@ impl Pattern {
                 // Case-1: All vertices have no fixed rank neighbor
                 if vertex_set_with_fixed_rank_neighbor.len() == 0 {
                     let old_rank = self
-                        .get_vertex_rank(vertex_set_without_fixed_rank_neighbor[0].id)
-                        .ok_or(IrError::MissingData(format!(
-                            "Vertex with id {} is nonexistent in the pattern",
-                            vertex_set_without_fixed_rank_neighbor[0].id
-                        )))?;
+                        .get_vertex_rank(vertex_set_without_fixed_rank_neighbor[0].get_id())
+                        .unwrap();
                     let vertex_num = vertex_set_without_fixed_rank_neighbor.len();
                     let mut vertex_rank_vec: Vec<PatternRankId> = vec![old_rank; vertex_num];
                     let mut is_rank_fixed_vec: Vec<bool> = vec![true; vertex_num];
@@ -1159,8 +1126,8 @@ impl Pattern {
                     for i in 0..vertex_num {
                         for j in (i + 1)..vertex_num {
                             match self.cmp_vertices_by_rank(
-                                vertex_set_without_fixed_rank_neighbor[i].id,
-                                vertex_set_without_fixed_rank_neighbor[j].id,
+                                vertex_set_without_fixed_rank_neighbor[i].get_id(),
+                                vertex_set_without_fixed_rank_neighbor[j].get_id(),
                                 vertex_adjacencies_map,
                             ) {
                                 Ordering::Greater => vertex_rank_vec[i] += 1,
@@ -1177,17 +1144,14 @@ impl Pattern {
                         }
                         // Update Vertex Rank on the map
                         vertex_rank_map
-                            .insert(vertex_set_without_fixed_rank_neighbor[i].id, vertex_rank_vec[i]);
+                            .insert(vertex_set_without_fixed_rank_neighbor[i].get_id(), vertex_rank_vec[i]);
                     }
                 }
                 // Case-2: There exists vertex having fixed rank neighbor
                 else {
                     let old_rank: PatternRankId = self
-                        .get_vertex_rank(vertex_set_with_fixed_rank_neighbor[0].id)
-                        .ok_or(IrError::MissingData(format!(
-                            "Vertex with id {} is nonexistent in the pattern",
-                            vertex_set_with_fixed_rank_neighbor[0].id
-                        )))?;
+                        .get_vertex_rank(vertex_set_with_fixed_rank_neighbor[0].get_id())
+                        .unwrap();
                     let mut vertices_for_ranking: Vec<PatternVertex> =
                         vertex_set_with_fixed_rank_neighbor.clone();
                     // Take one vertex that has no fixed rank neighbor to represent all such vertices
@@ -1201,8 +1165,8 @@ impl Pattern {
                     for i in 0..vertex_num {
                         for j in (i + 1)..vertex_num {
                             match self.cmp_vertices_by_rank(
-                                vertices_for_ranking[i].id,
-                                vertices_for_ranking[j].id,
+                                vertices_for_ranking[i].get_id(),
+                                vertices_for_ranking[j].get_id(),
                                 vertex_adjacencies_map,
                             ) {
                                 Ordering::Greater => {
@@ -1236,11 +1200,11 @@ impl Pattern {
                     // Update Vertex Rank on the map
                     for i in 0..vertex_set_with_fixed_rank_neighbor.len() {
                         vertex_rank_map
-                            .insert(vertex_set_with_fixed_rank_neighbor[i].id, vertex_rank_vec[i]);
+                            .insert(vertex_set_with_fixed_rank_neighbor[i].get_id(), vertex_rank_vec[i]);
                     }
                     for j in 0..vertex_set_without_fixed_rank_neighbor.len() {
                         vertex_rank_map.insert(
-                            vertex_set_without_fixed_rank_neighbor[j].id,
+                            vertex_set_without_fixed_rank_neighbor[j].get_id(),
                             vertex_rank_vec[vertex_num - 1],
                         );
                     }
@@ -1254,19 +1218,13 @@ impl Pattern {
         }
         // Update vertex rank on the pattern
         for (v_id, v_rank) in vertex_rank_map.iter() {
-            let old_rank: PatternRankId = self
-                .get_vertex_rank(*v_id)
-                .ok_or(IrError::MissingData(format!(
-                    "Vertex with id {} is nonexistent in the pattern",
-                    v_id
-                )))?;
+            let old_rank: PatternRankId = self.get_vertex_rank(*v_id).unwrap();
             if *v_rank != old_rank {
                 is_rank_changed = true;
-                self.set_vertex_rank(*v_rank, *v_id)?;
+                self.set_vertex_rank(*v_rank, *v_id);
             }
         }
-
-        Ok(is_rank_changed)
+        is_rank_changed
     }
 
     /// Compare the ranks of two PatternVertices
@@ -1359,20 +1317,14 @@ impl Pattern {
                         .get_adj_vertex()
                         .get_id(),
                 )
-                .expect(&format!(
-                    "Vertex with id {} is nonexistent in the pattern",
-                    v1_adjacencies[adj_index].get_adj_vertex().id
-                ));
+                .unwrap();
             let v2_adj_v_rank = self
                 .get_vertex_rank(
                     v2_adjacencies[adj_index]
                         .get_adj_vertex()
                         .get_id(),
                 )
-                .expect(&format!(
-                    "Vertex with id {} is nonexistent in the pattern",
-                    v2_adjacencies[adj_index].get_adj_vertex().id
-                ));
+                .unwrap();
             match v1_adj_v_rank.cmp(&v2_adj_v_rank) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
@@ -1404,22 +1356,16 @@ impl Pattern {
     /// In our case, It's the vertex with the smallest label and rank
     fn get_dfs_starting_vertex(&self) -> PatternId {
         // Step-1: Find the smallest vertex label
-        let min_v_label = self
-            .get_min_vertex_label()
-            .expect("The pattern doesn't provide vertex label info");
+        let min_v_label = self.get_min_vertex_label().unwrap();
         // Step-2: Find the vertex with the smallest rank
         self.vertices_iter_by_label(min_v_label)
             .map(|vertex| vertex.get_id())
             .min_by(|&v1_id, &v2_id| {
-                let v1_rank = self
-                    .get_vertex_rank(v1_id)
-                    .expect(&format!("Vertex with id {} is nonexistent in the pattern", v1_id));
-                let v2_rank = self
-                    .get_vertex_rank(v2_id)
-                    .expect(&format!("Vertex with id {} is nonexistent in the pattern", v2_id));
+                let v1_rank = self.get_vertex_rank(v1_id).unwrap();
+                let v2_rank = self.get_vertex_rank(v2_id).unwrap();
                 v1_rank.cmp(&v2_rank)
             })
-            .expect("The pattern's minimum label doesn't have a vertex matching to it")
+            .unwrap()
     }
 
     /// Perform DFS Sorting to Pattern Edges Based on Labels and Ranks
@@ -1429,7 +1375,7 @@ impl Pattern {
     /// dfs_edge_sequence is a vector of edge ids in DFS order
     ///
     /// vertex_dfs_id_map maps from vertex ids to dfs id
-    pub fn get_dfs_edge_sequence(&self) -> IrResult<(Vec<PatternId>, HashMap<PatternId, PatternRankId>)> {
+    pub fn get_dfs_edge_sequence(&self) -> Option<(Vec<PatternId>, HashMap<PatternId, PatternRankId>)> {
         // output edge sequence
         let mut dfs_edge_sequence: Vec<PatternId> = Vec::new();
         // DFS Generation Tree
@@ -1449,7 +1395,7 @@ impl Pattern {
         while let Some(&current_v_id) = vertex_stack.back() {
             let vertex_adjacencies = vertex_adjacencies_map
                 .get(&current_v_id)
-                .expect(&format!("Unknown ID {}", current_v_id));
+                .unwrap();
             let mut found_next_edge: bool = false;
             let mut adj_index: usize = 0;
             while adj_index < vertex_adjacencies.len() {
@@ -1523,15 +1469,14 @@ impl Pattern {
                 vertex_stack.pop_back();
             }
         }
-
         // Check if dfs sorting fails
         if visited_edges.len() == self.get_edges_num()
             && dfs_edge_sequence.len() == self.get_edges_num()
             && vertex_dfs_id_map.len() == self.get_vertices_num()
         {
-            Ok((dfs_edge_sequence, vertex_dfs_id_map))
+            Some((dfs_edge_sequence, vertex_dfs_id_map))
         } else {
-            Err(IrError::Unsupported("Failed when doing dfs sorting to pattern edges".to_string()))
+            None
         }
     }
 }
@@ -1548,6 +1493,7 @@ impl Pattern {
             .filter(|vertex| {
                 vertex.get_label() == v_label && self.get_vertex_rank(vertex.get_id()).unwrap() == v_rank
             })
+            .cloned()
             .collect()
     }
 
@@ -1720,37 +1666,42 @@ impl Pattern {
         if self.edges.contains_key(edge.get_id()) {
             return Err(IrError::InvalidCode("The adding edge already existed".to_string()));
         }
+        let start_vertex = edge.get_start_vertex();
+        let end_vertex = edge.get_end_vertex();
         // Error that cannot connect the edge to the pattern
         if let (None, None) =
-            (self.vertices.get(edge.start_vertex.id), self.vertices.get(edge.end_vertex.id))
+            (self.vertices.get(start_vertex.get_id()), self.vertices.get(end_vertex.get_id()))
         {
             return Err(IrError::InvalidCode("The adding edge cannot connect to the pattern".to_string()));
-        } else if let None = self.vertices.get(edge.start_vertex.id) {
+        } else if let None = self.vertices.get(start_vertex.get_id()) {
             // end vertex already exists in the pattern, use it to connect
             // add start vertex
             self.vertices
-                .insert(edge.get_start_vertex().get_id(), edge.get_start_vertex());
+                .insert(start_vertex.get_id(), start_vertex);
             self.vertices_data
-                .insert(edge.get_start_vertex().get_id(), PatternVertexData::default());
-        } else if let None = self.vertices.get(edge.end_vertex.id) {
+                .insert(start_vertex.get_id(), PatternVertexData::default());
+        } else if let None = self.vertices.get(end_vertex.get_id()) {
             // start vertex already exists in the pattern, use it to connect
             // add end vertex
             self.vertices
-                .insert(edge.get_end_vertex().get_id(), edge.get_end_vertex());
+                .insert(end_vertex.get_id(), end_vertex);
             self.vertices_data
-                .insert(edge.get_end_vertex().get_id(), PatternVertexData::default());
+                .insert(end_vertex.get_id(), PatternVertexData::default());
         }
         // update start vertex's connection info
-        if let Some(start_vertex_data) = self.vertices_data.get_mut(edge.start_vertex.id) {
+        if let Some(start_vertex_data) = self
+            .vertices_data
+            .get_mut(start_vertex.get_id())
+        {
             start_vertex_data
                 .out_adjacencies
-                .push(Adjacency::new(&edge.start_vertex, &edge).unwrap());
+                .push(Adjacency::new(&start_vertex, &edge).unwrap());
         }
         // update end vertex's connection info
-        if let Some(end_vertex_data) = self.vertices_data.get_mut(edge.end_vertex.id) {
+        if let Some(end_vertex_data) = self.vertices_data.get_mut(end_vertex.get_id()) {
             end_vertex_data
                 .in_adjacencies
-                .push(Adjacency::new(&edge.end_vertex, &edge).unwrap());
+                .push(Adjacency::new(&end_vertex, &edge).unwrap());
         }
         // add edge to the pattern
         self.edges.insert(edge.get_id(), edge.clone());
@@ -1896,7 +1847,7 @@ impl Pattern {
                     ));
                 } else {
                     extend_edges.push(DefiniteExtendEdge::new(
-                        edge.end_vertex.id,
+                        edge.get_end_vertex().get_id(),
                         edge_id,
                         edge.get_label(),
                         PatternDirection::In,
@@ -1936,9 +1887,9 @@ mod tests {
         assert_eq!(edges_num, 2);
         let vertices_num = pattern_case1.vertices.len();
         assert_eq!(vertices_num, 2);
-        let edges_with_label_0: Vec<PatternEdge> = pattern_case1.edges_iter_by_label(0).collect();
+        let edges_with_label_0: Vec<&PatternEdge> = pattern_case1.edges_iter_by_label(0).collect();
         assert_eq!(edges_with_label_0.len(), 2);
-        let vertices_with_label_0: Vec<PatternVertex> = pattern_case1
+        let vertices_with_label_0: Vec<&PatternVertex> = pattern_case1
             .vertices_iter_by_label(0)
             .collect();
         assert_eq!(vertices_with_label_0.len(), 2);
@@ -1994,7 +1945,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 3
             );
@@ -2002,7 +1953,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(12)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 3
             );
@@ -2040,7 +1991,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 2
             );
@@ -2048,7 +1999,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(12)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
             );
@@ -2056,7 +2007,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(12)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 1
             );
@@ -2064,7 +2015,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(15)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 2
             );
@@ -2101,7 +2052,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 4
             );
@@ -2109,7 +2060,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(12)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 6
             );
@@ -2159,7 +2110,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 2
             );
@@ -2167,7 +2118,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(9)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
             );
@@ -2175,7 +2126,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 2
             );
@@ -2183,7 +2134,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(0)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 1
             );
@@ -2191,7 +2142,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(13)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 1
             );
@@ -2199,7 +2150,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(11)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 2
             );
@@ -2241,7 +2192,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 6
             );
@@ -2249,7 +2200,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(12)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 6
             );
@@ -2300,7 +2251,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(1)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 4
             );
@@ -2308,7 +2259,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(9)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
             );
@@ -2316,7 +2267,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .vertices_iter_by_label(2)
-                    .collect::<Vec<PatternVertex>>()
+                    .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
             );
@@ -2324,7 +2275,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(0)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 1
             );
@@ -2332,7 +2283,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(13)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 1
             );
@@ -2340,7 +2291,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(11)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 2
             );
@@ -2348,7 +2299,7 @@ mod tests {
             assert_eq!(
                 pattern
                     .edges_iter_by_label(12)
-                    .collect::<Vec<PatternEdge>>()
+                    .collect::<Vec<&PatternEdge>>()
                     .len(),
                 2
             );

@@ -44,18 +44,22 @@ impl ExtendEdge {
 
 /// Methods for access fields of VagueExtendEdge
 impl ExtendEdge {
+    #[inline]
     pub fn get_start_vertex_label(&self) -> PatternLabelId {
         self.start_v_label
     }
 
+    #[inline]
     pub fn get_start_vertex_rank(&self) -> PatternRankId {
         self.start_v_rank
     }
 
+    #[inline]
     pub fn get_edge_label(&self) -> PatternLabelId {
         self.edge_label
     }
 
+    #[inline]
     pub fn get_direction(&self) -> PatternDirection {
         self.dir
     }
@@ -103,22 +107,26 @@ impl ExtendStep {
         )
     }
 
+    #[inline]
     pub fn get_target_v_label(&self) -> PatternLabelId {
         self.target_v_label
     }
 
     /// Given a source vertex label and rank,
     /// check whether this ExtendStep contains a extend edge from this kind of vertex
+    #[inline]
     pub fn has_extend_from_start_v(&self, v_label: PatternLabelId, v_rank: PatternRankId) -> bool {
         self.extend_edges
             .contains_key(&(v_label, v_rank))
     }
 
     /// Get how many different kind of start vertex this ExtendStep has
+    #[inline]
     pub fn get_diff_start_v_num(&self) -> usize {
         self.extend_edges.len()
     }
 
+    #[inline]
     pub fn get_extend_edges_num(&self) -> usize {
         let mut edges_num = 0;
         for (_, edges) in &self.extend_edges {
@@ -189,10 +197,12 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
 
 /// Methods of accessing some fields of DefiniteExtendStep
 impl DefiniteExtendStep {
+    #[inline]
     pub fn get_target_v_id(&self) -> PatternId {
         self.target_v_id
     }
 
+    #[inline]
     pub fn get_target_v_label(&self) -> PatternLabelId {
         self.target_v_label
     }
@@ -202,7 +212,7 @@ impl DefiniteExtendStep {
     /// Use the DefiniteExtendStep to generate corresponding edge expand operator
     pub fn generate_expand_operators(&self, origin_pattern: &Pattern) -> Vec<pb::EdgeExpand> {
         let mut expand_operators = vec![];
-        let target_v_id = self.target_v_id;
+        let target_v_id = self.get_target_v_id();
         for extend_edge in self.extend_edges.iter() {
             // pick edge's property and predicate from origin pattern
             let edge_id = extend_edge.edge_id;

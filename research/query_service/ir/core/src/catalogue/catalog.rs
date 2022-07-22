@@ -217,7 +217,7 @@ impl Catalogue {
         let mut relaxed_patterns = BTreeSet::new();
         // one-vertex pattern is the starting point of the BFS
         for vertex in pattern.vertices_iter() {
-            let new_pattern = Pattern::from(vertex);
+            let new_pattern = Pattern::from(*vertex);
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
             let new_pattern_index =
                 if let Some(pattern_index) = self.pattern_v_locate_map.get(&new_pattern_code) {
