@@ -13,8 +13,8 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::HashMap;
 use std::convert::TryFrom;
+use vec_map::VecMap;
 
 use ascii::AsciiChar;
 use ascii::AsciiString;
@@ -376,18 +376,17 @@ impl EncodeUnit {
 
     /// The Latest Version for DFS Sorting
     fn from_pattern_edge_dfs(
-        pattern_edge: &PatternEdge, encoder: &Encoder,
-        vertex_dfs_id_map: &HashMap<PatternId, PatternRankId>,
+        pattern_edge: &PatternEdge, encoder: &Encoder, vertex_dfs_id_map: &VecMap<PatternRankId>,
     ) -> Self {
         let edge_label: PatternLabelId = pattern_edge.get_label();
         let start_v_label: PatternLabelId = pattern_edge.get_start_vertex().get_label();
         let end_v_label: PatternLabelId = pattern_edge.get_end_vertex().get_label();
         let start_v_rank: PatternRankId = *vertex_dfs_id_map
-            .get(&pattern_edge.get_start_vertex().get_id())
+            .get(pattern_edge.get_start_vertex().get_id())
             .expect("Unknown vertex id in vertex -- dfs id map")
             as PatternRankId;
         let end_v_rank: PatternRankId = *vertex_dfs_id_map
-            .get(&pattern_edge.get_end_vertex().get_id())
+            .get(pattern_edge.get_end_vertex().get_id())
             .expect("Unknown vertex id in vertex -- dfs id map")
             as PatternRankId;
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
