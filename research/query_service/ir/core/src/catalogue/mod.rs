@@ -18,10 +18,10 @@ use std::collections::HashMap;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 
-type PatternId = usize;
-type PatternLabelId = ir_common::KeyId;
-type PatternRankId = i32;
-type DynIter<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
+pub type PatternId = usize;
+pub type PatternLabelId = ir_common::KeyId;
+pub type PatternRankId = i32;
+pub type DynIter<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PatternDirection {
@@ -73,6 +73,3 @@ pub mod pattern;
 pub mod pattern_meta;
 
 pub mod sample;
-
-#[cfg(test)]
-pub(crate) mod test_cases;

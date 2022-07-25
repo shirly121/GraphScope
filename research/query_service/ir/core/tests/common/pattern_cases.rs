@@ -23,10 +23,11 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
-use crate::catalogue::pattern::*;
-use crate::catalogue::test_cases::pattern_meta_cases::*;
-use crate::catalogue::{PatternId, PatternLabelId};
-use crate::error::IrError;
+use ir_core::catalogue::pattern::*;
+use ir_core::catalogue::{PatternId, PatternLabelId};
+use ir_core::error::IrError;
+
+use crate::common::pattern_meta_cases::*;
 
 pub const TAG_A: KeyId = 0;
 pub const TAG_B: KeyId = 1;

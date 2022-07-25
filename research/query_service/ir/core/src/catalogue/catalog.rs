@@ -364,6 +364,14 @@ impl Catalogue {
 
 /// Methods for accessing some fields of Catalogue
 impl Catalogue {
+    pub fn get_patterns_num(&self) -> usize {
+        self.store.node_count()
+    }
+
+    pub fn get_connections_num(&self) -> usize {
+        self.store.edge_count()
+    }
+
     fn get_pattern_index(&self, pattern_code: &Vec<u8>) -> Option<NodeIndex> {
         self.pattern_v_locate_map
             .get(pattern_code)
@@ -651,91 +659,4 @@ fn e_cost_estimate(pattern_weight: &VertexWeight) -> usize {
 
 fn d_cost_estimate(pre_pattern_weight: &VertexWeight) -> usize {
     pre_pattern_weight.count
-}
-
-#[cfg(test)]
-mod test {
-    use crate::catalogue::catalog::Catalogue;
-    use crate::catalogue::test_cases::pattern_cases::*;
-    use crate::catalogue::test_cases::pattern_meta_cases::*;
-
-    #[test]
-    fn test_catalog_for_modern_graph() {
-        let modern_graph_meta = get_modern_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&modern_graph_meta, 2, 3);
-        assert_eq!(4, catalog.store.node_count());
-        assert_eq!(4, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_ldbc_graph() {
-        let ldbc_graph_meta = get_ldbc_pattern_meta();
-        let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 2, 3);
-        assert_eq!(34, catalog.store.node_count());
-        assert_eq!(42, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_modern_pattern_case1() {
-        let modern_pattern = build_modern_pattern_case1();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
-        assert_eq!(1, catalog.store.node_count());
-        assert_eq!(0, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_modern_pattern_case2() {
-        let modern_pattern = build_modern_pattern_case2();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
-        assert_eq!(1, catalog.store.node_count());
-        assert_eq!(0, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_modern_pattern_case3() {
-        let modern_pattern = build_modern_pattern_case3();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
-        assert_eq!(2, catalog.store.node_count());
-        assert_eq!(2, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_modern_pattern_case4() {
-        let modern_pattern = build_modern_pattern_case4();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
-        assert_eq!(3, catalog.store.node_count());
-        assert_eq!(2, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_ldbc_pattern_from_pb_case1() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(3, catalog.store.node_count());
-        assert_eq!(5, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_ldbc_pattern_from_pb_case2() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(5, catalog.store.node_count());
-        assert_eq!(7, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_ldbc_pattern_from_pb_case3() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(4, catalog.store.node_count());
-        assert_eq!(9, catalog.store.edge_count());
-    }
-
-    #[test]
-    fn test_catalog_for_ldbc_pattern_from_pb_case4() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(11, catalog.store.node_count());
-        assert_eq!(17, catalog.store.edge_count());
-    }
 }

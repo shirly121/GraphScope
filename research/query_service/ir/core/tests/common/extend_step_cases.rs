@@ -13,8 +13,8 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use crate::catalogue::extend_step::*;
-use crate::catalogue::PatternDirection;
+use ir_core::catalogue::extend_step::*;
+use ir_core::catalogue::PatternDirection;
 
 /// The extend step looks like:
 /// ```text

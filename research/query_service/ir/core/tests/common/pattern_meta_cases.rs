@@ -15,8 +15,8 @@
 
 use std::fs::File;
 
-use crate::catalogue::pattern_meta::*;
-use crate::{plan::meta::Schema, JsonIO};
+use ir_core::catalogue::pattern_meta::*;
+use ir_core::{plan::meta::Schema, JsonIO};
 
 pub fn read_modern_graph_schema() -> Schema {
     let modern_schema_file = match File::open("resource/modern_schema.json") {
