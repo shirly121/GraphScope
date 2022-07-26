@@ -1378,102 +1378,105 @@ impl Pattern {
         let mut vertex_dfs_id_map = VecMap::new();
         // get the starting vertex
         let starting_v_id: PatternId = self.get_dfs_starting_vertex();
-        vertex_dfs_id_map.insert(starting_v_id, 0);
-        let mut next_free_id: PatternRankId = 1;
+        let mut next_free_id: PatternRankId = 0;
         // collect neighbor edges info for each vertex
-        let vertex_adjacencies_map = self.get_vertex_adjacencies_map();
+        let mut vertex_adjacencies_map = self.get_vertex_adjacencies_map();
         // Record which edges have been visited
         let mut visited_edges: BTreeSet<PatternId> = BTreeSet::new();
-        // Vertex Stack used for DFS backtracking
-        let mut vertex_stack: VecDeque<PatternId> = VecDeque::new();
-        vertex_stack.push_back(starting_v_id);
-        // Perform DFS on vertices
-        while let Some(&current_v_id) = vertex_stack.back() {
+        // Initialize Stack for adjacencies
+        let mut adjacency_stack: VecDeque<Adjacency> = VecDeque::new();
+        vertex_dfs_id_map.insert(starting_v_id, next_free_id);
+        next_free_id += 1;
+        vertex_adjacencies_map
+            .get(starting_v_id)
+            .unwrap()
+            .iter()
+            .rev()
+            .for_each(|adj| adjacency_stack.push_back(*adj));
+        // Perform DFS on adjacencies
+        while let Some(adjacency) = adjacency_stack.pop_back() {
+            // Insert edge to dfs sequence if it has not been visited
+            let adj_edge_id: PatternId = adjacency.get_edge_id();
+            if visited_edges.contains(&adj_edge_id) {
+                continue;
+            }
+            visited_edges.insert(adj_edge_id);
+            dfs_edge_sequence.push(adj_edge_id);
+            // Set dfs id to the vertex if it has not been set before
+            let current_v_id: PatternId = adjacency.get_adj_vertex().get_id();
+            if !vertex_dfs_id_map.contains_key(current_v_id) {
+                vertex_dfs_id_map.insert(current_v_id, next_free_id);
+                next_free_id += 1;
+            }
+
+            // Push adjacencies of the current vertex into the stack
             let vertex_adjacencies = vertex_adjacencies_map
-                .get(current_v_id)
+                .get_mut(current_v_id)
                 .unwrap();
-            let mut found_next_edge: bool = false;
-            let mut adj_index: usize = 0;
-            while adj_index < vertex_adjacencies.len() {
-                let mut edge_id = vertex_adjacencies[adj_index].get_edge_id();
-                let mut end_v_id = vertex_adjacencies[adj_index]
-                    .get_adj_vertex()
-                    .get_id();
-                let e_dir = vertex_adjacencies[adj_index].get_direction();
-                if !visited_edges.contains(&edge_id) {
-                    found_next_edge = true;
-                    // Case-1: Vertex that has not been tranversed has the highesrt priority
-                    if !vertex_dfs_id_map.contains_key(end_v_id) {
-                        vertex_dfs_id_map.insert(end_v_id, next_free_id);
-                        next_free_id += 1;
-                    }
-                    // Case-2: Compare the DFS ids between end vertices that have been traversed and with the same ranks
-                    // Choose the one with the smallest DFS id
-                    else {
-                        let mut min_dfs_id: PatternRankId = *vertex_dfs_id_map.get(end_v_id).unwrap();
-                        while adj_index < vertex_adjacencies.len() - 1 {
-                            adj_index += 1;
-                            let adj_edge_id = vertex_adjacencies[adj_index].get_edge_id();
-                            let adj_v_id = vertex_adjacencies[adj_index]
-                                .get_adj_vertex()
-                                .get_id();
-                            let adj_edge_dir = vertex_adjacencies[adj_index].get_direction();
-                            if visited_edges.contains(&adj_edge_id) {
-                                continue;
+            vertex_adjacencies.sort_by(|adj1, adj2| {
+                match self.cmp_adjacencies(adj1, adj2) {
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Greater => Ordering::Greater,
+                    Ordering::Equal => {
+                        // Adjacency will be given high priority if its adjacent vertex has no or smaller dfs id
+                        let adj1_v_dfs_id =
+                            if let Some(value) = vertex_dfs_id_map.get(adj1.get_adj_vertex().get_id()) {
+                                *value
+                            } else {
+                                return Ordering::Less;
                             };
-                            if adj_edge_dir != e_dir {
-                                break;
+
+                        let adj2_v_dfs_id =
+                            if let Some(value) = vertex_dfs_id_map.get(adj2.get_adj_vertex().get_id()) {
+                                *value
+                            } else {
+                                return Ordering::Greater;
                             };
-                            match self.cmp_edges(edge_id, adj_edge_id) {
-                                Ordering::Greater => break,
-                                Ordering::Less => break,
-                                Ordering::Equal => {
-                                    if !vertex_dfs_id_map.contains_key(adj_v_id) {
-                                        vertex_dfs_id_map.insert(adj_v_id, next_free_id);
-                                        next_free_id += 1;
-                                        // Update
-                                        edge_id = adj_edge_id;
-                                        end_v_id = adj_v_id;
-                                        break;
-                                    }
 
-                                    let current_dfs_id: PatternRankId =
-                                        *vertex_dfs_id_map.get(adj_v_id).unwrap();
-                                    if current_dfs_id < min_dfs_id {
-                                        min_dfs_id = current_dfs_id;
-                                        // Update
-                                        edge_id = adj_edge_id;
-                                        end_v_id = adj_v_id;
-                                    }
-                                }
-                            }
-                        }
+                        adj1_v_dfs_id.cmp(&adj2_v_dfs_id)
                     }
-
-                    // Update
-                    dfs_edge_sequence.push(edge_id);
-                    visited_edges.insert(edge_id);
-                    vertex_stack.push_back(end_v_id);
-                    break;
                 }
-
-                adj_index += 1;
-            }
-
-            // If Cannot find the next edge to traverse
-            if !found_next_edge {
-                vertex_stack.pop_back();
-            }
+            });
+            vertex_adjacencies
+                .iter()
+                .rev()
+                .filter(|adj| !visited_edges.contains(&adj.get_edge_id()))
+                .for_each(|adj| adjacency_stack.push_back(*adj));
         }
+
         // Check if dfs sorting fails
-        if visited_edges.len() == self.get_edges_num()
+        let is_dfs_sorting_valid: bool = visited_edges.len() == self.get_edges_num()
             && dfs_edge_sequence.len() == self.get_edges_num()
-            && vertex_dfs_id_map.len() == self.get_vertices_num()
-        {
+            && vertex_dfs_id_map.len() == self.get_vertices_num();
+        if is_dfs_sorting_valid {
             Some((dfs_edge_sequence, vertex_dfs_id_map))
         } else {
             None
         }
+    }
+
+    /// Compare two adjacencies in the pattern.
+    /// We take the following four properties into consideration:
+    /// - Direction of the adjacent edge
+    /// - Label of the adjacent edge
+    /// - Label of the adjacent vertex
+    /// - Rank of the adjacent vertex
+    fn cmp_adjacencies(&self, adj1: &Adjacency, adj2: &Adjacency) -> Ordering {
+        let adj_v1_id: PatternId = adj1.get_adj_vertex().get_id();
+        let adj_v2_id: PatternId = adj2.get_adj_vertex().get_id();
+        let adj1_info_tuple = (
+            adj1.get_direction(),
+            adj1.get_edge_label(),
+            adj1.get_adj_vertex().get_label(),
+            self.get_vertex_rank(adj_v1_id).unwrap(),
+        );
+        let adj2_info_tuple = (
+            adj2.get_direction(),
+            adj2.get_edge_label(),
+            adj2.get_adj_vertex().get_label(),
+            self.get_vertex_rank(adj_v2_id).unwrap(),
+        );
+        adj1_info_tuple.cmp(&adj2_info_tuple)
     }
 }
 
