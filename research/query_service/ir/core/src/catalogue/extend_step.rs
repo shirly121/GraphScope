@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
@@ -21,37 +21,28 @@ use ir_common::generated::algebra as pb;
 
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, PatternId};
-use crate::catalogue::{DynIter, PatternDirection, PatternLabelId, PatternRankId};
+use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
 use crate::error::{IrError, IrResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExtendEdge {
-    start_v_label: PatternLabelId,
-    start_v_rank: PatternRankId,
+    src_vertex_rank: usize,
     edge_label: PatternLabelId,
     dir: PatternDirection,
 }
 
 /// Initializer of ExtendEdge
 impl ExtendEdge {
-    pub fn new(
-        start_v_label: PatternLabelId, start_v_rank: PatternRankId, edge_label: PatternLabelId,
-        dir: PatternDirection,
-    ) -> ExtendEdge {
-        ExtendEdge { start_v_label, start_v_rank, edge_label, dir }
+    pub fn new(src_vertex_rank: usize, edge_label: PatternLabelId, dir: PatternDirection) -> ExtendEdge {
+        ExtendEdge { src_vertex_rank, edge_label, dir }
     }
 }
 
 /// Methods for access fields of VagueExtendEdge
 impl ExtendEdge {
     #[inline]
-    pub fn get_start_vertex_label(&self) -> PatternLabelId {
-        self.start_v_label
-    }
-
-    #[inline]
-    pub fn get_start_vertex_rank(&self) -> PatternRankId {
-        self.start_v_rank
+    pub fn get_src_vertex_rank(&self) -> PatternId {
+        self.src_vertex_rank
     }
 
     #[inline]
@@ -67,10 +58,8 @@ impl ExtendEdge {
 
 #[derive(Debug, Clone)]
 pub struct ExtendStep {
-    target_v_label: PatternLabelId,
-    /// Key: (start vertex label, start vertex rank), Value: Vec<extend edge>
-    /// Extend edges are classified by their start_v_labels and start_v_indices
-    extend_edges: BTreeMap<(PatternLabelId, PatternRankId), Vec<ExtendEdge>>,
+    target_vertex_label: PatternLabelId,
+    extend_edges: Vec<ExtendEdge>,
 }
 
 /// Initializer of ExtendStep
@@ -78,68 +67,26 @@ impl ExtendStep {
     /// Initialization of a ExtendStep needs
     /// 1. a target vertex label
     /// 2. all extend edges connect to the target verex label
-    pub fn new(target_v_label: PatternLabelId, extend_edges: Vec<ExtendEdge>) -> ExtendStep {
-        let mut new_extend_step = ExtendStep { target_v_label, extend_edges: BTreeMap::new() };
-        for edge in extend_edges {
-            let edge_vec = new_extend_step
-                .extend_edges
-                .entry((edge.start_v_label, edge.start_v_rank))
-                .or_insert(vec![]);
-            edge_vec.push(edge);
-        }
-        new_extend_step
+    pub fn new(target_vertex_label: PatternLabelId, extend_edges: Vec<ExtendEdge>) -> ExtendStep {
+        ExtendStep { target_vertex_label, extend_edges }
     }
 }
 
 /// Methods for access fileds or get info from ExtendStep
 impl ExtendStep {
-    /// For the iteration over all the extend edges with the classification by src vertex label and src vertex rank
-    pub fn iter(&self) -> DynIter<(&(PatternLabelId, PatternRankId), &Vec<ExtendEdge>)> {
+    /// For the iteration over all the extend edges
+    pub fn iter(&self) -> DynIter<&ExtendEdge> {
         Box::new(self.extend_edges.iter())
     }
 
-    /// For the iteration over all the extend edges of ExtendStep
-    pub fn extend_edges_iter(&self) -> DynIter<&ExtendEdge> {
-        Box::new(
-            self.extend_edges
-                .iter()
-                .flat_map(|(_, extend_edges)| extend_edges.iter()),
-        )
-    }
-
     #[inline]
-    pub fn get_target_v_label(&self) -> PatternLabelId {
-        self.target_v_label
-    }
-
-    /// Given a source vertex label and rank,
-    /// check whether this ExtendStep contains a extend edge from this kind of vertex
-    #[inline]
-    pub fn has_extend_from_start_v(&self, v_label: PatternLabelId, v_rank: PatternRankId) -> bool {
-        self.extend_edges
-            .contains_key(&(v_label, v_rank))
-    }
-
-    /// Get how many different kind of start vertex this ExtendStep has
-    #[inline]
-    pub fn get_diff_start_v_num(&self) -> usize {
-        self.extend_edges.len()
+    pub fn get_target_vertex_label(&self) -> PatternLabelId {
+        self.target_vertex_label
     }
 
     #[inline]
     pub fn get_extend_edges_num(&self) -> usize {
-        let mut edges_num = 0;
-        for (_, edges) in &self.extend_edges {
-            edges_num += edges.len()
-        }
-        edges_num
-    }
-
-    /// Given a source vertex label and rank, find all extend edges connect to this kind of vertices
-    pub fn get_extend_edges_by_start_v(
-        &self, v_label: PatternLabelId, v_rank: PatternRankId,
-    ) -> Option<&Vec<ExtendEdge>> {
-        self.extend_edges.get(&(v_label, v_rank))
+        self.extend_edges.len()
     }
 }
 
@@ -262,9 +209,9 @@ where
     for (i, element) in origin_vec.iter().enumerate() {
         queue.push_back((vec![element.clone()], i + 1));
     }
-    while let Some((subset, max_rank)) = queue.pop_front() {
+    while let Some((subset, max_index)) = queue.pop_front() {
         set_collections.push(subset.clone());
-        for i in max_rank..n {
+        for i in max_index..n {
             let mut new_subset = subset.clone();
             if filter(&origin_vec[i], &subset) {
                 continue;
@@ -302,26 +249,10 @@ mod tests {
 
     #[test]
     fn test_extend_step_case1_structure() {
-        let extend_edge1 = ExtendEdge::new(0, 0, 1, PatternDirection::Out);
-        let extend_edge2 = extend_edge1.clone();
+        let extend_edge1 = ExtendEdge::new(0, 1, PatternDirection::Out);
+        let extend_edge2 = ExtendEdge::new(1, 1, PatternDirection::Out);
         let extend_step1 = ExtendStep::new(1, vec![extend_edge1, extend_edge2]);
-        assert_eq!(extend_step1.target_v_label, 1);
-        assert_eq!(extend_step1.extend_edges.len(), 1);
-        assert_eq!(
-            extend_step1
-                .extend_edges
-                .get(&(0, 0))
-                .unwrap()
-                .len(),
-            2
-        );
-        assert_eq!(
-            extend_step1.extend_edges.get(&(0, 0)).unwrap()[0],
-            ExtendEdge { start_v_label: 0, start_v_rank: 0, edge_label: 1, dir: PatternDirection::Out }
-        );
-        assert_eq!(
-            extend_step1.extend_edges.get(&(0, 0)).unwrap()[1],
-            ExtendEdge { start_v_label: 0, start_v_rank: 0, edge_label: 1, dir: PatternDirection::Out }
-        );
+        assert_eq!(extend_step1.get_target_vertex_label(), 1);
+        assert_eq!(extend_step1.extend_edges.len(), 2);
     }
 }

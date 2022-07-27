@@ -821,71 +821,29 @@ mod tests {
 
     #[test]
     fn test_encode_decode_extend_step_case2_vec_u8() {
-        let extend_step_1 = build_extend_step_case2();
+        let extend_step_1 = build_extend_step_case2(&build_pattern_case8());
         let encoder = Encoder::init(2, 2, 2, 2);
         let extend_step_1_code: Vec<u8> = extend_step_1.encode_to(&encoder);
         let extend_step_1_from_decode: ExtendStep =
             Cipher::decode_from(&extend_step_1_code, &encoder).unwrap();
-        assert_eq!(extend_step_1.get_target_v_label(), extend_step_1_from_decode.get_target_v_label());
+        assert_eq!(
+            extend_step_1.get_target_vertex_label(),
+            extend_step_1_from_decode.get_target_vertex_label()
+        );
         assert_eq!(extend_step_1.get_extend_edges_num(), extend_step_1_from_decode.get_extend_edges_num());
-        assert_eq!(
-            extend_step_1
-                .get_extend_edges_by_start_v(1, 0)
-                .unwrap(),
-            extend_step_1_from_decode
-                .get_extend_edges_by_start_v(1, 0)
-                .unwrap()
-        );
-        assert_eq!(
-            extend_step_1
-                .get_extend_edges_by_start_v(1, 1)
-                .unwrap(),
-            extend_step_1_from_decode
-                .get_extend_edges_by_start_v(1, 1)
-                .unwrap()
-        );
-        assert_eq!(
-            extend_step_1
-                .get_extend_edges_by_start_v(2, 0)
-                .unwrap(),
-            extend_step_1_from_decode
-                .get_extend_edges_by_start_v(2, 0)
-                .unwrap()
-        );
     }
 
     #[test]
     fn test_encode_decode_extend_step_case2_ascii_string() {
-        let extend_step_1 = build_extend_step_case2();
+        let extend_step_1 = build_extend_step_case2(&build_pattern_case8());
         let encoder = Encoder::init(2, 2, 2, 2);
         let extend_step_1_code: AsciiString = extend_step_1.encode_to(&encoder);
         let extend_step_1_from_decode: ExtendStep =
             Cipher::decode_from(&extend_step_1_code, &encoder).unwrap();
-        assert_eq!(extend_step_1.get_target_v_label(), extend_step_1_from_decode.get_target_v_label());
+        assert_eq!(
+            extend_step_1.get_target_vertex_label(),
+            extend_step_1_from_decode.get_target_vertex_label()
+        );
         assert_eq!(extend_step_1.get_extend_edges_num(), extend_step_1_from_decode.get_extend_edges_num());
-        assert_eq!(
-            extend_step_1
-                .get_extend_edges_by_start_v(1, 0)
-                .unwrap(),
-            extend_step_1_from_decode
-                .get_extend_edges_by_start_v(1, 0)
-                .unwrap()
-        );
-        assert_eq!(
-            extend_step_1
-                .get_extend_edges_by_start_v(1, 1)
-                .unwrap(),
-            extend_step_1_from_decode
-                .get_extend_edges_by_start_v(1, 1)
-                .unwrap()
-        );
-        assert_eq!(
-            extend_step_1
-                .get_extend_edges_by_start_v(2, 0)
-                .unwrap(),
-            extend_step_1_from_decode
-                .get_extend_edges_by_start_v(2, 0)
-                .unwrap()
-        );
     }
 }

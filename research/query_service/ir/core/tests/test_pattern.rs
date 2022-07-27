@@ -615,34 +615,34 @@ mod tests {
     #[test]
     fn set_accurate_rank_case1() {
         let pattern = build_pattern_case1();
-        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(0).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(1).unwrap(), 0);
     }
 
     #[test]
     fn set_accurate_rank_case2() {
         let pattern = build_pattern_case2();
-        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(2).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(0).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(2).unwrap(), 0);
     }
 
     #[test]
     fn set_accurate_rank_case3() {
         let pattern = build_pattern_case3();
-        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 1);
-        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(2).unwrap(), 1);
-        assert_eq!(pattern.get_vertex_rank(3).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(0).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_group(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(2).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_group(3).unwrap(), 0);
     }
 
     #[test]
     fn set_accurate_rank_case4() {
         let pattern = build_pattern_case4();
-        assert_eq!(pattern.get_vertex_rank(0).unwrap(), 1);
-        assert_eq!(pattern.get_vertex_rank(1).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(2).unwrap(), 1);
-        assert_eq!(pattern.get_vertex_rank(3).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(0).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_group(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(2).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_group(3).unwrap(), 0);
     }
 
     #[test]
@@ -653,20 +653,20 @@ mod tests {
         let id_vec_c: Vec<PatternId> = vec![1, 2, 3];
         let id_vec_d: Vec<PatternId> = vec![1000];
         // A
-        assert_eq!(pattern.get_vertex_rank(id_vec_a[0]).unwrap(), 1);
-        assert_eq!(pattern.get_vertex_rank(id_vec_a[1]).unwrap(), 3);
-        assert_eq!(pattern.get_vertex_rank(id_vec_a[2]).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(id_vec_a[3]).unwrap(), 2);
+        assert_eq!(pattern.get_vertex_group(id_vec_a[0]).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_group(id_vec_a[1]).unwrap(), 3);
+        assert_eq!(pattern.get_vertex_group(id_vec_a[2]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(id_vec_a[3]).unwrap(), 2);
         // B
-        assert_eq!(pattern.get_vertex_rank(id_vec_b[0]).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(id_vec_b[1]).unwrap(), 2);
-        assert_eq!(pattern.get_vertex_rank(id_vec_b[2]).unwrap(), 1);
+        assert_eq!(pattern.get_vertex_group(id_vec_b[0]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(id_vec_b[1]).unwrap(), 2);
+        assert_eq!(pattern.get_vertex_group(id_vec_b[2]).unwrap(), 1);
         // C
-        assert_eq!(pattern.get_vertex_rank(id_vec_c[0]).unwrap(), 0);
-        assert_eq!(pattern.get_vertex_rank(id_vec_c[1]).unwrap(), 2);
-        assert_eq!(pattern.get_vertex_rank(id_vec_c[2]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(id_vec_c[0]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(id_vec_c[1]).unwrap(), 2);
+        assert_eq!(pattern.get_vertex_group(id_vec_c[2]).unwrap(), 0);
         // D
-        assert_eq!(pattern.get_vertex_rank(id_vec_d[0]).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(id_vec_d[0]).unwrap(), 0);
     }
 
     #[test]
@@ -674,13 +674,13 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case1();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
@@ -691,13 +691,13 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case2();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
@@ -708,19 +708,19 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case3();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             0
         );
@@ -731,19 +731,19 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case4();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             1
         );
@@ -754,19 +754,19 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case5();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             0
         );
@@ -777,19 +777,19 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case6();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             0
         );
@@ -800,19 +800,19 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case7();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             0
         );
@@ -823,25 +823,25 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case8();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             0
         );
@@ -852,25 +852,25 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case9();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             0
         );
@@ -881,25 +881,25 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case10();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             0
         );
@@ -910,31 +910,31 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case11();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B2").unwrap())
                 .unwrap(),
             0
         );
@@ -945,37 +945,37 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case12();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B3").unwrap())
                 .unwrap(),
             0
         );
@@ -986,37 +986,37 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case13();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B2").unwrap())
                 .unwrap(),
             0
         );
@@ -1027,43 +1027,43 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case14();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B2").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B3").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("C0").unwrap())
                 .unwrap(),
             0
         );
@@ -1074,55 +1074,55 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case15();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("C0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("C1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("C1").unwrap())
                 .unwrap(),
             1
         );
@@ -1133,61 +1133,61 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case16();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B1").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("C0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("C1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("C1").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("D0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("D0").unwrap())
                 .unwrap(),
             0
         );
@@ -1198,37 +1198,37 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             5
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             4
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             0
         );
@@ -1239,43 +1239,43 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_even_num_chain();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             5
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             6
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             4
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A6").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A6").unwrap())
                 .unwrap(),
             0
         );
@@ -1286,67 +1286,67 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_long_chain();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             5
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             7
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             9
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             10
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A6").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A6").unwrap())
                 .unwrap(),
             8
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A7").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A7").unwrap())
                 .unwrap(),
             6
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A8").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A8").unwrap())
                 .unwrap(),
             4
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A9").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A9").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A10").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A10").unwrap())
                 .unwrap(),
             0
         );
@@ -1357,37 +1357,37 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_1();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             5
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             4
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             0
         );
@@ -1398,37 +1398,37 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case17_special_id_situation_2();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             5
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             4
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             0
         );
@@ -1439,37 +1439,37 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case18();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             0
         );
@@ -1480,85 +1480,85 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case19();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             8
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             9
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             2
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             1
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A5").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A5").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A6").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A6").unwrap())
                 .unwrap(),
             4
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A7").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A7").unwrap())
                 .unwrap(),
             6
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A8").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A8").unwrap())
                 .unwrap(),
             5
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A9").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A9").unwrap())
                 .unwrap(),
             7
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("B0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("B0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("C0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("C0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("D0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("D0").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("E0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("E0").unwrap())
                 .unwrap(),
             0
         );
@@ -1569,31 +1569,31 @@ mod tests {
         let (pattern, vertex_id_map) = build_pattern_rank_ranking_case20();
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A0").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A0").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A1").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A1").unwrap())
                 .unwrap(),
             3
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A2").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A2").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A3").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A3").unwrap())
                 .unwrap(),
             0
         );
         assert_eq!(
             pattern
-                .get_vertex_rank(*vertex_id_map.get("A4").unwrap())
+                .get_vertex_group(*vertex_id_map.get("A4").unwrap())
                 .unwrap(),
             0
         );
