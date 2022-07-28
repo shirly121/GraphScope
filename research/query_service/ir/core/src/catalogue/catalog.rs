@@ -23,14 +23,13 @@ use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 
+use super::pattern::PatternVertex;
 use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternEdge};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternRankId};
 use crate::error::{IrError, IrResult};
-
-use super::pattern::PatternVertex;
 
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;

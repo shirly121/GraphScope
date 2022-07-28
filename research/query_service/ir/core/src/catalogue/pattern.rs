@@ -17,13 +17,13 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
-use std::vec;
 
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use vec_map::VecMap;
 
-use super::codec::{Cipher, Encoder};
+use crate::catalogue::canonical_labeling::CanonicalLabelManager;
+use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{
     get_subsets, limit_repeated_element_num, DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep,
 };
@@ -242,7 +242,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                     .in_adjacencies
                     .push(Adjacency::new_by_src_vertex_and_edge(end_vertex, &edge).unwrap());
             }
-            new_pattern.vertex_ranking();
+            new_pattern.canonical_labeling();
             Ok(new_pattern)
         } else {
             Err(IrError::InvalidPattern("Empty pattern".to_string()))
@@ -921,34 +921,113 @@ impl Pattern {
 
 /// Naive Rank Ranking Method
 impl Pattern {
+    pub fn canonical_labeling(&mut self) {
+        let mut canonical_label_manager = CanonicalLabelManager::init_by_pattern(self);
+        self.vertex_grouping(&mut canonical_label_manager);
+        // self.rank_vertices_and_edges(&mut canonical_label_manager);
+    }
+
     /// Set Rank for Every Vertex within the Pattern
     ///
     /// Initially, all vertices have rank 0
     ///
     /// Basic Idea: Iteratively update the rank locally (neighbor edges vertices) and update the order of neighbor edges
-    pub fn vertex_ranking(&mut self) {
-        // Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
-        let mut vertex_adjacencies_map = self.get_vertex_adjacencies_map();
-        // Initially, mark all the vertices as unfixed
-        let mut vertices_with_unfixed_rank: BTreeSet<PatternId> = self
-            .vertices
-            .iter()
-            .map(|(v_id, _)| v_id)
-            .collect();
-        // Set initial ranks by comparing the labels & in/out degrees
-        let mut is_rank_changed: bool = self
-            .set_rank_by_neighbor_info(&vertex_adjacencies_map, &mut vertices_with_unfixed_rank)
-            .unwrap();
-        // Keep updating ranks by ranks computed in the last iteration
-        // Stop until the ranks can no longer be updated
-        while is_rank_changed {
-            // Update the Order of Neighbor Edges Based on the ranks of end vertices only
-            self.update_neighbor_edges_map(&mut vertex_adjacencies_map);
-            // Update vertex ranks by newly updated ranks in the last iteration
-            is_rank_changed = self.update_rank(&vertex_adjacencies_map, &mut vertices_with_unfixed_rank);
+    fn vertex_grouping(&mut self, canonical_label_manager: &mut CanonicalLabelManager) {
+        // let mut canonical_label_manager = CanonicalLabelManager::init_by_pattern(self);
+        // let mut iteration_num: usize = 1;
+        while !canonical_label_manager.has_vertex_groups_converged() {
+            // println!("Iteration: {:?}", iteration_num);
+            // for v_id in canonical_label_manager.vertices_iter() {
+            //     println!("Vertex ID: {:?}, Adjacencies: {:?}", v_id, self.get_vertex_adjacencies_map().get(v_id).unwrap());
+            // }
+            canonical_label_manager.refine_vertex_groups(self);
+            // iteration_num += 1;
+
+            // for v_id in canonical_label_manager.vertices_iter() {
+            //     println!("Vertex ID: {:?}, Rank: {:?}", v_id, canonical_label_manager.get_vertex_group(v_id));
+            // }
+        }
+
+        canonical_label_manager
+            .vertex_groups_iter()
+            .for_each(|(v_id, v_group)| {
+                self.set_vertex_rank(*v_group as PatternRankId, *v_id);
+            });
+
+        for v_id in canonical_label_manager.vertices_iter() {
+            self.update_vertex_rank(v_id, &canonical_label_manager);
         }
     }
 
+    /// Return the ID of the starting vertex of DFS.
+    ///
+    /// In our case, It's the vertex with the smallest label and rank
+    fn get_vertex_ranking_start_vertex(&self) -> PatternId {
+        // Step-1: Find the smallest vertex label
+        let min_v_label = self.get_min_vertex_label().unwrap();
+        // Step-2: Find the vertex with the smallest rank
+        self.vertices_iter_by_label(min_v_label)
+            .map(|vertex| vertex.get_id())
+            .min_by(|&v1_id, &v2_id| {
+                let v1_rank = self.get_vertex_rank(v1_id).unwrap();
+                let v2_rank = self.get_vertex_rank(v2_id).unwrap();
+                v1_rank.cmp(&v2_rank)
+            })
+            .unwrap()
+    }
+
+    fn rank_vertices_and_edges(&mut self, canonical_label_manager: &mut CanonicalLabelManager) {
+        let start_v_id: PatternId = self.get_vertex_ranking_start_vertex();
+        canonical_label_manager.rank_vertices_and_edges(self, start_v_id);
+        // update ranks in the pattern
+        self.update_vertex_ranks(canonical_label_manager);
+        self.update_edge_ranks(canonical_label_manager);
+    }
+
+    fn update_vertex_ranks(&mut self, canonical_label_manager: &CanonicalLabelManager) {
+        canonical_label_manager
+            .vertex_ranks_iter()
+            .map(|(v_id, v_rank)| (*v_id, v_rank.unwrap()))
+            .for_each(|(v_id, v_rank)| {
+                // self.set_vertex_rank(v_rank as PatternRankId, v_id);
+            });
+    }
+
+    fn update_edge_ranks(&mut self, canonical_label_manager: &CanonicalLabelManager) {
+        canonical_label_manager
+            .edge_ranks_iter()
+            .map(|(e_id, e_rank)| (*e_id, e_rank.unwrap()))
+            .for_each(|(e_id, e_rank)| {
+                // TO-DO: enable rank for edges
+            });
+    }
+
+    /// Compare two adjacencies in the pattern.
+    /// We take the following four properties into consideration:
+    /// - Direction of the adjacent edge
+    /// - Label of the adjacent edge
+    /// - Label of the adjacent vertex
+    /// - Rank of the adjacent vertex
+    pub fn cmp_adjacencies(&self, adj1: &Adjacency, adj2: &Adjacency) -> Ordering {
+        let adj1_info_tuple =
+            (adj1.get_direction(), adj1.get_adj_vertex().get_label(), adj1.get_edge_label());
+        let adj2_info_tuple =
+            (adj2.get_direction(), adj2.get_adj_vertex().get_label(), adj2.get_edge_label());
+        adj1_info_tuple.cmp(&adj2_info_tuple)
+    }
+
+    pub fn update_vertex_rank(&mut self, v_id: PatternId, canonical_label_manager: &CanonicalLabelManager) {
+        let v_group = *canonical_label_manager
+            .get_vertex_group(v_id)
+            .unwrap();
+        self.set_vertex_rank(v_group as PatternRankId, v_id);
+    }
+}
+
+/// DFS Sorting
+///
+/// Find a unique sequence of edges in DFS order and assign each vertex with a unique DFS id for easier decoding process
+impl Pattern {
     /// Get neighbor edges of each vertex
     ///
     /// Used for Comparing Vertices when Setting Initial Indices
@@ -972,381 +1051,6 @@ impl Pattern {
         vertex_adjacencies_map
     }
 
-    /// Set Initial Vertex Index by comparing the labels and In/Out Degrees
-    ///
-    /// Return a bool indicating whether the ranks has changed for this initial rank iteration
-    ///
-    /// If nothing changed, we conclude that the ranks of all vertices have been set and are stable
-    fn set_rank_by_neighbor_info(
-        &mut self, vertex_adjacencies_map: &VecMap<Vec<Adjacency>>,
-        vertices_with_unfixed_rank: &mut BTreeSet<PatternId>,
-    ) -> IrResult<bool> {
-        // Mark whether there is a change of vertex rank
-        let mut is_rank_changed: bool = false;
-        // Stores vertex labels that have been dealth with
-        let mut visited_labels: BTreeSet<PatternLabelId> = BTreeSet::new();
-        // Store vertices that should be removed from the set of unfixed vertices
-        let mut vertices_with_fixed_rank: Vec<PatternId> = Vec::new();
-        // Store the mapping from vertex id to rank
-        let mut vertex_rank_map: VecMap<PatternRankId> = VecMap::new();
-        for &v_id in vertices_with_unfixed_rank.iter() {
-            let v_label = self.get_vertex(v_id).unwrap().get_label();
-            if visited_labels.contains(&v_label) {
-                continue;
-            }
-            visited_labels.insert(v_label);
-            // Collect all vertices with the specified label
-            let same_label_vertex_vec: Vec<PatternId> = self
-                .vertices_iter_by_label(v_label)
-                .map(|vertex| vertex.get_id())
-                .collect();
-            let vertex_num = same_label_vertex_vec.len();
-            // Record the rank and is_rank_fixed properties for each vertex
-            let mut vertex_rank_vec: Vec<PatternRankId> = vec![0; vertex_num];
-            let mut is_rank_fixed_vec: Vec<bool> = vec![true; vertex_num];
-            // To compute the exact rank of a vertex, compare it with all vertices with the same label
-            for i in 0..vertex_num {
-                for j in (i + 1)..vertex_num {
-                    match self.cmp_vertices_by_neighbor_info(
-                        same_label_vertex_vec[i],
-                        same_label_vertex_vec[j],
-                        vertex_adjacencies_map,
-                    ) {
-                        Ordering::Greater => vertex_rank_vec[i] += 1,
-                        Ordering::Less => vertex_rank_vec[j] += 1,
-                        Ordering::Equal => {
-                            is_rank_fixed_vec[i] = false;
-                            is_rank_fixed_vec[j] = false;
-                        }
-                    }
-                }
-                // Mark vertices that now have fixed rank
-                if is_rank_fixed_vec[i] {
-                    vertices_with_fixed_rank.push(same_label_vertex_vec[i]);
-                }
-                // Update Vertex Rank on the map
-                vertex_rank_map.insert(same_label_vertex_vec[i], vertex_rank_vec[i]);
-            }
-        }
-        // Remove vertices that have fixed rank
-        for vertex in vertices_with_fixed_rank {
-            vertices_with_unfixed_rank.remove(&vertex);
-        }
-        // Update vertex ranks on pattern
-        for (v_id, &v_rank) in vertex_rank_map.iter() {
-            if v_rank != 0 {
-                is_rank_changed = true;
-                self.set_vertex_rank(v_rank, v_id);
-            }
-        }
-
-        Ok(is_rank_changed)
-    }
-
-    /// Update vertex ranks by considering ranks only
-    ///
-    /// Return a bool indicating whether the ranks has changed for this initial rank iteration
-    ///
-    /// If nothing changed, we conclude that the ranks of all vertices have been set and are stable
-    fn update_rank(
-        &mut self, vertex_adjacencies_map: &VecMap<Vec<Adjacency>>,
-        vertices_with_unfixed_rank: &mut BTreeSet<PatternId>,
-    ) -> bool {
-        if vertices_with_unfixed_rank.len() == 0 {
-            return false;
-        }
-        // Mark whether there is a change of vertex rank
-        let mut is_rank_changed: bool = false;
-        // Stores vertex labels that have been dealt with
-        let mut visited_labels: BTreeSet<PatternLabelId> = BTreeSet::new();
-        // Store vertices that should be removed from unknown vertex set
-        // fixed rank means that the vertex has a unique rank and
-        // no other vertices with the same label share the same rank with it
-        let mut vertices_with_fixed_rank: Vec<PatternId> = Vec::new();
-        // Store the mapping from vertex id to its rank
-        let mut vertex_rank_map: VecMap<PatternRankId> = VecMap::new();
-        // We only focus on vertices with unfixed ranks
-        for &v_id in vertices_with_unfixed_rank.iter() {
-            let v_label = self.get_vertex(v_id).unwrap().get_label();
-            if visited_labels.contains(&v_label) {
-                continue;
-            }
-            visited_labels.insert(v_label);
-            // Store vertices with the same rank and the same label
-            let mut same_rank_vertex_map: HashMap<PatternRankId, (Vec<PatternId>, Vec<PatternId>)> =
-                HashMap::new();
-            // Separate vertices according to their ranks
-            for v_id in self
-                .vertices_iter_by_label(v_label)
-                .map(|vertex| vertex.get_id())
-            {
-                if vertices_with_unfixed_rank.contains(&v_id) {
-                    let v_rank = self.get_vertex_rank(v_id).unwrap();
-                    if !same_rank_vertex_map.contains_key(&v_rank) {
-                        same_rank_vertex_map.insert(v_rank, (Vec::new(), Vec::new()));
-                    }
-                    // Mark if anyone of the neighbor vertices have fixed rank
-                    let mut has_fixed_rank_neighbor: bool = false;
-                    let vertex_neighbor_edges = vertex_adjacencies_map.get(v_id).unwrap();
-                    // Store vertices with neighbor vertices having fixed ranks in the first element of the tuple
-                    // Otherwise, store in the second element of the tuple
-                    for adj_vertex_id in vertex_neighbor_edges
-                        .iter()
-                        .map(|adj| adj.get_adj_vertex().get_id())
-                    {
-                        if !vertices_with_unfixed_rank.contains(&adj_vertex_id) {
-                            has_fixed_rank_neighbor = true;
-                            let (same_rank_vertices_with_fixed_rank_neighbor, _) =
-                                same_rank_vertex_map.get_mut(&v_rank).unwrap();
-                            same_rank_vertices_with_fixed_rank_neighbor.push(v_id);
-                            break;
-                        }
-                    }
-                    if !has_fixed_rank_neighbor {
-                        let (_, same_rank_vertices_without_fixed_rank_neighbor) =
-                            same_rank_vertex_map.get_mut(&v_rank).unwrap();
-                        same_rank_vertices_without_fixed_rank_neighbor.push(v_id);
-                    }
-                }
-            }
-            // Perform vertex ranking on each groups of vertices with the same label and rank
-            for (vertex_set_with_fixed_rank_neighbor, vertex_set_without_fixed_rank_neighbor) in
-                same_rank_vertex_map.values()
-            {
-                // Case-1: All vertices have no fixed rank neighbor
-                if vertex_set_with_fixed_rank_neighbor.len() == 0 {
-                    let old_rank = self
-                        .get_vertex_rank(vertex_set_without_fixed_rank_neighbor[0])
-                        .unwrap();
-                    let vertex_num = vertex_set_without_fixed_rank_neighbor.len();
-                    let mut vertex_rank_vec: Vec<PatternRankId> = vec![old_rank; vertex_num];
-                    let mut is_rank_fixed_vec: Vec<bool> = vec![true; vertex_num];
-                    // To compute the exact rank of a vertex, compare it with all vertices with the same label
-                    for i in 0..vertex_num {
-                        for j in (i + 1)..vertex_num {
-                            match self.cmp_vertices_by_rank(
-                                vertex_set_without_fixed_rank_neighbor[i],
-                                vertex_set_without_fixed_rank_neighbor[j],
-                                vertex_adjacencies_map,
-                            ) {
-                                Ordering::Greater => vertex_rank_vec[i] += 1,
-                                Ordering::Less => vertex_rank_vec[j] += 1,
-                                Ordering::Equal => {
-                                    is_rank_fixed_vec[i] = false;
-                                    is_rank_fixed_vec[j] = false;
-                                }
-                            }
-                        }
-                        // Mark vertices that now have fixed rank
-                        if is_rank_fixed_vec[i] {
-                            vertices_with_fixed_rank.push(vertex_set_without_fixed_rank_neighbor[i]);
-                        }
-                        // Update Vertex Rank on the map
-                        vertex_rank_map
-                            .insert(vertex_set_without_fixed_rank_neighbor[i], vertex_rank_vec[i]);
-                    }
-                }
-                // Case-2: There exists vertex having fixed rank neighbor
-                else {
-                    let old_rank: PatternRankId = self
-                        .get_vertex_rank(vertex_set_with_fixed_rank_neighbor[0])
-                        .unwrap();
-                    let mut vertices_for_ranking: Vec<PatternId> =
-                        vertex_set_with_fixed_rank_neighbor.clone();
-                    // Take one vertex that has no fixed rank neighbor to represent all such vertices
-                    if vertex_set_without_fixed_rank_neighbor.len() > 0 {
-                        vertices_for_ranking.push(vertex_set_without_fixed_rank_neighbor[0]);
-                    }
-                    let vertex_num = vertices_for_ranking.len();
-                    let mut vertex_rank_vec: Vec<PatternRankId> = vec![old_rank; vertex_num];
-                    let mut is_rank_fixed_vec: Vec<bool> = vec![true; vertex_num];
-                    // To compute the exact rank of a vertex, compare it with all vertices with the same label
-                    for i in 0..vertex_num {
-                        for j in (i + 1)..vertex_num {
-                            match self.cmp_vertices_by_rank(
-                                vertices_for_ranking[i],
-                                vertices_for_ranking[j],
-                                vertex_adjacencies_map,
-                            ) {
-                                Ordering::Greater => {
-                                    if j == vertex_num - 1
-                                        && vertex_set_without_fixed_rank_neighbor.len() > 0
-                                    {
-                                        vertex_rank_vec[i] +=
-                                            vertex_set_without_fixed_rank_neighbor.len() as PatternRankId;
-                                    } else {
-                                        vertex_rank_vec[i] += 1;
-                                    }
-                                }
-                                Ordering::Less => vertex_rank_vec[j] += 1,
-                                Ordering::Equal => {
-                                    is_rank_fixed_vec[i] = false;
-                                    is_rank_fixed_vec[j] = false;
-                                }
-                            }
-                        }
-                        // Mark vertices that now have fixed rank
-                        if i != vertex_num - 1 && is_rank_fixed_vec[i] {
-                            vertices_with_fixed_rank.push(vertices_for_ranking[i]);
-                        }
-                        if i == vertex_num - 1
-                            && vertex_set_without_fixed_rank_neighbor.len() == 0
-                            && is_rank_fixed_vec[i]
-                        {
-                            vertices_with_fixed_rank.push(vertices_for_ranking[i]);
-                        }
-                    }
-                    // Update Vertex Rank on the map
-                    for i in 0..vertex_set_with_fixed_rank_neighbor.len() {
-                        vertex_rank_map.insert(vertex_set_with_fixed_rank_neighbor[i], vertex_rank_vec[i]);
-                    }
-                    for j in 0..vertex_set_without_fixed_rank_neighbor.len() {
-                        vertex_rank_map.insert(
-                            vertex_set_without_fixed_rank_neighbor[j],
-                            vertex_rank_vec[vertex_num - 1],
-                        );
-                    }
-                }
-            }
-        }
-
-        // Remove vertices that have fixed rank
-        for v_id in vertices_with_fixed_rank {
-            vertices_with_unfixed_rank.remove(&v_id);
-        }
-        // Update vertex rank on the pattern
-        for (v_id, &v_rank) in vertex_rank_map.iter() {
-            let old_rank: PatternRankId = self.get_vertex_rank(v_id).unwrap();
-            if v_rank != old_rank {
-                is_rank_changed = true;
-                self.set_vertex_rank(v_rank, v_id);
-            }
-        }
-        is_rank_changed
-    }
-
-    /// Compare the ranks of two PatternVertices
-    ///
-    /// Consider labels and out/in degrees only
-    ///
-    /// Called when setting initial ranks
-    fn cmp_vertices_by_neighbor_info(
-        &self, v1_id: PatternId, v2_id: PatternId, vertex_adjacencies_map: &VecMap<Vec<Adjacency>>,
-    ) -> Ordering {
-        let v1_label = self.get_vertex(v1_id).unwrap().get_label();
-        let v2_label = self.get_vertex(v2_id).unwrap().get_label();
-        match v1_label.cmp(&v2_label) {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => (),
-        }
-        // Compare Vertex Out Degree
-        match self
-            .get_vertex_out_degree(v1_id)
-            .cmp(&self.get_vertex_out_degree(v2_id))
-        {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => (),
-        }
-        // Compare Vertex In Degree
-        match self
-            .get_vertex_in_degree(v1_id)
-            .cmp(&self.get_vertex_in_degree(v2_id))
-        {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => (),
-        }
-
-        let v1_adjacencies = vertex_adjacencies_map.get(v1_id).unwrap();
-        let v2_adjacencies = vertex_adjacencies_map.get(v2_id).unwrap();
-        for adj_index in 0..v1_adjacencies.len() {
-            // Compare the label of adjacent vertex
-            let v1_adj_v_label = v1_adjacencies[adj_index]
-                .get_adj_vertex()
-                .get_label();
-            let v2_adj_v_label = v2_adjacencies[adj_index]
-                .get_adj_vertex()
-                .get_label();
-            match v1_adj_v_label.cmp(&v2_adj_v_label) {
-                Ordering::Less => return Ordering::Less,
-                Ordering::Greater => return Ordering::Greater,
-                Ordering::Equal => (),
-            }
-
-            // Compare the label of adjacent edges
-            let v1_adj_edge_label = v1_adjacencies[adj_index].get_edge_label();
-            let v2_adj_edge_label = v2_adjacencies[adj_index].get_edge_label();
-            match v1_adj_edge_label.cmp(&v2_adj_edge_label) {
-                Ordering::Less => return Ordering::Less,
-                Ordering::Greater => return Ordering::Greater,
-                Ordering::Equal => (),
-            }
-        }
-
-        // Return Equal if Still Cannot Distinguish
-        Ordering::Equal
-    }
-
-    /// Compare the ranks of two PatternVertices
-    ///
-    /// Called when updating vertex ranks as only ranks need to be considered
-    fn cmp_vertices_by_rank(
-        &self, v1_id: PatternId, v2_id: PatternId, vertex_adjacencies_map: &VecMap<Vec<Adjacency>>,
-    ) -> Ordering {
-        let v1_rank = self.get_vertex_rank(v1_id).unwrap();
-        let v2_rank = self.get_vertex_rank(v2_id).unwrap();
-        // Compare the ranks
-        match v1_rank.cmp(&v2_rank) {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => (),
-        }
-        // Compare End Vertex Rank
-        let v1_adjacencies = vertex_adjacencies_map.get(v1_id).unwrap();
-        let v2_adjacencies = vertex_adjacencies_map.get(v2_id).unwrap();
-        for adj_index in 0..v1_adjacencies.len() {
-            let v1_adj_v_rank = self
-                .get_vertex_rank(
-                    v1_adjacencies[adj_index]
-                        .get_adj_vertex()
-                        .get_id(),
-                )
-                .unwrap();
-            let v2_adj_v_rank = self
-                .get_vertex_rank(
-                    v2_adjacencies[adj_index]
-                        .get_adj_vertex()
-                        .get_id(),
-                )
-                .unwrap();
-            match v1_adj_v_rank.cmp(&v2_adj_v_rank) {
-                Ordering::Less => return Ordering::Less,
-                Ordering::Greater => return Ordering::Greater,
-                Ordering::Equal => (),
-            }
-        }
-
-        // Return Equal if Still Cannot Distinguish
-        Ordering::Equal
-    }
-
-    // Update the Order of Neighbor Vertices Based on the ranks of end vertices only
-    fn update_neighbor_edges_map(&self, vertex_adjacencies_map: &mut VecMap<Vec<Adjacency>>) {
-        for (_, adjacencies) in vertex_adjacencies_map.iter_mut() {
-            adjacencies.sort_by(|e1, e2| {
-                self.get_vertex_rank(e1.get_adj_vertex().get_id())
-                    .cmp(&self.get_vertex_rank(e2.get_adj_vertex().get_id()))
-            })
-        }
-    }
-}
-
-/// DFS Sorting
-///
-/// Find a unique sequence of edges in DFS order and assign each vertex with a unique DFS id for easier decoding process
-impl Pattern {
     /// Return the ID of the starting vertex of DFS.
     ///
     /// In our case, It's the vertex with the smallest label and rank
@@ -1418,20 +1122,29 @@ impl Pattern {
                     Ordering::Less => Ordering::Less,
                     Ordering::Greater => Ordering::Greater,
                     Ordering::Equal => {
-                        // Adjacency will be given high priority if its adjacent vertex has no or smaller dfs id
-                        let adj1_v_dfs_id =
-                            if let Some(value) = vertex_dfs_id_map.get(adj1.get_adj_vertex().get_id()) {
-                                *value
-                            } else {
-                                return Ordering::Less;
-                            };
+                        let adj1_v_id: PatternId = adj1.get_adj_vertex().get_id();
+                        let adj2_v_id: PatternId = adj2.get_adj_vertex().get_id();
+                        // Compare group IDs of adjacent vertices
+                        let adj1_v_group = self.get_vertex_rank(adj1_v_id);
+                        let adj2_v_group = self.get_vertex_rank(adj2_v_id);
+                        match adj1_v_group.cmp(&adj2_v_group) {
+                            Ordering::Less => return Ordering::Less,
+                            Ordering::Greater => return Ordering::Greater,
+                            Ordering::Equal => (),
+                        }
 
-                        let adj2_v_dfs_id =
-                            if let Some(value) = vertex_dfs_id_map.get(adj2.get_adj_vertex().get_id()) {
-                                *value
-                            } else {
-                                return Ordering::Greater;
-                            };
+                        // Adjacency will be given high priority if its adjacent vertex has no or smaller dfs id
+                        let adj1_v_dfs_id = if let Some(value) = vertex_dfs_id_map.get(adj1_v_id) {
+                            *value
+                        } else {
+                            return Ordering::Less;
+                        };
+
+                        let adj2_v_dfs_id = if let Some(value) = vertex_dfs_id_map.get(adj2_v_id) {
+                            *value
+                        } else {
+                            return Ordering::Greater;
+                        };
 
                         adj1_v_dfs_id.cmp(&adj2_v_dfs_id)
                     }
@@ -1453,30 +1166,6 @@ impl Pattern {
         } else {
             None
         }
-    }
-
-    /// Compare two adjacencies in the pattern.
-    /// We take the following four properties into consideration:
-    /// - Direction of the adjacent edge
-    /// - Label of the adjacent edge
-    /// - Label of the adjacent vertex
-    /// - Rank of the adjacent vertex
-    fn cmp_adjacencies(&self, adj1: &Adjacency, adj2: &Adjacency) -> Ordering {
-        let adj_v1_id: PatternId = adj1.get_adj_vertex().get_id();
-        let adj_v2_id: PatternId = adj2.get_adj_vertex().get_id();
-        let adj1_info_tuple = (
-            adj1.get_direction(),
-            adj1.get_edge_label(),
-            adj1.get_adj_vertex().get_label(),
-            self.get_vertex_rank(adj_v1_id).unwrap(),
-        );
-        let adj2_info_tuple = (
-            adj2.get_direction(),
-            adj2.get_edge_label(),
-            adj2.get_adj_vertex().get_label(),
-            self.get_vertex_rank(adj_v2_id).unwrap(),
-        );
-        adj1_info_tuple.cmp(&adj2_info_tuple)
     }
 }
 
@@ -1589,7 +1278,7 @@ impl Pattern {
         new_pattern
             .vertices_data
             .insert(new_pattern_vertex.get_id(), new_pattern_vertex_data);
-        new_pattern.vertex_ranking();
+        new_pattern.canonical_labeling();
         Some(new_pattern)
     }
 
@@ -1719,7 +1408,7 @@ impl Pattern {
         for edge in edges {
             new_pattern.add_edge(edge)?;
         }
-        new_pattern.vertex_ranking();
+        new_pattern.canonical_labeling();
         Ok(new_pattern)
     }
 
@@ -1811,7 +1500,7 @@ impl Pattern {
                         .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
                 }
             }
-            self.vertex_ranking();
+            self.canonical_labeling();
         }
     }
 

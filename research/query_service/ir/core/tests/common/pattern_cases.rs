@@ -19,13 +19,12 @@ use std::convert::TryFrom;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::KeyId;
-use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-
 use ir_core::catalogue::pattern::*;
 use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 
 use crate::common::pattern_meta_cases::*;
 

@@ -14,11 +14,11 @@
 //! limitations under the License.
 
 use std::convert::TryFrom;
-use vec_map::VecMap;
 
 use ascii::AsciiChar;
 use ascii::AsciiString;
 use ascii::ToAsciiChar;
+use vec_map::VecMap;
 
 use super::pattern_meta::PatternMeta;
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
