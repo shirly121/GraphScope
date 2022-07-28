@@ -55,6 +55,8 @@ struct EdgeWeightForJoin {
 struct EdgeWeightForExtendStep {
     /// Code of the extend step
     code: Vec<u8>,
+    /// Target vertex's order in the target pattern
+    target_vertex_rank: usize,
     /// Whether the extend step is single extend or need intersect
     is_single_extend: bool,
     /// Total count of all extend edges
@@ -185,6 +187,9 @@ impl Catalogue {
                         new_pattern_index,
                         EdgeWeight::ExtendStep(EdgeWeightForExtendStep {
                             code: extend_step_code.clone(),
+                            target_vertex_rank: new_pattern
+                                .get_vertex_rank(new_pattern.get_max_vertex_id())
+                                .unwrap(),
                             is_single_extend: extend_step.get_extend_edges_num() == 0,
                             count_sum: 0,
                             counts: BinaryHeap::new(),
@@ -335,6 +340,9 @@ impl Catalogue {
                             new_pattern_index,
                             EdgeWeight::ExtendStep(EdgeWeightForExtendStep {
                                 code: extend_step_code,
+                                target_vertex_rank: new_pattern
+                                    .get_vertex_rank(adj_vertex_id)
+                                    .unwrap(),
                                 is_single_extend: extend_step.get_extend_edges_num() == 1,
                                 count_sum: 0,
                                 counts: BinaryHeap::new(),
@@ -459,6 +467,33 @@ impl Pattern {
                 // use the extend step with the lowerst estimated cost
                 all_extends.sort_by(
                     |&(_, pre_pattern_weight1, edge_weight1), &(_, pre_pattern_weight2, edge_weight2)| {
+                        if let (
+                            EdgeWeight::ExtendStep(extend_weight1),
+                            EdgeWeight::ExtendStep(extend_weight2),
+                        ) = (edge_weight1, edge_weight2)
+                        {
+                            let target_vertex1_has_predicate = trace_pattern
+                                .get_vertex_predicate(
+                                    trace_pattern
+                                        .get_vertex_from_rank(extend_weight1.target_vertex_rank)
+                                        .unwrap()
+                                        .get_id(),
+                                )
+                                .is_some();
+                            let target_vertex2_has_predicate = trace_pattern
+                                .get_vertex_predicate(
+                                    trace_pattern
+                                        .get_vertex_from_rank(extend_weight2.target_vertex_rank)
+                                        .unwrap()
+                                        .get_id(),
+                                )
+                                .is_some();
+                            if target_vertex1_has_predicate && !target_vertex2_has_predicate {
+                                return Ordering::Greater;
+                            } else if !target_vertex1_has_predicate && target_vertex2_has_predicate {
+                                return Ordering::Less;
+                            }
+                        }
                         total_cost_estimate(
                             ALPHA,
                             BETA,
@@ -475,55 +510,24 @@ impl Pattern {
                         ))
                     },
                 );
-                let mut found_best_extend = false;
-                // make the vertex with predicate to be extended earlier
-                for &(pre_pattern_index, pre_pattern_weight, edge_weight) in all_extends.iter() {
-                    let extend_step: ExtendStep = Cipher::decode_from(
-                        &edge_weight
+                let (pre_pattern_index, pre_pattern_weight, edge_weight) = all_extends[0];
+                let target_vertex_id = trace_pattern
+                    .get_vertex_from_rank(
+                        edge_weight
                             .get_extend_step_weight()
                             .unwrap()
-                            .code,
-                        &catalog.encoder,
-                    )?;
-                    let target_vertex_id = trace_pattern
-                        .locate_vertex(&extend_step, &pre_pattern_weight.code, &catalog.encoder)
-                        .unwrap();
-                    if !trace_pattern
-                        .get_vertex_predicate(target_vertex_id)
-                        .is_some()
-                    {
-                        let definite_extend_step = trace_pattern
-                            .generate_definite_extend_step_by_v_id(target_vertex_id)
-                            .unwrap();
-                        definite_extend_steps.push(definite_extend_step);
-                        trace_pattern.remove_vertex(target_vertex_id);
-                        trace_pattern_index = pre_pattern_index;
-                        trace_pattern_weight = pre_pattern_weight;
-                        found_best_extend = true;
-                        break;
-                    }
-                }
-                // Situation that all vertices have predicate, then pick the one with the lowest cost
-                if !found_best_extend {
-                    let (pre_pattern_index, pre_pattern_weight, edge_weight) = all_extends[0];
-                    let extend_step: ExtendStep = Cipher::decode_from(
-                        &edge_weight
-                            .get_extend_step_weight()
-                            .unwrap()
-                            .code,
-                        &catalog.encoder,
-                    )?;
-                    let target_vertex_id = trace_pattern
-                        .locate_vertex(&extend_step, &pre_pattern_weight.code, &catalog.encoder)
-                        .unwrap();
-                    let definite_extend_step = trace_pattern
-                        .generate_definite_extend_step_by_v_id(target_vertex_id)
-                        .unwrap();
-                    definite_extend_steps.push(definite_extend_step);
-                    trace_pattern.remove_vertex(target_vertex_id);
-                    trace_pattern_index = pre_pattern_index;
-                    trace_pattern_weight = pre_pattern_weight;
-                }
+                            .target_vertex_rank,
+                    )
+                    .unwrap()
+                    .get_id();
+
+                let definite_extend_step = trace_pattern
+                    .generate_definite_extend_step_by_v_id(target_vertex_id)
+                    .unwrap();
+                definite_extend_steps.push(definite_extend_step);
+                trace_pattern.remove_vertex(target_vertex_id);
+                trace_pattern_index = pre_pattern_index;
+                trace_pattern_weight = pre_pattern_weight;
             }
             // transform the one-vertex pattern into definite extend step
             definite_extend_steps.push(trace_pattern.try_into()?);

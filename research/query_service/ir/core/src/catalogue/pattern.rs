@@ -688,6 +688,24 @@ impl Pattern {
         self.vertices.len()
     }
 
+    #[inline]
+    pub fn get_min_vertex_id(&self) -> PatternId {
+        self.vertices
+            .iter()
+            .map(|(vertex_id, _)| vertex_id)
+            .next()
+            .unwrap()
+    }
+
+    #[inline]
+    pub fn get_max_vertex_id(&self) -> PatternId {
+        self.vertices
+            .iter()
+            .map(|(vertex_id, _)| vertex_id)
+            .last()
+            .unwrap()
+    }
+
     /// Get the minimum vertex label id of the current pattern
     #[inline]
     pub fn get_min_vertex_label(&self) -> Option<PatternLabelId> {
@@ -989,6 +1007,11 @@ impl Pattern {
     ///
     /// Basic Idea: Iteratively update the rank locally (neighbor edges vertices) and update the order of neighbor edges
     pub fn vertex_ranking(&mut self) {
+        for (_, vertex_data) in self.vertices_data.iter_mut() {
+            vertex_data.group = 0;
+            vertex_data.rank = 0;
+        }
+        self.rank_vertex_map.clear();
         // Get the Neighbor Edges for All Vertices, Sorted Simply By Labels
         let mut vertex_adjacencies_map = self.get_vertex_adjacencies_map();
         // Initially, mark all the vertices as unfixed
@@ -1813,6 +1836,7 @@ impl Pattern {
             if let Some(tag) = self.get_vertex_tag(vertex_id) {
                 self.tag_vertex_map.remove(&tag);
             }
+            self.vertices_data.remove(vertex_id);
             for adjacency in adjacencies {
                 let adjacent_vertex_id = adjacency.get_adj_vertex().get_id();
                 let adjacent_edge_id = adjacency.get_edge_id();
@@ -1823,6 +1847,7 @@ impl Pattern {
                 if let Some(tag) = self.get_edge_tag(adjacent_edge_id) {
                     self.tag_edge_map.remove(&tag);
                 }
+                self.edges_data.remove(adjacent_edge_id);
                 // update adjcent vertices's info
                 if let PatternDirection::Out = adjacency.get_direction() {
                     self.vertices_data

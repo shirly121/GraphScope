@@ -91,6 +91,7 @@ impl ExtendStep {
 }
 
 /// Given a DefiniteExtendEdge, we can uniquely locate an edge with dir in the pattern
+#[derive(Debug, Clone)]
 pub struct DefiniteExtendEdge {
     start_v_id: PatternId,
     edge_id: PatternId,
@@ -108,6 +109,7 @@ impl DefiniteExtendEdge {
 }
 
 /// Given a DefiniteExtendStep, we can uniquely find which part of the pattern to extend
+#[derive(Debug, Clone)]
 pub struct DefiniteExtendStep {
     target_v_id: PatternId,
     target_v_label: PatternLabelId,
