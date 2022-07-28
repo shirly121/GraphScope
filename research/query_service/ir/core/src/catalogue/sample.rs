@@ -19,6 +19,7 @@
 // use crate::catalogue::PatternId;
 
 // use graph_store::prelude::DefaultId;
+// use graph_proxy::
 
 // type PatternRecord = std::collections::HashMap<PatternId, DefaultId>;
 

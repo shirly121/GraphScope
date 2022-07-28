@@ -440,9 +440,8 @@ impl Pattern {
                 }
             });
             let select_vertex_id = *all_vertex_ids.first().unwrap();
-            let definite_extend_step = trace_pattern
-                .generate_definite_extend_step_by_v_id(select_vertex_id)
-                .unwrap();
+            let definite_extend_step =
+                DefiniteExtendStep::new_from_target_vertex_id(&trace_pattern, select_vertex_id).unwrap();
             definite_extend_steps.push(definite_extend_step);
             trace_pattern.remove_vertex(select_vertex_id);
         }
@@ -524,9 +523,9 @@ impl Pattern {
                     .unwrap()
                     .get_id();
 
-                let definite_extend_step = trace_pattern
-                    .generate_definite_extend_step_by_v_id(target_vertex_id)
-                    .unwrap();
+                let definite_extend_step =
+                    DefiniteExtendStep::new_from_target_vertex_id(&trace_pattern, target_vertex_id)
+                        .unwrap();
                 definite_extend_steps.push(definite_extend_step);
                 trace_pattern.remove_vertex(target_vertex_id);
                 trace_pattern_index = pre_pattern_index;
@@ -560,10 +559,10 @@ fn build_logical_plan(
                 ))
             }
         };
-        let source_vertex_label = source_extend.get_target_v_label();
+        let source_vertex_label = source_extend.get_target_vertex_label();
         pb::Scan {
             scan_opt: 0,
-            alias: Some((source_extend.get_target_v_id() as i32).into()),
+            alias: Some((source_extend.get_target_vertex_id() as i32).into()),
             params: Some(query_params(vec![source_vertex_label.into()], vec![], None)),
             idx_predicate: None,
         }

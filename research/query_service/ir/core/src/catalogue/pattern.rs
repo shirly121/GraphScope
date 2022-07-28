@@ -21,11 +21,9 @@ use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use vec_map::VecMap;
 
+use super::codec::{Cipher, Encoder};
 use crate::catalogue::canonical_label::CanonicalLabelManager;
-use crate::catalogue::codec::{Cipher, Encoder};
-use crate::catalogue::extend_step::{
-    get_subsets, limit_repeated_element_num, DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep,
-};
+use crate::catalogue::extend_step::{get_subsets, limit_repeated_element_num, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{
     DynIter, PatternDirection, PatternGroupId, PatternId, PatternLabelId, PatternRankId,
@@ -619,6 +617,24 @@ impl Pattern {
         self.edges.len()
     }
 
+    #[inline]
+    pub fn get_min_edge_id(&self) -> PatternId {
+        self.edges
+            .iter()
+            .map(|(edge_id, _)| edge_id)
+            .next()
+            .unwrap_or(0)
+    }
+
+    #[inline]
+    pub fn get_max_edge_id(&self) -> PatternId {
+        self.edges
+            .iter()
+            .map(|(edge_id, _)| edge_id)
+            .last()
+            .unwrap_or(0)
+    }
+
     /// Get the minimum edge label id of the current pattern
     #[inline]
     pub fn get_min_edge_label(&self) -> Option<PatternLabelId> {
@@ -1019,33 +1035,13 @@ impl Pattern {
             .collect()
     }
 
-    /// Get the legal id for the future incoming vertex
-    fn get_next_pattern_vertex_id(&self) -> PatternId {
-        let mut new_vertex_id = self.vertices.len() as PatternId;
-        while self.vertices.contains_key(new_vertex_id) {
-            new_vertex_id += 1;
-        }
-
-        new_vertex_id
-    }
-
-    /// Get the legal id for the future incoming vertex
-    fn get_next_pattern_edge_id(&self) -> PatternId {
-        let mut new_edge_id = self.edges.len() as PatternId;
-        while self.edges.contains_key(new_edge_id) {
-            new_edge_id += 1;
-        }
-
-        new_edge_id
-    }
-
     /// Extend the current Pattern to a new Pattern with the given ExtendStep
     /// - If the ExtendStep is not matched with the current Pattern, the function will return None
     /// - Else, it will return the new Pattern after the extension
     pub fn extend(&self, extend_step: &ExtendStep) -> Option<Pattern> {
         let mut new_pattern = self.clone();
         let target_vertex_label = extend_step.get_target_vertex_label();
-        let target_vertex = PatternVertex::new(self.get_next_pattern_vertex_id(), target_vertex_label);
+        let target_vertex = PatternVertex::new(self.get_max_vertex_id() + 1, target_vertex_label);
         let target_vertex_data = PatternVertexData::default();
         // Add the newly extended pattern vertex to the new pattern
         new_pattern
@@ -1061,7 +1057,7 @@ impl Pattern {
                 .get_vertex_from_rank(src_vertex_rank)
                 .cloned()
             {
-                let new_pattern_edge_id = new_pattern.get_next_pattern_edge_id();
+                let new_pattern_edge_id = new_pattern.get_max_edge_id() + 1;
                 let new_pattern_edge_label = extend_edge.get_edge_label();
                 let (mut start_vertex, mut end_vertex) = (src_vertex, target_vertex);
                 if let PatternDirection::In = extend_edge.get_direction() {
@@ -1324,39 +1320,6 @@ impl Pattern {
             let mut new_pattern = self.clone();
             new_pattern.remove_vertex(target_vertex_id);
             Some(new_pattern)
-        } else {
-            None
-        }
-    }
-
-    /// Given a vertex id, pick all its neiboring edges and vertices to generate a definite extend step
-    pub fn generate_definite_extend_step_by_v_id(
-        &self, target_v_id: PatternId,
-    ) -> Option<DefiniteExtendStep> {
-        if let Some(target_vertex) = self.get_vertex(target_v_id) {
-            let target_v_label = target_vertex.get_label();
-            let mut extend_edges = vec![];
-            for adjacency in self.adjacencies_iter(target_v_id) {
-                let edge_id = adjacency.get_edge_id();
-                let dir = adjacency.get_direction();
-                let edge = self.edges.get(edge_id).unwrap();
-                if let PatternDirection::In = dir {
-                    extend_edges.push(DefiniteExtendEdge::new(
-                        edge.get_start_vertex().get_id(),
-                        edge_id,
-                        edge.get_label(),
-                        PatternDirection::Out,
-                    ));
-                } else {
-                    extend_edges.push(DefiniteExtendEdge::new(
-                        edge.get_end_vertex().get_id(),
-                        edge_id,
-                        edge.get_label(),
-                        PatternDirection::In,
-                    ));
-                }
-            }
-            Some(DefiniteExtendStep::new(target_v_id, target_v_label, extend_edges))
         } else {
             None
         }
