@@ -20,13 +20,12 @@ use std::iter::Iterator;
 use ir_common::generated::algebra as pb;
 
 use crate::catalogue::pattern::Pattern;
-use crate::catalogue::{query_params, PatternId};
-use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
+use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExtendEdge {
-    src_vertex_rank: usize,
+    src_vertex_rank: PatternRankId,
     edge_label: PatternLabelId,
     dir: PatternDirection,
 }
@@ -41,7 +40,7 @@ impl ExtendEdge {
 /// Methods for access fields of VagueExtendEdge
 impl ExtendEdge {
     #[inline]
-    pub fn get_src_vertex_rank(&self) -> PatternId {
+    pub fn get_src_vertex_rank(&self) -> PatternRankId {
         self.src_vertex_rank
     }
 

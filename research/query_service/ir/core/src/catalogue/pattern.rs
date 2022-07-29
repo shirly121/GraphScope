@@ -13,7 +13,6 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
@@ -22,13 +21,15 @@ use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use vec_map::VecMap;
 
-use crate::catalogue::canonical_labeling::CanonicalLabelManager;
+use crate::catalogue::canonical_label::CanonicalLabelManager;
 use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{
     get_subsets, limit_repeated_element_num, DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep,
 };
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
+use crate::catalogue::{
+    DynIter, PatternDirection, PatternGroupId, PatternId, PatternLabelId, PatternRankId,
+};
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::TagId;
 
@@ -56,8 +57,8 @@ impl PatternVertex {
 
 #[derive(Debug, Clone, Default)]
 struct PatternVertexData {
-    group: usize,
-    rank: usize,
+    group: PatternGroupId,
+    rank: PatternRankId,
     out_adjacencies: Vec<Adjacency>,
     in_adjacencies: Vec<Adjacency>,
     tag: Option<TagId>,
@@ -102,7 +103,7 @@ impl PatternEdge {
 
 #[derive(Debug, Clone, Default)]
 struct PatternEdgeData {
-    rank: usize,
+    rank: PatternRankId,
     tag: Option<TagId>,
     predicate: Option<common_pb::Expression>,
 }
@@ -598,7 +599,7 @@ impl Pattern {
 
     /// Get PatternEdge from Given Edge Rank
     #[inline]
-    pub fn get_edge_from_rank(&self, edge_rank: usize) -> Option<&PatternEdge> {
+    pub fn get_edge_from_rank(&self, edge_rank: PatternRankId) -> Option<&PatternEdge> {
         self.rank_edge_map
             .get(edge_rank)
             .and_then(|&edge_id| self.get_edge(edge_id))
@@ -638,7 +639,7 @@ impl Pattern {
 
     /// Get a PatternEdge's Rank info
     #[inline]
-    pub fn get_edge_rank(&self, edge_id: PatternId) -> Option<usize> {
+    pub fn get_edge_rank(&self, edge_id: PatternId) -> Option<PatternRankId> {
         self.edges_data
             .get(edge_id)
             .map(|edge_data| edge_data.rank)
@@ -668,7 +669,7 @@ impl Pattern {
 
     /// Get PatternVertex Reference from Given Rank
     #[inline]
-    pub fn get_vertex_from_rank(&self, vertex_rank: usize) -> Option<&PatternVertex> {
+    pub fn get_vertex_from_rank(&self, vertex_rank: PatternRankId) -> Option<&PatternVertex> {
         self.rank_vertex_map
             .get(vertex_rank)
             .and_then(|&vertex_id| self.get_vertex(vertex_id))
@@ -725,7 +726,7 @@ impl Pattern {
 
     /// Get Vertex Rank from Vertex ID Reference
     #[inline]
-    pub fn get_vertex_group(&self, vertex_id: PatternId) -> Option<usize> {
+    pub fn get_vertex_group(&self, vertex_id: PatternId) -> Option<PatternGroupId> {
         self.vertices_data
             .get(vertex_id)
             .map(|vertex_data| vertex_data.group)
@@ -733,7 +734,7 @@ impl Pattern {
 
     /// Get Vertex Rank from Vertex ID Reference
     #[inline]
-    pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<usize> {
+    pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<PatternRankId> {
         self.vertices_data
             .get(vertex_id)
             .map(|vertex_data| vertex_data.rank)
@@ -859,8 +860,8 @@ impl Pattern {
 
 /// Setters of fields of Pattern
 impl Pattern {
-    // TODO: Mark as private function
-    pub fn set_edge_rank(&mut self, edge_id: PatternId, edge_rank: usize) {
+    /// Assign a PatternEdge with the given group
+    fn set_edge_rank(&mut self, edge_id: PatternId, edge_rank: PatternRankId) {
         // Assign the rank to the edge
         if let Some(edge_data) = self.edges_data.get_mut(edge_id) {
             self.rank_edge_map.insert(edge_rank, edge_id);
@@ -891,21 +892,19 @@ impl Pattern {
         }
     }
 
-    // TODO: Mark as private function
-    pub fn set_vertex_rank(&mut self, vertex_id: PatternId, vertex_rank: usize) {
+    /// Assign a PatternVertex with the given group
+    fn set_vertex_group(&mut self, vertex_id: PatternId, group: PatternGroupId) {
+        if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
+            vertex_data.group = group;
+        }
+    }
+
+    fn set_vertex_rank(&mut self, vertex_id: PatternId, vertex_rank: PatternRankId) {
         // Assign the rank to the vertex
         if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
             self.rank_vertex_map
                 .insert(vertex_rank, vertex_id);
             vertex_data.rank = vertex_rank;
-        }
-    }
-
-    // TODO: Mark as private function
-    /// Assign a PatternVertex with the given group
-    pub fn set_vertex_group(&mut self, vertex_id: PatternId, group: usize) {
-        if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
-            vertex_data.group = group;
         }
     }
 
@@ -941,12 +940,10 @@ impl Pattern {
     /// It consists of two parts:
     /// - Vertex Grouping (Partition): vertices in the same group (partition) are equivalent in structure.
     /// - Pattern Ranking: given the vertex groups, rank each vertex and edge with a unique ID.
-    pub fn canonical_labeling(&mut self) {
+    fn canonical_labeling(&mut self) {
         let mut canonical_label_manager = CanonicalLabelManager::init_by_pattern(self);
         self.vertex_grouping(&mut canonical_label_manager);
         self.pattern_ranking(&mut canonical_label_manager);
-        // Update the order of vertex adjacencies
-        self.update_vertex_adjacences(&canonical_label_manager);
     }
 
     /// Set Rank for Every Vertex within the Pattern
@@ -1004,46 +1001,6 @@ impl Pattern {
                 self.set_edge_rank(e_id, e_rank);
             });
     }
-
-    /// Compare two adjacencies in the pattern.
-    ///
-    /// We take the following four properties into consideration:
-    /// - Direction of the adjacent edge
-    /// - Label of the adjacent edge
-    /// - Label of the adjacent vertex
-    pub fn cmp_adjacencies(&self, adj1: &Adjacency, adj2: &Adjacency) -> Ordering {
-        let adj1_info_tuple =
-            (adj1.get_direction(), adj1.get_adj_vertex().get_label(), adj1.get_edge_label());
-        let adj2_info_tuple =
-            (adj2.get_direction(), adj2.get_adj_vertex().get_label(), adj2.get_edge_label());
-        adj1_info_tuple.cmp(&adj2_info_tuple)
-    }
-
-    pub fn update_vertex_adjacences(&mut self, canonical_label_manager: &CanonicalLabelManager) {
-        canonical_label_manager
-            .vertex_adjacencies_iter()
-            .for_each(|(v_id, adjacencies)| {
-                let updated_out_adjacences = adjacencies
-                    .iter()
-                    .filter(|adj| adj.get_direction() == PatternDirection::Out)
-                    .map(|adj| *adj)
-                    .collect();
-                self.vertices_data
-                    .get_mut(v_id)
-                    .unwrap()
-                    .out_adjacencies = updated_out_adjacences;
-
-                let updated_in_adjacences = adjacencies
-                    .iter()
-                    .filter(|adj| adj.get_direction() == PatternDirection::In)
-                    .map(|adj| *adj)
-                    .collect();
-                self.vertices_data
-                    .get_mut(v_id)
-                    .unwrap()
-                    .in_adjacencies = updated_in_adjacences;
-            });
-    }
 }
 
 /// Methods for Pattern Extension
@@ -1051,7 +1008,9 @@ impl Pattern {
     /// Get all the vertices(id) with the same vertex label and vertex group
     ///
     /// These vertices are equivalent in the Pattern
-    pub fn get_equivalent_vertices(&self, v_label: PatternLabelId, v_group: usize) -> Vec<PatternVertex> {
+    pub fn get_equivalent_vertices(
+        &self, v_label: PatternLabelId, v_group: PatternGroupId,
+    ) -> Vec<PatternVertex> {
         self.vertices_iter()
             .filter(|vertex| {
                 vertex.get_label() == v_label && self.get_vertex_group(vertex.get_id()).unwrap() == v_group
@@ -1321,6 +1280,7 @@ impl Pattern {
             if let Some(tag) = self.get_vertex_tag(vertex_id) {
                 self.tag_vertex_map.remove(&tag);
             }
+            // delete in vertices data
             self.vertices_data.remove(vertex_id);
             for adjacency in adjacencies {
                 let adjacent_vertex_id = adjacency.get_adj_vertex().get_id();
@@ -1332,6 +1292,7 @@ impl Pattern {
                 if let Some(tag) = self.get_edge_tag(adjacent_edge_id) {
                     self.tag_edge_map.remove(&tag);
                 }
+                // delete in edges data
                 self.edges_data.remove(adjacent_edge_id);
                 // update adjcent vertices's info
                 if let PatternDirection::Out = adjacency.get_direction() {
