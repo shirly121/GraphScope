@@ -37,7 +37,7 @@ static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
 /// In Catalog Graph, Vertex Represents a Pattern
 #[derive(Debug, Clone)]
-struct VertexWeight {
+pub struct VertexWeight {
     /// Code uniquely identify a pattern
     code: Vec<u8>,
     /// Estimate how many such pattern in a graph
@@ -48,14 +48,14 @@ struct VertexWeight {
 
 /// Edge Weight for approach case is join
 #[derive(Debug, Clone)]
-struct EdgeWeightForJoin {
+pub struct EdgeWeightForJoin {
     /// Join with which pattern
     pattern_index: NodeIndex,
 }
 
 /// Edge Weight for approach case is extend
 #[derive(Debug, Clone)]
-struct EdgeWeightForExtendStep {
+pub struct EdgeWeightForExtendStep {
     /// Code of the extend step
     code: Vec<u8>,
     /// Target vertex's order in the target pattern
@@ -73,7 +73,7 @@ struct EdgeWeightForExtendStep {
 /// pattern <join> pattern -> pattern
 /// pattern <extend> extend_step -> pattern
 #[derive(Debug, Clone)]
-enum EdgeWeight {
+pub enum EdgeWeight {
     /// Case that the approach is join
     Pattern(EdgeWeightForJoin),
     /// Case that the approach is extend
@@ -82,7 +82,7 @@ enum EdgeWeight {
 
 /// Methods of accesing some fields of EdgeWeight
 impl EdgeWeight {
-    fn is_extend(&self) -> bool {
+    pub fn is_extend(&self) -> bool {
         if let EdgeWeight::ExtendStep(_) = self {
             true
         } else {
@@ -90,7 +90,7 @@ impl EdgeWeight {
         }
     }
 
-    fn is_join(&self) -> bool {
+    pub fn is_join(&self) -> bool {
         if let EdgeWeight::ExtendStep(_) = self {
             false
         } else {
@@ -98,7 +98,7 @@ impl EdgeWeight {
         }
     }
 
-    fn get_extend_step_weight(&self) -> Option<&EdgeWeightForExtendStep> {
+    pub fn get_extend_step_weight(&self) -> Option<&EdgeWeightForExtendStep> {
         if let EdgeWeight::ExtendStep(w) = self {
             Some(&w)
         } else {
@@ -113,12 +113,14 @@ pub struct Catalogue {
     store: Graph<VertexWeight, EdgeWeight>,
     /// Key: pattern code, Value: Node(Vertex) Index
     /// Usage: use a pattern code to uniquely identify a pattern in catalog graph
-    pattern_v_locate_map: HashMap<Vec<u8>, NodeIndex>,
+    pattern_locate_map: HashMap<Vec<u8>, NodeIndex>,
     /// The global encoder for the catalog
     encoder: Encoder,
     // Store the extend steps already found between the src pattern and target pattern
     // - Used to avoid add equivalent extend steps between two patterns
     extend_step_comparator_map: HashMap<(Vec<u8>, Vec<u8>), BTreeSet<ExtendStepComparator>>,
+
+    entry_map: HashMap<PatternLabelId, NodeIndex>,
 }
 
 impl Catalogue {
@@ -129,9 +131,10 @@ impl Catalogue {
     ) -> Catalogue {
         let mut catalog = Catalogue {
             store: Graph::new(),
-            pattern_v_locate_map: HashMap::new(),
+            pattern_locate_map: HashMap::new(),
             encoder: Encoder::init_by_pattern_meta(pattern_meta, same_label_vertex_limit),
             extend_step_comparator_map: HashMap::new(),
+            entry_map: HashMap::new(),
         };
         // Use BFS to generate the catalog graph
         let mut queue = VecDeque::new();
@@ -145,8 +148,11 @@ impl Catalogue {
                 best_approach: None,
             });
             catalog
-                .pattern_v_locate_map
+                .pattern_locate_map
                 .insert(new_pattern_code.clone(), new_pattern_index);
+            catalog
+                .entry_map
+                .insert(vertex_label, new_pattern_index);
             queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
         }
         while let Some((relaxed_pattern, relaxed_pattern_code, relaxed_pattern_index)) = queue.pop_front() {
@@ -165,7 +171,7 @@ impl Catalogue {
                 let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
                 // check whether the new pattern existed in the catalog graph
                 let new_pattern_index = if let Some(&pattern_index) = catalog
-                    .pattern_v_locate_map
+                    .pattern_locate_map
                     .get(&new_pattern_code)
                 {
                     pattern_index
@@ -199,11 +205,11 @@ impl Catalogue {
                         }),
                     );
                     if !catalog
-                        .pattern_v_locate_map
+                        .pattern_locate_map
                         .contains_key(&new_pattern_code)
                     {
                         catalog
-                            .pattern_v_locate_map
+                            .pattern_locate_map
                             .insert(new_pattern_code.clone(), new_pattern_index);
                         queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
                     }
@@ -218,9 +224,10 @@ impl Catalogue {
         // Empty catalog
         let mut catalog = Catalogue {
             store: Graph::new(),
-            pattern_v_locate_map: HashMap::new(),
+            pattern_locate_map: HashMap::new(),
             encoder: Encoder::init_by_pattern(pattern, 4),
             extend_step_comparator_map: HashMap::new(),
+            entry_map: HashMap::new(),
         };
         // Update the empty catalog by the pattern to add necessary optimization info
         catalog.update_catalog_by_pattern(pattern);
@@ -239,7 +246,7 @@ impl Catalogue {
             let new_pattern = Pattern::from(*vertex);
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
             let new_pattern_index =
-                if let Some(pattern_index) = self.pattern_v_locate_map.get(&new_pattern_code) {
+                if let Some(pattern_index) = self.pattern_locate_map.get(&new_pattern_code) {
                     *pattern_index
                 } else {
                     let pattern_index = self.store.add_node(VertexWeight {
@@ -247,8 +254,10 @@ impl Catalogue {
                         count: 0,
                         best_approach: None,
                     });
-                    self.pattern_v_locate_map
+                    self.pattern_locate_map
                         .insert(new_pattern_code.clone(), pattern_index);
+                    self.entry_map
+                        .insert(vertex.get_label(), pattern_index);
                     pattern_index
                 };
             queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
@@ -320,7 +329,7 @@ impl Catalogue {
                     let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
                     // check whether the catalog graph has the newly generate pattern
                     let new_pattern_index =
-                        if let Some(&pattern_index) = self.pattern_v_locate_map.get(&new_pattern_code) {
+                        if let Some(&pattern_index) = self.pattern_locate_map.get(&new_pattern_code) {
                             pattern_index
                         } else {
                             self.store.add_node(VertexWeight {
@@ -352,10 +361,10 @@ impl Catalogue {
                             }),
                         );
                         if !self
-                            .pattern_v_locate_map
+                            .pattern_locate_map
                             .contains_key(&new_pattern_code)
                         {
-                            self.pattern_v_locate_map
+                            self.pattern_locate_map
                                 .insert(new_pattern_code.clone(), new_pattern_index);
                         }
                     }
@@ -377,18 +386,30 @@ impl Catalogue {
         self.store.edge_count()
     }
 
-    fn get_pattern_index(&self, pattern_code: &Vec<u8>) -> Option<NodeIndex> {
-        self.pattern_v_locate_map
+    pub fn get_pattern_index(&self, pattern_code: &Vec<u8>) -> Option<NodeIndex> {
+        self.pattern_locate_map
             .get(pattern_code)
             .cloned()
     }
 
-    fn get_pattern_weight(&self, pattern_index: NodeIndex) -> Option<&VertexWeight> {
+    pub fn get_pattern_weight(&self, pattern_index: NodeIndex) -> Option<&VertexWeight> {
         self.store.node_weight(pattern_index)
     }
 
+    pub fn get_encoder(&self) -> &Encoder {
+        &self.encoder
+    }
+
+    pub fn entries_iter(&self) -> DynIter<(PatternLabelId, NodeIndex)> {
+        Box::new(
+            self.entry_map
+                .iter()
+                .map(|(label, node_index)| (*label, *node_index)),
+        )
+    }
+
     /// Get a pattern's all out connection
-    fn pattern_out_connection_iter(
+    pub fn pattern_out_connection_iter(
         &self, pattern_index: NodeIndex,
     ) -> DynIter<(NodeIndex, &VertexWeight, &EdgeWeight)> {
         Box::new(
@@ -401,7 +422,7 @@ impl Catalogue {
     }
 
     /// Get a pattern's all incoming connection
-    fn pattern_in_connection_iter(
+    pub fn pattern_in_connection_iter(
         &self, pattern_index: NodeIndex,
     ) -> DynIter<(NodeIndex, &VertexWeight, &EdgeWeight)> {
         Box::new(

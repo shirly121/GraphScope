@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 
+use graph_store::graph_db::Direction;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 
@@ -35,6 +36,15 @@ impl Into<u8> for PatternDirection {
         match self {
             PatternDirection::Out => 0,
             PatternDirection::In => 1,
+        }
+    }
+}
+
+impl Into<Direction> for PatternDirection {
+    fn into(self) -> Direction {
+        match self {
+            PatternDirection::Out => Direction::Outgoing,
+            PatternDirection::In => Direction::Incoming,
         }
     }
 }
