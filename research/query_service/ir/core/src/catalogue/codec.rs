@@ -14,7 +14,6 @@
 //! limitations under the License.
 
 use std::convert::TryFrom;
-use vec_map::VecMap;
 
 use ascii::AsciiChar;
 use ascii::AsciiString;
@@ -375,18 +374,16 @@ impl EncodeUnit {
     }
 
     /// The Latest Version for DFS Sorting
-    fn from_pattern_edge_dfs(
-        pattern_edge: &PatternEdge, encoder: &Encoder, vertex_dfs_id_map: &VecMap<usize>,
-    ) -> Self {
+    fn from_pattern_edge(pattern: &Pattern, pattern_edge: &PatternEdge, encoder: &Encoder) -> Self {
         let edge_label: PatternLabelId = pattern_edge.get_label();
         let start_v_label: PatternLabelId = pattern_edge.get_start_vertex().get_label();
         let end_v_label: PatternLabelId = pattern_edge.get_end_vertex().get_label();
-        let start_v_rank = *vertex_dfs_id_map
-            .get(pattern_edge.get_start_vertex().get_id())
-            .expect("Unknown vertex id in vertex -- dfs id map") as i32;
-        let end_v_rank = *vertex_dfs_id_map
-            .get(pattern_edge.get_end_vertex().get_id())
-            .expect("Unknown vertex id in vertex -- dfs id map") as i32;
+        let start_v_rank = pattern
+            .get_vertex_rank(pattern_edge.get_start_vertex().get_id())
+            .unwrap() as i32;
+        let end_v_rank = pattern
+            .get_vertex_rank(pattern_edge.get_end_vertex().get_id())
+            .unwrap() as i32;
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
         let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
         let vertex_rank_bit_num = encoder.get_vertex_rank_bit_num();
@@ -421,13 +418,20 @@ impl EncodeUnit {
         // Store them in DFS sequence for easier decoding process
         else {
             let mut pattern_encode_unit = EncodeUnit::init();
-            let (dfs_edge_sequence, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence().unwrap();
-            for edge_id in dfs_edge_sequence {
-                let edge = pattern.get_edge(edge_id).unwrap();
-                let edge_encode_unit =
-                    EncodeUnit::from_pattern_edge_dfs(&edge, encoder, &vertex_dfs_id_map);
+            let mut encode_edge_sequence: Vec<PatternId> = pattern
+                .edges_iter()
+                .map(|edge| edge.get_id())
+                .collect();
+            encode_edge_sequence.sort_by(|e1_id, e2_id| {
+                let e1_rank = pattern.get_edge_rank(*e1_id).unwrap();
+                let e2_rank = pattern.get_edge_rank(*e2_id).unwrap();
+                e1_rank.cmp(&e2_rank)
+            });
+            encode_edge_sequence.iter().for_each(|edge_id| {
+                let edge = pattern.get_edge(*edge_id).unwrap();
+                let edge_encode_unit = EncodeUnit::from_pattern_edge(pattern, &edge, encoder);
                 pattern_encode_unit.extend_by_another_unit(&edge_encode_unit);
-            }
+            });
 
             pattern_encode_unit
         }

@@ -65,6 +65,8 @@ pub mod catalog;
 
 pub mod codec;
 
+pub mod canonical_labeling;
+
 pub mod extend_step;
 
 pub mod pattern;

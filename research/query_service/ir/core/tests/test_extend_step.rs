@@ -18,8 +18,8 @@ mod common;
 #[cfg(test)]
 mod tests {
     use ir_core::catalogue::codec::*;
-    // use ir_core::catalogue::PatternDirection;
 
+    // use ir_core::catalogue::PatternDirection;
     use crate::common::{extend_step_cases::*, pattern_cases::*, pattern_meta_cases::*};
 
     /// Test whether pattern1 + extend_step = pattern2
@@ -34,8 +34,8 @@ mod tests {
         let pattern2 = build_pattern_case2();
         let encoder2 = Encoder::init_by_pattern(&pattern2, 2);
         let pattern2_code: Vec<u8> = Cipher::encode_to(&pattern2, &encoder2);
-        let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2);
-        // Pattern after de_extend should be exactly the same as pattern1
+        let pattern_after_extend_code: Vec<u8> = Cipher::encode_to(&pattern_after_extend, &encoder2); // Error
+                                                                                                      // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code, &encoder1)
             .unwrap();

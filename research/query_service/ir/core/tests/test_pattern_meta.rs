@@ -19,9 +19,10 @@ mod common;
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::common::pattern_meta_cases::*;
     use ir_core::catalogue::pattern_meta::PatternMeta;
     use ir_core::catalogue::{PatternDirection, PatternLabelId};
+
+    use crate::common::pattern_meta_cases::*;
 
     /// Test whether the pattern meta from the modern graph obeys our expectation
     #[test]

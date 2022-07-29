@@ -17,9 +17,10 @@ mod common;
 
 #[cfg(test)]
 mod test {
+    use ir_core::catalogue::catalog::Catalogue;
+
     use crate::common::pattern_cases::*;
     use crate::common::pattern_meta_cases::*;
-    use ir_core::catalogue::catalog::Catalogue;
 
     #[test]
     fn test_catalog_for_modern_graph() {

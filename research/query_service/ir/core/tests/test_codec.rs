@@ -17,12 +17,13 @@ mod common;
 
 #[cfg(test)]
 mod tests {
-    use crate::common::extend_step_cases::*;
-    use crate::common::pattern_cases::*;
     use ascii::{self, AsciiString};
     use ir_core::catalogue::codec::*;
     use ir_core::catalogue::extend_step::*;
     use ir_core::catalogue::pattern::*;
+
+    use crate::common::extend_step_cases::*;
+    use crate::common::pattern_cases::*;
 
     #[test]
     fn test_initialize_encoder_from_parameter_case1() {
