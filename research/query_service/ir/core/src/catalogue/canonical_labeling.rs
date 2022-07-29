@@ -16,7 +16,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::catalogue::pattern::*;
+use crate::catalogue::pattern::{Adjacency, Pattern};
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
 
 #[derive(Debug, Clone)]
@@ -54,9 +54,9 @@ impl VertexGroupManager {
         let mut updated_vertex_group_map: BTreeMap<PatternId, usize> = BTreeMap::new();
         let mut updated_vertex_groups: BTreeMap<(PatternLabelId, usize), Vec<PatternId>> = BTreeMap::new();
         let mut has_converged = true;
-        for ((v_label, initial_rank), vertex_group) in self.vertex_groups.iter() {
+        for ((v_label, initial_group), vertex_group) in self.vertex_groups.iter() {
             // Temporarily record the group for each vertex
-            let mut vertex_group_tmp_vec: Vec<usize> = vec![*initial_rank; vertex_group.len()];
+            let mut vertex_group_tmp_vec: Vec<usize> = vec![*initial_group; vertex_group.len()];
             // To find out the exact group of a vertex, compare it with all vertices with the same label
             for i in 0..vertex_group.len() {
                 let current_v_id: PatternId = vertex_group[i];
@@ -68,14 +68,14 @@ impl VertexGroupManager {
                     }
                 }
 
-                let v_rank: usize = vertex_group_tmp_vec[i];
-                if v_rank != *initial_rank {
+                let v_group: usize = vertex_group_tmp_vec[i];
+                if v_group != *initial_group {
                     has_converged = false;
                 }
 
-                updated_vertex_group_map.insert(current_v_id, v_rank);
+                updated_vertex_group_map.insert(current_v_id, v_group);
                 updated_vertex_groups
-                    .entry((*v_label, v_rank))
+                    .entry((*v_label, v_group))
                     .and_modify(|vertex_group| vertex_group.push(current_v_id))
                     .or_insert(vec![current_v_id]);
             }
@@ -163,7 +163,7 @@ impl VertexGroupManager {
                 Ordering::Equal => (),
             }
 
-            // Compare the vertex groups
+            // Compare vertex groups
             let adj1_v_group = self
                 .get_vertex_group(v1_adjacency.get_adj_vertex().get_id())
                 .unwrap();
@@ -191,19 +191,24 @@ impl VertexGroupManager {
 }
 
 #[derive(Debug, Clone)]
-struct VertexRankManager {
+struct PatternRankManager {
     edge_rank_map: BTreeMap<PatternId, Option<usize>>,
     vertex_rank_map: BTreeMap<PatternId, Option<usize>>,
 }
 
-impl VertexRankManager {
+impl PatternRankManager {
     pub fn init_by_pattern(pattern: &Pattern) -> Self {
-        let edge_rank_map: BTreeMap<PatternId, Option<usize>> = BTreeMap::new();
+        let mut edge_rank_map: BTreeMap<PatternId, Option<usize>> = BTreeMap::new();
+        pattern.edges_iter().for_each(|edge| {
+            edge_rank_map.insert(edge.get_id(), None);
+        });
+
         let mut vertex_rank_map: BTreeMap<PatternId, Option<usize>> = BTreeMap::new();
         pattern.vertices_iter().for_each(|vertex| {
             vertex_rank_map.insert(vertex.get_id(), None);
         });
-        VertexRankManager { edge_rank_map, vertex_rank_map }
+
+        PatternRankManager { edge_rank_map, vertex_rank_map }
     }
 
     pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<usize> {
@@ -214,26 +219,20 @@ impl VertexRankManager {
         *self.edge_rank_map.get(&edge_id).unwrap()
     }
 
-    /// Perform DFS Sorting to Pattern Edges Based on Labels and Ranks
-    ///
-    /// Return a tuple of 2 elements
-    ///
-    /// dfs_edge_sequence is a vector of edge ids in DFS order
-    ///
-    /// vertex_dfs_id_map maps from vertex ids to dfs id
-    fn rank_vertices_and_edges(
+    /// Rank vertices and edges, giving each of them a unique ID
+    fn pattern_ranking(
         &mut self, pattern: &mut Pattern, start_v_id: PatternId,
         vertex_adjacencies_map: &mut BTreeMap<PatternId, Vec<Adjacency>>,
     ) {
-        self.vertex_rank_map.insert(start_v_id, Some(0));
-        let mut next_free_vertex_rank: usize = 1;
+        let mut next_free_vertex_rank: usize = 0;
         let mut next_free_edge_rank: usize = 0;
-        // Record which edges have been visited
+        self.vertex_rank_map
+            .insert(start_v_id, Some(next_free_vertex_rank));
+        next_free_vertex_rank += 1;
         let mut visited_edges: BTreeSet<PatternId> = BTreeSet::new();
         // Initialize Stack for adjacencies
         let mut adjacency_stack: VecDeque<Adjacency> =
             self.init_adjacencies_stack(start_v_id, vertex_adjacencies_map);
-
         // Perform DFS on adjacencies
         while let Some(adjacency) = adjacency_stack.pop_back() {
             // Insert edge to dfs sequence if it has not been visited
@@ -241,6 +240,7 @@ impl VertexRankManager {
             if visited_edges.contains(&adj_edge_id) {
                 continue;
             }
+
             visited_edges.insert(adj_edge_id);
             self.edge_rank_map
                 .insert(adj_edge_id, Some(next_free_edge_rank));
@@ -248,7 +248,12 @@ impl VertexRankManager {
 
             // Set dfs id to the vertex if it has not been set before
             let current_v_id: PatternId = adjacency.get_adj_vertex().get_id();
-            if !self.vertex_rank_map.contains_key(&current_v_id) {
+            let is_vertex_visited = self
+                .vertex_rank_map
+                .get(&current_v_id)
+                .unwrap()
+                .is_some();
+            if !is_vertex_visited {
                 self.vertex_rank_map
                     .insert(current_v_id, Some(next_free_vertex_rank));
                 next_free_vertex_rank += 1;
@@ -286,22 +291,35 @@ impl VertexRankManager {
                 Ordering::Less => Ordering::Less,
                 Ordering::Greater => Ordering::Greater,
                 Ordering::Equal => {
-                    // Adjacency will be given high priority if its adjacent vertex has no or smaller dfs id
-                    let adj1_v_dfs_id =
+                    // Compare vertex groups
+                    let adj1_v_group = pattern
+                        .get_vertex_group(adj1.get_adj_vertex().get_id())
+                        .unwrap();
+                    let adj2_v_group = pattern
+                        .get_vertex_group(adj2.get_adj_vertex().get_id())
+                        .unwrap();
+                    match adj1_v_group.cmp(&adj2_v_group) {
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Equal => (),
+                    }
+
+                    // Adjacency will be given high priority if its adjacent vertex has no or smaller rank
+                    let adj1_v_rank =
                         if let Some(value) = self.get_vertex_rank(adj1.get_adj_vertex().get_id()) {
                             value
                         } else {
                             return Ordering::Less;
                         };
 
-                    let adj2_v_dfs_id =
+                    let adj2_v_rank =
                         if let Some(value) = self.get_vertex_rank(adj2.get_adj_vertex().get_id()) {
                             value
                         } else {
                             return Ordering::Greater;
                         };
 
-                    adj1_v_dfs_id.cmp(&adj2_v_dfs_id)
+                    adj1_v_rank.cmp(&adj2_v_rank)
                 }
             }
         });
@@ -314,46 +332,32 @@ impl VertexRankManager {
 pub struct CanonicalLabelManager {
     vertex_adjacencies_map: BTreeMap<PatternId, Vec<Adjacency>>,
     vertex_group_manager: VertexGroupManager,
-    rank_manager: VertexRankManager,
+    pattern_rank_manager: PatternRankManager,
 }
 
 impl CanonicalLabelManager {
     pub fn init_by_pattern(pattern: &Pattern) -> Self {
+        let vertex_group_manager = VertexGroupManager::init_by_pattern(pattern);
+        let pattern_rank_manager = PatternRankManager::init_by_pattern(pattern);
+
         let mut vertex_adjacencies_map: BTreeMap<PatternId, Vec<Adjacency>> = BTreeMap::new();
         pattern
             .vertices_iter()
             .map(|vertex| vertex.get_id())
             .for_each(|v_id| {
-                let vertex_adjacencies: Vec<Adjacency> = pattern
+                let mut vertex_adjacencies: Vec<Adjacency> = pattern
                     .adjacencies_iter(v_id)
                     .cloned()
                     .collect();
+                vertex_adjacencies.sort_by(|adj1, adj2| pattern.cmp_adjacencies(adj1, adj2));
                 vertex_adjacencies_map.insert(v_id, vertex_adjacencies);
             });
-        CanonicalLabelManager {
-            vertex_adjacencies_map,
-            vertex_group_manager: VertexGroupManager::init_by_pattern(pattern),
-            rank_manager: VertexRankManager::init_by_pattern(pattern),
-        }
+
+        CanonicalLabelManager { vertex_adjacencies_map, vertex_group_manager, pattern_rank_manager }
     }
 
-    pub fn vertices_iter(&self) -> DynIter<PatternId> {
-        Box::new(
-            self.rank_manager
-                .vertex_rank_map
-                .iter()
-                .map(|(v_id, _order)| *v_id),
-        )
-    }
-
-    /// Vertex Grouping
-    pub fn refine_vertex_groups(&mut self, pattern: &mut Pattern) {
-        self.vertex_group_manager
-            .refine_vertex_groups(pattern, &mut self.vertex_adjacencies_map);
-    }
-
-    pub fn has_vertex_groups_converged(&self) -> bool {
-        self.vertex_group_manager.has_converged()
+    pub fn vertex_adjacencies_iter(&self) -> DynIter<(PatternId, Vec<Adjacency>)> {
+        Box::new(self.vertex_adjacencies_map.clone().into_iter())
     }
 
     pub fn vertex_groups_iter(&self) -> DynIter<(&PatternId, &usize)> {
@@ -364,30 +368,39 @@ impl CanonicalLabelManager {
         )
     }
 
+    pub fn vertex_ranks_iter(&self) -> DynIter<(&PatternId, &Option<usize>)> {
+        Box::new(self.pattern_rank_manager.vertex_rank_map.iter())
+    }
+
+    pub fn edge_ranks_iter(&self) -> DynIter<(&PatternId, &Option<usize>)> {
+        Box::new(self.pattern_rank_manager.edge_rank_map.iter())
+    }
+
+    pub fn refine_vertex_groups(&mut self, pattern: &mut Pattern) {
+        self.vertex_group_manager
+            .refine_vertex_groups(pattern, &mut self.vertex_adjacencies_map);
+    }
+
+    pub fn has_vertex_groups_converged(&self) -> bool {
+        self.vertex_group_manager.has_converged()
+    }
+
+    pub fn pattern_ranking(&mut self, pattern: &mut Pattern, start_v_id: PatternId) {
+        self.pattern_rank_manager
+            .pattern_ranking(pattern, start_v_id, &mut self.vertex_adjacencies_map);
+    }
+
     pub fn get_vertex_group(&self, vertex_id: PatternId) -> Option<&usize> {
         self.vertex_group_manager
             .get_vertex_group(vertex_id)
     }
 
-    /// Ranking Vertices and Edges
-    pub fn vertex_ranks_iter(&self) -> DynIter<(&PatternId, &Option<usize>)> {
-        Box::new(self.rank_manager.vertex_rank_map.iter())
-    }
-
-    pub fn edge_ranks_iter(&self) -> DynIter<(&PatternId, &Option<usize>)> {
-        Box::new(self.rank_manager.edge_rank_map.iter())
-    }
-
     pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<usize> {
-        self.rank_manager.get_vertex_rank(vertex_id)
+        self.pattern_rank_manager
+            .get_vertex_rank(vertex_id)
     }
 
     pub fn get_edge_rank(&self, edge_id: PatternId) -> Option<usize> {
-        self.rank_manager.get_edge_rank(edge_id)
-    }
-
-    pub fn rank_vertices_and_edges(&mut self, pattern: &mut Pattern, start_v_id: PatternId) {
-        self.rank_manager
-            .rank_vertices_and_edges(pattern, start_v_id, &mut self.vertex_adjacencies_map);
+        self.pattern_rank_manager.get_edge_rank(edge_id)
     }
 }

@@ -21,7 +21,7 @@ mod tests {
 
     use ir_core::catalogue::codec::*;
     use ir_core::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
-    use ir_core::catalogue::{PatternDirection, PatternId};
+    use ir_core::catalogue::PatternDirection;
     use ir_core::plan::meta::TagId;
 
     use crate::common::pattern_cases::*;

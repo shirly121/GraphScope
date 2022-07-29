@@ -18,12 +18,11 @@ use std::convert::TryFrom;
 use ascii::AsciiChar;
 use ascii::AsciiString;
 use ascii::ToAsciiChar;
-use vec_map::VecMap;
 
 use super::pattern_meta::PatternMeta;
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
-use crate::catalogue::{PatternDirection, PatternId, PatternLabelId, PatternRankId};
+use crate::catalogue::{PatternDirection, PatternId, PatternLabelId};
 use crate::error::IrError;
 use crate::error::IrResult;
 
@@ -188,7 +187,7 @@ impl Encoder {
     /// ```text
     ///     value = 3, value head = 8, value tail = 7
     ///     storage_unit_valid_bit_num = 8,
-    ///     storage_unit_rank = 0
+    ///     storage_unit_index = 0
     /// ```
     /// Our expectation is:
     /// ```text
@@ -198,19 +197,19 @@ impl Encoder {
     /// ```text
     ///           |00000001|10000000| (3 = bin(11))
     ///         (head = 8)^ ^(tail = 7)
-    ///     unit_rank = 1  unit_rank = 0
+    ///     unit_index = 1  unit_index = 0
     /// ```
-    /// Our goal is to put some parts of the value (3 = bin(11)) to the appointed storage unit (= 0 by rank)
+    /// Our goal is to put some parts of the value (3 = bin(11)) to the appointed storage unit (= 0 by index)
     ///
-    /// At this case, unit_rank = 0, we would have this storage unit += 128(bin 10000000) to achieve the goal
+    /// At this case, unit_index = 0, we would have this storage unit += 128(bin 10000000) to achieve the goal
     pub fn get_encode_numerical_value(
         value: i32, value_head: usize, value_tail: usize, storage_unit_valid_bit_num: usize,
-        storage_unit_rank: usize,
+        storage_unit_index: usize,
     ) -> u8 {
         let mut output: i32;
         // Get the head and tail of the appointed storage unit
-        let char_tail = storage_unit_rank * storage_unit_valid_bit_num;
-        let char_head = (storage_unit_rank + 1) * storage_unit_valid_bit_num - 1;
+        let char_tail = storage_unit_index * storage_unit_valid_bit_num;
+        let char_head = (storage_unit_index + 1) * storage_unit_valid_bit_num - 1;
         // Case that the storage unit doesn't contain our value: value|...| or |...|value
         if value_tail > char_head || value_head < char_tail {
             output = 0;
@@ -267,30 +266,30 @@ impl Encoder {
         let mut output;
         //   |00000001|10000000|
         // (head = 8)^ ^(tail = 7)
-        // head_rank = 0, head_offset = 0
-        // tail rank = 1, tail_offset = 7
-        let head_rank = src_code.len() - 1 - (head / storage_unit_bit_num) as usize;
+        // head_index = 0, head_offset = 0
+        // tail index = 1, tail_offset = 7
+        let head_index = src_code.len() - 1 - (head / storage_unit_bit_num) as usize;
         let head_offset = head % storage_unit_bit_num;
-        let tail_rank = src_code.len() - 1 - (tail / storage_unit_bit_num) as usize;
+        let tail_index = src_code.len() - 1 - (tail / storage_unit_bit_num) as usize;
         let tail_offset = tail % storage_unit_bit_num;
-        if head_rank >= src_code.len() || tail_rank >= src_code.len() {
+        if head_index >= src_code.len() || tail_index >= src_code.len() {
             panic!("The head and tail values are out of range");
         }
         // Case that head and tail are in the same storage unit
-        if head_rank == tail_rank {
-            output = (src_code[head_rank] << (8 - 1 - head_offset) >> (8 - 1 - head_offset + tail_offset))
+        if head_index == tail_index {
+            output = (src_code[head_index] << (8 - 1 - head_offset) >> (8 - 1 - head_offset + tail_offset))
                 as i32;
         }
         // Case that head and tail are on the different storage unit
         else {
-            let rank_diff = tail_rank - head_rank;
-            output = (src_code[tail_rank] as i32) >> tail_offset;
-            for i in 1..rank_diff {
-                output += (src_code[tail_rank - i] as i32)
+            let index_diff = tail_index - head_index;
+            output = (src_code[tail_index] as i32) >> tail_offset;
+            for i in 1..index_diff {
+                output += (src_code[tail_index - i] as i32)
                     << (storage_unit_bit_num - tail_offset + (i - 1) * storage_unit_bit_num);
             }
-            output += ((src_code[head_rank] << (8 - 1 - head_offset) >> (8 - 1 - head_offset)) as i32)
-                << (storage_unit_bit_num - tail_offset + (rank_diff - 1) * storage_unit_bit_num);
+            output += ((src_code[head_index] << (8 - 1 - head_offset) >> (8 - 1 - head_offset)) as i32)
+                << (storage_unit_bit_num - tail_offset + (index_diff - 1) * storage_unit_bit_num);
         }
 
         output
@@ -375,20 +374,16 @@ impl EncodeUnit {
     }
 
     /// The Latest Version for DFS Sorting
-    fn from_pattern_edge_dfs(
-        pattern_edge: &PatternEdge, encoder: &Encoder, vertex_dfs_id_map: &VecMap<PatternRankId>,
-    ) -> Self {
+    fn from_pattern_edge(pattern: &Pattern, pattern_edge: &PatternEdge, encoder: &Encoder) -> Self {
         let edge_label: PatternLabelId = pattern_edge.get_label();
         let start_v_label: PatternLabelId = pattern_edge.get_start_vertex().get_label();
         let end_v_label: PatternLabelId = pattern_edge.get_end_vertex().get_label();
-        let start_v_rank: PatternRankId = *vertex_dfs_id_map
-            .get(pattern_edge.get_start_vertex().get_id())
-            .expect("Unknown vertex id in vertex -- dfs id map")
-            as PatternRankId;
-        let end_v_rank: PatternRankId = *vertex_dfs_id_map
-            .get(pattern_edge.get_end_vertex().get_id())
-            .expect("Unknown vertex id in vertex -- dfs id map")
-            as PatternRankId;
+        let start_v_rank = pattern
+            .get_vertex_rank(pattern_edge.get_start_vertex().get_id())
+            .unwrap() as i32;
+        let end_v_rank = pattern
+            .get_vertex_rank(pattern_edge.get_end_vertex().get_id())
+            .unwrap() as i32;
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
         let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
         let vertex_rank_bit_num = encoder.get_vertex_rank_bit_num();
@@ -423,55 +418,51 @@ impl EncodeUnit {
         // Store them in DFS sequence for easier decoding process
         else {
             let mut pattern_encode_unit = EncodeUnit::init();
-            let (dfs_edge_sequence, vertex_dfs_id_map) = pattern.get_dfs_edge_sequence().unwrap();
-            for edge_id in dfs_edge_sequence {
-                let edge = pattern.get_edge(edge_id).unwrap();
-                let edge_encode_unit =
-                    EncodeUnit::from_pattern_edge_dfs(&edge, encoder, &vertex_dfs_id_map);
+            let mut encode_edge_sequence: Vec<PatternId> = pattern
+                .edges_iter()
+                .map(|edge| edge.get_id())
+                .collect();
+            encode_edge_sequence.sort_by(|e1_id, e2_id| {
+                let e1_rank = pattern.get_edge_rank(*e1_id).unwrap();
+                let e2_rank = pattern.get_edge_rank(*e2_id).unwrap();
+                e1_rank.cmp(&e2_rank)
+            });
+            encode_edge_sequence.iter().for_each(|edge_id| {
+                let edge = pattern.get_edge(*edge_id).unwrap();
+                let edge_encode_unit = EncodeUnit::from_pattern_edge(pattern, &edge, encoder);
                 pattern_encode_unit.extend_by_another_unit(&edge_encode_unit);
-            }
+            });
 
             pattern_encode_unit
         }
     }
 
     fn from_extend_edge(extend_edge: &ExtendEdge, encoder: &Encoder) -> Self {
-        let start_v_label = extend_edge.get_start_vertex_label();
-        let start_v_rank = extend_edge.get_start_vertex_rank();
+        let src_vertex_order = extend_edge.get_src_vertex_rank();
         let edge_label = extend_edge.get_edge_label();
         let dir = extend_edge.get_direction();
-        let vertex_label_bit_num = encoder.get_vertex_label_bit_num();
         let vertex_rank_bit_num = encoder.get_vertex_rank_bit_num();
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
         let direction_bit_num = encoder.get_direction_bit_num();
-        let values = vec![dir as i32, edge_label, start_v_rank, start_v_label];
+        let values = vec![dir as i32, edge_label, src_vertex_order as i32];
         let heads = vec![
             direction_bit_num - 1,
             edge_label_bit_num + direction_bit_num - 1,
             vertex_rank_bit_num + edge_label_bit_num + direction_bit_num - 1,
-            vertex_label_bit_num + vertex_rank_bit_num + edge_label_bit_num + direction_bit_num - 1,
         ];
-        let tails = vec![
-            0,
-            direction_bit_num,
-            edge_label_bit_num + direction_bit_num,
-            vertex_rank_bit_num + edge_label_bit_num + direction_bit_num,
-        ];
+        let tails = vec![0, direction_bit_num, edge_label_bit_num + direction_bit_num];
 
         EncodeUnit { values, heads, tails }
     }
 
     pub fn from_extend_step(extend_step: &ExtendStep, encoder: &Encoder) -> Self {
         let mut extend_step_encode_unit = EncodeUnit::init();
-        for (_, extend_edges) in extend_step.iter() {
-            for extend_edge in extend_edges {
-                let extend_edge_encode_unit = EncodeUnit::from_extend_edge(extend_edge, encoder);
-                extend_step_encode_unit.extend_by_another_unit(&extend_edge_encode_unit);
-            }
+        for extend_edge in extend_step.iter() {
+            let extend_edge_encode_unit = EncodeUnit::from_extend_edge(extend_edge, encoder);
+            extend_step_encode_unit.extend_by_another_unit(&extend_edge_encode_unit);
         }
-
         extend_step_encode_unit.extend_by_value_and_length(
-            extend_step.get_target_v_label(),
+            extend_step.get_target_vertex_label(),
             encoder.get_vertex_label_bit_num(),
         );
         extend_step_encode_unit
@@ -630,12 +621,7 @@ impl DecodeUnit {
         let edge_label_bit_num = encoder.get_edge_label_bit_num();
         let direction_bit_num = encoder.get_direction_bit_num();
         DecodeUnit {
-            unit_bits: vec![
-                direction_bit_num,
-                edge_label_bit_num,
-                vertex_rank_bit_num,
-                vertex_label_bit_num,
-            ],
+            unit_bits: vec![direction_bit_num, edge_label_bit_num, vertex_rank_bit_num],
             // target vertex is the extra parts of extend step
             extra_bits: vec![vertex_label_bit_num],
         }
@@ -712,14 +698,13 @@ impl DecodeUnit {
 
     /// Transform a &[i32] decide value to a ExtendStep
     pub fn to_extend_step(decode_vec: &[i32]) -> IrResult<ExtendStep> {
-        if decode_vec.len() % 4 == 1 {
-            let mut extend_edges = Vec::with_capacity(decode_vec.len() / 4);
-            for i in (0..decode_vec.len() - 4).step_by(4) {
+        if decode_vec.len() % 3 == 1 {
+            let mut extend_edges = Vec::with_capacity(decode_vec.len() / 3);
+            for i in (0..decode_vec.len() - 3).step_by(3) {
                 let dir = if decode_vec[i] == 0 { PatternDirection::Out } else { PatternDirection::In };
                 let edge_label = decode_vec[i + 1];
-                let start_v_rank = decode_vec[i + 2];
-                let start_v_label = decode_vec[i + 3];
-                extend_edges.push(ExtendEdge::new(start_v_label, start_v_rank, edge_label, dir));
+                let src_vertex_order = decode_vec[i + 2] as usize;
+                extend_edges.push(ExtendEdge::new(src_vertex_order, edge_label, dir));
             }
             let target_v_label = *decode_vec.last().unwrap();
             Ok(ExtendStep::new(target_v_label, extend_edges))

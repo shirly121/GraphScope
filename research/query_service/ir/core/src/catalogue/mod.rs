@@ -20,7 +20,6 @@ use ir_common::generated::common as common_pb;
 
 pub type PatternId = usize;
 pub type PatternLabelId = ir_common::KeyId;
-pub type PatternRankId = i32;
 pub type DynIter<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
