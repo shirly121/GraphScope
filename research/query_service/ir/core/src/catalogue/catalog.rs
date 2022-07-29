@@ -28,9 +28,7 @@ use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Adjacency, Pattern};
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{
-    query_params, DynIter, PatternDirection, PatternGroupId, PatternId, PatternLabelId,
-};
+use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 
 static ALPHA: f64 = 0.5;
@@ -646,7 +644,7 @@ fn build_logical_plan(
 /// Used to identify whether two extend step is equivalent or not
 ///
 /// It is a vector of each extend edge's (src vertex label, src vertex group, edge label, direction)
-type ExtendStepComparator = Vec<(PatternLabelId, PatternGroupId, PatternLabelId, PatternDirection)>;
+type ExtendStepComparator = Vec<(PatternLabelId, PatternId, PatternLabelId, PatternDirection)>;
 
 /// Create a ExtendStepProxy by an ExtendStep and the Pattern it attaches to
 fn create_extend_step_comparator(extend_step: &ExtendStep, pattern: &Pattern) -> ExtendStepComparator {

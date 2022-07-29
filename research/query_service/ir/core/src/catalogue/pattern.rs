@@ -25,9 +25,7 @@ use super::codec::{Cipher, Encoder};
 use crate::catalogue::canonical_label::CanonicalLabelManager;
 use crate::catalogue::extend_step::{get_subsets, limit_repeated_element_num, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{
-    DynIter, PatternDirection, PatternGroupId, PatternId, PatternLabelId, PatternRankId,
-};
+use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::TagId;
 
@@ -53,13 +51,21 @@ impl PatternVertex {
     }
 }
 
+/// Each PatternVertex of a Pattern has a related PatternVertexData struct
+/// - These data heavily relies on Pattern and has no meaning without a Pattern
 #[derive(Debug, Clone, Default)]
 struct PatternVertexData {
-    group: PatternGroupId,
-    rank: PatternRankId,
+    /// Identify whether two vertices are structurally equivalent in the pattern
+    group: PatternId,
+    /// DFS Rank ID assigned to the vertex during canonical labeling
+    rank: PatternId,
+    /// Outgoing adjacent edges and vertices related to this vertex
     out_adjacencies: Vec<Adjacency>,
+    /// Incoming adjacent edges and vertices related to this vertex
     in_adjacencies: Vec<Adjacency>,
+    /// Tag (alias) assigned to this vertex by user
     tag: Option<TagId>,
+    /// Predicate(filter or other expressions) this vertex has
     predicate: Option<common_pb::Expression>,
 }
 
@@ -99,13 +105,19 @@ impl PatternEdge {
     }
 }
 
+/// Each PatternEdge of a Pattern has a related PatternEdgeData struct
+/// - These data heavily relies on Pattern and has no meaning without a Pattern
 #[derive(Debug, Clone, Default)]
 struct PatternEdgeData {
-    rank: PatternRankId,
+    /// DFS Rank ID assigned to the edge during canonical labeling
+    rank: PatternId,
+    /// Tag (alias) assigned to this edge by user
     tag: Option<TagId>,
+    /// Predicate(filter or other expressions) this edge has
     predicate: Option<common_pb::Expression>,
 }
 
+/// Adjacency records a vertex's neighboring edge and vertex
 #[derive(Debug, Clone, Copy)]
 pub struct Adjacency {
     /// the source vertex connect to the adjacent vertex through this edge
@@ -119,14 +131,7 @@ pub struct Adjacency {
 }
 
 impl Adjacency {
-    pub fn new(
-        edge_id: PatternId, edge_label: PatternLabelId, adj_vertex: PatternVertex,
-        direction: PatternDirection,
-    ) -> Adjacency {
-        Adjacency { edge_id, edge_label, adj_vertex, direction }
-    }
-
-    fn new_by_src_vertex_and_edge(src_vertex: &PatternVertex, edge: &PatternEdge) -> Option<Adjacency> {
+    fn new(src_vertex: &PatternVertex, edge: &PatternEdge) -> Option<Adjacency> {
         let start_vertex = edge.get_start_vertex();
         let end_vertex = edge.get_end_vertex();
         if (src_vertex.id, src_vertex.label) == (start_vertex.id, start_vertex.label) {
@@ -237,7 +242,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                     .entry(start_vertex.get_id())
                     .or_insert(PatternVertexData::default())
                     .out_adjacencies
-                    .push(Adjacency::new_by_src_vertex_and_edge(start_vertex, &edge).unwrap());
+                    .push(Adjacency::new(start_vertex, &edge).unwrap());
                 // Add or update the end vertex to the new Pattern
                 let end_vertex = new_pattern
                     .vertices
@@ -249,7 +254,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
                     .entry(end_vertex.get_id())
                     .or_insert(PatternVertexData::default())
                     .in_adjacencies
-                    .push(Adjacency::new_by_src_vertex_and_edge(end_vertex, &edge).unwrap());
+                    .push(Adjacency::new(end_vertex, &edge).unwrap());
             }
             new_pattern.canonical_labeling();
             Ok(new_pattern)
@@ -597,7 +602,7 @@ impl Pattern {
 
     /// Get PatternEdge from Given Edge Rank
     #[inline]
-    pub fn get_edge_from_rank(&self, edge_rank: PatternRankId) -> Option<&PatternEdge> {
+    pub fn get_edge_from_rank(&self, edge_rank: PatternId) -> Option<&PatternEdge> {
         self.rank_edge_map
             .get(edge_rank)
             .and_then(|&edge_id| self.get_edge(edge_id))
@@ -655,7 +660,7 @@ impl Pattern {
 
     /// Get a PatternEdge's Rank info
     #[inline]
-    pub fn get_edge_rank(&self, edge_id: PatternId) -> Option<PatternRankId> {
+    pub fn get_edge_rank(&self, edge_id: PatternId) -> Option<PatternId> {
         self.edges_data
             .get(edge_id)
             .map(|edge_data| edge_data.rank)
@@ -685,7 +690,7 @@ impl Pattern {
 
     /// Get PatternVertex Reference from Given Rank
     #[inline]
-    pub fn get_vertex_from_rank(&self, vertex_rank: PatternRankId) -> Option<&PatternVertex> {
+    pub fn get_vertex_from_rank(&self, vertex_rank: PatternId) -> Option<&PatternVertex> {
         self.rank_vertex_map
             .get(vertex_rank)
             .and_then(|&vertex_id| self.get_vertex(vertex_id))
@@ -742,7 +747,7 @@ impl Pattern {
 
     /// Get Vertex Rank from Vertex ID Reference
     #[inline]
-    pub fn get_vertex_group(&self, vertex_id: PatternId) -> Option<PatternGroupId> {
+    pub fn get_vertex_group(&self, vertex_id: PatternId) -> Option<PatternId> {
         self.vertices_data
             .get(vertex_id)
             .map(|vertex_data| vertex_data.group)
@@ -750,7 +755,7 @@ impl Pattern {
 
     /// Get Vertex Rank from Vertex ID Reference
     #[inline]
-    pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<PatternRankId> {
+    pub fn get_vertex_rank(&self, vertex_id: PatternId) -> Option<PatternId> {
         self.vertices_data
             .get(vertex_id)
             .map(|vertex_data| vertex_data.rank)
@@ -877,7 +882,7 @@ impl Pattern {
 /// Setters of fields of Pattern
 impl Pattern {
     /// Assign a PatternEdge with the given group
-    fn set_edge_rank(&mut self, edge_id: PatternId, edge_rank: PatternRankId) {
+    fn set_edge_rank(&mut self, edge_id: PatternId, edge_rank: PatternId) {
         // Assign the rank to the edge
         if let Some(edge_data) = self.edges_data.get_mut(edge_id) {
             self.rank_edge_map.insert(edge_rank, edge_id);
@@ -909,13 +914,13 @@ impl Pattern {
     }
 
     /// Assign a PatternVertex with the given group
-    fn set_vertex_group(&mut self, vertex_id: PatternId, group: PatternGroupId) {
+    fn set_vertex_group(&mut self, vertex_id: PatternId, group: PatternId) {
         if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
             vertex_data.group = group;
         }
     }
 
-    fn set_vertex_rank(&mut self, vertex_id: PatternId, vertex_rank: PatternRankId) {
+    fn set_vertex_rank(&mut self, vertex_id: PatternId, vertex_rank: PatternId) {
         // Assign the rank to the vertex
         if let Some(vertex_data) = self.vertices_data.get_mut(vertex_id) {
             self.rank_vertex_map
@@ -949,7 +954,7 @@ impl Pattern {
     }
 }
 
-/// Naive Rank Ranking Method
+/// Methods for Canonical Labeling
 impl Pattern {
     /// Canonical Labeling gives each vertex a unique ID (rank), which is used to encode the pattern.
     ///
@@ -957,64 +962,38 @@ impl Pattern {
     /// - Vertex Grouping (Partition): vertices in the same group (partition) are equivalent in structure.
     /// - Pattern Ranking: given the vertex groups, rank each vertex and edge with a unique ID.
     fn canonical_labeling(&mut self) {
-        let mut canonical_label_manager = CanonicalLabelManager::init_by_pattern(self);
-        self.vertex_grouping(&mut canonical_label_manager);
-        self.pattern_ranking(&mut canonical_label_manager);
+        let mut canonical_label_manager = CanonicalLabelManager::from(&*self);
+        canonical_label_manager.vertex_grouping(self);
+        canonical_label_manager.pattern_ranking(self);
+        self.update_vertex_groups(&canonical_label_manager);
+        self.update_pattern_ranks(&canonical_label_manager);
     }
 
-    /// Set Rank for Every Vertex within the Pattern
-    ///
-    /// Initially, all vertices have rank 0
-    ///
-    /// Basic Idea: Iteratively update the rank locally (neighbor edges vertices) and update the order of neighbor edges
-    fn vertex_grouping(&mut self, canonical_label_manager: &mut CanonicalLabelManager) {
-        while !canonical_label_manager.has_vertex_groups_converged() {
-            canonical_label_manager.refine_vertex_groups(self);
-        }
-
-        // Update vertex groups
+    /// Update vertex groups
+    fn update_vertex_groups(&mut self, canonical_label_manager: &CanonicalLabelManager) {
         canonical_label_manager
             .vertex_groups_iter()
             .for_each(|(v_id, v_group)| {
-                self.set_vertex_group(*v_id, *v_group);
+                self.set_vertex_group(v_id, v_group);
             });
     }
 
-    /// Return the ID of the starting vertex of pattern ranking.
-    ///
-    /// In our case, It's the vertex with the smallest label and group ID
-    fn get_pattern_ranking_start_vertex(&self) -> PatternId {
-        let min_v_label = self.get_min_vertex_label().unwrap();
-        self.vertices_iter_by_label(min_v_label)
-            .map(|vertex| vertex.get_id())
-            .min_by(|&v1_id, &v2_id| {
-                let v1_group = self.get_vertex_group(v1_id).unwrap();
-                let v2_group = self.get_vertex_group(v2_id).unwrap();
-                v1_group.cmp(&v2_group)
-            })
-            .unwrap()
-    }
-
-    fn pattern_ranking(&mut self, canonical_label_manager: &mut CanonicalLabelManager) {
-        let start_v_id: PatternId = self.get_pattern_ranking_start_vertex();
-        canonical_label_manager.pattern_ranking(self, start_v_id);
-
+    /// Update ranks for vertices and edges
+    fn update_pattern_ranks(&mut self, canonical_label_manager: &CanonicalLabelManager) {
         // update vertex ranks
         self.rank_vertex_map.clear();
         canonical_label_manager
             .vertex_ranks_iter()
-            .map(|(v_id, v_rank)| (*v_id, v_rank.unwrap()))
             .for_each(|(v_id, v_rank)| {
-                self.set_vertex_rank(v_id, v_rank);
+                self.set_vertex_rank(v_id, v_rank.unwrap());
             });
 
         // Update edge ranks
         self.rank_edge_map.clear();
         canonical_label_manager
             .edge_ranks_iter()
-            .map(|(e_id, e_rank)| (*e_id, e_rank.unwrap()))
             .for_each(|(e_id, e_rank)| {
-                self.set_edge_rank(e_id, e_rank);
+                self.set_edge_rank(e_id, e_rank.unwrap());
             });
     }
 }
@@ -1025,7 +1004,7 @@ impl Pattern {
     ///
     /// These vertices are equivalent in the Pattern
     pub fn get_equivalent_vertices(
-        &self, v_label: PatternLabelId, v_group: PatternGroupId,
+        &self, v_label: PatternLabelId, v_group: PatternId,
     ) -> Vec<PatternVertex> {
         self.vertices_iter()
             .filter(|vertex| {
@@ -1066,16 +1045,14 @@ impl Pattern {
                 let new_pattern_edge =
                     PatternEdge::new(new_pattern_edge_id, new_pattern_edge_label, start_vertex, end_vertex);
                 // Update start vertex and end vertex's adjacency info
-                let start_vertex_new_adjacency =
-                    Adjacency::new_by_src_vertex_and_edge(&start_vertex, &new_pattern_edge).unwrap();
+                let start_vertex_new_adjacency = Adjacency::new(&start_vertex, &new_pattern_edge).unwrap();
                 new_pattern
                     .vertices_data
                     .get_mut(start_vertex.get_id())
                     .unwrap()
                     .out_adjacencies
                     .push(start_vertex_new_adjacency);
-                let end_vertex_new_adjacency =
-                    Adjacency::new_by_src_vertex_and_edge(&end_vertex, &new_pattern_edge).unwrap();
+                let end_vertex_new_adjacency = Adjacency::new(&end_vertex, &new_pattern_edge).unwrap();
                 new_pattern
                     .vertices_data
                     .get_mut(end_vertex.get_id())
@@ -1198,13 +1175,13 @@ impl Pattern {
         {
             start_vertex_data
                 .out_adjacencies
-                .push(Adjacency::new_by_src_vertex_and_edge(&start_vertex, &edge).unwrap());
+                .push(Adjacency::new(&start_vertex, &edge).unwrap());
         }
         // update end vertex's connection info
         if let Some(end_vertex_data) = self.vertices_data.get_mut(end_vertex.get_id()) {
             end_vertex_data
                 .in_adjacencies
-                .push(Adjacency::new_by_src_vertex_and_edge(&end_vertex, &edge).unwrap());
+                .push(Adjacency::new(&end_vertex, &edge).unwrap());
         }
         // add edge to the pattern
         self.edges.insert(edge.get_id(), edge.clone());
