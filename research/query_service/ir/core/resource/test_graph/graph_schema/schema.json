@@ -1,0 +1,99 @@
+{
+  "vertex_type_map": {
+    "COACH": 0,
+    "FAN": 2,
+    "PLAYER": 1,
+    "TICKET": 3
+  },
+  "edge_type_map": {
+    "BUY": 2,
+    "LOVEDBY": 1,
+    "GUIDE": 0
+  },
+  "vertex_prop": {
+    "COACH": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "name",
+        "String"
+      ],
+      [
+        "age",
+        "Integer"
+      ]
+    ],
+    "TICKET": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "name",
+        "String"
+      ]
+    ],
+    "FAN": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "name",
+        "String"
+      ],
+      [
+        "age",
+        "Integer"
+      ]
+    ],
+    "PLAYER": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "name",
+        "String"
+      ],
+      [
+        "age",
+        "Integer"
+      ]
+    ]
+  },
+  "edge_prop": {
+    "BUY": [
+      [
+        "start_id",
+        "ID"
+      ],
+      [
+        "end_id",
+        "ID"
+      ]
+    ],
+    "GUIDE": [
+      [
+        "start_id",
+        "ID"
+      ],
+      [
+        "end_id",
+        "ID"
+      ]
+    ],
+    "LOVEDBY": [
+      [
+        "start_id",
+        "ID"
+      ],
+      [
+        "end_id",
+        "ID"
+      ]
+    ]
+  }
+}

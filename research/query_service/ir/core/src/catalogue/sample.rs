@@ -14,12 +14,11 @@
 //! limitations under the License.
 //!
 
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter::FromIterator;
 use std::path::Path;
 
 use crate::catalogue::catalog::Catalogue;
-use crate::catalogue::codec::Cipher;
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternVertex};
 use crate::catalogue::{PatternId, PatternLabelId};
@@ -29,7 +28,7 @@ use graph_store::prelude::{DefaultId, GlobalStoreTrait, GraphDBConfig, InternalI
 
 type PatternRecord = HashMap<PatternId, DefaultId>;
 
-fn create_sample_graph(graph_path: &str) -> LargeGraphDB<DefaultId, InternalId> {
+pub fn create_sample_graph(graph_path: &str) -> LargeGraphDB<DefaultId, InternalId> {
     info!("Read the sample graph data from {:?}.", graph_path);
     GraphDBConfig::default()
         .root_dir(graph_path)
@@ -83,7 +82,7 @@ fn get_adj_vertices_set(
 fn get_adj_vertices_sets(
     graph: &LargeGraphDB<DefaultId, InternalId>, src_pattern: &Pattern, extend_step: &ExtendStep,
     pattern_record: &PatternRecord,
-) -> Option<Vec<(usize, BTreeSet<DefaultId>)>> {
+) -> Option<Vec<(ExtendEdge, BTreeSet<DefaultId>)>> {
     let mut adj_vertices_sets = vec![];
     for extend_edge in extend_step.iter() {
         if let Some(adj_vertices_set) = get_adj_vertices_set(
@@ -93,7 +92,7 @@ fn get_adj_vertices_sets(
             extend_step.get_target_vertex_label(),
             pattern_record,
         ) {
-            adj_vertices_sets.push((extend_edge.get_src_vertex_rank(), adj_vertices_set));
+            adj_vertices_sets.push((extend_edge.clone(), adj_vertices_set));
         } else {
             return None;
         }
@@ -101,8 +100,8 @@ fn get_adj_vertices_sets(
     Some(adj_vertices_sets)
 }
 
-fn insersect_adj_vertices_sets(
-    mut adj_vertices_sets: Vec<(usize, BTreeSet<DefaultId>)>,
+fn intersect_adj_vertices_sets(
+    mut adj_vertices_sets: Vec<(ExtendEdge, BTreeSet<DefaultId>)>,
 ) -> BTreeSet<DefaultId> {
     adj_vertices_sets
         .sort_by(|(_, vertices_set1), (_, vertices_set2)| vertices_set1.len().cmp(&vertices_set2.len()));
@@ -116,31 +115,285 @@ fn insersect_adj_vertices_sets(
     set_after_intersect
 }
 
-fn sample_records(records: Vec<PatternRecord>, rate: f64, limit: usize) -> Vec<PatternRecord> {
-    let expected_len = std::cmp::min(((records.len() as f64) * rate).floor() as usize, limit);
+fn sample_records(records: Vec<PatternRecord>, rate: f64, limit: Option<usize>) -> Vec<PatternRecord> {
+    let expected_len = if let Some(upper_bound) = limit {
+        std::cmp::min(((records.len() as f64) * rate).floor() as usize, upper_bound)
+    } else {
+        ((records.len() as f64) * rate).floor() as usize
+    };
     let step = (1.0 / rate).floor() as usize;
     records
         .into_iter()
         .enumerate()
-        .filter(|&(i, _)| i % step == 0 && i < expected_len)
-        .map(|(_, record)| record)
+        .filter(|&(i, _)| i % step == 0)
+        .enumerate()
+        .filter(|&(i, _)| i < expected_len)
+        .map(|(_, (_, record))| record)
         .collect()
 }
 
 impl Catalogue {
-    pub fn estimate_graph(&mut self, graph: &LargeGraphDB<DefaultId, InternalId>, rate: f64, limit: usize) {
-        let mut relaxed_patterns: BTreeSet<Vec<u8>> = BTreeSet::new();
+    pub fn estimate_graph(
+        &mut self, graph: &LargeGraphDB<DefaultId, InternalId>, rate: f64, limit: Option<usize>,
+    ) {
+        let mut relaxed_patterns_indices = BTreeSet::new();
+        let mut pattern_counts_map = BTreeMap::new();
+        let mut extend_counts_map = BTreeMap::new();
         let mut queue = VecDeque::new();
-        for (entry_label, entry_node) in self.entries_iter() {
+        for (entry_label, entry_index) in self.entries_iter() {
             let pattern = Pattern::from(PatternVertex::new(0, entry_label));
-            let pattern_code: Vec<u8> = Cipher::encode_to(&pattern, self.get_encoder());
-            let records = get_src_records_from_label(graph, entry_label);
-            let records_num = records.len();
-            let records_after_sample = sample_records(records, rate, limit);
-            let records_after_sample_num = records_after_sample.len();
-            let actual_rate = (records_after_sample_num as f64) / (records_num as f64);
-            queue.push_back((pattern, pattern_code, records_after_sample, actual_rate));
+            let mut pattern_records = get_src_records_from_label(graph, entry_label);
+            let pattern_count = pattern_records.len();
+            pattern_records = sample_records(pattern_records, rate, limit);
+            queue.push_back((pattern, entry_index, pattern_count, pattern_records));
         }
-        while let Some((pattern, code, records, rate)) = queue.pop_front() {}
+        while let Some((pattern, pattern_index, pattern_count, pattern_records)) = queue.pop_front() {
+            relaxed_patterns_indices.insert(pattern_index);
+            pattern_counts_map.insert(pattern_index, pattern_count);
+            for (target_pattern_index, _, approach_index, approach_weight) in
+                self.pattern_out_approach_iter(pattern_index)
+            {
+                if let Some(extend_weight) = approach_weight.get_extend_weight() {
+                    let extend_step = extend_weight.get_extend_step(self.get_encoder());
+                    let target_pattern = pattern.extend(&extend_step).unwrap();
+                    let mut extend_nums_counts: Vec<(ExtendEdge, usize)> = extend_step
+                        .iter()
+                        .map(|extend_edge| (extend_edge.clone(), 0))
+                        .collect();
+                    let mut target_pattern_records = Vec::new();
+                    for pattern_record in pattern_records.iter() {
+                        let adj_vertices_sets =
+                            get_adj_vertices_sets(graph, &pattern, &extend_step, pattern_record).unwrap();
+                        for (i, (_, adj_vertices_set)) in adj_vertices_sets.iter().enumerate() {
+                            extend_nums_counts[i].1 += adj_vertices_set.len();
+                        }
+                        let adj_vertices_set = intersect_adj_vertices_sets(adj_vertices_sets);
+                        target_pattern_records.extend(adj_vertices_set.iter().map(|&adj_vertex_id| {
+                            let mut target_pattern_record = pattern_record.clone();
+                            target_pattern_record.insert(target_pattern_record.len(), adj_vertex_id);
+                            target_pattern_record
+                        }));
+                    }
+                    for i in 0..extend_nums_counts.len() {
+                        extend_nums_counts[i].1 /= pattern_records.len()
+                    }
+                    let target_pattern_count =
+                        pattern_count * (target_pattern_records.len() / pattern_records.len());
+                    target_pattern_records = sample_records(target_pattern_records, rate, limit);
+                    extend_counts_map.insert(approach_index, extend_nums_counts);
+                    if !relaxed_patterns_indices.contains(&target_pattern_index) {
+                        queue.push_back((
+                            target_pattern,
+                            target_pattern_index,
+                            target_pattern_count,
+                            target_pattern_records,
+                        ));
+                    }
+                }
+            }
+        }
+        println!("{:?}", pattern_counts_map);
+        println!("{:?}", extend_counts_map);
+        for (pattern_index, pattern_count) in pattern_counts_map {
+            self.set_pattern_count(pattern_index, pattern_count);
+        }
+        for (extend_index, extend_nums_counts) in extend_counts_map {
+            self.set_extend_count(extend_index, extend_nums_counts);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+
+    use crate::catalogue::pattern::PatternEdge;
+    use crate::catalogue::sample::*;
+    use crate::catalogue::PatternDirection;
+
+    #[test]
+    fn test_create_sample_graph() {
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        let total_count = sample_graph.count_all_vertices(None);
+        let coach_count = sample_graph
+            .get_all_vertices(Some(&vec![0]))
+            .map(|vertex| vertex.get_id())
+            .collect::<Vec<DefaultId>>()
+            .len();
+        let player_count = sample_graph
+            .get_all_vertices(Some(&vec![1]))
+            .map(|vertex| vertex.get_id())
+            .collect::<Vec<DefaultId>>()
+            .len();
+        let fan_count = sample_graph
+            .get_all_vertices(Some(&vec![2]))
+            .map(|vertex| vertex.get_id())
+            .collect::<Vec<DefaultId>>()
+            .len();
+        let ticket_count = sample_graph
+            .get_all_vertices(Some(&vec![3]))
+            .map(|vertex| vertex.get_id())
+            .collect::<Vec<DefaultId>>()
+            .len();
+        assert_eq!(total_count, 30100);
+        assert_eq!(coach_count, 10000);
+        assert_eq!(player_count, 10000);
+        assert_eq!(fan_count, 10000);
+        assert_eq!(ticket_count, 100);
+    }
+
+    #[test]
+    fn test_get_src_records_from_label() {
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        let coach_src_records = get_src_records_from_label(&sample_graph, 0);
+        assert_eq!(coach_src_records.len(), 10000);
+        let player_src_records = get_src_records_from_label(&sample_graph, 1);
+        assert_eq!(player_src_records.len(), 10000);
+        let fan_src_records = get_src_records_from_label(&sample_graph, 2);
+        assert_eq!(fan_src_records.len(), 10000);
+        let ticket_src_records = get_src_records_from_label(&sample_graph, 3);
+        assert_eq!(ticket_src_records.len(), 100);
+    }
+
+    #[test]
+    fn test_get_adj_vertices_set() {
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        let coach_src_record = get_src_records_from_label(&sample_graph, 0)[0].clone();
+        let coach_src_pattern = Pattern::from(PatternVertex::new(0, 0));
+        let player_src_record = get_src_records_from_label(&sample_graph, 1)[0].clone();
+        let player_src_pattern = Pattern::from(PatternVertex::new(0, 1));
+        let fan_src_record = get_src_records_from_label(&sample_graph, 2)[0].clone();
+        let fan_src_pattern = Pattern::from(PatternVertex::new(0, 2));
+        let ticket_src_record = get_src_records_from_label(&sample_graph, 3)[0].clone();
+        let ticket_src_pattern = Pattern::from(PatternVertex::new(0, 3));
+        let guide_out_extend_edge = ExtendEdge::new(0, 0, PatternDirection::Out);
+        let guide_in_extend_edge = ExtendEdge::new(0, 0, PatternDirection::In);
+        let loved_by_out_extend_edge = ExtendEdge::new(0, 1, PatternDirection::Out);
+        let loved_by_in_extend_edge = ExtendEdge::new(0, 1, PatternDirection::In);
+        let buy_out_extend_edge = ExtendEdge::new(0, 2, PatternDirection::Out);
+        let buy_in_extend_edge = ExtendEdge::new(0, 2, PatternDirection::In);
+        let players_from_coach_guide = get_adj_vertices_set(
+            &sample_graph,
+            &coach_src_pattern,
+            &guide_out_extend_edge,
+            1,
+            &coach_src_record,
+        )
+        .unwrap();
+        assert_eq!(players_from_coach_guide.len(), 100);
+        let coaches_from_player_guide = get_adj_vertices_set(
+            &sample_graph,
+            &player_src_pattern,
+            &guide_in_extend_edge,
+            0,
+            &player_src_record,
+        )
+        .unwrap();
+        assert_eq!(coaches_from_player_guide.len(), 100);
+        let fans_from_player_loved_by = get_adj_vertices_set(
+            &sample_graph,
+            &player_src_pattern,
+            &loved_by_out_extend_edge,
+            2,
+            &player_src_record,
+        )
+        .unwrap();
+        assert_eq!(fans_from_player_loved_by.len(), 100);
+        let players_from_fan_loved_by = get_adj_vertices_set(
+            &sample_graph,
+            &fan_src_pattern,
+            &loved_by_in_extend_edge,
+            1,
+            &fan_src_record,
+        )
+        .unwrap();
+        assert_eq!(players_from_fan_loved_by.len(), 100);
+        let tickets_from_fan_buy =
+            get_adj_vertices_set(&sample_graph, &fan_src_pattern, &buy_out_extend_edge, 3, &fan_src_record)
+                .unwrap();
+        assert_eq!(tickets_from_fan_buy.len(), 1);
+        let fans_from_ticket_buy = get_adj_vertices_set(
+            &sample_graph,
+            &ticket_src_pattern,
+            &buy_in_extend_edge,
+            2,
+            &ticket_src_record,
+        )
+        .unwrap();
+        assert_eq!(fans_from_ticket_buy.len(), 1);
+    }
+
+    #[test]
+    fn test_get_adj_vertices_sets() {
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        let coach_src_record = get_src_records_from_label(&sample_graph, 0)[0].clone();
+        let coach_src_pattern = Pattern::from(PatternVertex::new(0, 0));
+        let guide_out_extend_step = ExtendStep::new(1, vec![ExtendEdge::new(0, 0, PatternDirection::Out)]);
+        let player_sets = get_adj_vertices_sets(
+            &sample_graph,
+            &coach_src_pattern,
+            &guide_out_extend_step,
+            &coach_src_record,
+        )
+        .unwrap();
+        assert_eq!(player_sets.len(), 1);
+        assert_eq!(player_sets[0].1.len(), 100);
+    }
+
+    #[test]
+    fn test_intersect_adj_vertices_sets() {
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        let coach_src_pattern = Pattern::from(PatternVertex::new(0, 0));
+        let guide_out_extend_step = ExtendStep::new(1, vec![ExtendEdge::new(0, 0, PatternDirection::Out)]);
+        let coach_src_record_0 = get_src_records_from_label(&sample_graph, 0)[0].clone();
+        let coach_src_record_1 = get_src_records_from_label(&sample_graph, 0)[50].clone();
+        let mut player_sets_0 = get_adj_vertices_sets(
+            &sample_graph,
+            &coach_src_pattern,
+            &guide_out_extend_step,
+            &coach_src_record_0,
+        )
+        .unwrap();
+        let mut player_sets_1 = get_adj_vertices_sets(
+            &sample_graph,
+            &coach_src_pattern,
+            &guide_out_extend_step,
+            &coach_src_record_1,
+        )
+        .unwrap();
+        player_sets_0.append(&mut player_sets_1);
+        assert_eq!(intersect_adj_vertices_sets(player_sets_0).len(), 50);
+    }
+
+    #[test]
+    fn test_sample_records() {
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        let mut coach_src_records = get_src_records_from_label(&sample_graph, 0);
+        let rate = 0.35;
+        coach_src_records = sample_records(coach_src_records, rate, None);
+        assert_eq!(coach_src_records.len(), 3500);
+    }
+
+    #[test]
+    fn test_build_and_update_catalog() {
+        let coach_vertex = PatternVertex::new(0, 0);
+        let player_vertex = PatternVertex::new(1, 1);
+        let fan_vertex = PatternVertex::new(2, 2);
+        let ticket_vertex = PatternVertex::new(3, 3);
+        let coach_guide_player_edge = PatternEdge::new(0, 0, coach_vertex, player_vertex);
+        let player_lovded_by_fan_edge = PatternEdge::new(1, 1, player_vertex, fan_vertex);
+        let fan_buy_ticket_edge = PatternEdge::new(2, 2, fan_vertex, ticket_vertex);
+        let pattern = Pattern::try_from(vec![
+            coach_guide_player_edge,
+            player_lovded_by_fan_edge,
+            fan_buy_ticket_edge,
+        ])
+        .unwrap();
+        let mut catalog = Catalogue::build_from_pattern(&pattern);
+        assert_eq!(catalog.get_patterns_num(), 10);
+        assert_eq!(catalog.get_approaches_num(), 12);
+        let sample_graph = create_sample_graph("../core/resource/test_graph");
+        catalog.estimate_graph(&sample_graph, 0.1, Some(10000));
+        println!("{:?}", pattern.generate_optimized_match_plan(&catalog));
     }
 }

@@ -27,7 +27,7 @@ mod test {
         let modern_graph_meta = get_modern_pattern_meta();
         let catalog = Catalogue::build_from_meta(&modern_graph_meta, 2, 3);
         assert_eq!(4, catalog.get_patterns_num());
-        assert_eq!(4, catalog.get_connections_num());
+        assert_eq!(4, catalog.get_approaches_num());
     }
 
     #[test]
@@ -35,7 +35,7 @@ mod test {
         let ldbc_graph_meta = get_ldbc_pattern_meta();
         let catalog = Catalogue::build_from_meta(&ldbc_graph_meta, 2, 3);
         assert_eq!(34, catalog.get_patterns_num());
-        assert_eq!(42, catalog.get_connections_num());
+        assert_eq!(42, catalog.get_approaches_num());
     }
 
     #[test]
@@ -43,7 +43,7 @@ mod test {
         let modern_pattern = build_modern_pattern_case1();
         let catalog = Catalogue::build_from_pattern(&modern_pattern);
         assert_eq!(1, catalog.get_patterns_num());
-        assert_eq!(0, catalog.get_connections_num());
+        assert_eq!(0, catalog.get_approaches_num());
     }
 
     #[test]
@@ -51,7 +51,7 @@ mod test {
         let modern_pattern = build_modern_pattern_case2();
         let catalog = Catalogue::build_from_pattern(&modern_pattern);
         assert_eq!(1, catalog.get_patterns_num());
-        assert_eq!(0, catalog.get_connections_num());
+        assert_eq!(0, catalog.get_approaches_num());
     }
 
     #[test]
@@ -59,7 +59,7 @@ mod test {
         let modern_pattern = build_modern_pattern_case3();
         let catalog = Catalogue::build_from_pattern(&modern_pattern);
         assert_eq!(2, catalog.get_patterns_num());
-        assert_eq!(2, catalog.get_connections_num());
+        assert_eq!(2, catalog.get_approaches_num());
     }
 
     #[test]
@@ -67,7 +67,7 @@ mod test {
         let modern_pattern = build_modern_pattern_case4();
         let catalog = Catalogue::build_from_pattern(&modern_pattern);
         assert_eq!(3, catalog.get_patterns_num());
-        assert_eq!(2, catalog.get_connections_num());
+        assert_eq!(2, catalog.get_approaches_num());
     }
 
     #[test]
@@ -75,7 +75,7 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         assert_eq!(3, catalog.get_patterns_num());
-        assert_eq!(5, catalog.get_connections_num());
+        assert_eq!(5, catalog.get_approaches_num());
     }
 
     #[test]
@@ -83,7 +83,7 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         assert_eq!(5, catalog.get_patterns_num());
-        assert_eq!(7, catalog.get_connections_num());
+        assert_eq!(7, catalog.get_approaches_num());
     }
 
     #[test]
@@ -91,7 +91,7 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         assert_eq!(4, catalog.get_patterns_num());
-        assert_eq!(9, catalog.get_connections_num());
+        assert_eq!(9, catalog.get_approaches_num());
     }
 
     #[test]
@@ -99,6 +99,6 @@ mod test {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
         assert_eq!(11, catalog.get_patterns_num());
-        assert_eq!(17, catalog.get_connections_num());
+        assert_eq!(17, catalog.get_approaches_num());
     }
 }
