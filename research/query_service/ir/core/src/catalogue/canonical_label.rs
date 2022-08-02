@@ -166,9 +166,9 @@ impl CanonicalLabelManager {
         let mut updated_vertex_groups: BTreeMap<(PatternLabelId, PatternId), Vec<PatternId>> =
             BTreeMap::new();
         let mut has_converged = true;
-        for ((v_label, initial_group), vertex_group) in self.vertex_groups.iter() {
+        for (&(v_label, initial_group), vertex_group) in self.vertex_groups.iter() {
             // Temporarily record the group for each vertex
-            let mut vertex_group_tmp_vec: Vec<PatternId> = vec![*initial_group; vertex_group.len()];
+            let mut vertex_group_tmp_vec: Vec<PatternId> = vec![initial_group; vertex_group.len()];
             // To find out the exact group of a vertex, compare it with all vertices with the same label
             for i in 0..vertex_group.len() {
                 let current_v_id: PatternId = vertex_group[i];
@@ -181,13 +181,13 @@ impl CanonicalLabelManager {
                 }
 
                 let v_group: PatternId = vertex_group_tmp_vec[i];
-                if v_group != *initial_group {
+                if v_group != initial_group {
                     has_converged = false;
                 }
 
                 updated_vertex_group_map.insert(current_v_id, v_group);
                 updated_vertex_groups
-                    .entry((*v_label, v_group))
+                    .entry((v_label, v_group))
                     .and_modify(|vertex_group| vertex_group.push(current_v_id))
                     .or_insert(vec![current_v_id]);
             }
