@@ -570,12 +570,12 @@
       "entity_pairs": [
         {
           "src": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           },
           "dst": {
-            "id": 8,
-            "name": "COUNTRY"
+            "id": 0,
+            "name": "PLACE"
           }
         },
         {

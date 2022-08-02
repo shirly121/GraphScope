@@ -54,6 +54,38 @@ impl PatternWeight {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ExtendCount {
+    pub count: f64,
+    pub extend_edge: ExtendEdge,
+}
+
+impl ExtendCount {
+    fn new(count: f64, extend_edge: ExtendEdge) -> ExtendCount {
+        ExtendCount { count, extend_edge }
+    }
+}
+
+impl PartialEq for ExtendCount {
+    fn eq(&self, other: &Self) -> bool {
+        self.count.eq(&other.count)
+    }
+}
+
+impl Eq for ExtendCount {}
+
+impl PartialOrd for ExtendCount {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.count.partial_cmp(&other.count)
+    }
+}
+
+impl Ord for ExtendCount {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 /// Edge Weight for approach case is join
 #[derive(Debug, Clone)]
 pub struct JoinWeight {
@@ -71,9 +103,9 @@ pub struct ExtendWeight {
     /// Whether the extend step is single extend or need intersect
     is_single_extend: bool,
     /// Total count of all extend edges
-    count_sum: usize,
+    count_sum: f64,
     /// The order of extend edge (from smaller count to larger count)
-    counts: BinaryHeap<(usize, ExtendEdge)>,
+    counts: BinaryHeap<ExtendCount>,
 }
 
 impl ExtendWeight {
@@ -222,7 +254,7 @@ impl Catalogue {
                                 .get_vertex_rank(new_pattern.get_max_vertex_id())
                                 .unwrap(),
                             is_single_extend: extend_step.get_extend_edges_num() == 0,
-                            count_sum: 0,
+                            count_sum: 0.0,
                             counts: BinaryHeap::new(),
                         }),
                     );
@@ -378,7 +410,7 @@ impl Catalogue {
                                     .get_vertex_rank(adj_vertex_id)
                                     .unwrap(),
                                 is_single_extend: extend_step.get_extend_edges_num() == 1,
-                                count_sum: 0,
+                                count_sum: 0.0,
                                 counts: BinaryHeap::new(),
                             }),
                         );
@@ -472,16 +504,14 @@ impl Catalogue {
         }
     }
 
-    pub fn set_extend_count(
-        &mut self, extend_index: EdgeIndex, extend_nums_counts: Vec<(ExtendEdge, usize)>,
-    ) {
+    pub fn set_extend_count(&mut self, extend_index: EdgeIndex, extend_nums_counts: Vec<ExtendCount>) {
         if let Some(approach_weight) = self.store.edge_weight_mut(extend_index) {
             if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
-                extend_weight.count_sum = 0;
+                extend_weight.count_sum = 0.0;
                 extend_weight.counts.clear();
-                for (extend_edge, count) in extend_nums_counts {
-                    extend_weight.count_sum += count;
-                    extend_weight.counts.push((count, extend_edge));
+                for extend_count in extend_nums_counts {
+                    extend_weight.count_sum += extend_count.count;
+                    extend_weight.counts.push(extend_count);
                 }
             }
         }

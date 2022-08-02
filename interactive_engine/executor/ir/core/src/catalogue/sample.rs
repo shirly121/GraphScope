@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter::FromIterator;
 use std::path::Path;
 
-use crate::catalogue::catalog::Catalogue;
+use crate::catalogue::catalog::{Catalogue, ExtendCount};
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternVertex};
 use crate::catalogue::{PatternId, PatternLabelId};
@@ -156,16 +156,16 @@ impl Catalogue {
                 if let Some(extend_weight) = approach_weight.get_extend_weight() {
                     let extend_step = extend_weight.get_extend_step(self.get_encoder());
                     let target_pattern = pattern.extend(&extend_step).unwrap();
-                    let mut extend_nums_counts: Vec<(ExtendEdge, usize)> = extend_step
+                    let mut extend_nums_counts: Vec<ExtendCount> = extend_step
                         .iter()
-                        .map(|extend_edge| (extend_edge.clone(), 0))
+                        .map(|extend_edge| ExtendCount { count: 0.0, extend_edge: extend_edge.clone() })
                         .collect();
                     let mut target_pattern_records = Vec::new();
                     for pattern_record in pattern_records.iter() {
                         let adj_vertices_sets =
                             get_adj_vertices_sets(graph, &pattern, &extend_step, pattern_record).unwrap();
                         for (i, (_, adj_vertices_set)) in adj_vertices_sets.iter().enumerate() {
-                            extend_nums_counts[i].1 += adj_vertices_set.len();
+                            extend_nums_counts[i].count += adj_vertices_set.len() as f64;
                         }
                         let adj_vertices_set = intersect_adj_vertices_sets(adj_vertices_sets);
                         target_pattern_records.extend(adj_vertices_set.iter().map(|&adj_vertex_id| {
@@ -174,11 +174,18 @@ impl Catalogue {
                             target_pattern_record
                         }));
                     }
-                    for i in 0..extend_nums_counts.len() {
-                        extend_nums_counts[i].1 /= pattern_records.len()
+                    if pattern_records.len() != 0 {
+                        for i in 0..extend_nums_counts.len() {
+                            extend_nums_counts[i].count /= pattern_records.len() as f64
+                        }
                     }
-                    let target_pattern_count =
-                        pattern_count * (target_pattern_records.len() / pattern_records.len());
+                    let target_pattern_count = if pattern_records.len() == 0 {
+                        0
+                    } else {
+                        (pattern_count as f64
+                            * (target_pattern_records.len() as f64 / pattern_records.len() as f64))
+                            as usize
+                    };
                     target_pattern_records = sample_records(target_pattern_records, rate, limit);
                     extend_counts_map.insert(approach_index, extend_nums_counts);
                     if !relaxed_patterns_indices.contains(&target_pattern_index) {

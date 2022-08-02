@@ -23,7 +23,7 @@ use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy)]
 pub struct ExtendEdge {
     src_vertex_rank: PatternRankId,
     edge_label: PatternLabelId,

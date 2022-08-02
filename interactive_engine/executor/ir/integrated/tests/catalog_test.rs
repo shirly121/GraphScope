@@ -21,11 +21,13 @@ mod common;
 mod test {
     use std::convert::TryInto;
     use std::fs::File;
+    use std::time::Instant;
 
     use ir_common::generated::algebra as pb;
     use ir_core::catalogue::catalog::Catalogue;
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
+    use ir_core::catalogue::sample::create_sample_graph;
     use ir_core::error::IrError;
     use ir_core::plan::logical::LogicalPlan;
     use ir_core::plan::physical::AsPhysical;
@@ -35,7 +37,7 @@ mod test {
     use crate::common::test::*;
 
     pub fn get_ldbc_pattern_meta() -> PatternMeta {
-        let ldbc_schema_file = File::open("../core/resource/ldbc_schema.json").unwrap();
+        let ldbc_schema_file = File::open("../core/resource/ldbc_schema_edit.json").unwrap();
         let ldbc_schema = Schema::from_json(ldbc_schema_file).unwrap();
         PatternMeta::from(ldbc_schema)
     }
@@ -392,11 +394,21 @@ mod test {
 
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case1() {
+        let sample_graph = create_sample_graph(
+            "/Users/meloyang/opt/Graphs/benchmark/benchmark1/g_benchmark_graph/scale_01/bin_p1",
+        );
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        println!("start building catalog...");
+        let catalog_build_start_time = Instant::now();
+        let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        catalog.estimate_graph(&sample_graph, 1.0, None);
+        println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+        println!("start generating plan...");
+        let plan_generation_start_time = Instant::now();
         let pb_plan = ldbc_pattern
             .generate_optimized_match_plan(&catalog)
             .unwrap();
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
         let mut job_builder = JobBuilder::default();
@@ -404,6 +416,8 @@ mod test {
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
             .unwrap();
         let request = job_builder.build().unwrap();
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
         let mut results = submit_query(request, 2);
         let mut count = 0;
         while let Some(result) = results.next() {
@@ -412,6 +426,7 @@ mod test {
             }
         }
         println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
     #[test]
@@ -439,18 +454,31 @@ mod test {
 
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case2() {
+        let sample_graph = create_sample_graph(
+            "/Users/meloyang/opt/Graphs/benchmark/benchmark1/g_benchmark_graph/scale_01/bin_p1",
+        );
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        println!("start building catalog...");
+        let catalog_build_start_time = Instant::now();
+        let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        catalog.estimate_graph(&sample_graph, 1.0, None);
+        println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+        println!("start generating plan...");
+        let plan_generation_start_time = Instant::now();
         let pb_plan = ldbc_pattern
             .generate_optimized_match_plan(&catalog)
             .unwrap();
-        initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        println!("{:?}", plan);
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
+        initialize();
         let mut job_builder = JobBuilder::default();
         let mut plan_meta = plan.get_meta().clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
             .unwrap();
         let request = job_builder.build().unwrap();
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
         let mut results = submit_query(request, 2);
         let mut count = 0;
         while let Some(result) = results.next() {
@@ -459,6 +487,7 @@ mod test {
             }
         }
         println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
     #[test]
@@ -486,18 +515,30 @@ mod test {
 
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case3() {
+        let sample_graph = create_sample_graph(
+            "/Users/meloyang/opt/Graphs/benchmark/benchmark1/g_benchmark_graph/scale_01/bin_p1",
+        );
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        println!("start building catalog...");
+        let catalog_build_start_time = Instant::now();
+        let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        catalog.estimate_graph(&sample_graph, 1.0, None);
+        println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+        println!("start generating plan...");
+        let plan_generation_start_time = Instant::now();
         let pb_plan = ldbc_pattern
             .generate_optimized_match_plan(&catalog)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
         let mut job_builder = JobBuilder::default();
         let mut plan_meta = plan.get_meta().clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
             .unwrap();
         let request = job_builder.build().unwrap();
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
         let mut results = submit_query(request, 2);
         let mut count = 0;
         while let Some(result) = results.next() {
@@ -506,6 +547,7 @@ mod test {
             }
         }
         println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
     #[test]
@@ -533,17 +575,29 @@ mod test {
 
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case4() {
+        let sample_graph = create_sample_graph(
+            "/Users/meloyang/opt/Graphs/benchmark/benchmark1/g_benchmark_graph/scale_01/bin_p1",
+        );
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        println!("start building catalog...");
+        let catalog_build_start_time = Instant::now();
+        let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        catalog.estimate_graph(&sample_graph, 1.0, None);
+        println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+        println!("start generating plan...");
+        let plan_generation_start_time = Instant::now();
         let pb_plan = ldbc_pattern
             .generate_optimized_match_plan(&catalog)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
         let mut job_builder = JobBuilder::default();
         let mut plan_meta = plan.get_meta().clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
             .unwrap();
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
         let request = job_builder.build().unwrap();
         let mut results = submit_query(request, 2);
         let mut count = 0;
@@ -553,6 +607,7 @@ mod test {
             }
         }
         println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
     #[test]
@@ -580,18 +635,30 @@ mod test {
 
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_bi11() {
+        let sample_graph = create_sample_graph(
+            "/Users/meloyang/opt/Graphs/benchmark/benchmark1/g_benchmark_graph/scale_01/bin_p1",
+        );
         let ldbc_pattern = build_ldbc_bi11().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        println!("start building catalog...");
+        let catalog_build_start_time = Instant::now();
+        let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        catalog.estimate_graph(&sample_graph, 0.5, Some(100000));
+        println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+        println!("start generating plan...");
+        let plan_generation_start_time = Instant::now();
         let pb_plan = ldbc_pattern
             .generate_optimized_match_plan(&catalog)
             .unwrap();
-        initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
+        initialize();
         let mut job_builder = JobBuilder::default();
         let mut plan_meta = plan.get_meta().clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
             .unwrap();
         let request = job_builder.build().unwrap();
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
         let mut results = submit_query(request, 2);
         let mut count = 0;
         while let Some(result) = results.next() {
@@ -600,6 +667,7 @@ mod test {
             }
         }
         println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
     #[test]
