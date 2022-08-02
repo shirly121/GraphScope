@@ -84,6 +84,14 @@ impl PatternEdge {
         PatternEdge { id, label, start_vertex, end_vertex }
     }
 
+    /// If the given direction is incoming, reverse the start and end vertex
+    pub fn with_direction(mut self, direction: PatternDirection) -> PatternEdge {
+        if let PatternDirection::In = direction {
+            std::mem::swap(&mut self.start_vertex, &mut self.end_vertex);
+        }
+        self
+    }
+
     #[inline]
     pub fn get_id(&self) -> PatternId {
         self.id
@@ -360,15 +368,13 @@ impl Pattern {
                     id_label_map.insert(src_vertex_id, src_vertex_label);
                     id_label_map.insert(dst_vertex_id, dst_vertex_label);
                     // generate the new pattern edge and add to the pattern_edges_collection
-                    let new_pattern_edge = create_new_pattern_edge(
+                    let new_pattern_edge = PatternEdge::new(
                         edge_id,
                         edge_label,
-                        src_vertex_id,
-                        dst_vertex_id,
-                        src_vertex_label,
-                        dst_vertex_label,
-                        direction,
-                    );
+                        PatternVertex::new(src_vertex_id, src_vertex_label),
+                        PatternVertex::new(dst_vertex_id, dst_vertex_label),
+                    )
+                    .with_direction(direction);
                     pattern_edges.push(new_pattern_edge);
                     pre_dst_vertex_label = Some(dst_vertex_label);
                 } else if let Some(BinderItem::Select(select)) = binder.item.as_ref() {
@@ -577,19 +583,6 @@ fn assign_src_dst_vertex_labels(
         vertex_labels_candis.next()
     })
     .ok_or(IrError::InvalidPattern("Cannot find valid label for some vertices".to_string()))
-}
-
-/// Generate a new pattern edge based on the given info
-fn create_new_pattern_edge(
-    edge_id: PatternId, edge_label: PatternLabelId, src_vertex_id: PatternId, dst_vertex_id: PatternId,
-    src_vertex_label: PatternLabelId, dst_vertex_label: PatternLabelId, direction: PatternDirection,
-) -> PatternEdge {
-    let mut start_vertex = PatternVertex::new(src_vertex_id, src_vertex_label);
-    let mut end_vertex = PatternVertex::new(dst_vertex_id, dst_vertex_label);
-    if let PatternDirection::In = direction {
-        std::mem::swap(&mut start_vertex, &mut end_vertex);
-    }
-    PatternEdge::new(edge_id, edge_label, start_vertex, end_vertex)
 }
 
 /// Getters of fields of Pattern
