@@ -144,8 +144,16 @@ impl Encoder {
     }
 
     pub fn init_by_pattern_meta(pattern_mata: &PatternMeta, same_label_vertex_limit: usize) -> Encoder {
-        let min_edge_label_bit_num = pattern_mata.get_min_edge_label_bit_num();
-        let min_vertex_label_bit_num = pattern_mata.get_min_vertex_label_bit_num();
+        let min_edge_label_bit_num = if let Some(max_edge_label) = pattern_mata.get_max_edge_label() {
+            std::cmp::max((32 - max_edge_label.leading_zeros()) as usize, 1)
+        } else {
+            1
+        };
+        let min_vertex_label_bit_num = if let Some(max_vertex_label) = pattern_mata.get_max_vertex_label() {
+            std::cmp::max((32 - max_vertex_label.leading_zeros()) as usize, 1)
+        } else {
+            1
+        };
         let min_vertex_rank_bit_num =
             std::cmp::max((64 - (same_label_vertex_limit as u64).leading_zeros()) as usize, 1);
         let edge_direction_bit_num = 2;

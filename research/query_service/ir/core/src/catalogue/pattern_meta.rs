@@ -247,26 +247,4 @@ impl PatternMeta {
             None => None,
         }
     }
-
-    /// Compute at least how many bits are needed to represent vertex labels
-    ///
-    /// The result is at least 1 bit
-    pub fn get_min_vertex_label_bit_num(&self) -> usize {
-        if let Some(max_vertex_label) = self.get_max_vertex_label() {
-            std::cmp::max((32 - max_vertex_label.leading_zeros()) as usize, 1)
-        } else {
-            1
-        }
-    }
-
-    /// Compute at least how many bits are needed to represent edge labels
-    ///
-    /// The result is at least 1 bit
-    pub fn get_min_edge_label_bit_num(&self) -> usize {
-        if let Some(max_edge_label) = self.get_max_edge_label() {
-            std::cmp::max((32 - max_edge_label.leading_zeros()) as usize, 1)
-        } else {
-            1
-        }
-    }
 }

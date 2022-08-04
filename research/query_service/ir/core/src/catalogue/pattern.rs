@@ -86,7 +86,7 @@ impl PatternEdge {
 
     /// If the given direction is incoming, reverse the start and end vertex
     pub fn with_direction(mut self, direction: PatternDirection) -> PatternEdge {
-        if let PatternDirection::In = direction {
+        if direction == PatternDirection::In {
             std::mem::swap(&mut self.start_vertex, &mut self.end_vertex);
         }
         self
