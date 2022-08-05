@@ -14,12 +14,12 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, BinaryHeap, HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::convert::TryInto;
 
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
-use petgraph::graph::{EdgeIndex, Graph, NodeIndex};
+use petgraph::graph::{EdgeIndex, EdgeReference, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 
@@ -36,8 +36,7 @@ static BETA: f64 = 0.5;
 /// In Catalog Graph, Vertex Represents a Pattern
 #[derive(Debug, Clone)]
 pub struct PatternWeight {
-    /// Code uniquely identify a pattern
-    code: Vec<u8>,
+    pattern: Pattern,
     /// Estimate how many such pattern in a graph
     count: usize,
     /// Store previous 1 step estimated best approach to get the pattern
@@ -45,44 +44,20 @@ pub struct PatternWeight {
 }
 
 impl PatternWeight {
-    pub fn get_pattern_code(&self) -> Vec<u8> {
-        self.code.clone()
+    pub fn get_pattern(&self) -> &Pattern {
+        &self.pattern
     }
 
-    pub fn get_pattern(&self, encoder: &Encoder) -> Pattern {
-        Cipher::decode_from(&self.code, encoder).unwrap()
+    pub fn get_count(&self) -> usize {
+        self.count
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct ExtendCount {
-    pub count: f64,
-    pub extend_edge: ExtendEdge,
-}
-
-impl ExtendCount {
-    fn new(count: f64, extend_edge: ExtendEdge) -> ExtendCount {
-        ExtendCount { count, extend_edge }
+    pub fn get_best_approach(&self) -> Option<EdgeIndex> {
+        self.best_approach
     }
-}
 
-impl PartialEq for ExtendCount {
-    fn eq(&self, other: &Self) -> bool {
-        self.count.eq(&other.count)
-    }
-}
-
-impl Eq for ExtendCount {}
-
-impl PartialOrd for ExtendCount {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.count.partial_cmp(&other.count)
-    }
-}
-
-impl Ord for ExtendCount {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+    pub fn set_best_approach(&mut self, approach_index: EdgeIndex) {
+        self.best_approach = Some(approach_index)
     }
 }
 
@@ -93,32 +68,43 @@ pub struct JoinWeight {
     pattern_index: NodeIndex,
 }
 
+impl JoinWeight {
+    pub fn get_pattern_index(&self) -> NodeIndex {
+        self.pattern_index
+    }
+}
+
 /// Edge Weight for approach case is extend
 #[derive(Debug, Clone)]
 pub struct ExtendWeight {
-    /// Code of the extend step
-    code: Vec<u8>,
+    extend_step: ExtendStep,
     /// Target vertex's order in the target pattern
     target_vertex_rank: usize,
-    /// Whether the extend step is single extend or need intersect
-    is_single_extend: bool,
-    /// Total count of all extend edges
+    /// count infos
     count_sum: f64,
-    /// The order of extend edge (from smaller count to larger count)
-    counts: BinaryHeap<ExtendCount>,
+    count_min: f64,
+    count_max: f64,
 }
 
 impl ExtendWeight {
-    pub fn get_extend_step_code(&self) -> Vec<u8> {
-        self.code.clone()
-    }
-
-    pub fn get_extend_step(&self, encoder: &Encoder) -> ExtendStep {
-        Cipher::decode_from(&self.code, encoder).unwrap()
+    pub fn get_extend_step(&self) -> &ExtendStep {
+        &self.extend_step
     }
 
     pub fn get_target_vertex_rank(&self) -> usize {
         self.target_vertex_rank
+    }
+
+    pub fn get_count_sum(&self) -> f64 {
+        self.count_sum
+    }
+
+    pub fn get_count_min(&self) -> f64 {
+        self.count_min
+    }
+
+    pub fn get_count_max(&self) -> f64 {
+        self.count_max
     }
 }
 
@@ -129,13 +115,21 @@ impl ExtendWeight {
 #[derive(Debug, Clone)]
 pub enum ApproachWeight {
     /// Case that the approach is join
-    Pattern(JoinWeight),
+    Join(JoinWeight),
     /// Case that the approach is extend
     ExtendStep(ExtendWeight),
 }
 
 /// Methods of accesing some fields of EdgeWeight
 impl ApproachWeight {
+    pub fn is_join(&self) -> bool {
+        if let ApproachWeight::Join(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn is_extend(&self) -> bool {
         if let ApproachWeight::ExtendStep(_) = self {
             true
@@ -144,20 +138,57 @@ impl ApproachWeight {
         }
     }
 
-    pub fn is_join(&self) -> bool {
-        if let ApproachWeight::ExtendStep(_) = self {
-            false
+    pub fn get_join_weight(&self) -> Option<&JoinWeight> {
+        if let ApproachWeight::Join(join_weight) = self {
+            Some(join_weight)
         } else {
-            true
+            None
         }
     }
 
     pub fn get_extend_weight(&self) -> Option<&ExtendWeight> {
-        if let ApproachWeight::ExtendStep(w) = self {
-            Some(&w)
+        if let ApproachWeight::ExtendStep(extend_weight) = self {
+            Some(extend_weight)
         } else {
             None
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Approach<'a> {
+    src_pattern_index: NodeIndex,
+    target_pattern_index: NodeIndex,
+    appoach_index: EdgeIndex,
+    approach_weight: &'a ApproachWeight,
+}
+
+impl<'a> From<EdgeReference<'a, ApproachWeight>> for Approach<'a> {
+    fn from(edge_ref: EdgeReference<'a, ApproachWeight>) -> Self {
+        Approach {
+            src_pattern_index: edge_ref.source(),
+            target_pattern_index: edge_ref.target(),
+            appoach_index: edge_ref.id(),
+            approach_weight: edge_ref.weight(),
+        }
+    }
+}
+
+impl<'a> Approach<'a> {
+    pub fn get_src_pattern_index(&self) -> NodeIndex {
+        self.src_pattern_index
+    }
+
+    pub fn get_target_pattern_index(&self) -> NodeIndex {
+        self.target_pattern_index
+    }
+
+    pub fn get_approach_index(&self) -> EdgeIndex {
+        self.appoach_index
+    }
+
+    pub fn get_approach_weight(&self) -> &ApproachWeight {
+        self.approach_weight
     }
 }
 
@@ -170,26 +201,32 @@ pub struct Catalogue {
     pattern_locate_map: HashMap<Vec<u8>, NodeIndex>,
     /// The global encoder for the catalog
     encoder: Encoder,
-    // Store the extend steps already found between the src pattern and target pattern
-    // - Used to avoid add equivalent extend steps between two patterns
+    /// Store the extend steps already found between the src pattern and target pattern
+    /// - Used to avoid add equivalent extend steps between two patterns
     extend_step_comparator_map: HashMap<(Vec<u8>, Vec<u8>), BTreeSet<ExtendStepComparator>>,
-
-    entry_map: HashMap<PatternLabelId, NodeIndex>,
+    /// Those patterns with size 1 are the entries of catalogue
+    /// - Stores entries with their NodeIndex and PatternLabelId
+    entries: Vec<(NodeIndex, PatternLabelId)>,
 }
 
 impl Catalogue {
+    fn with_encoder(encoder: Encoder) -> Catalogue {
+        Catalogue {
+            store: Graph::new(),
+            pattern_locate_map: HashMap::new(),
+            encoder,
+            extend_step_comparator_map: HashMap::new(),
+            entries: vec![],
+        }
+    }
+
     /// Build a catalogue from a pattern meta with some limits
     /// It can be used to build the basic parts of catalog graph
     pub fn build_from_meta(
         pattern_meta: &PatternMeta, pattern_size_limit: usize, same_label_vertex_limit: usize,
     ) -> Catalogue {
-        let mut catalog = Catalogue {
-            store: Graph::new(),
-            pattern_locate_map: HashMap::new(),
-            encoder: Encoder::init_by_pattern_meta(pattern_meta, same_label_vertex_limit),
-            extend_step_comparator_map: HashMap::new(),
-            entry_map: HashMap::new(),
-        };
+        let mut catalog =
+            Catalogue::with_encoder(Encoder::init_by_pattern_meta(pattern_meta, same_label_vertex_limit));
         // Use BFS to generate the catalog graph
         let mut queue = VecDeque::new();
         // The one-vertex patterns are the starting points
@@ -197,7 +234,7 @@ impl Catalogue {
             let new_pattern = Pattern::from(PatternVertex::new(0, vertex_label));
             let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
             let new_pattern_index = catalog.store.add_node(PatternWeight {
-                code: new_pattern_code.clone(),
+                pattern: new_pattern.clone(),
                 count: 0,
                 best_approach: None,
             });
@@ -205,8 +242,8 @@ impl Catalogue {
                 .pattern_locate_map
                 .insert(new_pattern_code.clone(), new_pattern_index);
             catalog
-                .entry_map
-                .insert(vertex_label, new_pattern_index);
+                .entries
+                .push((new_pattern_index, vertex_label));
             queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
         }
         while let Some((relaxed_pattern, relaxed_pattern_code, relaxed_pattern_index)) = queue.pop_front() {
@@ -218,7 +255,6 @@ impl Catalogue {
             let extend_steps = relaxed_pattern.get_extend_steps(pattern_meta, same_label_vertex_limit);
             for extend_step in extend_steps.iter() {
                 // relaxed pattern + extend step to get new pattern
-                let extend_step_code: Vec<u8> = Cipher::encode_to(extend_step, &catalog.encoder);
                 let extend_step_comparator: ExtendStepComparator =
                     create_extend_step_comparator(extend_step, &relaxed_pattern);
                 let new_pattern = relaxed_pattern.extend(extend_step).unwrap();
@@ -231,7 +267,7 @@ impl Catalogue {
                     pattern_index
                 } else {
                     catalog.store.add_node(PatternWeight {
-                        code: new_pattern_code.clone(),
+                        pattern: new_pattern.clone(),
                         count: 0,
                         best_approach: None,
                     })
@@ -249,13 +285,13 @@ impl Catalogue {
                         relaxed_pattern_index,
                         new_pattern_index,
                         ApproachWeight::ExtendStep(ExtendWeight {
-                            code: extend_step_code.clone(),
+                            extend_step: extend_step.clone(),
                             target_vertex_rank: new_pattern
                                 .get_vertex_rank(new_pattern.get_max_vertex_id())
                                 .unwrap(),
-                            is_single_extend: extend_step.get_extend_edges_num() == 0,
                             count_sum: 0.0,
-                            counts: BinaryHeap::new(),
+                            count_min: 0.0,
+                            count_max: 0.0,
                         }),
                     );
                     if !catalog
@@ -276,13 +312,7 @@ impl Catalogue {
     /// Build a catalog from a pattern dedicated for its optimization
     pub fn build_from_pattern(pattern: &Pattern) -> Catalogue {
         // Empty catalog
-        let mut catalog = Catalogue {
-            store: Graph::new(),
-            pattern_locate_map: HashMap::new(),
-            encoder: Encoder::init_by_pattern(pattern, 4),
-            extend_step_comparator_map: HashMap::new(),
-            entry_map: HashMap::new(),
-        };
+        let mut catalog = Catalogue::with_encoder(Encoder::init_by_pattern(pattern, 4));
         // Update the empty catalog by the pattern to add necessary optimization info
         catalog.update_catalog_by_pattern(pattern);
         catalog
@@ -304,14 +334,14 @@ impl Catalogue {
                     *pattern_index
                 } else {
                     let pattern_index = self.store.add_node(PatternWeight {
-                        code: new_pattern_code.clone(),
+                        pattern: new_pattern.clone(),
                         count: 0,
                         best_approach: None,
                     });
                     self.pattern_locate_map
                         .insert(new_pattern_code.clone(), pattern_index);
-                    self.entry_map
-                        .insert(vertex.get_label(), pattern_index);
+                    self.entries
+                        .push((pattern_index, vertex.get_label()));
                     pattern_index
                 };
             queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
@@ -369,7 +399,6 @@ impl Catalogue {
                         .get_label();
                     // generate new extend step
                     let extend_step = ExtendStep::new(target_v_label, extend_edges);
-                    let extend_step_code: Vec<u8> = Cipher::encode_to(&extend_step, &self.encoder);
                     let extend_step_comparator: ExtendStepComparator =
                         create_extend_step_comparator(&extend_step, &relaxed_pattern);
                     // generate the new pattern with add_edges(extend edges)
@@ -387,7 +416,7 @@ impl Catalogue {
                             pattern_index
                         } else {
                             self.store.add_node(PatternWeight {
-                                code: new_pattern_code.clone(),
+                                pattern: new_pattern.clone(),
                                 count: 0,
                                 best_approach: None,
                             })
@@ -405,13 +434,13 @@ impl Catalogue {
                             relaxed_pattern_index,
                             new_pattern_index,
                             ApproachWeight::ExtendStep(ExtendWeight {
-                                code: extend_step_code,
+                                extend_step: extend_step.clone(),
                                 target_vertex_rank: new_pattern
                                     .get_vertex_rank(adj_vertex_id)
                                     .unwrap(),
-                                is_single_extend: extend_step.get_extend_edges_num() == 1,
                                 count_sum: 0.0,
-                                counts: BinaryHeap::new(),
+                                count_min: 0.0,
+                                count_max: 0.0,
                             }),
                         );
                         if !self
@@ -454,47 +483,25 @@ impl Catalogue {
         &self.encoder
     }
 
-    pub fn entries_iter(&self) -> DynIter<(PatternLabelId, NodeIndex)> {
-        Box::new(
-            self.entry_map
-                .iter()
-                .map(|(label, node_index)| (*label, *node_index)),
-        )
+    pub fn entries_iter(&self) -> DynIter<(NodeIndex, PatternLabelId)> {
+        Box::new(self.entries.iter().cloned())
     }
 
     /// Get a pattern's all out connection
-    pub fn pattern_out_approach_iter(
-        &self, pattern_index: NodeIndex,
-    ) -> DynIter<(NodeIndex, &PatternWeight, EdgeIndex, &ApproachWeight)> {
+    pub fn pattern_out_approaches_iter(&self, pattern_index: NodeIndex) -> DynIter<Approach> {
         Box::new(
             self.store
                 .edges_directed(pattern_index, Direction::Outgoing)
-                .map(move |edge| {
-                    (
-                        edge.target(),
-                        self.store.node_weight(edge.target()).unwrap(),
-                        edge.id(),
-                        edge.weight(),
-                    )
-                }),
+                .map(move |edge| Approach::from(edge)),
         )
     }
 
     /// Get a pattern's all incoming connection
-    pub fn pattern_in_approach_iter(
-        &self, pattern_index: NodeIndex,
-    ) -> DynIter<(NodeIndex, &PatternWeight, EdgeIndex, &ApproachWeight)> {
+    pub fn pattern_in_approaches_iter(&self, pattern_index: NodeIndex) -> DynIter<Approach> {
         Box::new(
             self.store
                 .edges_directed(pattern_index, Direction::Incoming)
-                .map(move |edge| {
-                    (
-                        edge.source(),
-                        self.store.node_weight(edge.source()).unwrap(),
-                        edge.id(),
-                        edge.weight(),
-                    )
-                }),
+                .map(move |edge| Approach::from(edge)),
         )
     }
 
@@ -504,14 +511,30 @@ impl Catalogue {
         }
     }
 
-    pub fn set_extend_count(&mut self, extend_index: EdgeIndex, extend_nums_counts: Vec<ExtendCount>) {
+    pub fn set_extend_count(
+        &mut self, extend_index: EdgeIndex, extend_nums_counts: HashMap<ExtendEdge, f64>,
+    ) {
         if let Some(approach_weight) = self.store.edge_weight_mut(extend_index) {
             if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
                 extend_weight.count_sum = 0.0;
-                extend_weight.counts.clear();
-                for extend_count in extend_nums_counts {
-                    extend_weight.count_sum += extend_count.count;
-                    extend_weight.counts.push(extend_count);
+                extend_weight.count_min = 0.0;
+                extend_weight.count_max = 0.0;
+                extend_weight
+                    .extend_step
+                    .sort_extend_edges(|extend_edge1, extend_edge2| {
+                        extend_nums_counts
+                            .get(extend_edge1)
+                            .partial_cmp(&extend_nums_counts.get(extend_edge2))
+                            .unwrap()
+                    });
+                for (_, count) in extend_nums_counts {
+                    extend_weight.count_sum += count;
+                    if count < extend_weight.count_min {
+                        extend_weight.count_min = count;
+                    }
+                    if count > extend_weight.count_max {
+                        extend_weight.count_max = count;
+                    }
                 }
             }
         }
@@ -545,7 +568,7 @@ impl Pattern {
             });
             let select_vertex_id = *all_vertex_ids.first().unwrap();
             let definite_extend_step =
-                DefiniteExtendStep::new_from_target_vertex_id(&trace_pattern, select_vertex_id).unwrap();
+                DefiniteExtendStep::from_target_pattern(&trace_pattern, select_vertex_id).unwrap();
             definite_extend_steps.push(definite_extend_step);
             trace_pattern.remove_vertex(select_vertex_id);
         }
@@ -566,75 +589,53 @@ impl Pattern {
                 .unwrap();
             let mut definite_extend_steps = vec![];
             while trace_pattern.get_vertices_num() > 1 {
-                let mut all_extends: Vec<(NodeIndex, &PatternWeight, &ApproachWeight)> = catalog
-                    .pattern_in_approach_iter(trace_pattern_index)
-                    .filter(|(_, _, _, edge_weight)| edge_weight.is_extend())
-                    .map(|(src_pattern_index, src_pattern_weight, _, approach_weight)| {
-                        (src_pattern_index, src_pattern_weight, approach_weight)
-                    })
+                let mut all_extend_approaches: Vec<Approach> = catalog
+                    .pattern_in_approaches_iter(trace_pattern_index)
+                    .filter(|apprach| apprach.get_approach_weight().is_extend())
                     .collect();
                 // use the extend step with the lowerst estimated cost
-                all_extends.sort_by(
-                    |&(_, pre_pattern_weight1, edge_weight1), &(_, pre_pattern_weight2, edge_weight2)| {
-                        if let (
-                            ApproachWeight::ExtendStep(extend_weight1),
-                            ApproachWeight::ExtendStep(extend_weight2),
-                        ) = (edge_weight1, edge_weight2)
-                        {
-                            let target_vertex1_has_predicate = trace_pattern
-                                .get_vertex_predicate(
-                                    trace_pattern
-                                        .get_vertex_from_rank(extend_weight1.target_vertex_rank)
-                                        .unwrap()
-                                        .get_id(),
-                                )
-                                .is_some();
-                            let target_vertex2_has_predicate = trace_pattern
-                                .get_vertex_predicate(
-                                    trace_pattern
-                                        .get_vertex_from_rank(extend_weight2.target_vertex_rank)
-                                        .unwrap()
-                                        .get_id(),
-                                )
-                                .is_some();
-                            if target_vertex1_has_predicate && !target_vertex2_has_predicate {
-                                return Ordering::Greater;
-                            } else if !target_vertex1_has_predicate && target_vertex2_has_predicate {
-                                return Ordering::Less;
-                            }
-                        }
-                        total_cost_estimate(
-                            ALPHA,
-                            BETA,
-                            pre_pattern_weight1,
-                            trace_pattern_weight,
-                            edge_weight1,
-                        )
-                        .cmp(&total_cost_estimate(
-                            ALPHA,
-                            BETA,
-                            pre_pattern_weight2,
-                            trace_pattern_weight,
-                            edge_weight2,
-                        ))
-                    },
-                );
-                let (pre_pattern_index, pre_pattern_weight, edge_weight) = all_extends[0];
+                sort_approaches(&mut all_extend_approaches, catalog, &trace_pattern, trace_pattern_weight);
+                let selected_approach = all_extend_approaches[0];
+                let selected_approach_weight = selected_approach.get_approach_weight();
+                let pre_pattern_index = selected_approach.get_src_pattern_index();
+                let pre_pattern_weight = catalog
+                    .get_pattern_weight(pre_pattern_index)
+                    .unwrap();
                 let target_vertex_id = trace_pattern
                     .get_vertex_from_rank(
-                        edge_weight
+                        selected_approach_weight
                             .get_extend_weight()
                             .unwrap()
-                            .target_vertex_rank,
+                            .get_target_vertex_rank(),
                     )
                     .unwrap()
                     .get_id();
-
-                let definite_extend_step =
-                    DefiniteExtendStep::new_from_target_vertex_id(&trace_pattern, target_vertex_id)
-                        .unwrap();
-                definite_extend_steps.push(definite_extend_step);
+                let extend_step = selected_approach_weight
+                    .get_extend_weight()
+                    .unwrap()
+                    .get_extend_step();
+                let edge_id_map = trace_pattern
+                    .adjacencies_iter(target_vertex_id)
+                    .map(|adjacency| {
+                        (
+                            (
+                                adjacency.get_adj_vertex().get_id(),
+                                adjacency.get_edge_label(),
+                                adjacency.get_direction().reverse(),
+                            ),
+                            adjacency.get_edge_id(),
+                        )
+                    })
+                    .collect();
                 trace_pattern.remove_vertex(target_vertex_id);
+                let definite_extend_step = DefiniteExtendStep::from_src_pattern(
+                    &trace_pattern,
+                    &extend_step,
+                    target_vertex_id,
+                    edge_id_map,
+                )
+                .unwrap();
+                definite_extend_steps.push(definite_extend_step);
                 trace_pattern_index = pre_pattern_index;
                 trace_pattern_weight = pre_pattern_weight;
             }
@@ -645,6 +646,48 @@ impl Pattern {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
     }
+}
+
+fn sort_approaches(
+    approaches: &mut Vec<Approach>, catalog: &Catalogue, pattern: &Pattern, pattern_weight: &PatternWeight,
+) {
+    approaches.sort_by(|approach1, approach2| {
+        let approach_weight1 = approach1.get_approach_weight();
+        let approach_weight2 = approach2.get_approach_weight();
+        if let (ApproachWeight::ExtendStep(extend_weight1), ApproachWeight::ExtendStep(extend_weight2)) =
+            (approach_weight1, approach_weight2)
+        {
+            let target_vertex1_has_predicate = pattern
+                .get_vertex_predicate(
+                    pattern
+                        .get_vertex_from_rank(extend_weight1.get_target_vertex_rank())
+                        .unwrap()
+                        .get_id(),
+                )
+                .is_some();
+            let target_vertex2_has_predicate = pattern
+                .get_vertex_predicate(
+                    pattern
+                        .get_vertex_from_rank(extend_weight2.get_target_vertex_rank())
+                        .unwrap()
+                        .get_id(),
+                )
+                .is_some();
+            if target_vertex1_has_predicate && !target_vertex2_has_predicate {
+                return Ordering::Greater;
+            } else if !target_vertex1_has_predicate && target_vertex2_has_predicate {
+                return Ordering::Less;
+            }
+        }
+        let pre_pattern_weight1 = catalog
+            .get_pattern_weight(approach1.get_src_pattern_index())
+            .unwrap();
+        let pre_pattern_weight2 = catalog
+            .get_pattern_weight(approach2.get_src_pattern_index())
+            .unwrap();
+        total_cost_estimate(ALPHA, BETA, pre_pattern_weight1, pattern_weight, approach_weight1)
+            .cmp(&total_cost_estimate(ALPHA, BETA, pre_pattern_weight2, pattern_weight, approach_weight2))
+    });
 }
 
 /// Build logical plan for extend based pattern match plan
@@ -769,15 +812,18 @@ fn total_cost_estimate(
 }
 
 fn f_cost_estimate(alpha: f64, pre_pattern_weight: &PatternWeight, extend_weight: &ExtendWeight) -> usize {
-    (alpha * (pre_pattern_weight.count as f64) * (extend_weight.count_sum as f64)) as usize
+    (alpha * (pre_pattern_weight.count as f64) * (extend_weight.count_sum)) as usize
 }
 
 fn i_cost_estimate(beta: f64, pre_pattern_weight: &PatternWeight, extend_weight: &ExtendWeight) -> usize {
-    if extend_weight.is_single_extend {
-        0
-    } else {
-        (beta * (pre_pattern_weight.count as f64) * (extend_weight.count_sum as f64)) as usize
-    }
+    (beta
+        * (pre_pattern_weight.count as f64)
+        * extend_weight.count_min.log2()
+        * extend_weight.count_max
+        * ((extend_weight
+            .get_extend_step()
+            .get_extend_edges_num()
+            - 1) as f64)) as usize
 }
 
 fn e_cost_estimate(pattern_weight: &PatternWeight) -> usize {

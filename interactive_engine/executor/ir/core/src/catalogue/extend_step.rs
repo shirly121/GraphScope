@@ -13,7 +13,8 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::VecDeque;
+use std::cmp::Ordering;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
@@ -23,7 +24,7 @@ use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct ExtendEdge {
     src_vertex_rank: PatternRankId,
     edge_label: PatternLabelId,
@@ -87,6 +88,13 @@ impl ExtendStep {
     pub fn get_extend_edges_num(&self) -> usize {
         self.extend_edges.len()
     }
+
+    pub(crate) fn sort_extend_edges<F>(&mut self, compare: F)
+    where
+        F: FnMut(&ExtendEdge, &ExtendEdge) -> Ordering,
+    {
+        self.extend_edges.sort_by(compare)
+    }
 }
 
 /// Given a DefiniteExtendEdge, we can uniquely locate an edge with dir in the pattern
@@ -115,19 +123,6 @@ pub struct DefiniteExtendStep {
     extend_edges: Vec<DefiniteExtendEdge>,
 }
 
-/// Initializer of DefiniteExtendStep
-impl DefiniteExtendStep {
-    pub fn new(
-        target_v_id: PatternId, target_v_label: PatternLabelId, extend_edges: Vec<DefiniteExtendEdge>,
-    ) -> DefiniteExtendStep {
-        DefiniteExtendStep {
-            target_vertex_id: target_v_id,
-            target_vertex_label: target_v_label,
-            extend_edges,
-        }
-    }
-}
-
 /// Transform a one-vertex pattern to DefiniteExtendStep
 /// It is usually to use such DefiniteExtendStep to generate Source operator
 impl TryFrom<Pattern> for DefiniteExtendStep {
@@ -152,10 +147,8 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
 }
 
 impl DefiniteExtendStep {
-    /// Given a vertex id, pick all its neiboring edges and vertices to generate a definite extend step
-    pub fn new_from_target_vertex_id(
-        target_pattern: &Pattern, target_vertex_id: PatternId,
-    ) -> Option<Self> {
+    /// Given a target pattern with a vertex id, pick all its neiboring edges and vertices to generate a definite extend step
+    pub fn from_target_pattern(target_pattern: &Pattern, target_vertex_id: PatternId) -> Option<Self> {
         if let Some(target_vertex) = target_pattern.get_vertex(target_vertex_id) {
             let target_vertex_label = target_vertex.get_label();
             let mut extend_edges = vec![];
@@ -179,34 +172,39 @@ impl DefiniteExtendStep {
                     ));
                 }
             }
-            Some(DefiniteExtendStep::new(target_vertex_id, target_vertex_label, extend_edges))
+            Some(DefiniteExtendStep { target_vertex_id, target_vertex_label, extend_edges })
         } else {
             None
         }
     }
 
-    pub fn new_from_extend_step(src_pattern: &Pattern, extend_step: &ExtendStep) -> Option<Self> {
+    pub fn from_src_pattern(
+        src_pattern: &Pattern, extend_step: &ExtendStep, target_vertex_id: PatternId,
+        edge_id_map: HashMap<(PatternId, PatternLabelId, PatternDirection), PatternId>,
+    ) -> Option<Self> {
         let mut definite_extend_edges = Vec::with_capacity(extend_step.get_extend_edges_num());
-        let vertex_id_to_assign = src_pattern.get_max_vertex_id() + 1;
-        let mut edge_id_to_assign = src_pattern.get_max_edge_id() + 1;
+        let vertex_id_to_assign = target_vertex_id;
         for extend_edge in extend_step.iter() {
             if let Some(src_vertex) = src_pattern.get_vertex_from_rank(extend_edge.get_src_vertex_rank()) {
+                let edge_id_to_assign = edge_id_map
+                    .get(&(src_vertex.get_id(), extend_edge.get_edge_label(), extend_edge.get_direction()))
+                    .cloned()
+                    .unwrap();
                 definite_extend_edges.push(DefiniteExtendEdge::new(
                     src_vertex.get_id(),
                     edge_id_to_assign,
                     extend_edge.get_edge_label(),
                     extend_edge.get_direction(),
                 ));
-                edge_id_to_assign += 1;
             } else {
                 return None;
             }
         }
-        Some(DefiniteExtendStep::new(
-            vertex_id_to_assign,
-            extend_step.get_target_vertex_label(),
-            definite_extend_edges,
-        ))
+        Some(DefiniteExtendStep {
+            target_vertex_id: vertex_id_to_assign,
+            target_vertex_label: extend_step.get_target_vertex_label(),
+            extend_edges: definite_extend_edges,
+        })
     }
 }
 

@@ -25,7 +25,7 @@ pub type PatternGroupId = u32;
 pub type PatternRankId = usize;
 pub type DynIter<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PatternDirection {
     Out = 0,
     In,

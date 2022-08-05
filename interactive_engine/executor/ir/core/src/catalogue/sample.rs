@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter::FromIterator;
 use std::path::Path;
 
-use crate::catalogue::catalog::{Catalogue, ExtendCount};
+use crate::catalogue::catalog::Catalogue;
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Pattern, PatternVertex};
 use crate::catalogue::{PatternId, PatternLabelId};
@@ -140,7 +140,7 @@ impl Catalogue {
         let mut pattern_counts_map = BTreeMap::new();
         let mut extend_counts_map = BTreeMap::new();
         let mut queue = VecDeque::new();
-        for (entry_label, entry_index) in self.entries_iter() {
+        for (entry_index, entry_label) in self.entries_iter() {
             let pattern = Pattern::from(PatternVertex::new(0, entry_label));
             let mut pattern_records = get_src_records_from_label(graph, entry_label);
             let pattern_count = pattern_records.len();
@@ -150,22 +150,22 @@ impl Catalogue {
         while let Some((pattern, pattern_index, pattern_count, pattern_records)) = queue.pop_front() {
             relaxed_patterns_indices.insert(pattern_index);
             pattern_counts_map.insert(pattern_index, pattern_count);
-            for (target_pattern_index, _, approach_index, approach_weight) in
-                self.pattern_out_approach_iter(pattern_index)
-            {
-                if let Some(extend_weight) = approach_weight.get_extend_weight() {
-                    let extend_step = extend_weight.get_extend_step(self.get_encoder());
+            for approach in self.pattern_out_approaches_iter(pattern_index) {
+                if let Some(extend_weight) = approach
+                    .get_approach_weight()
+                    .get_extend_weight()
+                {
+                    let extend_step = extend_weight.get_extend_step();
                     let target_pattern = pattern.extend(&extend_step).unwrap();
-                    let mut extend_nums_counts: Vec<ExtendCount> = extend_step
-                        .iter()
-                        .map(|extend_edge| ExtendCount { count: 0.0, extend_edge: extend_edge.clone() })
-                        .collect();
+                    let mut extend_nums_counts = HashMap::new();
                     let mut target_pattern_records = Vec::new();
                     for pattern_record in pattern_records.iter() {
                         let adj_vertices_sets =
                             get_adj_vertices_sets(graph, &pattern, &extend_step, pattern_record).unwrap();
-                        for (i, (_, adj_vertices_set)) in adj_vertices_sets.iter().enumerate() {
-                            extend_nums_counts[i].count += adj_vertices_set.len() as f64;
+                        for (extend_edge, adj_vertices_set) in adj_vertices_sets.iter() {
+                            *extend_nums_counts
+                                .entry(extend_edge.clone())
+                                .or_insert(0.0) += adj_vertices_set.len() as f64;
                         }
                         let adj_vertices_set = intersect_adj_vertices_sets(adj_vertices_sets);
                         target_pattern_records.extend(adj_vertices_set.iter().map(|&adj_vertex_id| {
@@ -175,8 +175,8 @@ impl Catalogue {
                         }));
                     }
                     if pattern_records.len() != 0 {
-                        for i in 0..extend_nums_counts.len() {
-                            extend_nums_counts[i].count /= pattern_records.len() as f64
+                        for (_, count) in extend_nums_counts.iter_mut() {
+                            *count /= pattern_records.len() as f64
                         }
                     }
                     let target_pattern_count = if pattern_records.len() == 0 {
@@ -187,7 +187,9 @@ impl Catalogue {
                             as usize
                     };
                     target_pattern_records = sample_records(target_pattern_records, rate, limit);
-                    extend_counts_map.insert(approach_index, extend_nums_counts);
+                    let apprach_index = approach.get_approach_index();
+                    let target_pattern_index = approach.get_target_pattern_index();
+                    extend_counts_map.insert(apprach_index, extend_nums_counts);
                     if !relaxed_patterns_indices.contains(&target_pattern_index) {
                         queue.push_back((
                             target_pattern,
@@ -214,7 +216,7 @@ impl Catalogue {
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::catalogue::pattern::PatternEdge;
+    use crate::catalogue::pattern::{PatternEdge, PatternVertex};
     use crate::catalogue::sample::*;
     use crate::catalogue::PatternDirection;
 
