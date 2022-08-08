@@ -80,7 +80,7 @@ gae:
 	mkdir -p $(WORKING_DIR)/analytical_engine/build
 	cd $(WORKING_DIR)/analytical_engine/build && \
 	cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX) -DNETWORKX=$(NETWORKX) -DBUILD_TESTS=${BUILD_TEST} -DENABLE_JAVA_SDK=${ENABLE_JAVA_SDK} .. && \
-	make -j`nproc` && \
+	make -j1 && \
 	sudo make install && \
 	sudo cp -r $(WORKING_DIR)/k8s/kube_ssh $(INSTALL_PREFIX)/bin/
 ifneq ($(INSTALL_PREFIX), /usr/local)
@@ -111,19 +111,10 @@ endif
 gie:
 	# frontend/executor
 	cd $(WORKING_DIR)/interactive_engine && \
-	mvn clean package -DskipTests -Pjava-release --quiet
-	# executor
-	cd $(WORKING_DIR)/interactive_engine/executor && \
-	rustup component add rustfmt && \
-	if [ x"release" = x"${BUILD_TYPE}" ]; then \
-		cargo build --workspace --release; \
-	else \
-		cargo build --workspace; \
-	fi
+	mvn clean package -DskipTests -Drust.compile.mode=$(BUILD_TYPE) -P graphscope,graphscope-assembly --quiet
 	# install
 	mkdir -p $(WORKING_DIR)/.install_prefix && \
-	tar -xf $(WORKING_DIR)/interactive_engine/assembly/target/maxgraph-assembly-0.0.1-SNAPSHOT.tar.gz --strip-components 1 -C $(WORKING_DIR)/.install_prefix && \
-	cp $(WORKING_DIR)/interactive_engine/executor/target/$(BUILD_TYPE)/gaia_executor $(WORKING_DIR)/.install_prefix/bin/gaia_executor && \
+	tar -xf $(WORKING_DIR)/interactive_engine/assembly/target/graphscope.tar.gz --strip-components 1 -C $(WORKING_DIR)/.install_prefix && \
 	sudo cp -r $(WORKING_DIR)/.install_prefix/* $(INSTALL_PREFIX) && \
 	rm -fr $(WORKING_DIR)/.install_prefix
 
