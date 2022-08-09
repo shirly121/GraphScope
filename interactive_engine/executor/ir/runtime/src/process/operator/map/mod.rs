@@ -50,7 +50,7 @@ impl FilterMapFuncGen for algebra_pb::logical_plan::operator::Opr {
             algebra_pb::logical_plan::operator::Opr::PathStart(path_start) => path_start.gen_filter_map(),
             algebra_pb::logical_plan::operator::Opr::Project(project) => project.gen_filter_map(),
             algebra_pb::logical_plan::operator::Opr::Auxilia(auxilia) => auxilia.gen_filter_map(),
-
+            algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_filter_map(),
             _ => Err(ParsePbError::from("algebra_pb op is not a map"))?,
         }
     }

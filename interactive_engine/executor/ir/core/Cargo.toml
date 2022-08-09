@@ -25,6 +25,7 @@ rand = "0.8.5"
 petgraph = "0.6.2"
 bimap = "0.6.2"
 crossbeam-channel = "0.4.4"
+graph_store = { path = "../../store/exp_store" }
 
 [features]
 default = []

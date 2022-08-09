@@ -35,9 +35,7 @@ impl FlatMapFuncGen for algebra_pb::logical_plan::operator::Opr {
         match self {
             algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
             algebra_pb::logical_plan::operator::Opr::Vertex(get_vertex) => get_vertex.gen_flat_map(),
-            algebra_pb::logical_plan::operator::Opr::Unfold(_unfold) => {
-                Err(FnGenError::unsupported_error("unfold is not supported yet"))
-            }
+            algebra_pb::logical_plan::operator::Opr::Unfold(unfold) => unfold.gen_flat_map(),
             _ => Err(ParsePbError::from("algebra_pb op is not a flatmap"))?,
         }
     }

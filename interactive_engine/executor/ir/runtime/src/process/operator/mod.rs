@@ -71,10 +71,6 @@ impl TagKey {
         } else {
             Ok((CommonObject::None).into())
         }
->>>>>>> master:interactive_engine/executor/ir/runtime/src/process/operator/mod.rs
-        } else {
-            Ok((CommonObject::None).into())
-        }
     }
 
     fn get_key(&self, entry: &Arc<Entry>, prop_key: &PropKey) -> FnExecResult<Entry> {

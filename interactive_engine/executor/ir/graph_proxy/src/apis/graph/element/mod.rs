@@ -123,7 +123,7 @@ impl From<GraphPath> for GraphObject {
 
 impl From<ID> for GraphObject {
     fn from(id: ID) -> Self {
-        GraphObject::V(Vertex::new(id, None, DynDetails::new(DefaultDetails::default())))
+        GraphObject::V(Vertex::new(id, None, DynDetails::default()))
     }
 }
 

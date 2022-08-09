@@ -49,10 +49,13 @@ mod test {
 
     fn source_gen_with_scan_opr(scan_opr_pb: pb::Scan) -> Box<dyn Iterator<Item = Record> + Send> {
         create_exp_store();
-        let mut source_opr_pb =
-            pb::logical_plan::Operator { opr: Some(pb::logical_plan::operator::Opr::Scan(scan_opr_pb)) };
-        let source =
-            SourceOperator::new(source_opr_pb, 1, 1, Arc::new(SimplePartition { num_servers: 1 })).unwrap();
+        let source = SourceOperator::new(
+            pb::logical_plan::operator::Opr::Scan(scan_opr_pb),
+            1,
+            1,
+            Arc::new(SimplePartition { num_servers: 1 }),
+        )
+        .unwrap();
         source.gen_source(0).unwrap()
     }
 

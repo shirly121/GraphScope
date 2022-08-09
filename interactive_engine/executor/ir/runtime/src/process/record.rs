@@ -114,6 +114,7 @@ impl Entry {
             _ => None,
         }
     }
+
     pub fn as_common_object(&self) -> Option<&CommonObject> {
         match self {
             Entry::Element(record_element) => record_element.as_common_object(),
@@ -361,14 +362,14 @@ impl<E> RecordExpandIter<E> {
     }
 }
 
-impl<E: Into<Entry>> Iterator for RecordExpandIter<E> {
+impl<E: Into<GraphObject>> Iterator for RecordExpandIter<E> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = self.origin.clone();
         match self.children.next() {
             Some(elem) => {
-                record.append(elem, self.tag.clone());
+                record.append(elem.into(), self.tag.clone());
                 Some(record)
             }
             None => None,
@@ -388,7 +389,7 @@ impl<E> RecordPathExpandIter<E> {
     }
 }
 
-impl<E: Into<Entry>> Iterator for RecordPathExpandIter<E> {
+impl<E: Into<GraphObject>> Iterator for RecordPathExpandIter<E> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -396,19 +397,19 @@ impl<E: Into<Entry>> Iterator for RecordPathExpandIter<E> {
         let mut curr_path = self.curr_path.clone();
         match self.children.next() {
             Some(elem) => {
-                let entry = elem.into();
-                match entry {
-                    Entry::Element(RecordElement::OnGraph(GraphObject::V(v))) => {
+                let graph_obj = elem.into();
+                match graph_obj {
+                    GraphObject::V(v) => {
                         curr_path.append(v);
                         record.append(curr_path, None);
                         Some(record)
                     }
-                    Entry::Element(RecordElement::OnGraph(GraphObject::E(e))) => {
+                    GraphObject::E(e) => {
                         curr_path.append(e);
                         record.append(curr_path, None);
                         Some(record)
                     }
-                    _ => None,
+                    GraphObject::P(_) => None,
                 }
             }
             None => None,

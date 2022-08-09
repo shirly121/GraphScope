@@ -201,6 +201,7 @@ fn clone_node(node: NodeType) -> Node {
 
     clone_node
 }
+
 // Implement some private functions
 #[allow(dead_code)]
 impl LogicalPlan {

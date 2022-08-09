@@ -246,6 +246,7 @@ impl Schema {
     ) -> (BTreeMap<String, (KeyType, i32)>, BTreeMap<KeyId, Vec<(LabelMeta, LabelMeta)>>) {
         (self.table_name_to_id.clone(), self.relation_bound_labels.clone())
     }
+
     /// Check whether a given table contains a given column as a primary key.
     /// Also return the number of primary keys of the given table.
     pub fn check_primary_key(&self, table: &str, col: &str) -> (bool, usize) {
