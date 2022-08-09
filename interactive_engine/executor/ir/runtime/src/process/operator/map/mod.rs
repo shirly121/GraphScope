@@ -25,6 +25,7 @@ use pegasus::api::function::{FilterMapFunction, MapFunction};
 
 use crate::error::FnGenResult;
 use crate::process::record::Record;
+pub use expand_intersect::Intersection;
 
 pub trait MapFuncGen {
     fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record, Record>>>;

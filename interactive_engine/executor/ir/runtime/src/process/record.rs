@@ -19,6 +19,7 @@ use std::hash::Hash;
 use std::ops::Add;
 use std::sync::Arc;
 
+use crate::process::operator::map::Intersection;
 use dyn_type::{BorrowObject, Object};
 use graph_proxy::apis::{
     DynDetails, Edge, Element, GraphElement, GraphObject, GraphPath, Vertex, VertexOrEdge,
@@ -91,6 +92,7 @@ impl RecordElement {
 pub enum Entry {
     Element(RecordElement),
     Collection(Vec<RecordElement>),
+    Intersection(Intersection),
 }
 
 impl Entry {
@@ -274,6 +276,12 @@ impl Into<Entry> for Vec<RecordElement> {
     }
 }
 
+impl Into<Entry> for Intersection {
+    fn into(self) -> Entry {
+        Entry::Intersection(self)
+    }
+}
+
 impl Context<RecordElement> for Record {
     fn get(&self, tag: Option<&NameOrId>) -> Option<&RecordElement> {
         let tag = if let Some(tag) = tag {
@@ -289,6 +297,7 @@ impl Context<RecordElement> for Record {
             .map(|entry| match entry.as_ref() {
                 Entry::Element(element) => Some(element),
                 Entry::Collection(_) => None,
+                Entry::Intersection(_) => None,
             })
             .unwrap_or(None)
     }
@@ -498,6 +507,10 @@ impl Encode for Entry {
                 writer.write_u8(1)?;
                 collection.write_to(writer)?
             }
+            Entry::Intersection(intersection) => {
+                writer.write_u8(2)?;
+                intersection.write_to(writer)?
+            }
         }
         Ok(())
     }
@@ -514,6 +527,10 @@ impl Decode for Entry {
             1 => {
                 let collection = <Vec<RecordElement>>::read_from(reader)?;
                 Ok(Entry::Collection(collection))
+            }
+            2 => {
+                let intersection = <Intersection>::read_from(reader)?;
+                Ok(Entry::Intersection(intersection))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "unreachable")),
         }

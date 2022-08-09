@@ -109,6 +109,9 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
                         Entry::Collection(_) => {
                             Err(FnExecError::unsupported_error("fold collections in EntryAccumulator"))
                         }
+                        Entry::Intersection(_) => {
+                            Err(FnExecError::unsupported_error("fold intersections in EntryAccumulator"))
+                        }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Entry::Collection(list_entry))
@@ -127,6 +130,9 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
                         Entry::Element(e) => Ok(e.clone()),
                         Entry::Collection(_) => Err(FnExecError::unsupported_error(
                             "fold collections as set in EntryAccumulator",
+                        )),
+                        Entry::Intersection(_) => Err(FnExecError::unsupported_error(
+                            "fold intersections as set in EntryAccumulator",
                         )),
                     })
                     .collect::<Result<Vec<_>, _>>()?;

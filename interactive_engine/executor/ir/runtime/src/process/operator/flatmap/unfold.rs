@@ -72,6 +72,15 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
                     }
                     Ok(Box::new(res.into_iter()))
                 }
+                Entry::Intersection(intersection) => {
+                    let mut res = Vec::with_capacity(intersection.len());
+                    for item in intersection.iter() {
+                        let mut new_entry = input.clone();
+                        new_entry.append(item.clone(), self.alias);
+                        res.push(new_entry);
+                    }
+                    Ok(Box::new(res.into_iter()))
+                }
             }
         } else {
             Err(FnExecError::unexpected_data_error(&format!(

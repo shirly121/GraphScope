@@ -57,6 +57,16 @@ impl RecordSinkEncoder {
                     collection: collection_pb,
                 }))
             }
+            Entry::Intersection(intersection) => {
+                let mut collection_pb = Vec::with_capacity(intersection.len());
+                for element in intersection.iter() {
+                    let element_pb = self.element_to_pb(element);
+                    collection_pb.push(element_pb);
+                }
+                Some(result_pb::entry::Inner::Collection(result_pb::Collection {
+                    collection: collection_pb,
+                }))
+            }
         };
         result_pb::Entry { inner }
     }

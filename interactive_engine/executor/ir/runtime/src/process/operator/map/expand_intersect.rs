@@ -13,15 +13,17 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use graph_proxy::apis::graph::element::{Element, GraphElement, GraphObject};
+use graph_proxy::apis::graph::element::{GraphElement, GraphObject};
 use graph_proxy::apis::{Direction, DynDetails, QueryParams, Statement, Vertex, ID};
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 use ir_common::KeyId;
-use pegasus::api::function::{FilterMapFunction, FnResult};
+use pegasus::api::function::{DynIter, FilterMapFunction, FnResult};
+use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
@@ -37,68 +39,82 @@ struct ExpandOrIntersect<E: Into<GraphObject>> {
     stmt: Box<dyn Statement<ID, E>>,
 }
 
-fn binary_search(prober: &Vec<RecordElement>, len: usize, key: ID) -> FnResult<Option<usize>> {
-    let mut low = 0;
-    let mut high = len - 1;
-    while low != high {
-        let mid = (low + high) >> 1;
-        let ele = prober[mid]
-            .as_graph_element()
-            .ok_or(FnExecError::UnExpectedData(
-                "the element to process in `ExpandOrIntersect` is not `GraphElement`".to_string(),
-            ))?
-            .id();
-        if ele < key {
-            low = mid + 1;
-        } else {
-            high = mid;
+#[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
+pub struct Intersection {
+    id_record_count_map: BTreeMap<ID, (RecordElement, u64)>,
+}
+
+impl Intersection {
+    pub fn from_iter<I: Iterator<Item = Vertex>>(iter: I) -> Intersection {
+        let mut id_record_count_map = BTreeMap::new();
+        for vertex in iter {
+            let vertex_id = vertex.id();
+            id_record_count_map
+                .entry(vertex_id)
+                .or_insert((RecordElement::OnGraph(vertex.into()), 0))
+                .1 += 1;
+        }
+        Intersection { id_record_count_map }
+    }
+
+    pub fn intersect(&mut self, seeker: &BTreeMap<ID, u64>) {
+        let mut records_to_remove = Vec::with_capacity(self.id_record_count_map.len());
+        for (record_id, (_, count)) in self.id_record_count_map.iter_mut() {
+            if let Some(seeker_count) = seeker.get(record_id) {
+                *count *= *seeker_count;
+            } else {
+                records_to_remove.push(*record_id);
+            }
+        }
+        for record_to_remove in records_to_remove {
+            self.id_record_count_map
+                .remove(&record_to_remove);
         }
     }
-    let ele = prober[low]
-        .as_graph_element()
-        .ok_or(FnExecError::UnExpectedData(
-            "the element to process in `ExpandOrIntersect` is not `GraphElement`".to_string(),
-        ))?
-        .id();
-    if ele == key {
-        Ok(Some(low))
-    } else {
-        Ok(None)
+
+    pub fn is_empty(&self) -> bool {
+        self.id_record_count_map.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        let mut len = 0;
+        for (_, &(_, count)) in self.id_record_count_map.iter() {
+            len += count;
+        }
+        len as usize
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RecordElement> {
+        self.id_record_count_map
+            .iter()
+            .flat_map(move |(_, (record, count))| std::iter::repeat(record).take(*count as usize))
     }
 }
 
-fn do_intersection<E: Into<GraphObject> + 'static, Iter: Iterator<Item = E>>(
-    prober: &mut Vec<RecordElement>, seeker: Iter,
-) -> FnResult<()> {
-    let len = prober.len();
-    let mut s = bit_set::BitSet::with_capacity(len);
-    for item in seeker {
-        let graph_obj_id = item.into().id();
-        if let Ok(Some(idx)) = binary_search(prober, len, graph_obj_id) {
-            s.insert(idx);
-            for i in idx + 1..len {
-                let ele = prober[i]
-                    .as_graph_element()
-                    .ok_or(FnExecError::UnExpectedData(
-                        "the element to process in `ExpandOrIntersect` is not `GraphElement`".to_string(),
-                    ))?
-                    .id();
-                if ele != graph_obj_id {
-                    break;
-                } else {
-                    s.insert(i);
-                }
-            }
-        }
+impl IntoIterator for Intersection {
+    type Item = RecordElement;
+    type IntoIter = DynIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        Box::new(
+            self.id_record_count_map
+                .into_iter()
+                .flat_map(move |(_, (record, count))| std::iter::repeat(record).take(count as usize)),
+        )
     }
-    let mut idx = 0;
-    for i in s.iter() {
-        prober.swap(idx, i);
-        idx += 1;
-    }
-    prober.drain(idx..);
+}
 
-    Ok(())
+impl Encode for Intersection {
+    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
+        self.id_record_count_map.write_to(writer)?;
+        Ok(())
+    }
+}
+
+impl Decode for Intersection {
+    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
+        let id_record_count_map = <BTreeMap<ID, (RecordElement, u64)>>::read_from(reader)?;
+        Ok(Intersection { id_record_count_map })
+    }
 }
 
 impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
@@ -124,12 +140,19 @@ impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for Expan
                 // the case of expansion and intersection
                 match pre_entry {
                     Entry::Element(e) => Err(FnExecError::unexpected_data_error(&format!(
-                        "entry {:?} is not a collection in ExpandOrIntersect",
+                        "entry {:?} is not a intersection in ExpandOrIntersect",
                         e
                     )))?,
-                    Entry::Collection(pre_collection) => {
-                        do_intersection(pre_collection, iter)?;
-                        if pre_collection.is_empty() {
+                    Entry::Collection(pre_collection) => Err(FnExecError::unexpected_data_error(
+                        &format!("entry {:?} is not a intersection in ExpandOrIntersect", pre_collection),
+                    ))?,
+                    Entry::Intersection(pre_intersection) => {
+                        let mut seeker = BTreeMap::new();
+                        for v in iter {
+                            *seeker.entry(v.id()).or_default() += 1;
+                        }
+                        pre_intersection.intersect(&seeker);
+                        if pre_intersection.is_empty() {
                             Ok(None)
                         } else {
                             Ok(Some(input))
@@ -138,21 +161,14 @@ impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for Expan
                 }
             } else {
                 // the case of expansion only
-                let mut neighbors_collection: Vec<RecordElement> = iter
-                    .map(|e| RecordElement::OnGraph(e.into()))
-                    .collect();
-                neighbors_collection.sort_by(|r1, r2| {
-                    r1.as_graph_element()
-                        .unwrap()
-                        .id()
-                        .cmp(&r2.as_graph_element().unwrap().id())
-                });
-                if neighbors_collection.is_empty() {
+                let neighbors_intersection = Intersection::from_iter(iter);
+                if neighbors_intersection.is_empty() {
                     Ok(None)
                 } else {
                     // append columns without changing head
                     let columns = input.get_columns_mut();
-                    columns.insert(self.edge_or_end_v_tag as usize, Arc::new(neighbors_collection.into()));
+                    columns
+                        .insert(self.edge_or_end_v_tag as usize, Arc::new(neighbors_intersection.into()));
                     Ok(Some(input))
                 }
             }
@@ -205,162 +221,195 @@ impl FilterMapFuncGen for algebra_pb::EdgeExpand {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::FromIterator;
+
     use graph_proxy::apis::graph::element::Element;
     use graph_proxy::apis::ID;
 
-    use super::{do_intersection, RecordElement};
+    use super::{BTreeMap, Intersection, RecordElement};
 
     #[test]
     fn intersect_test_01() {
-        let mut pre_collection = vec![1, 2, 3]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![5, 4, 3, 2, 1];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
-        assert_eq!(
-            pre_collection
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                vec![1, 2, 3]
+                    .into_iter()
+                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter(
+            vec![1, 2, 3, 4, 5]
                 .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+                .map(|id| (id, 1)),
+        );
+        intersection.intersect(&seeker);
+        assert_eq!(
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
             vec![1, 2, 3]
-        );
+        )
     }
 
     #[test]
     fn intersect_test_02() {
-        let mut pre_collection = vec![1, 2, 3, 4, 5]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![3, 2, 1];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                vec![1, 2, 3, 4, 5]
+                    .into_iter()
+                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter(vec![3, 2, 1].into_iter().map(|id| (id, 1)));
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
             vec![1, 2, 3]
-        );
+        )
     }
 
     #[test]
     fn intersect_test_03() {
-        let mut pre_collection = vec![1, 2, 3, 4, 5]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![9, 7, 5, 3, 1];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
-        assert_eq!(
-            pre_collection
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                vec![1, 2, 3, 4, 5]
+                    .into_iter()
+                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter(
+            vec![9, 7, 5, 3, 1]
                 .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+                .map(|id| (id, 1)),
+        );
+        intersection.intersect(&seeker);
+        assert_eq!(
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
             vec![1, 3, 5]
-        );
+        )
     }
 
     #[test]
     fn intersect_test_04() {
-        let mut pre_collection = vec![1, 2, 3, 4, 5]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![9, 8, 7, 6];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                vec![1, 2, 3, 4, 5]
+                    .into_iter()
+                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter(vec![9, 8, 7, 6].into_iter().map(|id| (id, 1)));
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
             Vec::<ID>::new()
-        );
+        )
     }
 
     #[test]
     fn intersect_test_05() {
-        let mut pre_collection = vec![1, 1, 2, 3, 4, 5]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![1, 2, 3];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                [(1, 2), (2, 1), (3, 1), (4, 1), (5, 1)]
+                    .map(|(id, count)| (id, (RecordElement::OnGraph(id.into()), count))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter(vec![1, 2, 3].into_iter().map(|id| (id, 1)));
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
             vec![1, 1, 2, 3]
-        );
+        )
     }
 
     #[test]
     fn intersect_test_06() {
-        let mut pre_collection = vec![1, 2, 3]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![1, 1, 2, 3, 4, 5];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                vec![1, 2, 3]
+                    .into_iter()
+                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter([(1, 2), (2, 1), (3, 1), (4, 1), (5, 1)]);
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
-            vec![1, 2, 3]
-        );
+            vec![1, 1, 2, 3]
+        )
     }
 
     #[test]
     fn intersect_test_07() {
-        // The duplication will be removed
-        let mut pre_collection = vec![1, 1, 2, 2, 3, 3]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![1, 2, 3];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                [(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)]
+                    .map(|(id, count)| (id, (RecordElement::OnGraph(id.into()), count))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter(vec![1, 2, 3].into_iter().map(|id| (id, 1)));
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
             vec![1, 1, 2, 2, 3, 3]
-        );
+        )
     }
 
     #[test]
     fn intersect_test_08() {
-        let mut pre_collection = vec![1, 2, 3]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![1, 1, 2, 2, 3, 3];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                vec![1, 2, 3]
+                    .into_iter()
+                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter([(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)]);
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
-            vec![1, 2, 3]
-        );
+            vec![1, 1, 2, 2, 3, 3]
+        )
     }
 
     #[test]
     fn intersect_test_09() {
-        let mut pre_collection = vec![1, 1, 2, 2, 3, 3]
-            .into_iter()
-            .map(|id| RecordElement::OnGraph(id.into()))
-            .collect();
-        let curr_collection = vec![1, 1, 2, 2, 3, 3];
-        do_intersection(&mut pre_collection, curr_collection.into_iter()).unwrap();
+        let mut intersection = Intersection {
+            id_record_count_map: BTreeMap::from_iter(
+                [(1, 2), (2, 2), (3, 2)]
+                    .map(|(id, count)| (id, (RecordElement::OnGraph(id.into()), count))),
+            ),
+        };
+        let seeker = BTreeMap::from_iter([(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)]);
+        intersection.intersect(&seeker);
         assert_eq!(
-            pre_collection
-                .into_iter()
-                .map(|r| r.as_graph_element().unwrap().id())
+            intersection
+                .iter()
+                .map(|record| record.as_graph_element().unwrap().id())
                 .collect::<Vec<ID>>(),
-            vec![1, 1, 2, 2, 3, 3]
-        );
+            vec![1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+        )
     }
 }
