@@ -818,8 +818,8 @@ fn f_cost_estimate(alpha: f64, pre_pattern_weight: &PatternWeight, extend_weight
 fn i_cost_estimate(beta: f64, pre_pattern_weight: &PatternWeight, extend_weight: &ExtendWeight) -> usize {
     (beta
         * (pre_pattern_weight.count as f64)
-        * extend_weight.count_min.log2()
-        * extend_weight.count_max
+        * extend_weight.count_max.log2()
+        * extend_weight.count_min
         * ((extend_weight
             .get_extend_step()
             .get_extend_edges_num()
