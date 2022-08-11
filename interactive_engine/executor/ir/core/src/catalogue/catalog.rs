@@ -15,7 +15,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, VecDeque};
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
@@ -479,6 +479,10 @@ impl Catalogue {
         self.store.node_weight(pattern_index)
     }
 
+    pub fn get_approach_weight(&self, approach_index: EdgeIndex) -> Option<&ApproachWeight> {
+        self.store.edge_weight(approach_index)
+    }
+
     pub fn get_encoder(&self) -> &Encoder {
         &self.encoder
     }
@@ -646,6 +650,118 @@ impl Pattern {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
     }
+}
+
+fn get_optimized_match_plan_recursively(
+    catalog: &Catalogue, pattern_index: NodeIndex, mut pattern: Pattern,
+    memory_map: &mut HashMap<NodeIndex, (Vec<DefiniteExtendStep>, usize)>,
+) -> (Vec<DefiniteExtendStep>, usize) {
+    let pattern_weight = catalog
+        .get_pattern_weight(pattern_index)
+        .unwrap();
+    if let Some(result) = memory_map.get(&pattern_index) {
+        return result.clone();
+    } else if pattern.get_vertices_num() == 1 {
+        let src_definite_extend_step = DefiniteExtendStep::try_from(pattern).unwrap();
+        let cost = pattern_weight.get_count();
+        return (vec![src_definite_extend_step], cost);
+    } else if let Some(best_approach) = pattern_weight.get_best_approach() {
+        let best_approach_weight = catalog
+            .get_approach_weight(best_approach)
+            .unwrap();
+        let pre_pattern_index = catalog
+            .store
+            .edge_endpoints(best_approach)
+            .unwrap()
+            .0;
+        let pre_pattern_weight = catalog
+            .get_pattern_weight(pre_pattern_index)
+            .unwrap();
+        let target_vertex_id = pattern
+            .get_vertex_from_rank(
+                best_approach_weight
+                    .get_extend_weight()
+                    .unwrap()
+                    .get_target_vertex_rank(),
+            )
+            .unwrap()
+            .get_id();
+        let extend_step = best_approach_weight
+            .get_extend_weight()
+            .unwrap()
+            .get_extend_step();
+        let edge_id_map = pattern
+            .adjacencies_iter(target_vertex_id)
+            .map(|adjacency| {
+                (
+                    (
+                        adjacency.get_adj_vertex().get_id(),
+                        adjacency.get_edge_label(),
+                        adjacency.get_direction().reverse(),
+                    ),
+                    adjacency.get_edge_id(),
+                )
+            })
+            .collect();
+        pattern.remove_vertex(target_vertex_id);
+        let definite_extend_step =
+            DefiniteExtendStep::from_src_pattern(&pattern, &extend_step, target_vertex_id, edge_id_map)
+                .unwrap();
+        let (mut pre_definite_extend_steps, mut cost) =
+            get_optimized_match_plan_recursively(catalog, pre_pattern_index, pattern, memory_map);
+        pre_definite_extend_steps.push(definite_extend_step);
+        let pattern_weight = catalog
+            .get_pattern_weight(pattern_index)
+            .unwrap();
+        cost += total_cost_estimate(ALPHA, BETA, pre_pattern_weight, pattern_weight, best_approach_weight);
+        return (pre_definite_extend_steps, cost);
+    } else {
+        for approach in catalog.pattern_in_approaches_iter(pattern_index) {
+            let appraoch_weight = approach.get_approach_weight();
+            let pre_pattern_index = approach.get_src_pattern_index();
+            let pre_pattern_weight = catalog
+                .get_pattern_weight(pre_pattern_index)
+                .unwrap();
+            let target_vertex_id = pattern
+                .get_vertex_from_rank(
+                    appraoch_weight
+                        .get_extend_weight()
+                        .unwrap()
+                        .get_target_vertex_rank(),
+                )
+                .unwrap()
+                .get_id();
+            let extend_step = appraoch_weight
+                .get_extend_weight()
+                .unwrap()
+                .get_extend_step();
+            let edge_id_map = pattern
+                .adjacencies_iter(target_vertex_id)
+                .map(|adjacency| {
+                    (
+                        (
+                            adjacency.get_adj_vertex().get_id(),
+                            adjacency.get_edge_label(),
+                            adjacency.get_direction().reverse(),
+                        ),
+                        adjacency.get_edge_id(),
+                    )
+                })
+                .collect();
+            let mut pattern_clone = pattern.clone();
+            pattern_clone.remove_vertex(target_vertex_id);
+            let definite_extend_step = DefiniteExtendStep::from_src_pattern(
+                &pattern_clone,
+                &extend_step,
+                target_vertex_id,
+                edge_id_map,
+            )
+            .unwrap();
+            let (mut pre_definite_extend_steps, mut cost) =
+                get_optimized_match_plan_recursively(catalog, pre_pattern_index, pattern_clone, memory_map);
+        }
+    }
+    (vec![], 0)
 }
 
 fn sort_approaches(
