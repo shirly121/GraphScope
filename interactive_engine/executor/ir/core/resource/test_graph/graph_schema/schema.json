@@ -1,41 +1,17 @@
 {
   "vertex_type_map": {
+    "TICKET": 3,
     "COACH": 0,
-    "FAN": 2,
     "PLAYER": 1,
-    "TICKET": 3
+    "FAN": 2
   },
   "edge_type_map": {
-    "BUY": 2,
     "LOVEDBY": 1,
-    "GUIDE": 0
+    "GUIDE": 0,
+    "BUY": 2
   },
   "vertex_prop": {
     "COACH": [
-      [
-        "id",
-        "ID"
-      ],
-      [
-        "name",
-        "String"
-      ],
-      [
-        "age",
-        "Integer"
-      ]
-    ],
-    "TICKET": [
-      [
-        "id",
-        "ID"
-      ],
-      [
-        "name",
-        "String"
-      ]
-    ],
-    "FAN": [
       [
         "id",
         "ID"
@@ -62,10 +38,34 @@
         "age",
         "Integer"
       ]
+    ],
+    "FAN": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "name",
+        "String"
+      ],
+      [
+        "age",
+        "Integer"
+      ]
+    ],
+    "TICKET": [
+      [
+        "id",
+        "ID"
+      ],
+      [
+        "name",
+        "String"
+      ]
     ]
   },
   "edge_prop": {
-    "BUY": [
+    "LOVEDBY": [
       [
         "start_id",
         "ID"
@@ -85,7 +85,7 @@
         "ID"
       ]
     ],
-    "LOVEDBY": [
+    "BUY": [
       [
         "start_id",
         "ID"
