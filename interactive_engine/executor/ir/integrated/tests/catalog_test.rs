@@ -405,7 +405,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan(&catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -472,7 +472,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan(&catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!("{:?}", plan);
@@ -539,7 +539,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan(&catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
             initialize();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -606,7 +606,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan(&catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
             initialize();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -673,7 +673,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan(&catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(

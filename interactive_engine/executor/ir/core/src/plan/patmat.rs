@@ -1169,7 +1169,7 @@ impl MatchingStrategy for ExtendStrategy {
             if let Some(catalog) = store_meta.catalogue.as_ref() {
                 if let Ok(match_plan) = self
                     .pattern
-                    .generate_optimized_match_plan(catalog)
+                    .generate_optimized_match_plan_greedily(catalog)
                 {
                     Ok(match_plan)
                 } else {
