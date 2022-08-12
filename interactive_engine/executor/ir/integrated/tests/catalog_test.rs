@@ -541,13 +541,13 @@ mod test {
             let pb_plan = ldbc_pattern
                 .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
-            initialize();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
                 "generating plan time cost is: {:?} ms",
                 plan_generation_start_time.elapsed().as_millis()
             );
             println!("{:?}", plan);
+            initialize();
             let mut job_builder = JobBuilder::default();
             let mut plan_meta = plan.get_meta().clone();
             plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -608,13 +608,13 @@ mod test {
             let pb_plan = ldbc_pattern
                 .generate_optimized_match_plan_recursively(&mut catalog)
                 .unwrap();
-            initialize();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
                 "generating plan time cost is: {:?} ms",
                 plan_generation_start_time.elapsed().as_millis()
             );
             println!("{:?}", plan);
+            initialize();
             let mut job_builder = JobBuilder::default();
             let mut plan_meta = plan.get_meta().clone();
             plan.add_job_builder(&mut job_builder, &mut plan_meta)
