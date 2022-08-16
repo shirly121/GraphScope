@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use graph_store::graph_db::Direction;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
+use serde::{Deserialize, Serialize};
 
 pub type PatternId = usize;
 pub type PatternLabelId = ir_common::KeyId;
@@ -25,7 +26,7 @@ pub type PatternGroupId = u32;
 pub type PatternRankId = usize;
 pub type DynIter<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PatternDirection {
     Out = 0,
     In,
@@ -74,8 +75,6 @@ pub(crate) fn query_params(
 
 #[allow(dead_code)]
 pub mod catalog;
-
-pub mod codec;
 
 pub mod canonical_label;
 

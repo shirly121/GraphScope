@@ -19,12 +19,13 @@ use std::convert::TryFrom;
 use std::iter::Iterator;
 
 use ir_common::generated::algebra as pb;
+use serde::{Deserialize, Serialize};
 
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId, PatternRankId};
 use crate::error::{IrError, IrResult};
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtendEdge {
     src_vertex_rank: PatternRankId,
     edge_label: PatternLabelId,
@@ -56,7 +57,7 @@ impl ExtendEdge {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendStep {
     target_vertex_label: PatternLabelId,
     extend_edges: Vec<ExtendEdge>,

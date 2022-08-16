@@ -43,19 +43,19 @@ pub fn create_sparsified_graph(src_graph: LargeGraphDB, rate: i32) {
     // end random edge
     mut_graph.export().unwrap();
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use graph_store::ldbc::GraphLoader;
-    #[test]
-    fn test_create_sparsified_graph() {
-        let data_dir = "/Users/meloyang/opt/Graphs/csr_ldbc_graph/scale_1/csv";
-        let root_dir = "/Users/meloyang/opt/Graphs/csr_ldbc_graph/scale_1/csv";
-        let schema_file = "/Users/meloyang/opt/Graphs/csr_ldbc_graph/schema.json";
-        let mut loader =
-            GraphLoader::<DefaultId, InternalId>::new(data_dir, root_dir, schema_file, 20, 0, 1);
-        loader.load().expect("Load ldbc data error!");
-        let src_graph = loader.into_graph();
-        create_sparsified_graph(src_graph, 30);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use graph_store::ldbc::GraphLoader;
+//     #[test]
+//     fn test_create_sparsified_graph() {
+//         let data_dir = "/Users/meloyang/opt/Graphs/csr_ldbc_graph/scale_1/csv";
+//         let root_dir = "/Users/meloyang/opt/Graphs/csr_ldbc_graph/scale_1/csv";
+//         let schema_file = "/Users/meloyang/opt/Graphs/csr_ldbc_graph/schema.json";
+//         let mut loader =
+//             GraphLoader::<DefaultId, InternalId>::new(data_dir, root_dir, schema_file, 20, 0, 1);
+//         loader.load().expect("Load ldbc data error!");
+//         let src_graph = loader.into_graph();
+//         create_sparsified_graph(src_graph, 30);
+//     }
+// }

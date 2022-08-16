@@ -19,7 +19,6 @@ mod common;
 mod tests {
     use std::convert::TryFrom;
 
-    use ir_core::catalogue::codec::*;
     use ir_core::catalogue::pattern::{Pattern, PatternEdge, PatternVertex};
     use ir_core::catalogue::PatternDirection;
     use ir_core::plan::meta::TagId;
@@ -120,9 +119,8 @@ mod tests {
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
             // check whether the two pattern has the same code
-            let encoder = Encoder::init(4, 4, 1, 2);
-            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
-            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            let pattern_code = pattern.encode();
+            let pattern_for_comparison_code = pattern_for_comparison.encode();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -199,9 +197,8 @@ mod tests {
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
             // check whether the two pattern has the same code
-            let encoder = Encoder::init(4, 4, 1, 2);
-            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
-            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            let pattern_code = pattern.encode();
+            let pattern_for_comparison_code = pattern_for_comparison.encode();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -274,9 +271,8 @@ mod tests {
             ])
             .unwrap();
             // check whether the two pattern has the same code
-            let encoder = Encoder::init(4, 4, 1, 3);
-            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
-            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            let pattern_code = pattern.encode();
+            let pattern_for_comparison_code = pattern_for_comparison.encode();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -380,9 +376,8 @@ mod tests {
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3, pattern_edge4])
                     .unwrap();
             // check whether the two pattern has the same code
-            let encoder = Encoder::init(4, 4, 1, 2);
-            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
-            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            let pattern_code = pattern.encode();
+            let pattern_for_comparison_code = pattern_for_comparison.encode();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -464,9 +459,8 @@ mod tests {
             ])
             .unwrap();
             // check whether the two pattern has the same code
-            let encoder = Encoder::init(4, 4, 1, 3);
-            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
-            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            let pattern_code = pattern.encode();
+            let pattern_for_comparison_code = pattern_for_comparison.encode();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -581,9 +575,8 @@ mod tests {
             ])
             .unwrap();
             // check whether the two pattern has the same code
-            let encoder = Encoder::init(4, 4, 1, 3);
-            let pattern_code: Vec<u8> = pattern.encode_to(&encoder);
-            let pattern_for_comparison_code: Vec<u8> = pattern_for_comparison.encode_to(&encoder);
+            let pattern_code = pattern.encode();
+            let pattern_for_comparison_code = pattern_for_comparison.encode();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(

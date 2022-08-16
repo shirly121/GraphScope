@@ -22,8 +22,8 @@ use ir_common::generated::common as common_pb;
 use petgraph::graph::{EdgeIndex, EdgeReference, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use serde::{Deserialize, Serialize};
 
-use crate::catalogue::codec::{Cipher, Encoder};
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Adjacency, Pattern, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -33,7 +33,7 @@ use crate::error::{IrError, IrResult};
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
 /// In Catalog Graph, Vertex Represents a Pattern
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternWeight {
     pattern: Pattern,
     /// Estimate how many such pattern in a graph
@@ -57,7 +57,7 @@ impl PatternWeight {
 }
 
 /// Edge Weight for approach case is join
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinWeight {
     /// Join with which pattern
     pattern_index: NodeIndex,
@@ -70,7 +70,7 @@ impl JoinWeight {
 }
 
 /// Edge Weight for approach case is extend
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendWeight {
     extend_step: ExtendStep,
     /// Target vertex's order in the target pattern
@@ -107,7 +107,7 @@ impl ExtendWeight {
 /// The approach is either:
 /// pattern <join> pattern -> pattern
 /// pattern <extend> extend_step -> pattern
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproachWeight {
     /// Case that the approach is join
     Join(JoinWeight),
@@ -150,7 +150,7 @@ impl ApproachWeight {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Approach {
     src_pattern_index: NodeIndex,
     target_pattern_index: NodeIndex,
@@ -181,15 +181,13 @@ impl Approach {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Catalogue {
     /// Catalog Graph
     store: Graph<PatternWeight, ApproachWeight>,
     /// Key: pattern code, Value: Node(Vertex) Index
     /// Usage: use a pattern code to uniquely identify a pattern in catalog graph
     pattern_locate_map: HashMap<Vec<u8>, NodeIndex>,
-    /// The global encoder for the catalog
-    encoder: Encoder,
     /// Store the extend steps already found between the src pattern and target pattern
     /// - Used to avoid add equivalent extend steps between two patterns
     extend_step_comparator_map: HashMap<(Vec<u8>, Vec<u8>), BTreeSet<ExtendStepComparator>>,
@@ -199,29 +197,18 @@ pub struct Catalogue {
 }
 
 impl Catalogue {
-    fn with_encoder(encoder: Encoder) -> Catalogue {
-        Catalogue {
-            store: Graph::new(),
-            pattern_locate_map: HashMap::new(),
-            encoder,
-            extend_step_comparator_map: HashMap::new(),
-            entries: vec![],
-        }
-    }
-
     /// Build a catalogue from a pattern meta with some limits
     /// It can be used to build the basic parts of catalog graph
     pub fn build_from_meta(
         pattern_meta: &PatternMeta, pattern_size_limit: usize, same_label_vertex_limit: usize,
     ) -> Catalogue {
-        let mut catalog =
-            Catalogue::with_encoder(Encoder::init_by_pattern_meta(pattern_meta, same_label_vertex_limit));
+        let mut catalog = Catalogue::default();
         // Use BFS to generate the catalog graph
         let mut queue = VecDeque::new();
         // The one-vertex patterns are the starting points
         for vertex_label in pattern_meta.vertex_label_ids_iter() {
             let new_pattern = Pattern::from(PatternVertex::new(0, vertex_label));
-            let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
+            let new_pattern_code = new_pattern.encode();
             let new_pattern_index = catalog.store.add_node(PatternWeight {
                 pattern: new_pattern.clone(),
                 count: 0,
@@ -247,7 +234,7 @@ impl Catalogue {
                 let extend_step_comparator: ExtendStepComparator =
                     create_extend_step_comparator(extend_step, &relaxed_pattern);
                 let new_pattern = relaxed_pattern.extend(extend_step).unwrap();
-                let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &catalog.encoder);
+                let new_pattern_code = new_pattern.encode();
                 // check whether the new pattern existed in the catalog graph
                 let new_pattern_index = if let Some(&pattern_index) = catalog
                     .pattern_locate_map
@@ -301,7 +288,7 @@ impl Catalogue {
     /// Build a catalog from a pattern dedicated for its optimization
     pub fn build_from_pattern(pattern: &Pattern) -> Catalogue {
         // Empty catalog
-        let mut catalog = Catalogue::with_encoder(Encoder::init_by_pattern(pattern, 4));
+        let mut catalog = Catalogue::default();
         // Update the empty catalog by the pattern to add necessary optimization info
         catalog.update_catalog_by_pattern(pattern);
         catalog
@@ -317,7 +304,7 @@ impl Catalogue {
         // one-vertex pattern is the starting point of the BFS
         for vertex in pattern.vertices_iter() {
             let new_pattern = Pattern::from(*vertex);
-            let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
+            let new_pattern_code = new_pattern.encode();
             let new_pattern_index =
                 if let Some(pattern_index) = self.pattern_locate_map.get(&new_pattern_code) {
                     *pattern_index
@@ -398,7 +385,7 @@ impl Catalogue {
                                 .map(|adj| pattern.get_edge(adj.get_edge_id()).unwrap()),
                         )
                         .unwrap();
-                    let new_pattern_code: Vec<u8> = Cipher::encode_to(&new_pattern, &self.encoder);
+                    let new_pattern_code = new_pattern.encode();
                     // check whether the catalog graph has the newly generate pattern
                     let new_pattern_index =
                         if let Some(&pattern_index) = self.pattern_locate_map.get(&new_pattern_code) {
@@ -470,10 +457,6 @@ impl Catalogue {
 
     pub fn get_approach_weight(&self, approach_index: EdgeIndex) -> Option<&ApproachWeight> {
         self.store.edge_weight(approach_index)
-    }
-
-    pub fn get_encoder(&self) -> &Encoder {
-        &self.encoder
     }
 
     pub fn entries_iter(&self) -> DynIter<(NodeIndex, PatternLabelId)> {
@@ -578,7 +561,7 @@ impl Pattern {
     /// Generate an optimized extend based pattern match plan
     /// Current implementation is Top-Down Greedy method
     pub fn generate_optimized_match_plan_greedily(&self, catalog: &Catalogue) -> IrResult<pb::LogicalPlan> {
-        let pattern_code: Vec<u8> = Cipher::encode_to(self, &catalog.encoder);
+        let pattern_code = self.encode();
         // locate the pattern node in the catalog graph
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
             let mut trace_pattern = self.clone();
@@ -620,7 +603,7 @@ impl Pattern {
     pub fn generate_optimized_match_plan_recursively(
         &self, catalog: &mut Catalogue,
     ) -> IrResult<pb::LogicalPlan> {
-        let pattern_code: Vec<u8> = Cipher::encode_to(self, &catalog.encoder);
+        let pattern_code = self.encode();
         if let Some(pattern_index) = catalog.get_pattern_index(&pattern_code) {
             // let mut memory_map = HashMap::new();
             let (mut definite_extend_steps, _) =
