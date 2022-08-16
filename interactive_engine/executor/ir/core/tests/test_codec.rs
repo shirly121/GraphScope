@@ -847,4 +847,49 @@ mod tests {
         );
         assert_eq!(extend_step_1.get_extend_edges_num(), extend_step_1_from_decode.get_extend_edges_num());
     }
+
+    #[test]
+    fn test_encode_decode_of_case1_new() {
+        let pattern = build_pattern_case1();
+        let code1: Vec<u8> = pattern.encode();
+        let pattern: Pattern = Pattern::decode(&code1).unwrap();
+        let code2: Vec<u8> = pattern.encode();
+        assert_eq!(code1, code2);
+    }
+
+    #[test]
+    fn test_encode_decode_of_case2_new() {
+        let pattern = build_pattern_case2();
+        let code1: Vec<u8> = pattern.encode();
+        let pattern: Pattern = Pattern::decode(&code1).unwrap();
+        let code2: Vec<u8> = pattern.encode();
+        assert_eq!(code1, code2);
+    }
+
+    #[test]
+    fn test_encode_decode_of_case3_new() {
+        let pattern = build_pattern_case3();
+        let code1: Vec<u8> = pattern.encode();
+        let pattern = build_pattern_case3();
+        let code2: Vec<u8> = pattern.encode();
+        assert_eq!(code1, code2);
+    }
+
+    #[test]
+    fn test_encode_decode_of_case4_new() {
+        let pattern = build_pattern_case4();
+        let code1: Vec<u8> = pattern.encode();
+        let pattern = build_pattern_case4();
+        let code2: Vec<u8> = pattern.encode();
+        assert_eq!(code1, code2);
+    }
+
+    #[test]
+    fn test_encode_decode_of_case5_new() {
+        let pattern = build_pattern_case5();
+        let code1: Vec<u8> = pattern.encode();
+        let pattern = build_pattern_case5();
+        let code2: Vec<u8> = pattern.encode();
+        assert_eq!(code1, code2);
+    }
 }

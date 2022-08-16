@@ -19,6 +19,8 @@ use std::iter::FromIterator;
 
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
+use serde::de::Visitor;
+use serde::{Deserialize, Serialize};
 use vec_map::VecMap;
 
 use super::codec::{Cipher, Encoder};
@@ -1293,5 +1295,39 @@ impl Pattern {
         } else {
             None
         }
+    }
+}
+
+impl Serialize for Pattern {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let pattern_code = self.encode();
+        serializer.serialize_bytes(&pattern_code)
+    }
+}
+
+impl<'de> Deserialize<'de> for Pattern {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PatternVisitor;
+        impl<'de> Visitor<'de> for PatternVisitor {
+            type Value = Pattern;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Read Pattern")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Pattern::decode(v).ok_or(serde::de::Error::custom("Invalide Pattern Code"))
+            }
+        }
+        deserializer.deserialize_bytes(PatternVisitor)
     }
 }

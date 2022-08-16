@@ -22,6 +22,7 @@ use ir_common::generated::common as common_pb;
 use petgraph::graph::{EdgeIndex, EdgeReference, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use serde::{Deserialize, Serialize};
 
 use super::pattern::PatternVertex;
 use crate::catalogue::codec::{Cipher, Encoder};
@@ -34,7 +35,7 @@ use crate::error::{IrError, IrResult};
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
 /// In Catalog Graph, Vertex Represents a Pattern
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternWeight {
     pattern: Pattern,
     /// Estimate how many such pattern in a graph
@@ -62,7 +63,7 @@ impl PatternWeight {
 }
 
 /// Edge Weight for approach case is join
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinWeight {
     /// Join with which pattern
     pattern_index: NodeIndex,
@@ -75,7 +76,7 @@ impl JoinWeight {
 }
 
 /// Edge Weight for approach case is extend
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendWeight {
     extend_step: ExtendStep,
     /// Target vertex's order in the target pattern
@@ -112,7 +113,7 @@ impl ExtendWeight {
 /// The approach is either:
 /// pattern <join> pattern -> pattern
 /// pattern <extend> extend_step -> pattern
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproachWeight {
     /// Case that the approach is join
     Join(JoinWeight),
