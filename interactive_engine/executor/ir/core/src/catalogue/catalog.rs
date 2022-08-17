@@ -14,14 +14,20 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use std::path::Path;
 
+use bincode::Result as BincodeResult;
+use bincode::{deserialize_from, serialize_into};
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use petgraph::graph::{EdgeIndex, EdgeReference, Graph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
 use crate::catalogue::extend_step::{DefiniteExtendStep, ExtendEdge, ExtendStep};
@@ -150,34 +156,42 @@ impl ApproachWeight {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Approach {
+    approach_index: EdgeIndex,
     src_pattern_index: NodeIndex,
     target_pattern_index: NodeIndex,
-    approach_index: EdgeIndex,
+}
+
+impl Approach {
+    pub fn new(
+        src_pattern_index: NodeIndex, target_pattern_index: NodeIndex, approach_index: EdgeIndex,
+    ) -> Self {
+        Approach { approach_index, src_pattern_index, target_pattern_index }
+    }
 }
 
 impl<'a> From<EdgeReference<'a, ApproachWeight>> for Approach {
     fn from(edge_ref: EdgeReference<ApproachWeight>) -> Self {
         Approach {
+            approach_index: edge_ref.id(),
             src_pattern_index: edge_ref.source(),
             target_pattern_index: edge_ref.target(),
-            approach_index: edge_ref.id(),
         }
     }
 }
 
 impl Approach {
+    pub fn get_approach_index(&self) -> EdgeIndex {
+        self.approach_index
+    }
+
     pub fn get_src_pattern_index(&self) -> NodeIndex {
         self.src_pattern_index
     }
 
     pub fn get_target_pattern_index(&self) -> NodeIndex {
         self.target_pattern_index
-    }
-
-    pub fn get_approach_index(&self) -> EdgeIndex {
-        self.approach_index
     }
 }
 
@@ -898,4 +912,146 @@ fn e_cost_estimate(pattern_weight: &PatternWeight) -> usize {
 
 fn d_cost_estimate(pre_pattern_weight: &PatternWeight) -> usize {
     pre_pattern_weight.count
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CataTopo {
+    pattern_map: BTreeMap<NodeIndex, PatternWeight>,
+    approach_map: BTreeMap<Approach, ApproachWeight>,
+}
+
+impl From<&Catalogue> for CataTopo {
+    fn from(catalog: &Catalogue) -> Self {
+        let mut pattern_map = BTreeMap::new();
+        let mut approach_map = BTreeMap::new();
+        for approach_index in catalog.store.edge_indices() {
+            let (src_pattern_index, target_pattern_index) = catalog
+                .store
+                .edge_endpoints(approach_index)
+                .unwrap();
+            let approach = Approach::new(src_pattern_index, target_pattern_index, approach_index);
+            let approach_weight = catalog
+                .get_approach_weight(approach_index)
+                .unwrap()
+                .clone();
+            approach_map.insert(approach, approach_weight);
+            pattern_map.entry(src_pattern_index).or_insert(
+                catalog
+                    .get_pattern_weight(src_pattern_index)
+                    .unwrap()
+                    .clone(),
+            );
+            pattern_map
+                .entry(target_pattern_index)
+                .or_insert(
+                    catalog
+                        .get_pattern_weight(target_pattern_index)
+                        .unwrap()
+                        .clone(),
+                );
+        }
+        CataTopo { pattern_map, approach_map }
+    }
+}
+
+impl From<CataTopo> for Catalogue {
+    fn from(cata_topo: CataTopo) -> Self {
+        let mut catalog = Catalogue::default();
+        for (pattern_index, pattern_weight) in cata_topo.pattern_map.into_iter() {
+            let pattern = pattern_weight.get_pattern();
+            let pattern_code = pattern.encode();
+            catalog
+                .pattern_locate_map
+                .insert(pattern_code, pattern_index);
+            if pattern.get_vertices_num() == 1 {
+                let label = pattern.get_max_vertex_label().unwrap();
+                catalog.entries.push((pattern_index, label));
+            }
+            catalog.store.add_node(pattern_weight);
+        }
+        for (approach, approach_weight) in cata_topo.approach_map.into_iter() {
+            let src_pattern_index = approach.get_src_pattern_index();
+            let target_pattern_index = approach.get_target_pattern_index();
+            if let Some(extend_weight) = approach_weight.get_extend_weight() {
+                let src_pattern = catalog
+                    .get_pattern_weight(src_pattern_index)
+                    .unwrap()
+                    .get_pattern();
+                let target_pattern = catalog
+                    .get_pattern_weight(target_pattern_index)
+                    .unwrap()
+                    .get_pattern();
+                let src_pattern_code = src_pattern.encode();
+                let target_pattern_code = target_pattern.encode();
+                let extend_step = extend_weight.get_extend_step();
+                let extend_step_comparator = create_extend_step_comparator(extend_step, src_pattern);
+                catalog
+                    .extend_step_comparator_map
+                    .entry((src_pattern_code, target_pattern_code))
+                    .or_default()
+                    .insert(extend_step_comparator);
+            }
+            catalog
+                .store
+                .add_edge(src_pattern_index, target_pattern_index, approach_weight);
+        }
+        catalog
+    }
+}
+
+impl Serialize for Catalogue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let cata_topo = CataTopo::from(self);
+        cata_topo.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Catalogue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct CatalogueVistor;
+        impl<'de> Visitor<'de> for CatalogueVistor {
+            type Value = Catalogue;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a valid Catalogue")
+            }
+
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let cata_topo = CataTopo::deserialize(deserializer)?;
+                Ok(Catalogue::from(cata_topo))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let cata_topo: CataTopo = seq
+                    .next_element()?
+                    .ok_or(serde::de::Error::custom("Invalid CataTopo Bincode"))?;
+                Ok(Catalogue::from(cata_topo))
+            }
+        }
+        deserializer.deserialize_newtype_struct("Catalogue", CatalogueVistor)
+    }
+}
+
+impl Catalogue {
+    pub fn export<P: AsRef<Path>>(&self, path: P) -> BincodeResult<()> {
+        let mut writer = BufWriter::new(File::create(path)?);
+        serialize_into(&mut writer, self)
+    }
+
+    pub fn import<P: AsRef<Path>>(path: P) -> BincodeResult<Self> {
+        let mut reader = BufReader::new(File::open(path)?);
+        deserialize_from(&mut reader)
+    }
 }
