@@ -76,8 +76,6 @@ pub(crate) fn query_params(
 #[allow(dead_code)]
 pub mod catalog;
 
-pub mod codec;
-
 pub mod canonical_label;
 
 pub mod extend_step;
@@ -87,3 +85,5 @@ pub mod pattern;
 pub mod pattern_meta;
 
 pub mod sample;
+
+pub mod sparsify;

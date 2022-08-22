@@ -186,17 +186,36 @@ impl DefiniteExtendStep {
         let mut definite_extend_edges = Vec::with_capacity(extend_step.get_extend_edges_num());
         let vertex_id_to_assign = target_vertex_id;
         for extend_edge in extend_step.iter() {
-            if let Some(src_vertex) = src_pattern.get_vertex_from_rank(extend_edge.get_src_vertex_rank()) {
-                let edge_id_to_assign = edge_id_map
-                    .get(&(src_vertex.get_id(), extend_edge.get_edge_label(), extend_edge.get_direction()))
-                    .cloned()
+            if let Some(vertex) = src_pattern.get_vertex_from_rank(extend_edge.get_src_vertex_rank()) {
+                let src_vertex_label = vertex.get_label();
+                let src_vertex_group = src_pattern
+                    .get_vertex_group(vertex.get_id())
                     .unwrap();
-                definite_extend_edges.push(DefiniteExtendEdge::new(
-                    src_vertex.get_id(),
-                    edge_id_to_assign,
-                    extend_edge.get_edge_label(),
-                    extend_edge.get_direction(),
-                ));
+                let src_vertex_candidates =
+                    src_pattern.get_equivalent_vertices(src_vertex_label, src_vertex_group);
+                let mut found_src_vertex = false;
+                for src_vertex_candidate in src_vertex_candidates {
+                    if let Some(edge_id_to_assign) = edge_id_map
+                        .get(&(
+                            src_vertex_candidate.get_id(),
+                            extend_edge.get_edge_label(),
+                            extend_edge.get_direction(),
+                        ))
+                        .cloned()
+                    {
+                        definite_extend_edges.push(DefiniteExtendEdge::new(
+                            src_vertex_candidate.get_id(),
+                            edge_id_to_assign,
+                            extend_edge.get_edge_label(),
+                            extend_edge.get_direction(),
+                        ));
+                        found_src_vertex = true;
+                        break;
+                    }
+                }
+                if !found_src_vertex {
+                    return None;
+                }
             } else {
                 return None;
             }

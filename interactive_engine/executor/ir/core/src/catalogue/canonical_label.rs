@@ -502,7 +502,8 @@ impl Pattern {
             }
             Some(Pattern::try_from(pattern_edges).unwrap())
         } else if code.len() == 4 {
-            None
+            let pattern_label = u8_array_to_label(code);
+            Some(Pattern::from(PatternVertex::new(0, pattern_label)))
         } else {
             None
         }
@@ -526,17 +527,17 @@ fn u32_to_u8_array(num: u32) -> [u8; 4] {
 }
 
 fn u8_array_to_label(u8_array: &[u8]) -> PatternLabelId {
-    assert_eq!(u8_array.len(), 4);
-    u8_array[3] as PatternLabelId
-        + ((u8_array[2] as PatternLabelId) << 8)
-        + ((u8_array[1] as PatternLabelId) << 16)
-        + ((u8_array[0] as PatternLabelId) << 24)
+    u8_array_to_u32(u8_array) as PatternLabelId
 }
 
 fn u8_array_to_id(u8_array: &[u8]) -> PatternId {
+    u8_array_to_u32(u8_array) as PatternId
+}
+
+fn u8_array_to_u32(u8_array: &[u8]) -> u32 {
     assert_eq!(u8_array.len(), 4);
-    u8_array[3] as PatternId
-        + ((u8_array[2] as PatternId) << 8)
-        + ((u8_array[1] as PatternId) << 16)
-        + ((u8_array[0] as PatternId) << 24)
+    u8_array[3] as u32
+        + ((u8_array[2] as u32) << 8)
+        + ((u8_array[1] as u32) << 16)
+        + ((u8_array[0] as u32) << 24)
 }

@@ -23,7 +23,6 @@ use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use vec_map::VecMap;
 
-use super::codec::{Cipher, Encoder};
 use crate::catalogue::canonical_label::CanonicalLabelManager;
 use crate::catalogue::extend_step::{get_subsets, limit_repeated_element_num, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -1200,7 +1199,7 @@ impl Pattern {
 
     /// Locate a vertex(id) from the pattern based on the given extend step and target pattern code
     pub fn locate_vertex(
-        &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
+        &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>,
     ) -> Option<PatternId> {
         let mut target_vertex_id: Option<PatternId> = None;
         let target_v_label = extend_step.get_target_vertex_label();
@@ -1223,7 +1222,7 @@ impl Pattern {
             if cand_e_label_dir_set == extend_e_label_dir_set {
                 let mut check_pattern = self.clone();
                 check_pattern.remove_vertex(target_v_cand.get_id());
-                let check_pattern_code: Vec<u8> = Cipher::encode_to(&check_pattern, encoder);
+                let check_pattern_code = check_pattern.encode();
                 // same code means successfully locate the vertex
                 if check_pattern_code == *target_pattern_code {
                     target_vertex_id = Some(target_v_cand.get_id());
@@ -1285,10 +1284,8 @@ impl Pattern {
     /// Delete a extend step from current pattern to get a new pattern
     ///
     /// The code of the new pattern should be the same as the target pattern code
-    pub fn de_extend(
-        &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>, encoder: &Encoder,
-    ) -> Option<Pattern> {
-        if let Some(target_vertex_id) = self.locate_vertex(extend_step, target_pattern_code, encoder) {
+    pub fn de_extend(&self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>) -> Option<Pattern> {
+        if let Some(target_vertex_id) = self.locate_vertex(extend_step, target_pattern_code) {
             let mut new_pattern = self.clone();
             new_pattern.remove_vertex(target_vertex_id);
             Some(new_pattern)
@@ -1325,7 +1322,7 @@ impl<'de> Deserialize<'de> for Pattern {
             where
                 E: serde::de::Error,
             {
-                Pattern::decode(v).ok_or(serde::de::Error::custom("Invalide Pattern Code"))
+                Pattern::decode(v).ok_or(E::custom("Invalide Pattern Code"))
             }
         }
         deserializer.deserialize_bytes(PatternVisitor)

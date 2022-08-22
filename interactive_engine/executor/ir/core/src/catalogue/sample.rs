@@ -151,9 +151,9 @@ impl Catalogue {
             relaxed_patterns_indices.insert(pattern_index);
             pattern_counts_map.insert(pattern_index, pattern_count);
             for approach in self.pattern_out_approaches_iter(pattern_index) {
-                if let Some(extend_weight) = approach
-                    .get_approach_weight()
-                    .get_extend_weight()
+                if let Some(extend_weight) = self
+                    .get_approach_weight(approach.get_approach_index())
+                    .and_then(|approach_weight| approach_weight.get_extend_weight())
                 {
                     let extend_step = extend_weight.get_extend_step();
                     let target_pattern = pattern.extend(&extend_step).unwrap();
@@ -403,6 +403,6 @@ mod tests {
         assert_eq!(catalog.get_approaches_num(), 12);
         let sample_graph = create_sample_graph("../core/resource/test_graph");
         catalog.estimate_graph(&sample_graph, 0.1, Some(10000));
-        println!("{:?}", pattern.generate_optimized_match_plan(&catalog));
+        println!("{:?}", pattern.generate_optimized_match_plan_greedily(&catalog));
     }
 }
