@@ -27,7 +27,7 @@ mod test {
     use ir_core::catalogue::catalog::Catalogue;
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
-    use ir_core::catalogue::sample::create_sample_graph;
+    use ir_core::catalogue::sample::load_sample_graph;
     use ir_core::error::IrError;
     use ir_core::plan::logical::LogicalPlan;
     use ir_core::plan::physical::AsPhysical;
@@ -395,7 +395,7 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case1() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = create_sample_graph(&sample_graph_path);
+            let sample_graph = load_sample_graph(&sample_graph_path);
             let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
@@ -462,7 +462,7 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case2() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = create_sample_graph(&sample_graph_path);
+            let sample_graph = load_sample_graph(&sample_graph_path);
             let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
@@ -529,7 +529,7 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case3() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = create_sample_graph(&sample_graph_path);
+            let sample_graph = load_sample_graph(&sample_graph_path);
             let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
@@ -596,7 +596,7 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case4() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = create_sample_graph(&sample_graph_path);
+            let sample_graph = load_sample_graph(&sample_graph_path);
             let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
@@ -663,7 +663,7 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_bi11() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = create_sample_graph(&sample_graph_path);
+            let sample_graph = load_sample_graph(&sample_graph_path);
             let ldbc_pattern = build_ldbc_bi11().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();

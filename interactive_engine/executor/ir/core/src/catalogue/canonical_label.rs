@@ -442,7 +442,7 @@ impl CanonicalLabelManager {
 }
 
 impl Pattern {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode_to(&self) -> Vec<u8> {
         if self.get_edges_num() > 0 {
             let mut edge_ids: Vec<PatternId> = self
                 .edges_iter()
@@ -481,7 +481,7 @@ impl Pattern {
         }
     }
 
-    pub fn decode(code: &[u8]) -> Option<Pattern> {
+    pub fn decode_from(code: &[u8]) -> Option<Pattern> {
         if code.len() == 0 {
             None
         } else if code.len() % 20 == 0 {

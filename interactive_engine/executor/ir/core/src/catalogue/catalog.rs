@@ -46,6 +46,7 @@ pub struct PatternWeight {
     count: usize,
     /// Store previous 1 step estimated best approach to get the pattern
     best_approach: Option<Approach>,
+    weight_status: WeightStatus,
 }
 
 impl PatternWeight {
@@ -59,6 +60,38 @@ impl PatternWeight {
 
     pub fn get_best_approach(&self) -> Option<Approach> {
         self.best_approach
+    }
+
+    pub fn is_set(&self) -> bool {
+        if let WeightStatus::Set = self.weight_status {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_unset(&self) -> bool {
+        if let WeightStatus::Unset = self.weight_status {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_unset_out_related(&self) -> bool {
+        if let WeightStatus::UnsetOutRelated = self.weight_status {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_unset_in_related(&self) -> bool {
+        if let WeightStatus::UnsetInRelated = self.weight_status {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -85,6 +118,7 @@ pub struct ExtendWeight {
     count_sum: f64,
     count_min: f64,
     count_max: f64,
+    weight_status: WeightStatus,
 }
 
 impl ExtendWeight {
@@ -106,6 +140,22 @@ impl ExtendWeight {
 
     pub fn get_count_max(&self) -> f64 {
         self.count_max
+    }
+
+    pub fn is_set(&self) -> bool {
+        if let WeightStatus::Set = self.weight_status {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_unset(&self) -> bool {
+        if let WeightStatus::Unset = self.weight_status {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -154,6 +204,14 @@ impl ApproachWeight {
             None
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WeightStatus {
+    Set,
+    Unset,
+    UnsetOutRelated,
+    UnsetInRelated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -207,7 +265,7 @@ pub struct Catalogue {
     extend_step_comparator_map: HashMap<(Vec<u8>, Vec<u8>), BTreeSet<ExtendStepComparator>>,
     /// Those patterns with size 1 are the entries of catalogue
     /// - Stores entries with their NodeIndex and PatternLabelId
-    entries: Vec<(NodeIndex, PatternLabelId)>,
+    entries: Vec<NodeIndex>,
 }
 
 impl Catalogue {
@@ -222,18 +280,17 @@ impl Catalogue {
         // The one-vertex patterns are the starting points
         for vertex_label in pattern_meta.vertex_label_ids_iter() {
             let new_pattern = Pattern::from(PatternVertex::new(0, vertex_label));
-            let new_pattern_code = new_pattern.encode();
+            let new_pattern_code = new_pattern.encode_to();
             let new_pattern_index = catalog.store.add_node(PatternWeight {
                 pattern: new_pattern.clone(),
                 count: 0,
                 best_approach: None,
+                weight_status: WeightStatus::Unset,
             });
             catalog
                 .pattern_locate_map
                 .insert(new_pattern_code.clone(), new_pattern_index);
-            catalog
-                .entries
-                .push((new_pattern_index, vertex_label));
+            catalog.entries.push(new_pattern_index);
             queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
         }
         while let Some((relaxed_pattern, relaxed_pattern_code, relaxed_pattern_index)) = queue.pop_front() {
@@ -248,7 +305,7 @@ impl Catalogue {
                 let extend_step_comparator: ExtendStepComparator =
                     create_extend_step_comparator(extend_step, &relaxed_pattern);
                 let new_pattern = relaxed_pattern.extend(extend_step).unwrap();
-                let new_pattern_code = new_pattern.encode();
+                let new_pattern_code = new_pattern.encode_to();
                 // check whether the new pattern existed in the catalog graph
                 let new_pattern_index = if let Some(&pattern_index) = catalog
                     .pattern_locate_map
@@ -260,6 +317,7 @@ impl Catalogue {
                         pattern: new_pattern.clone(),
                         count: 0,
                         best_approach: None,
+                        weight_status: WeightStatus::Unset,
                     })
                 };
                 // Get all extend steps(comparators) between the relaxed pattern and new pattern
@@ -282,6 +340,7 @@ impl Catalogue {
                             count_sum: 0.0,
                             count_min: 0.0,
                             count_max: 0.0,
+                            weight_status: WeightStatus::Unset,
                         }),
                     );
                     if !catalog
@@ -318,7 +377,7 @@ impl Catalogue {
         // one-vertex pattern is the starting point of the BFS
         for vertex in pattern.vertices_iter() {
             let new_pattern = Pattern::from(*vertex);
-            let new_pattern_code = new_pattern.encode();
+            let new_pattern_code = new_pattern.encode_to();
             let new_pattern_index =
                 if let Some(pattern_index) = self.pattern_locate_map.get(&new_pattern_code) {
                     *pattern_index
@@ -327,11 +386,11 @@ impl Catalogue {
                         pattern: new_pattern.clone(),
                         count: 0,
                         best_approach: None,
+                        weight_status: WeightStatus::Unset,
                     });
                     self.pattern_locate_map
                         .insert(new_pattern_code.clone(), pattern_index);
-                    self.entries
-                        .push((pattern_index, vertex.get_label()));
+                    self.entries.push(pattern_index);
                     pattern_index
                 };
             queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
@@ -399,7 +458,7 @@ impl Catalogue {
                                 .map(|adj| pattern.get_edge(adj.get_edge_id()).unwrap()),
                         )
                         .unwrap();
-                    let new_pattern_code = new_pattern.encode();
+                    let new_pattern_code = new_pattern.encode_to();
                     // check whether the catalog graph has the newly generate pattern
                     let new_pattern_index =
                         if let Some(&pattern_index) = self.pattern_locate_map.get(&new_pattern_code) {
@@ -409,6 +468,7 @@ impl Catalogue {
                                 pattern: new_pattern.clone(),
                                 count: 0,
                                 best_approach: None,
+                                weight_status: WeightStatus::Unset,
                             })
                         };
                     // check whether the extend step exists in the catalog graph or not
@@ -431,8 +491,22 @@ impl Catalogue {
                                 count_sum: 0.0,
                                 count_min: 0.0,
                                 count_max: 0.0,
+                                weight_status: WeightStatus::Unset,
                             }),
                         );
+                        if let Some(relaxed_pattern_weight) = self
+                            .store
+                            .node_weight_mut(relaxed_pattern_index)
+                        {
+                            if relaxed_pattern_weight.is_set() {
+                                relaxed_pattern_weight.weight_status = WeightStatus::UnsetOutRelated
+                            }
+                        }
+                        if let Some(new_pattern_weight) = self.store.node_weight_mut(new_pattern_index) {
+                            if new_pattern_weight.is_set() {
+                                new_pattern_weight.weight_status = WeightStatus::UnsetInRelated
+                            }
+                        }
                         if !self
                             .pattern_locate_map
                             .contains_key(&new_pattern_code)
@@ -473,8 +547,12 @@ impl Catalogue {
         self.store.edge_weight(approach_index)
     }
 
-    pub fn entries_iter(&self) -> DynIter<(NodeIndex, PatternLabelId)> {
+    pub fn entries_iter(&self) -> DynIter<NodeIndex> {
         Box::new(self.entries.iter().cloned())
+    }
+
+    pub fn pattern_indices_iter(&self) -> DynIter<NodeIndex> {
+        Box::new(self.store.node_indices())
     }
 
     /// Get a pattern's all out connection
@@ -497,14 +575,16 @@ impl Catalogue {
 
     pub fn set_pattern_count(&mut self, pattern_index: NodeIndex, count: usize) {
         if let Some(pattern_weight) = self.store.node_weight_mut(pattern_index) {
-            pattern_weight.count = count
+            pattern_weight.count = count;
+            pattern_weight.weight_status = WeightStatus::Set;
         }
     }
 
-    pub fn set_extend_count(
-        &mut self, extend_index: EdgeIndex, extend_nums_counts: HashMap<ExtendEdge, f64>,
-    ) {
-        if let Some(approach_weight) = self.store.edge_weight_mut(extend_index) {
+    pub fn set_extend_count(&mut self, approach: Approach, extend_nums_counts: HashMap<ExtendEdge, f64>) {
+        if let Some(approach_weight) = self
+            .store
+            .edge_weight_mut(approach.get_approach_index())
+        {
             if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
                 extend_weight.count_sum = 0.0;
                 extend_weight.count_min = 0.0;
@@ -527,6 +607,18 @@ impl Catalogue {
                     }
                 }
             }
+        }
+        if let Some(src_pattern_weight) = self
+            .store
+            .node_weight_mut(approach.get_src_pattern_index())
+        {
+            src_pattern_weight.weight_status = WeightStatus::Set;
+        };
+        if let Some(target_pattern_weight) = self
+            .store
+            .node_weight_mut(approach.get_target_pattern_index())
+        {
+            target_pattern_weight.weight_status = WeightStatus::Set;
         }
     }
 
@@ -575,7 +667,7 @@ impl Pattern {
     /// Generate an optimized extend based pattern match plan
     /// Current implementation is Top-Down Greedy method
     pub fn generate_optimized_match_plan_greedily(&self, catalog: &Catalogue) -> IrResult<pb::LogicalPlan> {
-        let pattern_code = self.encode();
+        let pattern_code = self.encode_to();
         // locate the pattern node in the catalog graph
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
             let mut trace_pattern = self.clone();
@@ -617,7 +709,7 @@ impl Pattern {
     pub fn generate_optimized_match_plan_recursively(
         &self, catalog: &mut Catalogue,
     ) -> IrResult<pb::LogicalPlan> {
-        let pattern_code = self.encode();
+        let pattern_code = self.encode_to();
         if let Some(pattern_index) = catalog.get_pattern_index(&pattern_code) {
             // let mut memory_map = HashMap::new();
             let (mut definite_extend_steps, _) =
@@ -630,7 +722,7 @@ impl Pattern {
     }
 }
 
-fn get_definite_extend_steps_recursively(
+pub fn get_definite_extend_steps_recursively(
     catalog: &mut Catalogue, pattern_index: NodeIndex, pattern: Pattern,
 ) -> (Vec<DefiniteExtendStep>, usize) {
     let pattern_weight = catalog
@@ -959,13 +1051,12 @@ impl From<CataTopo> for Catalogue {
         let mut catalog = Catalogue::default();
         for (pattern_index, pattern_weight) in cata_topo.pattern_map.into_iter() {
             let pattern = pattern_weight.get_pattern();
-            let pattern_code = pattern.encode();
+            let pattern_code = pattern.encode_to();
             catalog
                 .pattern_locate_map
                 .insert(pattern_code, pattern_index);
             if pattern.get_vertices_num() == 1 {
-                let label = pattern.get_max_vertex_label().unwrap();
-                catalog.entries.push((pattern_index, label));
+                catalog.entries.push(pattern_index);
             }
             catalog.store.add_node(pattern_weight);
         }
@@ -981,8 +1072,8 @@ impl From<CataTopo> for Catalogue {
                     .get_pattern_weight(target_pattern_index)
                     .unwrap()
                     .get_pattern();
-                let src_pattern_code = src_pattern.encode();
-                let target_pattern_code = target_pattern.encode();
+                let src_pattern_code = src_pattern.encode_to();
+                let target_pattern_code = target_pattern.encode_to();
                 let extend_step = extend_weight.get_extend_step();
                 let extend_step_comparator = create_extend_step_comparator(extend_step, src_pattern);
                 catalog

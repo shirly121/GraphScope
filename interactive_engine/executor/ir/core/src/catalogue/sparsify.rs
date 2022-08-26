@@ -15,7 +15,8 @@
 //!
 //!
 use graph_store::prelude::{
-    DefaultId, GlobalStoreTrait, GlobalStoreUpdate, GraphDBConfig, InternalId, LargeGraphDB, MutableGraphDB,
+    DefaultId, GlobalStoreTrait, GlobalStoreUpdate, GraphDBConfig, InternalId, ItemType, LargeGraphDB,
+    MutableGraphDB, Row,
 };
 use rand::{thread_rng, Rng};
 
@@ -43,6 +44,46 @@ pub fn create_sparsified_graph(src_graph: LargeGraphDB, rate: i32) {
     // end random edge
     mut_graph.export().unwrap();
 }
+
+pub fn aggregate_graphs(src_graphs: Vec<LargeGraphDB>, root_dir: &str) -> MutableGraphDB {
+    let mut mut_graph: MutableGraphDB<DefaultId, InternalId> = GraphDBConfig::default()
+        .root_dir(root_dir)
+        .new();
+    for src_graph in src_graphs {
+        for vertex in src_graph.get_all_vertices(None) {
+            if let Some(vertex_properties) = vertex.clone_all_properties() {
+                let row = Row::from(
+                    vertex_properties
+                        .into_iter()
+                        .map(|(_, obj)| obj)
+                        .collect::<Vec<ItemType>>(),
+                );
+                mut_graph
+                    .add_vertex_with_properties(vertex.get_id(), vertex.get_label(), row)
+                    .unwrap();
+            } else {
+                mut_graph.add_vertex(vertex.get_id(), vertex.get_label());
+            }
+        }
+        for edge in src_graph.get_all_edges(None) {
+            if let Some(edge_properties) = edge.clone_all_properties() {
+                let row = Row::from(
+                    edge_properties
+                        .into_iter()
+                        .map(|(_, obj)| obj)
+                        .collect::<Vec<ItemType>>(),
+                );
+                mut_graph
+                    .add_edge_with_properties(edge.get_src_id(), edge.get_dst_id(), edge.get_label(), row)
+                    .unwrap();
+            } else {
+                mut_graph.add_edge(edge.get_src_id(), edge.get_dst_id(), edge.get_label());
+            }
+        }
+    }
+    mut_graph
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

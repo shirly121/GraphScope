@@ -114,6 +114,38 @@ impl DefiniteExtendEdge {
     ) -> DefiniteExtendEdge {
         DefiniteExtendEdge { src_vertex_id, edge_id, edge_label, dir }
     }
+
+    pub fn from_extend_edge(extend_edge: &ExtendEdge, pattern: &Pattern) -> Option<DefiniteExtendEdge> {
+        if let Some(src_vertex_id) = pattern
+            .get_vertex_from_rank(extend_edge.get_src_vertex_rank())
+            .map(|src_vertex| src_vertex.get_id())
+        {
+            let edge_id = pattern.get_max_edge_id() + 1;
+            let edge_label = extend_edge.get_edge_label();
+            let dir = extend_edge.get_direction();
+            Some(DefiniteExtendEdge { src_vertex_id, edge_id, edge_label, dir })
+        } else {
+            None
+        }
+    }
+}
+
+impl DefiniteExtendEdge {
+    pub fn get_src_vertex_id(&self) -> PatternId {
+        self.src_vertex_id
+    }
+
+    pub fn get_edge_id(&self) -> PatternId {
+        self.edge_id
+    }
+
+    pub fn get_edge_label(&self) -> PatternLabelId {
+        self.edge_label
+    }
+
+    pub fn get_direction(&self) -> PatternDirection {
+        self.dir
+    }
 }
 
 /// Given a DefiniteExtendStep, we can uniquely find which part of the pattern to extend
@@ -238,6 +270,10 @@ impl DefiniteExtendStep {
     #[inline]
     pub fn get_target_vertex_label(&self) -> PatternLabelId {
         self.target_vertex_label
+    }
+
+    pub fn iter(&self) -> DynIter<&DefiniteExtendEdge> {
+        Box::new(self.extend_edges.iter())
     }
 }
 

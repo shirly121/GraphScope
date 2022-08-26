@@ -23,18 +23,18 @@ mod tests {
     #[test]
     fn test_pattern_case1_case2_extend_de_extend() {
         let pattern1 = build_pattern_case1();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_extend_step_case1(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_pattern_case2();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -42,18 +42,18 @@ mod tests {
     #[test]
     fn test_pattern_case8_case9_extend_de_extend() {
         let pattern1 = build_pattern_case8();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_extend_step_case2(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_pattern_case9();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -61,18 +61,18 @@ mod tests {
     #[test]
     fn test_modern_case1_case3_extend_de_extend_1() {
         let pattern1 = build_modern_pattern_case1();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_modern_extend_step_case1(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case3();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -80,18 +80,18 @@ mod tests {
     #[test]
     fn test_modern_case1_case3_extend_de_extend_2() {
         let pattern1 = build_modern_pattern_case1();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_modern_extend_step_case2(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case3();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -99,18 +99,18 @@ mod tests {
     #[test]
     fn test_modern_case1_case4_extend_de_extend() {
         let pattern1 = build_modern_pattern_case1();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_modern_extend_step_case3(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case4();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -118,18 +118,18 @@ mod tests {
     #[test]
     fn test_modern_case2_case4_extend_de_extend() {
         let pattern1 = build_modern_pattern_case2();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_modern_extend_step_case4(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case4();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -137,18 +137,18 @@ mod tests {
     #[test]
     fn test_modern_case3_case5_extend_de_extend() {
         let pattern1 = build_modern_pattern_case3();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_modern_extend_step_case6(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case5();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }
@@ -156,18 +156,18 @@ mod tests {
     #[test]
     fn test_modern_case4_case5_extend_de_extend() {
         let pattern1 = build_modern_pattern_case4();
-        let pattern1_code = pattern1.encode();
+        let pattern1_code = pattern1.encode_to();
         let extend_step = build_modern_extend_step_case5(&pattern1);
         let pattern_after_extend = pattern1.extend(&extend_step).unwrap();
         // Pattern after extend should be exactly the same as pattern2
         let pattern2 = build_modern_pattern_case5();
-        let pattern2_code = pattern2.encode();
-        let pattern_after_extend_code = pattern_after_extend.encode();
+        let pattern2_code = pattern2.encode_to();
+        let pattern_after_extend_code = pattern_after_extend.encode_to();
         // Pattern after de_extend should be exactly the same as pattern1
         let pattern_after_de_extend = pattern_after_extend
             .de_extend(&extend_step, &pattern1_code)
             .unwrap();
-        let pattern_after_de_extend_code = pattern_after_de_extend.encode();
+        let pattern_after_de_extend_code = pattern_after_de_extend.encode_to();
         assert_eq!(pattern_after_extend_code, pattern2_code);
         assert_eq!(pattern_after_de_extend_code, pattern1_code);
     }

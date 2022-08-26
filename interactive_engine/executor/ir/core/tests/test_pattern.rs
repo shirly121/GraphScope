@@ -119,8 +119,8 @@ mod tests {
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
             // check whether the two pattern has the same code
-            let pattern_code = pattern.encode();
-            let pattern_for_comparison_code = pattern_for_comparison.encode();
+            let pattern_code = pattern.encode_to();
+            let pattern_for_comparison_code = pattern_for_comparison.encode_to();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -197,8 +197,8 @@ mod tests {
             let pattern_for_comparison =
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3]).unwrap();
             // check whether the two pattern has the same code
-            let pattern_code = pattern.encode();
-            let pattern_for_comparison_code = pattern_for_comparison.encode();
+            let pattern_code = pattern.encode_to();
+            let pattern_for_comparison_code = pattern_for_comparison.encode_to();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -271,8 +271,8 @@ mod tests {
             ])
             .unwrap();
             // check whether the two pattern has the same code
-            let pattern_code = pattern.encode();
-            let pattern_for_comparison_code = pattern_for_comparison.encode();
+            let pattern_code = pattern.encode_to();
+            let pattern_for_comparison_code = pattern_for_comparison.encode_to();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -376,8 +376,8 @@ mod tests {
                 Pattern::try_from(vec![pattern_edge1, pattern_edge2, pattern_edge3, pattern_edge4])
                     .unwrap();
             // check whether the two pattern has the same code
-            let pattern_code = pattern.encode();
-            let pattern_for_comparison_code = pattern_for_comparison.encode();
+            let pattern_code = pattern.encode_to();
+            let pattern_for_comparison_code = pattern_for_comparison.encode_to();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -459,8 +459,8 @@ mod tests {
             ])
             .unwrap();
             // check whether the two pattern has the same code
-            let pattern_code = pattern.encode();
-            let pattern_for_comparison_code = pattern_for_comparison.encode();
+            let pattern_code = pattern.encode_to();
+            let pattern_for_comparison_code = pattern_for_comparison.encode_to();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(
@@ -575,8 +575,8 @@ mod tests {
             ])
             .unwrap();
             // check whether the two pattern has the same code
-            let pattern_code = pattern.encode();
-            let pattern_for_comparison_code = pattern_for_comparison.encode();
+            let pattern_code = pattern.encode_to();
+            let pattern_for_comparison_code = pattern_for_comparison.encode_to();
             assert_eq!(pattern_code, pattern_for_comparison_code);
             // check Tag
             assert_eq!(

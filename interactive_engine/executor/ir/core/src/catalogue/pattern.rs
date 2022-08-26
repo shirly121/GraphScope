@@ -1222,7 +1222,7 @@ impl Pattern {
             if cand_e_label_dir_set == extend_e_label_dir_set {
                 let mut check_pattern = self.clone();
                 check_pattern.remove_vertex(target_v_cand.get_id());
-                let check_pattern_code = check_pattern.encode();
+                let check_pattern_code = check_pattern.encode_to();
                 // same code means successfully locate the vertex
                 if check_pattern_code == *target_pattern_code {
                     target_vertex_id = Some(target_v_cand.get_id());
@@ -1300,7 +1300,7 @@ impl Serialize for Pattern {
     where
         S: serde::Serializer,
     {
-        let pattern_code = self.encode();
+        let pattern_code = self.encode_to();
         serializer.serialize_bytes(&pattern_code)
     }
 }
@@ -1322,7 +1322,7 @@ impl<'de> Deserialize<'de> for Pattern {
             where
                 E: serde::de::Error,
             {
-                Pattern::decode(v).ok_or(E::custom("Invalide Pattern Code"))
+                Pattern::decode_from(v).ok_or(E::custom("Invalide Pattern Code"))
             }
         }
         deserializer.deserialize_bytes(PatternVisitor)
