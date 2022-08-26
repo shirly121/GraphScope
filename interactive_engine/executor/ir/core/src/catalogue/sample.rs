@@ -17,6 +17,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter::FromIterator;
 use std::path::Path;
+use std::sync::{mpsc, Arc};
+use std::{thread, vec};
 
 use crate::catalogue::catalog::{get_definite_extend_steps_recursively, Catalogue};
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep};
@@ -31,12 +33,12 @@ type PatternRecord = BTreeMap<PatternId, DefaultId>;
 
 impl Catalogue {
     pub fn estimate_graph(
-        &mut self, graph: &LargeGraphDB<DefaultId, InternalId>, rate: f64, limit: Option<usize>,
+        &mut self, graph: Arc<LargeGraphDB<DefaultId, InternalId>>, rate: f64, limit: Option<usize>,
     ) {
         let mut relaxed_patterns_indices = BTreeSet::new();
         let mut pattern_counts_map = BTreeMap::new();
         let mut extend_counts_map = BTreeMap::new();
-        let mut queue = self.get_start_queue(graph, rate, limit);
+        let mut queue = self.get_start_queue(&graph, rate, limit);
         while let Some((pattern, pattern_index, pattern_count, pattern_records)) = queue.pop_front() {
             relaxed_patterns_indices.insert(pattern_index);
             if self
@@ -46,40 +48,109 @@ impl Catalogue {
             {
                 pattern_counts_map.insert(pattern_index, pattern_count);
             }
+            let pattern_records = Arc::new(pattern_records);
+            let pattern = Arc::new(pattern);
             for approach in self.pattern_out_approaches_iter(pattern_index) {
+                // println!("{:?}", approach);
                 if let Some(extend_weight) = self
                     .get_approach_weight(approach.get_approach_index())
                     .and_then(|approach_weight| approach_weight.get_extend_weight())
                 {
                     if extend_weight.is_unset() {
-                        let extend_step = extend_weight.get_extend_step();
+                        let extend_step = Arc::new(extend_weight.get_extend_step().clone());
                         let target_pattern = pattern.extend(&extend_step).unwrap();
+                        let target_vertex_id = target_pattern.get_max_vertex_id();
                         let mut extend_nums_counts = HashMap::new();
                         let mut target_pattern_records = Vec::new();
-                        for pattern_record in pattern_records.iter() {
-                            let mut intersect_vertices_set = BTreeSet::new();
-                            for (i, extend_edge) in extend_step.iter().enumerate() {
-                                let adj_vertices_set = get_adj_vertices_set(
-                                    graph,
-                                    pattern_record,
-                                    &DefiniteExtendEdge::from_extend_edge(extend_edge, &pattern).unwrap(),
-                                    extend_step.get_target_vertex_label(),
-                                );
-                                *extend_nums_counts
-                                    .entry(extend_edge.clone())
-                                    .or_insert(0.0) += adj_vertices_set.len() as f64;
-                                intersect_vertices_set =
-                                    intersect_sets(intersect_vertices_set, adj_vertices_set, i == 0);
-                            }
-                            target_pattern_records.extend(intersect_vertices_set.iter().map(
-                                |&adj_vertex_id| {
-                                    let mut target_pattern_record = pattern_record.clone();
-                                    target_pattern_record
-                                        .insert(target_pattern.get_max_vertex_id(), adj_vertex_id);
-                                    target_pattern_record
-                                },
-                            ));
+                        let (tx_count, rx_count) = mpsc::channel();
+                        let (tx_records, rx_records) = mpsc::channel();
+                        let mut thread_handles = vec![];
+                        for i in 0..8 {
+                            let extend_step = Arc::clone(&extend_step);
+                            let pattern_records = Arc::clone(&pattern_records);
+                            let graph = Arc::clone(&graph);
+                            let pattern = Arc::clone(&pattern);
+                            let tx_count = tx_count.clone();
+                            let tx_records = tx_records.clone();
+                            let thread_handle = thread::spawn(move || {
+                                let start_index = (pattern_records.len() / 8) * i;
+                                let end_index = if i == 7 {
+                                    pattern_records.len()
+                                } else {
+                                    (pattern_records.len() / 8) * (i + 1)
+                                };
+                                for pattern_record in &pattern_records[start_index..end_index] {
+                                    let mut intersect_vertices_set = BTreeSet::new();
+                                    for (i, extend_edge) in extend_step.iter().enumerate() {
+                                        let adj_vertices_set = get_adj_vertices_set(
+                                            &graph,
+                                            pattern_record,
+                                            &DefiniteExtendEdge::from_extend_edge(extend_edge, &pattern)
+                                                .unwrap(),
+                                            extend_step.get_target_vertex_label(),
+                                        );
+                                        tx_count
+                                            .send((extend_edge.clone(), adj_vertices_set.len()))
+                                            .unwrap();
+                                        intersect_vertices_set = intersect_sets(
+                                            intersect_vertices_set,
+                                            adj_vertices_set,
+                                            i == 0,
+                                        );
+                                        for target_pattern_record in
+                                            intersect_vertices_set
+                                                .iter()
+                                                .map(|&adj_vertex_id| {
+                                                    let mut target_pattern_record = pattern_record.clone();
+                                                    target_pattern_record
+                                                        .insert(target_vertex_id, adj_vertex_id);
+                                                    target_pattern_record
+                                                })
+                                        {
+                                            tx_records.send(target_pattern_record).unwrap();
+                                        }
+                                    }
+                                }
+                                // println!("thread {} finish", i);
+                            });
+                            thread_handles.push(thread_handle);
                         }
+                        for thread_handle in thread_handles {
+                            thread_handle.join().unwrap();
+                        }
+                        // println!("jump out join");
+                        while let Ok((extend_edge, count)) = rx_count.try_recv() {
+                            *extend_nums_counts
+                                .entry(extend_edge)
+                                .or_insert(0.0) += count as f64
+                        }
+                        while let Ok(target_pattern_record) = rx_records.try_recv() {
+                            target_pattern_records.push(target_pattern_record);
+                        }
+                        // for pattern_record in pattern_records.iter() {
+                        //     let mut intersect_vertices_set = BTreeSet::new();
+                        //     for (i, extend_edge) in extend_step.iter().enumerate() {
+                        //         let adj_vertices_set = get_adj_vertices_set(
+                        //             &graph,
+                        //             pattern_record,
+                        //             &DefiniteExtendEdge::from_extend_edge(extend_edge, &pattern).unwrap(),
+                        //             extend_step.get_target_vertex_label(),
+                        //         );
+                        //         *extend_nums_counts
+                        //             .entry(extend_edge.clone())
+                        //             .or_insert(0.0) += adj_vertices_set.len() as f64;
+                        //         intersect_vertices_set =
+                        //             intersect_sets(intersect_vertices_set, adj_vertices_set, i == 0);
+                        //     }
+                        //     target_pattern_records.extend(intersect_vertices_set.iter().map(
+                        //         |&adj_vertex_id| {
+                        //             let mut target_pattern_record = pattern_record.clone();
+                        //             target_pattern_record
+                        //                 .insert(target_pattern.get_max_vertex_id(), adj_vertex_id);
+                        //             target_pattern_record
+                        //         },
+                        //     ));
+                        // }
                         if pattern_records.len() != 0 {
                             for (_, count) in extend_nums_counts.iter_mut() {
                                 *count /= pattern_records.len() as f64
@@ -112,7 +183,7 @@ impl Catalogue {
         for (pattern_index, pattern_count) in pattern_counts_map {
             self.set_pattern_count(pattern_index, pattern_count);
         }
-        for (extend_index, extend_nums_counts) in extend_counts_map {
+        for (extend_index, extend_nums_counts) in extend_counts_map.into_iter() {
             self.set_extend_count(extend_index, extend_nums_counts);
         }
     }
@@ -525,8 +596,8 @@ mod tests {
         let mut catalog = Catalogue::build_from_pattern(&pattern);
         assert_eq!(catalog.get_patterns_num(), 10);
         assert_eq!(catalog.get_approaches_num(), 12);
-        let sample_graph = load_sample_graph("../core/resource/test_graph");
-        catalog.estimate_graph(&sample_graph, 0.1, Some(10000));
+        let sample_graph = Arc::new(load_sample_graph("../core/resource/test_graph"));
+        catalog.estimate_graph(Arc::clone(&sample_graph), 0.1, Some(10000));
         println!("{:?}", pattern.generate_optimized_match_plan_greedily(&catalog));
     }
 
@@ -546,8 +617,8 @@ mod tests {
         ])
         .unwrap();
         let mut catalog = Catalogue::build_from_pattern(&pattern);
-        let sample_graph = load_sample_graph("../core/resource/test_graph");
-        catalog.estimate_graph(&sample_graph, 0.1, Some(10000));
+        let sample_graph = Arc::new(load_sample_graph("../core/resource/test_graph"));
+        catalog.estimate_graph(Arc::clone(&sample_graph), 0.1, Some(10000));
         let pattern_index = catalog
             .get_pattern_index(&pattern.encode_to())
             .unwrap();
@@ -574,12 +645,12 @@ mod tests {
             fan_buy_ticket_edge,
         ])
         .unwrap();
-        let sample_graph = load_sample_graph("../core/resource/test_graph");
+        let sample_graph = Arc::new(load_sample_graph("../core/resource/test_graph"));
         let mut catalog = Catalogue::build_from_pattern(&pattern1);
-        catalog.estimate_graph(&sample_graph, 0.1, Some(10000));
+        catalog.estimate_graph(Arc::clone(&sample_graph), 0.1, Some(10000));
         catalog.update_catalog_by_pattern(&pattern2);
         assert_eq!(catalog.get_patterns_num(), 10);
         assert_eq!(catalog.get_approaches_num(), 12);
-        catalog.estimate_graph(&sample_graph, 0.1, Some(10000));
+        catalog.estimate_graph(Arc::clone(&sample_graph), 0.1, Some(10000));
     }
 }

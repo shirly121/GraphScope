@@ -21,6 +21,7 @@ mod common;
 mod test {
     use std::convert::TryInto;
     use std::fs::File;
+    use std::sync::Arc;
     use std::time::Instant;
 
     use ir_common::generated::algebra as pb;
@@ -395,12 +396,12 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case1() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = load_sample_graph(&sample_graph_path);
+            let sample_graph = Arc::new(load_sample_graph(&sample_graph_path));
             let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(&sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, None);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -462,12 +463,12 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case2() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = load_sample_graph(&sample_graph_path);
+            let sample_graph = Arc::new(load_sample_graph(&sample_graph_path));
             let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(&sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, None);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -529,12 +530,12 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case3() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = load_sample_graph(&sample_graph_path);
+            let sample_graph = Arc::new(load_sample_graph(&sample_graph_path));
             let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(&sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, None);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -596,12 +597,12 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_pattern_from_pb_case4() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = load_sample_graph(&sample_graph_path);
+            let sample_graph = Arc::new(load_sample_graph(&sample_graph_path));
             let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(&sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, None);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -663,12 +664,12 @@ mod test {
     #[test]
     fn test_generate_optimized_matching_plan_for_ldbc_bi11() {
         if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
-            let sample_graph = load_sample_graph(&sample_graph_path);
+            let sample_graph = Arc::new(load_sample_graph(&sample_graph_path));
             let ldbc_pattern = build_ldbc_bi11().unwrap();
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(&sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, None);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
