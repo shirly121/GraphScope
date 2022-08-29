@@ -39,17 +39,13 @@ impl Catalogue {
         let mut pattern_counts_map = BTreeMap::new();
         let mut extend_counts_map = BTreeMap::new();
         let mut pattern_nodes = self.get_start_pattern_nodes(&graph, rate, limit);
+        for &(_, start_pattern_index, start_pattern_count, _) in pattern_nodes.iter() {
+            relaxed_patterns_indices.insert(start_pattern_index);
+            pattern_counts_map.insert(start_pattern_index, start_pattern_count);
+        }
         while pattern_nodes.len() > 0 {
             let mut next_pattern_nodes = vec![];
             for (pattern, pattern_index, pattern_count, pattern_records) in pattern_nodes.into_iter() {
-                relaxed_patterns_indices.insert(pattern_index);
-                if self
-                    .get_pattern_weight(pattern_index)
-                    .unwrap()
-                    .is_unset()
-                {
-                    pattern_counts_map.insert(pattern_index, pattern_count);
-                }
                 let pattern_records = Arc::new(pattern_records);
                 let pattern = Arc::new(pattern);
                 for approach in self.pattern_out_approaches_iter(pattern_index) {
@@ -65,7 +61,7 @@ impl Catalogue {
                             let mut target_pattern_records = Vec::new();
                             let (tx_count, rx_count) = mpsc::channel();
                             let (tx_records, rx_records) = mpsc::channel();
-                            let thread_num = 1;
+                            let thread_num = 8;
                             let mut thread_handles = vec![];
                             for thread_id in 0..thread_num {
                                 let extend_step = Arc::clone(&extend_step);
@@ -152,6 +148,14 @@ impl Catalogue {
                                     target_pattern_count,
                                     target_pattern_records,
                                 ));
+                                relaxed_patterns_indices.insert(target_pattern_index);
+                                if self
+                                    .get_pattern_weight(target_pattern_index)
+                                    .unwrap()
+                                    .is_unset()
+                                {
+                                    pattern_counts_map.insert(target_pattern_index, target_pattern_count);
+                                }
                             }
                         }
                     }
