@@ -17,11 +17,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use std::path::Path;
-use std::sync::{mpsc, Arc};
-use std::{thread, vec};
+use std::sync::{mpsc, mpsc::Sender, Arc};
+use std::{thread, thread::JoinHandle, vec};
 
 use crate::catalogue::catalog::{get_definite_extend_steps_recursively, Catalogue};
-use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep};
+use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
 
@@ -35,133 +35,56 @@ impl Catalogue {
     pub fn estimate_graph(
         &mut self, graph: Arc<LargeGraphDB<DefaultId, InternalId>>, rate: f64, limit: Option<usize>,
     ) {
-        let mut relaxed_patterns_indices = BTreeSet::new();
+        let mut relaxed_pattern_indices = BTreeSet::new();
         let mut pattern_counts_map = BTreeMap::new();
         let mut extend_counts_map = BTreeMap::new();
-        let mut pattern_nodes = self.get_start_pattern_nodes(&graph, rate, limit);
-        for &(_, start_pattern_index, start_pattern_count, _) in pattern_nodes.iter() {
-            relaxed_patterns_indices.insert(start_pattern_index);
-            pattern_counts_map.insert(start_pattern_index, start_pattern_count);
-        }
-        while pattern_nodes.len() > 0 {
-            let mut next_pattern_nodes = vec![];
-            for (pattern, pattern_index, pattern_count, pattern_records) in pattern_nodes.into_iter() {
-                let pattern_records = Arc::new(pattern_records);
-                let pattern = Arc::new(pattern);
-                for approach in self.pattern_out_approaches_iter(pattern_index) {
+        let mut pattern_count_infos = self.get_start_pattern_count_infos(
+            &graph,
+            rate,
+            limit,
+            &mut relaxed_pattern_indices,
+            &mut pattern_counts_map,
+        );
+        while pattern_count_infos.len() > 0 {
+            let mut next_pattern_count_infos = vec![];
+            for pattern_count_info in pattern_count_infos.into_iter() {
+                let pattern_count_info = Arc::new(pattern_count_info);
+                for approach in self.pattern_out_approaches_iter(pattern_count_info.pattern_index) {
                     if let Some(extend_weight) = self
                         .get_approach_weight(approach.get_approach_index())
                         .and_then(|approach_weight| approach_weight.get_extend_weight())
+                        .filter(|extend_weight| extend_weight.is_unset())
                     {
-                        if extend_weight.is_unset() {
-                            let extend_step = Arc::new(extend_weight.get_extend_step().clone());
-                            let target_pattern = pattern.extend(&extend_step).unwrap();
-                            let target_vertex_id = target_pattern.get_max_vertex_id();
-                            let mut extend_nums_counts = HashMap::new();
-                            let mut target_pattern_records = Vec::new();
-                            let (tx_count, rx_count) = mpsc::channel();
-                            let (tx_records, rx_records) = mpsc::channel();
-                            let thread_num = 8;
-                            let mut thread_handles = vec![];
-                            for thread_id in 0..thread_num {
-                                let extend_step = Arc::clone(&extend_step);
-                                let pattern_records = Arc::clone(&pattern_records);
-                                let graph = Arc::clone(&graph);
-                                let pattern = Arc::clone(&pattern);
-                                let tx_count = tx_count.clone();
-                                let tx_records = tx_records.clone();
-                                let start_index = (pattern_records.len() / thread_num) * thread_id;
-                                let end_index = if thread_id == thread_num - 1 {
-                                    pattern_records.len()
-                                } else {
-                                    (pattern_records.len() / thread_num) * (thread_id + 1)
-                                };
-                                let thread_handle = thread::spawn(move || {
-                                    for pattern_record in &pattern_records[start_index..end_index] {
-                                        let mut intersect_vertices_set = BTreeSet::new();
-                                        for (i, extend_edge) in extend_step.iter().enumerate() {
-                                            let adj_vertices_set = get_adj_vertices_set(
-                                                &graph,
-                                                pattern_record,
-                                                &DefiniteExtendEdge::from_extend_edge(
-                                                    extend_edge,
-                                                    &pattern,
-                                                )
-                                                .unwrap(),
-                                                extend_step.get_target_vertex_label(),
-                                            );
-                                            tx_count
-                                                .send((extend_edge.clone(), adj_vertices_set.len()))
-                                                .unwrap();
-                                            intersect_vertices_set = intersect_sets(
-                                                intersect_vertices_set,
-                                                adj_vertices_set,
-                                                i == 0,
-                                            );
-                                        }
-                                        for target_pattern_record in
-                                            intersect_vertices_set
-                                                .iter()
-                                                .map(|&adj_vertex_id| {
-                                                    let mut target_pattern_record = pattern_record.clone();
-                                                    target_pattern_record
-                                                        .insert(target_vertex_id, adj_vertex_id);
-                                                    target_pattern_record
-                                                })
-                                        {
-                                            tx_records.send(target_pattern_record).unwrap();
-                                        }
-                                    }
-                                });
-                                thread_handles.push(thread_handle);
-                            }
-                            for thread_handle in thread_handles {
-                                thread_handle.join().unwrap();
-                            }
-                            while let Ok((extend_edge, count)) = rx_count.try_recv() {
-                                *extend_nums_counts
-                                    .entry(extend_edge)
-                                    .or_insert(0.0) += count as f64
-                            }
-                            while let Ok(target_pattern_record) = rx_records.try_recv() {
-                                target_pattern_records.push(target_pattern_record);
-                            }
-                            if pattern_records.len() != 0 {
-                                for (_, count) in extend_nums_counts.iter_mut() {
-                                    *count /= pattern_records.len() as f64
-                                }
-                            }
-                            let target_pattern_count = if pattern_records.len() == 0 {
-                                0
-                            } else {
-                                (pattern_count as f64
-                                    * (target_pattern_records.len() as f64 / pattern_records.len() as f64))
-                                    as usize
-                            };
-                            target_pattern_records = sample_records(target_pattern_records, rate, limit);
-                            let target_pattern_index = approach.get_target_pattern_index();
-                            extend_counts_map.insert(approach, extend_nums_counts);
-                            if !relaxed_patterns_indices.contains(&target_pattern_index) {
-                                next_pattern_nodes.push((
-                                    target_pattern,
-                                    target_pattern_index,
-                                    target_pattern_count,
-                                    target_pattern_records,
-                                ));
-                                relaxed_patterns_indices.insert(target_pattern_index);
-                                if self
-                                    .get_pattern_weight(target_pattern_index)
-                                    .unwrap()
-                                    .is_unset()
-                                {
-                                    pattern_counts_map.insert(target_pattern_index, target_pattern_count);
-                                }
+                        let extend_step = Arc::new(extend_weight.get_extend_step().clone());
+                        let sub_task = SubTask::new(&pattern_count_info, &extend_step, &graph);
+                        let sub_task_result = sub_task.execute(8, rate, limit);
+                        let target_pattern = pattern_count_info
+                            .pattern
+                            .extend(&extend_step)
+                            .unwrap();
+                        let target_pattern_index = approach.get_target_pattern_index();
+                        extend_counts_map.insert(approach, sub_task_result.extend_num_counts);
+                        if !relaxed_pattern_indices.contains(&target_pattern_index) {
+                            next_pattern_count_infos.push(PatternCountInfo::new(
+                                target_pattern,
+                                target_pattern_index,
+                                sub_task_result.target_pattern_records,
+                                sub_task_result.target_pattern_count,
+                            ));
+                            relaxed_pattern_indices.insert(target_pattern_index);
+                            if self
+                                .get_pattern_weight(target_pattern_index)
+                                .unwrap()
+                                .is_unset()
+                            {
+                                pattern_counts_map
+                                    .insert(target_pattern_index, sub_task_result.target_pattern_count);
                             }
                         }
                     }
                 }
             }
-            pattern_nodes = next_pattern_nodes;
+            pattern_count_infos = next_pattern_count_infos;
         }
         println!("{:?}", pattern_counts_map);
         println!("{:?}", extend_counts_map);
@@ -197,9 +120,11 @@ impl Catalogue {
         start_pattern_indices
     }
 
-    fn get_start_pattern_nodes(
+    fn get_start_pattern_count_infos(
         &mut self, graph: &LargeGraphDB<DefaultId, InternalId>, rate: f64, limit: Option<usize>,
-    ) -> Vec<(Pattern, NodeIndex, usize, Vec<PatternRecord>)> {
+        relaxed_pattern_indices: &mut BTreeSet<NodeIndex>,
+        pattern_counts_map: &mut BTreeMap<NodeIndex, usize>,
+    ) -> Vec<PatternCountInfo> {
         let mut pattern_nodes = Vec::new();
         for start_pattern_index in self.get_start_pattern_indices() {
             let pattern = self
@@ -211,10 +136,170 @@ impl Catalogue {
                 get_definite_extend_steps_recursively(self, start_pattern_index, pattern.clone());
             let mut pattern_records = get_src_records(graph, extend_steps, limit);
             let pattern_count = pattern_records.len();
+            relaxed_pattern_indices.insert(start_pattern_index);
+            if self
+                .get_pattern_weight(start_pattern_index)
+                .unwrap()
+                .is_unset()
+            {
+                pattern_counts_map.insert(start_pattern_index, pattern_count);
+            }
             pattern_records = sample_records(pattern_records, rate, limit);
-            pattern_nodes.push((pattern, start_pattern_index, pattern_count, pattern_records));
+            pattern_nodes.push(PatternCountInfo::new(
+                pattern,
+                start_pattern_index,
+                pattern_records,
+                pattern_count,
+            ));
         }
         pattern_nodes
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PatternCountInfo {
+    pattern: Pattern,
+    pattern_index: NodeIndex,
+    pattern_records: Vec<PatternRecord>,
+    pattern_count: usize,
+}
+
+impl PatternCountInfo {
+    fn new(
+        pattern: Pattern, pattern_index: NodeIndex, pattern_records: Vec<PatternRecord>,
+        pattern_count: usize,
+    ) -> PatternCountInfo {
+        PatternCountInfo { pattern, pattern_index, pattern_records, pattern_count }
+    }
+}
+
+#[derive(Clone)]
+struct SubTask {
+    pattern_count_info: Arc<PatternCountInfo>,
+    extend_step: Arc<ExtendStep>,
+    graph: Arc<LargeGraphDB<DefaultId, InternalId>>,
+}
+
+impl SubTask {
+    fn new(
+        pattern_count_info: &Arc<PatternCountInfo>, extend_step: &Arc<ExtendStep>,
+        graph: &Arc<LargeGraphDB<DefaultId, InternalId>>,
+    ) -> SubTask {
+        SubTask {
+            pattern_count_info: Arc::clone(pattern_count_info),
+            extend_step: Arc::clone(extend_step),
+            graph: Arc::clone(graph),
+        }
+    }
+
+    fn get_pattern(&self) -> &Pattern {
+        &self.pattern_count_info.pattern
+    }
+
+    fn get_pattern_records(&self) -> &Vec<PatternRecord> {
+        &self.pattern_count_info.pattern_records
+    }
+
+    fn get_pattern_count(&self) -> usize {
+        self.pattern_count_info.pattern_count
+    }
+}
+
+impl SubTask {
+    fn execute(&self, thread_num: usize, rate: f64, limit: Option<usize>) -> SubTaskResult {
+        let mut extend_nums_counts = HashMap::new();
+        let mut target_pattern_records = Vec::new();
+        let (tx_count, rx_count) = mpsc::channel();
+        let (tx_records, rx_records) = mpsc::channel();
+        let mut thread_handles = Vec::with_capacity(thread_num);
+        for thread_id in 0..thread_num {
+            let thread_sub_task = self.clone();
+            let thread_handle = thread_sub_task.execute_internal(
+                thread_id,
+                thread_num,
+                tx_count.clone(),
+                tx_records.clone(),
+            );
+            thread_handles.push(thread_handle);
+        }
+        for thread_handle in thread_handles {
+            thread_handle.join().unwrap();
+        }
+        while let Ok((extend_edge, count)) = rx_count.try_recv() {
+            *extend_nums_counts
+                .entry(extend_edge)
+                .or_insert(0.0) += count as f64
+        }
+        while let Ok(target_pattern_record) = rx_records.try_recv() {
+            target_pattern_records.push(target_pattern_record);
+        }
+        if self.get_pattern_records().len() != 0 {
+            for (_, count) in extend_nums_counts.iter_mut() {
+                *count /= self.get_pattern_records().len() as f64
+            }
+        }
+        let target_pattern_count = if self.get_pattern_records().len() == 0 {
+            0
+        } else {
+            (self.get_pattern_count() as f64
+                * (target_pattern_records.len() as f64 / self.get_pattern_records().len() as f64))
+                as usize
+        };
+        SubTaskResult::new(
+            sample_records(target_pattern_records, rate, limit),
+            target_pattern_count,
+            extend_nums_counts,
+        )
+    }
+
+    fn execute_internal(
+        self, thread_id: usize, thread_num: usize, tx_count: Sender<(ExtendEdge, usize)>,
+        tx_records: Sender<PatternRecord>,
+    ) -> JoinHandle<()> {
+        thread::spawn(move || {
+            let target_vertex_id = self.get_pattern().get_max_vertex_id() + 1;
+            for pattern_record in split_vector(self.get_pattern_records(), thread_num, thread_id) {
+                let mut intersect_vertices_set = BTreeSet::new();
+                for (i, extend_edge) in self.extend_step.iter().enumerate() {
+                    let adj_vertices_set = get_adj_vertices_set(
+                        &self.graph,
+                        pattern_record,
+                        &DefiniteExtendEdge::from_extend_edge(extend_edge, self.get_pattern()).unwrap(),
+                        self.extend_step.get_target_vertex_label(),
+                    );
+                    tx_count
+                        .send((extend_edge.clone(), adj_vertices_set.len()))
+                        .unwrap();
+                    intersect_vertices_set =
+                        intersect_sets(intersect_vertices_set, adj_vertices_set, i == 0);
+                }
+                for target_pattern_record in intersect_vertices_set
+                    .iter()
+                    .map(|&adj_vertex_id| {
+                        let mut target_pattern_record = pattern_record.clone();
+                        target_pattern_record.insert(target_vertex_id, adj_vertex_id);
+                        target_pattern_record
+                    })
+                {
+                    tx_records.send(target_pattern_record).unwrap();
+                }
+            }
+        })
+    }
+}
+
+struct SubTaskResult {
+    target_pattern_records: Vec<PatternRecord>,
+    target_pattern_count: usize,
+    extend_num_counts: HashMap<ExtendEdge, f64>,
+}
+
+impl SubTaskResult {
+    fn new(
+        target_pattern_records: Vec<PatternRecord>, target_pattern_count: usize,
+        extend_num_counts: HashMap<ExtendEdge, f64>,
+    ) -> SubTaskResult {
+        SubTaskResult { target_pattern_records, target_pattern_count, extend_num_counts }
     }
 }
 
@@ -296,6 +381,16 @@ fn sample_records(records: Vec<PatternRecord>, rate: f64, limit: Option<usize>) 
         .filter(|&(i, _)| i < expected_len)
         .map(|(_, (_, record))| record)
         .collect()
+}
+
+fn split_vector<T>(vector: &Vec<T>, thread_num: usize, thread_id: usize) -> &[T] {
+    let start_index = (vector.len() / thread_num) * thread_id;
+    let end_index = if thread_id == thread_num - 1 {
+        vector.len()
+    } else {
+        (vector.len() / thread_num) * (thread_id + 1)
+    };
+    &vector[start_index..end_index]
 }
 
 pub fn load_sample_graph(graph_path: &str) -> LargeGraphDB<DefaultId, InternalId> {
