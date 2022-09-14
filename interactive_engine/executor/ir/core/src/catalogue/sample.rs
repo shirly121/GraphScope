@@ -20,14 +20,14 @@ use std::path::Path;
 use std::sync::{mpsc, mpsc::Sender, Arc};
 use std::{thread, thread::JoinHandle, vec};
 
+use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
+use graph_store::prelude::{DefaultId, GlobalStoreTrait, GraphDBConfig, InternalId, LabelId, LargeGraphDB};
+use petgraph::graph::NodeIndex;
+
 use crate::catalogue::catalog::{get_definite_extend_steps_recursively, Catalogue};
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
-
-use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
-use graph_store::prelude::{DefaultId, GlobalStoreTrait, GraphDBConfig, InternalId, LabelId, LargeGraphDB};
-use petgraph::graph::NodeIndex;
 
 type PatternRecord = BTreeMap<PatternId, DefaultId>;
 

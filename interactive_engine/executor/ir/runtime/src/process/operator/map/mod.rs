@@ -19,13 +19,13 @@ mod path_end;
 mod path_start;
 mod project;
 
+pub use expand_intersect::Intersection;
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 use pegasus::api::function::{FilterMapFunction, MapFunction};
 
 use crate::error::FnGenResult;
 use crate::process::record::Record;
-pub use expand_intersect::Intersection;
 
 pub trait MapFuncGen {
     fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record, Record>>>;

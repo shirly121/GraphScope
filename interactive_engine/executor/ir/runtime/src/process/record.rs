@@ -19,7 +19,6 @@ use std::hash::Hash;
 use std::ops::Add;
 use std::sync::Arc;
 
-use crate::process::operator::map::Intersection;
 use dyn_type::{BorrowObject, Object};
 use graph_proxy::apis::{Edge, Element, GraphElement, GraphPath, Vertex, VertexOrEdge};
 use graph_proxy::utils::expr::eval::Context;
@@ -29,6 +28,8 @@ use ir_common::{KeyId, NameOrId};
 use pegasus::api::function::DynIter;
 use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 use vec_map::VecMap;
+
+use crate::process::operator::map::Intersection;
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
 pub enum Entry {
