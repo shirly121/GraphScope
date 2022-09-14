@@ -67,6 +67,7 @@ pub fn query_params(
         is_all_columns: false,
         limit: None,
         predicate,
+        sample_ratio: 1.0,
         extra: HashMap::new(),
     }
 }
@@ -390,7 +391,7 @@ pub fn build_ldbc_pattern_from_pb_case1() -> Result<Pattern, IrError> {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let pattern = pb::Pattern {
@@ -437,21 +438,21 @@ pub fn build_ldbc_pattern_from_pb_case2() -> Result<Pattern, IrError> {
         v_tag: None,
         direction: 1,                                              // in
         params: Some(query_params(vec![15.into()], vec![], None)), //STUDYAT
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr2 = pb::EdgeExpand {
         v_tag: None,
         direction: 1,                                              // in
         params: Some(query_params(vec![15.into()], vec![], None)), //STUDYAT
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr3 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let pattern = pb::Pattern {
@@ -494,7 +495,7 @@ pub fn build_ldbc_pattern_from_pb_case3() -> Result<Pattern, IrError> {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let pattern = pb::Pattern {
@@ -567,28 +568,28 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr2 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr3 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![13.into()], vec![], None)), //LIKES
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr4 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                             // out
         params: Some(query_params(vec![0.into()], vec![], None)), //HASCREATOR
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let pattern = pb::Pattern {
@@ -645,14 +646,14 @@ pub fn build_ldbc_pattern_from_pb_case5() -> Result<Pattern, IrError> {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr1 = pb::EdgeExpand {
         v_tag: None,
         direction: 1,                                              // in
         params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let pattern = pb::Pattern {
@@ -708,35 +709,35 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr1 = pb::EdgeExpand {
         v_tag: None,
         direction: 1,                                              // in
         params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr2 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr3 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                              // out
         params: Some(query_params(vec![13.into()], vec![], None)), //LIKES
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let expand_opr4 = pb::EdgeExpand {
         v_tag: None,
         direction: 0,                                             // out
         params: Some(query_params(vec![0.into()], vec![], None)), //HASCREATOR
-        is_edge: false,
+        expand_opt: 0,
         alias: None,
     };
     let pattern = pb::Pattern {

@@ -115,8 +115,8 @@ impl GraphPath {
 
     pub fn get_path_mut(&mut self) -> Option<&mut Vec<VertexOrEdge>> {
         match self {
-            GraphPath::WHOLE((w, _)) => Some(w),
-            GraphPath::END((_, _)) => None,
+            GraphPath::AllV(p) | GraphPath::SimpleAllV(p) => Some(p),
+            GraphPath::EndV(_) | GraphPath::SimpleEndV(_) => None,
         }
     }
 

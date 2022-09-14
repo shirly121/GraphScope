@@ -438,8 +438,8 @@ fn get_sentence_last_expand_index(sentence: &pb::pattern::Sentence) -> Option<us
 /// - in current realization, edge_expand only allows to have one label
 /// - if it has no label or more than one label, give Error
 fn get_edge_expand_label(edge_expand: &pb::EdgeExpand) -> IrResult<PatternLabelId> {
-    if edge_expand.is_edge {
-        return Err(IrError::Unsupported("Expand only edge is not supported".to_string()));
+    if edge_expand.expand_opt != pb::edge_expand::ExpandOpt::Vertex as i32 {
+        return Err(IrError::Unsupported("Expand only edge in pattern".to_string()));
     }
     if let Some(params) = edge_expand.params.as_ref() {
         // TODO: Support Fuzzy Pattern

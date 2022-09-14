@@ -16,14 +16,13 @@
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use graph_proxy::apis::graph::element::GraphObject;
 use ir_common::generated::algebra as algebra_pb;
 use ir_common::KeyId;
 use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{Entry, Record, RecordElement};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 /// Unfold the Collection entry referred by a given `tag`.
@@ -50,19 +49,6 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
         input.take(None);
         if let Some(entry) = Arc::get_mut(&mut entry) {
             match entry {
-                Entry::Element(e) => match e {
-                    RecordElement::OnGraph(GraphObject::P(_graph_path)) => {
-                        // TODO: to support path_unwinding
-                        Err(FnExecError::unsupported_error(&format!(
-                            "unfold path entry {:?} in UnfoldOperator",
-                            entry
-                        )))?
-                    }
-                    _ => Err(FnExecError::unexpected_data_error(&format!(
-                        "unfold entry {:?} in UnfoldOperator",
-                        entry
-                    )))?,
-                },
                 Entry::Collection(collection) => {
                     let mut res = Vec::with_capacity(collection.len());
                     for item in collection.drain(..) {
@@ -81,6 +67,17 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
                     }
                     Ok(Box::new(res.into_iter()))
                 }
+                Entry::P(_) => {
+                    // TODO: to support path_unwinding
+                    Err(FnExecError::unsupported_error(&format!(
+                        "unfold path entry {:?} in UnfoldOperator",
+                        entry
+                    )))?
+                }
+                _ => Err(FnExecError::unexpected_data_error(&format!(
+                    "unfold entry {:?} in UnfoldOperator",
+                    entry
+                )))?,
             }
         } else {
             Err(FnExecError::unexpected_data_error(&format!(

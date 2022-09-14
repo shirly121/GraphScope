@@ -288,12 +288,14 @@ impl DefiniteExtendStep {
             let edge_predicate = origin_pattern
                 .get_edge_predicate(edge_id)
                 .cloned();
+
             let edge_expand = pb::EdgeExpand {
                 // use start vertex id as tag
                 v_tag: Some((extend_edge.src_vertex_id as i32).into()),
                 direction: extend_edge.dir as i32,
                 params: Some(query_params(vec![extend_edge.edge_label.into()], vec![], edge_predicate)),
-                is_edge: false,
+                // expand vertex
+                expand_opt: pb::edge_expand::ExpandOpt::Vertex as i32,
                 // use target vertex id as alias
                 alias: Some((target_v_id as i32).into()),
             };

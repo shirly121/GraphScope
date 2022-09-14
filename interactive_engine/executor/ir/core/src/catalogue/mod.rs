@@ -69,6 +69,7 @@ pub(crate) fn query_params(
         is_all_columns: false,
         limit: None,
         predicate,
+        sample_ratio: 1.0,
         extra: HashMap::new(),
     }
 }

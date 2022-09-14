@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use graph_proxy::apis::graph::element::{GraphElement, GraphObject};
+use graph_proxy::apis::graph::element::GraphElement;
 use graph_proxy::apis::{Direction, DynDetails, QueryParams, Statement, Vertex, ID};
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
@@ -27,13 +27,13 @@ use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{Entry, Record, RecordElement};
+use crate::process::record::{Entry, Record};
 
 /// An ExpandOrIntersect operator to expand neighbors
 /// and intersect with the ones of the same tag found previously (if exists).
 /// Notice that start_v_tag (from which tag to expand from)
 /// and edge_or_end_v_tag (the alias of expanded neighbors) must be specified.
-struct ExpandOrIntersect<E: Into<GraphObject>> {
+struct ExpandOrIntersect<E: Into<Entry>> {
     start_v_tag: KeyId,
     edge_or_end_v_tag: KeyId,
     stmt: Box<dyn Statement<ID, E>>,
@@ -41,7 +41,7 @@ struct ExpandOrIntersect<E: Into<GraphObject>> {
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
 pub struct Intersection {
-    id_record_count_map: BTreeMap<ID, (RecordElement, u64)>,
+    id_record_count_map: BTreeMap<ID, (Vertex, u64)>,
 }
 
 impl Intersection {
@@ -51,7 +51,7 @@ impl Intersection {
             let vertex_id = vertex.id();
             id_record_count_map
                 .entry(vertex_id)
-                .or_insert((RecordElement::OnGraph(vertex.into()), 0))
+                .or_insert((vertex, 0))
                 .1 += 1;
         }
         Intersection { id_record_count_map }
@@ -84,7 +84,7 @@ impl Intersection {
         len as usize
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &RecordElement> {
+    pub fn iter(&self) -> impl Iterator<Item = &Vertex> {
         self.id_record_count_map
             .iter()
             .flat_map(move |(_, (record, count))| std::iter::repeat(record).take(*count as usize))
@@ -92,7 +92,7 @@ impl Intersection {
 }
 
 impl IntoIterator for Intersection {
-    type Item = RecordElement;
+    type Item = Vertex;
     type IntoIter = DynIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
         Box::new(
@@ -112,12 +112,12 @@ impl Encode for Intersection {
 
 impl Decode for Intersection {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
-        let id_record_count_map = <BTreeMap<ID, (RecordElement, u64)>>::read_from(reader)?;
+        let id_record_count_map = <BTreeMap<ID, (Vertex, u64)>>::read_from(reader)?;
         Ok(Intersection { id_record_count_map })
     }
 }
 
-impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
+impl<E: Into<Entry> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
     fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
         let entry = input
             .get(Some(self.start_v_tag))
@@ -128,24 +128,17 @@ impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for Expan
         if let Some(v) = entry.as_graph_vertex() {
             let id = v.id();
             let iter = self.stmt.exec(id)?.map(|e| match e.into() {
-                GraphObject::V(v) => v,
-                GraphObject::E(e) => {
+                Entry::V(v) => v,
+                Entry::E(e) => {
                     Vertex::new(e.get_other_id(), e.get_other_label().cloned(), DynDetails::default())
                 }
-                GraphObject::P(_) => {
+                _ => {
                     unreachable!()
                 }
             });
             if let Some(pre_entry) = input.get_column_mut(&self.edge_or_end_v_tag) {
                 // the case of expansion and intersection
                 match pre_entry {
-                    Entry::Element(e) => Err(FnExecError::unexpected_data_error(&format!(
-                        "entry {:?} is not a intersection in ExpandOrIntersect",
-                        e
-                    )))?,
-                    Entry::Collection(pre_collection) => Err(FnExecError::unexpected_data_error(
-                        &format!("entry {:?} is not a intersection in ExpandOrIntersect", pre_collection),
-                    ))?,
                     Entry::Intersection(pre_intersection) => {
                         let mut seeker = BTreeMap::new();
                         for v in iter {
@@ -158,6 +151,10 @@ impl<E: Into<GraphObject> + 'static> FilterMapFunction<Record, Record> for Expan
                             Ok(Some(input))
                         }
                     }
+                    _ => Err(FnExecError::unexpected_data_error(&format!(
+                        "entry {:?} is not a intersection in ExpandOrIntersect",
+                        pre_entry
+                    )))?,
                 }
             } else {
                 // the case of expansion only
@@ -200,12 +197,12 @@ impl FilterMapFuncGen for algebra_pb::EdgeExpand {
             "Runtime expand collection operator of edge with start_v_tag {:?}, edge_tag {:?}, direction {:?}, query_params {:?}",
             start_v_tag, edge_or_end_v_tag, direction, query_params
         );
-        if self.is_edge {
+        if self.expand_opt != algebra_pb::edge_expand::ExpandOpt::Vertex as i32 {
             Err(FnGenError::unsupported_error("expand edges in ExpandIntersection"))
         } else {
             if query_params.filter.is_some() {
                 // Expand vertices with filters on edges.
-                // This can be regarded as a combination of EdgeExpand (with is_edge = true) + GetV
+                // This can be regarded as a combination of EdgeExpand (with expand_opt as Edge) + GetV
                 let stmt = graph.prepare_explore_edge(direction, &query_params)?;
                 let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
                 Ok(Box::new(edge_expand_operator))
@@ -226,7 +223,7 @@ mod tests {
     use graph_proxy::apis::graph::element::Element;
     use graph_proxy::apis::ID;
 
-    use super::{BTreeMap, Intersection, RecordElement};
+    use super::{BTreeMap, Intersection};
 
     #[test]
     fn intersect_test_01() {
@@ -234,7 +231,7 @@ mod tests {
             id_record_count_map: BTreeMap::from_iter(
                 vec![1, 2, 3]
                     .into_iter()
-                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+                    .map(|id| (id, (id.into(), 1))),
             ),
         };
         let seeker = BTreeMap::from_iter(
@@ -258,7 +255,7 @@ mod tests {
             id_record_count_map: BTreeMap::from_iter(
                 vec![1, 2, 3, 4, 5]
                     .into_iter()
-                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+                    .map(|id| (id, (id.into(), 1))),
             ),
         };
         let seeker = BTreeMap::from_iter(vec![3, 2, 1].into_iter().map(|id| (id, 1)));
@@ -278,7 +275,7 @@ mod tests {
             id_record_count_map: BTreeMap::from_iter(
                 vec![1, 2, 3, 4, 5]
                     .into_iter()
-                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+                    .map(|id| (id, (id.into(), 1))),
             ),
         };
         let seeker = BTreeMap::from_iter(
@@ -302,7 +299,7 @@ mod tests {
             id_record_count_map: BTreeMap::from_iter(
                 vec![1, 2, 3, 4, 5]
                     .into_iter()
-                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+                    .map(|id| (id, (id.into(), 1))),
             ),
         };
         let seeker = BTreeMap::from_iter(vec![9, 8, 7, 6].into_iter().map(|id| (id, 1)));
@@ -320,8 +317,7 @@ mod tests {
     fn intersect_test_05() {
         let mut intersection = Intersection {
             id_record_count_map: BTreeMap::from_iter(
-                [(1, 2), (2, 1), (3, 1), (4, 1), (5, 1)]
-                    .map(|(id, count)| (id, (RecordElement::OnGraph(id.into()), count))),
+                [(1, 2), (2, 1), (3, 1), (4, 1), (5, 1)].map(|(id, count)| (id, (id.into(), count))),
             ),
         };
         let seeker = BTreeMap::from_iter(vec![1, 2, 3].into_iter().map(|id| (id, 1)));
@@ -341,7 +337,7 @@ mod tests {
             id_record_count_map: BTreeMap::from_iter(
                 vec![1, 2, 3]
                     .into_iter()
-                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+                    .map(|id| (id, (id.into(), 1))),
             ),
         };
         let seeker = BTreeMap::from_iter([(1, 2), (2, 1), (3, 1), (4, 1), (5, 1)]);
@@ -359,8 +355,7 @@ mod tests {
     fn intersect_test_07() {
         let mut intersection = Intersection {
             id_record_count_map: BTreeMap::from_iter(
-                [(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)]
-                    .map(|(id, count)| (id, (RecordElement::OnGraph(id.into()), count))),
+                [(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)].map(|(id, count)| (id, (id.into(), count))),
             ),
         };
         let seeker = BTreeMap::from_iter(vec![1, 2, 3].into_iter().map(|id| (id, 1)));
@@ -380,7 +375,7 @@ mod tests {
             id_record_count_map: BTreeMap::from_iter(
                 vec![1, 2, 3]
                     .into_iter()
-                    .map(|id| (id, (RecordElement::OnGraph(id.into()), 1))),
+                    .map(|id| (id, (id.into(), 1))),
             ),
         };
         let seeker = BTreeMap::from_iter([(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)]);
@@ -398,8 +393,7 @@ mod tests {
     fn intersect_test_09() {
         let mut intersection = Intersection {
             id_record_count_map: BTreeMap::from_iter(
-                [(1, 2), (2, 2), (3, 2)]
-                    .map(|(id, count)| (id, (RecordElement::OnGraph(id.into()), count))),
+                [(1, 2), (2, 2), (3, 2)].map(|(id, count)| (id, (id.into(), count))),
             ),
         };
         let seeker = BTreeMap::from_iter([(1, 2), (2, 2), (3, 2), (4, 1), (5, 1)]);

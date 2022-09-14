@@ -203,6 +203,12 @@ impl Into<Entry> for Object {
     }
 }
 
+impl Into<Entry> for Intersection {
+    fn into(self) -> Entry {
+        Entry::Intersection(self)
+    }
+}
+
 impl Context<Entry> for Record {
     fn get(&self, tag: Option<&NameOrId>) -> Option<&Entry> {
         let tag = if let Some(tag) = tag {
@@ -232,6 +238,7 @@ impl Element for Entry {
             Entry::P(p) => p.as_graph_element(),
             Entry::OffGraph(_) => None,
             Entry::Collection(_) => None,
+            Entry::Intersection(_) => None,
         }
     }
 
@@ -242,6 +249,7 @@ impl Element for Entry {
             Entry::P(p) => p.len(),
             Entry::OffGraph(obj) => obj.len(),
             Entry::Collection(c) => c.len(),
+            Entry::Intersection(i) => i.len(),
         }
     }
 
@@ -252,6 +260,7 @@ impl Element for Entry {
             Entry::P(p) => p.as_borrow_object(),
             Entry::OffGraph(obj) => obj.as_borrow(),
             Entry::Collection(_) => unreachable!(),
+            Entry::Intersection(_) => unreachable!(),
         }
     }
 }

@@ -702,8 +702,8 @@ mod test {
         let expand_opr1 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 0, // out
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_B.into()),
         };
 
@@ -711,8 +711,8 @@ mod test {
         let expand_opr2 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 0, // out
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -750,7 +750,7 @@ mod test {
                 let mut result_collection: Vec<usize> = intersection
                     .clone()
                     .into_iter()
-                    .map(|r| r.as_graph_element().unwrap().id() as usize)
+                    .map(|r| r.id() as usize)
                     .collect();
                 result_collection.sort();
                 result_collections.push(result_collection);
@@ -767,8 +767,8 @@ mod test {
         let expand_opr1 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 0, // out
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_B.into()),
         };
 
@@ -776,8 +776,8 @@ mod test {
         let expand_opr2 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 0, // out
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -785,8 +785,8 @@ mod test {
         let expand_opr3 = pb::EdgeExpand {
             v_tag: Some(TAG_B.into()),
             direction: 1, // in
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -823,7 +823,7 @@ mod test {
                 let mut result_collection: Vec<DefaultId> = intersection
                     .clone()
                     .into_iter()
-                    .map(|r| r.as_graph_element().unwrap().id() as DefaultId)
+                    .map(|r| r.id() as DefaultId)
                     .collect();
                 result_collection.sort();
                 result_collections.push(result_collection);
@@ -839,8 +839,8 @@ mod test {
         let expand_opr1 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 0, // out
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_B.into()),
         };
 
@@ -848,8 +848,8 @@ mod test {
         let expand_opr2 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 0, // out
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -857,8 +857,8 @@ mod test {
         let expand_opr3 = pb::EdgeExpand {
             v_tag: Some(TAG_B.into()),
             direction: 1, // in
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -911,8 +911,8 @@ mod test {
         let expand_opr1 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 2, // both
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_B.into()),
         };
 
@@ -920,8 +920,8 @@ mod test {
         let expand_opr2 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 2, // both
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -929,8 +929,8 @@ mod test {
         let expand_opr3 = pb::EdgeExpand {
             v_tag: Some(TAG_B.into()),
             direction: 2, // both
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -981,8 +981,8 @@ mod test {
         let expand_opr1 = pb::EdgeExpand {
             v_tag: Some(TAG_A.into()),
             direction: 2, // both
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_B.into()),
         };
 
@@ -991,11 +991,11 @@ mod test {
             v_tag: Some(TAG_A.into()),
             direction: 2, // both
             params: Some(query_params(
-                vec!["knows".into(), "created".into()],
+                vec![KNOWS_LABEL.into(), CREATED_LABEL.into()],
                 vec![],
                 str_to_expr_pb("@.weight > 0.5".to_string()).ok(),
             )),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 
@@ -1003,8 +1003,8 @@ mod test {
         let expand_opr3 = pb::EdgeExpand {
             v_tag: Some(TAG_B.into()),
             direction: 2, // both
-            params: Some(query_params(vec!["knows".into(), "created".into()], vec![], None)),
-            is_edge: false,
+            params: Some(query_params(vec![KNOWS_LABEL.into(), CREATED_LABEL.into()], vec![], None)),
+            expand_opt: 0,
             alias: Some(TAG_C.into()),
         };
 

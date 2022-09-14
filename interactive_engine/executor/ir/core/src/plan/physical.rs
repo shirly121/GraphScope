@@ -1994,7 +1994,7 @@ mod test {
             v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec![])),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(1.into()),
         };
 
@@ -2003,7 +2003,7 @@ mod test {
             v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec![])),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(2.into()),
         };
 
@@ -2011,7 +2011,7 @@ mod test {
             v_tag: Some(1.into()),
             direction: 0,
             params: Some(query_params(vec!["knows".into()], vec![])),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(2.into()),
         };
 
@@ -2062,7 +2062,7 @@ mod test {
             v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec![])),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(1.into()),
         };
 
@@ -2071,7 +2071,7 @@ mod test {
             v_tag: Some(0.into()),
             direction: 0,
             params: Some(query_params(vec![], vec!["id".into()])),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(2.into()),
         };
 
@@ -2079,7 +2079,7 @@ mod test {
             v_tag: Some(1.into()),
             direction: 0,
             params: Some(query_params(vec!["knows".into()], vec!["name".into()])),
-            is_edge: false,
+            expand_opt: 0,
             alias: Some(2.into()),
         };
 
