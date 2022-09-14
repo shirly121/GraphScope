@@ -143,7 +143,9 @@ impl TryFrom<pb::pattern::Sentence> for BaseSentence {
                     }
                     Some(Item::Edge(e)) => {
                         if id == size - 1 {
-                            if e.is_edge {
+                            let expand_opt: pb::edge_expand::ExpandOpt =
+                                unsafe { ::std::mem::transmute(e.expand_opt) };
+                            if expand_opt.eq(&pb::edge_expand::ExpandOpt::Edge) {
                                 end_as = BindingOpt::Edge;
                             }
                         }
@@ -298,7 +300,9 @@ impl BasicSentence for BaseSentence {
                     match opr {
                         Opr::Vertex(_) => {}
                         Opr::Edge(edge) => {
-                            if edge.is_edge {
+                            let expand_opt: pb::edge_expand::ExpandOpt =
+                                unsafe { ::std::mem::transmute(edge.expand_opt) };
+                            if expand_opt.eq(&pb::edge_expand::ExpandOpt::Edge) {
                                 result = false;
                                 break;
                             }
@@ -1199,6 +1203,7 @@ mod test {
             is_all_columns: false,
             limit: None,
             predicate: None,
+            sample_ratio: 1.0,
             extra: HashMap::new(),
         }
     }
@@ -1212,8 +1217,8 @@ mod test {
                     v_tag: None,
                     direction: 0,
                     params: Some(query_params()),
-                    is_edge,
                     alias: None,
+                    expand_opt: if is_edge { 1 } else { 0 },
                 })),
             }],
             end: y.and_then(|s| s.try_into().ok()),
@@ -1234,7 +1239,7 @@ mod test {
                     v_tag: None,
                     direction: 0,
                     params: Some(params),
-                    is_edge: false,
+                    expand_opt: 0,
                     alias: None,
                 })),
             }],
@@ -1535,7 +1540,7 @@ mod test {
                 v_tag: None,
                 direction: 1, // check this has been reversed from 0 to 1
                 params: Some(query_params()),
-                is_edge: false,
+                expand_opt: 0,
                 alias: None
             }
             .into()
