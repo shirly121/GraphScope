@@ -882,10 +882,14 @@ fn build_logical_plan(
             }
         };
         let source_vertex_label = source_extend.get_target_vertex_label();
+        let source_vertex_id = source_extend.get_target_vertex_id();
+        let source_vertex_predicate = origin_pattern
+            .get_vertex_predicate(source_vertex_id)
+            .cloned();
         pb::Scan {
             scan_opt: 0,
-            alias: Some((source_extend.get_target_vertex_id() as i32).into()),
-            params: Some(query_params(vec![source_vertex_label.into()], vec![], None)),
+            alias: Some((source_vertex_id as i32).into()),
+            params: Some(query_params(vec![source_vertex_label.into()], vec![], source_vertex_predicate)),
             idx_predicate: None,
         }
     };
@@ -922,9 +926,17 @@ fn build_logical_plan(
                 "Build logical plan error: extend step is not source but has 0 edges".to_string(),
             ));
         }
+        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(origin_pattern) {
+            let filter_id = child_offset;
+            pre_node.children.push(filter_id);
+            match_plan.nodes.push(pre_node);
+            pre_node = pb::logical_plan::Node { opr: Some(filter.into()), children: vec![] };
+            child_offset += 1;
+        }
     }
     pre_node.children.push(child_offset);
     match_plan.nodes.push(pre_node);
+
     let sink = {
         pb::Sink {
             tags: origin_pattern
