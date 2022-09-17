@@ -873,4 +873,8 @@ impl PlanMeta {
     pub fn is_partition(&self) -> bool {
         self.is_partition
     }
+
+    pub fn get_max_tag_id(&self) -> TagId {
+        self.max_tag_id
+    }
 }

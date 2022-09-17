@@ -31,6 +31,7 @@ mod test {
     use ir_core::catalogue::sample::load_sample_graph;
     use ir_core::error::IrError;
     use ir_core::plan::logical::LogicalPlan;
+    use ir_core::plan::meta::PlanMeta;
     use ir_core::plan::physical::AsPhysical;
     use ir_core::{plan::meta::Schema, JsonIO};
     use pegasus_client::builder::JobBuilder;
@@ -85,7 +86,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -144,7 +145,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -211,7 +212,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -287,7 +288,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
     }
 
     fn build_ldbc_bi11() -> Result<Pattern, IrError> {
@@ -390,7 +391,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
     }
 
     #[test]

@@ -28,7 +28,7 @@ use crate::catalogue::extend_step::{get_subsets, limit_repeated_element_num, Ext
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
-use crate::plan::meta::TagId;
+use crate::plan::meta::{PlanMeta, TagId};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PatternVertex {
@@ -275,16 +275,18 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
 
 /// Initialize a Pattern from a protobuf Pattern
 impl Pattern {
-    pub fn from_pb_pattern(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Pattern> {
+    pub fn from_pb_pattern(
+        pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta, plan_meta: &PlanMeta,
+    ) -> IrResult<Pattern> {
         use pb::pattern::binder::Item as BinderItem;
         // next vertex id assign to the vertex picked from the pb pattern
-        let mut next_vertex_id = 0;
+        let mut next_vertex_id = plan_meta.get_max_tag_id() as PatternId;
         // next edge id assign to the edge picked from the pb pattern
         let mut next_edge_id = 0;
         // pattern edges picked from the pb pattern
         let mut pattern_edges = vec![];
         // record the vertices from the pb pattern having tags
-        let mut tag_v_id_map: BTreeMap<TagId, PatternId> = BTreeMap::new();
+        let tag_set = get_all_tags_from_pb_pattern(pb_pattern)?;
         // record the label for each vertex from the pb pattern
         let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
         // record the vertices from the pb pattern has predicates
@@ -303,7 +305,7 @@ impl Pattern {
                     .ok_or(IrError::MissingData("pb::Pattern::Sentence::start".to_string()))?,
             )?;
             // assgin a vertex id to the start vertex of a pb pattern sentence
-            let start_tag_v_id = assign_vertex_id_by_tag(start_tag, &mut tag_v_id_map, &mut next_vertex_id);
+            let start_tag_v_id = start_tag as PatternId;
             // check whether the start tag label is already determined or not
             let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
             // it is allowed that the pb pattern sentence doesn't have an end tag
@@ -313,11 +315,7 @@ impl Pattern {
                 None
             };
             // if the end tag exists, assign the end vertex with an id
-            let end_tag_v_id = if let Some(tag) = end_tag {
-                Some(assign_vertex_id_by_tag(tag, &mut tag_v_id_map, &mut next_vertex_id))
-            } else {
-                None
-            };
+            let end_tag_v_id = if let Some(tag) = end_tag { Some(tag as PatternId) } else { None };
             // check the end tag label is already determined or not
             let end_tag_label = end_tag_v_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
             // record previous pattern edge's destinated vertex's id
@@ -334,7 +332,7 @@ impl Pattern {
                     // get edge label's id
                     let edge_label = get_edge_expand_label(edge_expand)?;
                     // assign the new pattern edge with a new id
-                    let edge_id = assign_id(&mut next_edge_id);
+                    let edge_id = assign_id(&mut next_edge_id, None);
                     // get edge direction
                     let edge_direction = unsafe {
                         std::mem::transmute::<i32, pb::edge_expand::Direction>(edge_expand.direction)
@@ -349,7 +347,7 @@ impl Pattern {
                         i == last_expand_index.unwrap(),
                         end_tag_v_id,
                         edge_expand,
-                        &mut tag_v_id_map,
+                        &tag_set,
                         &mut next_vertex_id,
                     )?;
                     pre_dst_vertex_id = dst_vertex_id;
@@ -389,8 +387,8 @@ impl Pattern {
         }
 
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
-            for (tag, v_id) in tag_v_id_map {
-                pattern.set_vertex_tag(v_id, tag);
+            for tag in tag_set {
+                pattern.set_vertex_tag(tag as PatternId, tag);
             }
             for (v_id, predicate) in v_id_predicate_map {
                 pattern.set_vertex_predicate(v_id, predicate);
@@ -411,6 +409,30 @@ fn get_tag_from_name_or_id(name_or_id: common_pb::NameOrId) -> IrResult<TagId> {
         ir_common::NameOrId::Id(tag_id) => Ok(tag_id as TagId),
         _ => Err(IrError::TagNotExist(tag)),
     }
+}
+
+fn get_all_tags_from_pb_pattern(pb_pattern: &pb::Pattern) -> IrResult<BTreeSet<TagId>> {
+    use pb::pattern::binder::Item as BinderItem;
+    let mut tag_id_set = BTreeSet::new();
+    for sentence in pb_pattern.sentences.iter() {
+        if let Some(start_tag) = sentence.start.as_ref().cloned() {
+            let start_tag_id = get_tag_from_name_or_id(start_tag)?;
+            tag_id_set.insert(start_tag_id);
+        }
+        if let Some(end_tag) = sentence.end.as_ref().cloned() {
+            let end_tag_id = get_tag_from_name_or_id(end_tag)?;
+            tag_id_set.insert(end_tag_id);
+        }
+        for binder in sentence.binders.iter() {
+            if let Some(BinderItem::Edge(edge_expand)) = binder.item.as_ref() {
+                if let Some(tag) = edge_expand.alias.as_ref().cloned() {
+                    let tag_id = get_tag_from_name_or_id(tag)?;
+                    tag_id_set.insert(tag_id);
+                }
+            }
+        }
+    }
+    Ok(tag_id_set)
 }
 
 /// Get the last edge expand's index of a pb pattern sentence among all of its binders
@@ -468,25 +490,15 @@ fn get_edge_expand_predicate(edge_expand: &pb::EdgeExpand) -> Option<common_pb::
 }
 
 /// Assign a vertex or edge with the next_id, and add the next_id by one
-fn assign_id(next_id: &mut PatternId) -> PatternId {
+fn assign_id(next_id: &mut PatternId, tag_set_opt: Option<&BTreeSet<TagId>>) -> PatternId {
+    if let Some(tag_set) = tag_set_opt {
+        while tag_set.contains(&(*next_id as TagId)) {
+            *next_id += 1;
+        }
+    }
     let id_to_assign = *next_id;
     *next_id += 1;
     id_to_assign
-}
-
-/// If the current vertex has tag, check whether the tag is related to an id or not
-/// - if it is related, just use the tag's id
-/// - else, assign the vertex with a new id and add the (tag, id) relation to the map
-fn assign_vertex_id_by_tag(
-    vertex_tag: TagId, tag_v_id_map: &mut BTreeMap<TagId, PatternId>, next_vertex_id: &mut PatternId,
-) -> PatternId {
-    if let Some(v_id) = tag_v_id_map.get(&vertex_tag) {
-        *v_id
-    } else {
-        let id_to_assign = assign_id(next_vertex_id);
-        tag_v_id_map.insert(vertex_tag, id_to_assign);
-        id_to_assign
-    }
 }
 
 /// Assign an id the dst vertex of an edge expand
@@ -499,13 +511,13 @@ fn assign_vertex_id_by_tag(
 ///     - else, assign it with a new id
 fn assign_expand_dst_vertex_id(
     is_tail: bool, sentence_end_id: Option<PatternId>, edge_expand: &pb::EdgeExpand,
-    tag_v_id_map: &mut BTreeMap<TagId, PatternId>, next_vertex_id: &mut PatternId,
+    tag_set: &BTreeSet<TagId>, next_vertex_id: &mut PatternId,
 ) -> IrResult<PatternId> {
     if is_tail {
         if let Some(v_id) = sentence_end_id {
             Ok(v_id)
         } else {
-            Ok(assign_id(next_vertex_id))
+            Ok(assign_id(next_vertex_id, Some(tag_set)))
         }
     } else {
         // check alias tag
@@ -515,9 +527,9 @@ fn assign_expand_dst_vertex_id(
             None
         };
         if let Some(tag) = dst_vertex_tag {
-            Ok(assign_vertex_id_by_tag(tag, tag_v_id_map, next_vertex_id))
+            Ok(tag as PatternId)
         } else {
-            Ok(assign_id(next_vertex_id))
+            Ok(assign_id(next_vertex_id, Some(tag_set)))
         }
     }
 }

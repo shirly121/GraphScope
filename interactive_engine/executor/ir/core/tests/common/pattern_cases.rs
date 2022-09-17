@@ -22,6 +22,7 @@ use ir_common::KeyId;
 use ir_core::catalogue::pattern::*;
 use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
+use ir_core::plan::meta::PlanMeta;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -422,7 +423,7 @@ pub fn build_ldbc_pattern_from_pb_case1() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -483,7 +484,7 @@ pub fn build_ldbc_pattern_from_pb_case2() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -550,7 +551,7 @@ pub fn build_ldbc_pattern_from_pb_case3() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -628,7 +629,7 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -699,7 +700,7 @@ pub fn build_ldbc_pattern_from_pb_case5() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
 }
 
 pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
@@ -781,7 +782,7 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
 }
 
 // Test Cases for Index Ranking
