@@ -737,6 +737,10 @@ impl PlanMeta {
         }
     }
 
+    pub fn get_max_tag_id(&self) -> TagId {
+        self.max_tag_id
+    }
+
     pub fn set_max_tag_id(&mut self, tag_id: TagId) {
         if self.max_tag_id < tag_id {
             self.max_tag_id = tag_id;
@@ -872,13 +876,5 @@ impl PlanMeta {
 
     pub fn is_partition(&self) -> bool {
         self.is_partition
-    }
-
-    pub fn get_max_tag_id(&self) -> TagId {
-        self.max_tag_id
-    }
-
-    pub fn set_max_tag_id(&mut self, tag_id: TagId) {
-        self.max_tag_id = tag_id
     }
 }
