@@ -423,7 +423,7 @@ pub fn build_ldbc_pattern_from_pb_case1() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -484,7 +484,7 @@ pub fn build_ldbc_pattern_from_pb_case2() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -551,7 +551,7 @@ pub fn build_ldbc_pattern_from_pb_case3() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -629,7 +629,7 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
 /// Pattern from ldbc schema file and build from pb::Pattern message
@@ -700,7 +700,7 @@ pub fn build_ldbc_pattern_from_pb_case5() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
 pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
@@ -782,7 +782,7 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
             },
         ],
     };
-    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
 // Test Cases for Index Ranking

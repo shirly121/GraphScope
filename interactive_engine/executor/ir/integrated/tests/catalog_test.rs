@@ -86,7 +86,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -145,7 +145,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -212,7 +212,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -288,7 +288,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     fn build_ldbc_bi11() -> Result<Pattern, IrError> {
@@ -391,7 +391,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &PlanMeta::default())
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     #[test]

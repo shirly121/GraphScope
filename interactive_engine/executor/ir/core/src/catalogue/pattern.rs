@@ -276,7 +276,7 @@ impl TryFrom<Vec<PatternEdge>> for Pattern {
 /// Initialize a Pattern from a protobuf Pattern
 impl Pattern {
     pub fn from_pb_pattern(
-        pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta, plan_meta: &PlanMeta,
+        pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta, plan_meta: &mut PlanMeta,
     ) -> IrResult<Pattern> {
         use pb::pattern::binder::Item as BinderItem;
         // next vertex id assign to the vertex picked from the pb pattern
@@ -304,7 +304,7 @@ impl Pattern {
                     .clone()
                     .ok_or(IrError::MissingData("pb::Pattern::Sentence::start".to_string()))?,
             )?;
-            // assgin a vertex id to the start vertex of a pb pattern sentence
+            // just use the start tag id as its pattern vertex id
             let start_tag_v_id = start_tag as PatternId;
             // check whether the start tag label is already determined or not
             let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
@@ -314,7 +314,7 @@ impl Pattern {
             } else {
                 None
             };
-            // if the end tag exists, assign the end vertex with an id
+            // if the end tag exists, just use the end tag id as its pattern vertex id
             let end_tag_v_id = if let Some(tag) = end_tag { Some(tag as PatternId) } else { None };
             // check the end tag label is already determined or not
             let end_tag_label = end_tag_v_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
@@ -385,7 +385,7 @@ impl Pattern {
                 }
             }
         }
-
+        plan_meta.set_max_tag_id(next_vertex_id as TagId);
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             for tag in tag_set {
                 pattern.set_vertex_tag(tag as PatternId, tag);
@@ -411,6 +411,7 @@ fn get_tag_from_name_or_id(name_or_id: common_pb::NameOrId) -> IrResult<TagId> {
     }
 }
 
+/// Get all the tags from the pb Pattern and store in a set
 fn get_all_tags_from_pb_pattern(pb_pattern: &pb::Pattern) -> IrResult<BTreeSet<TagId>> {
     use pb::pattern::binder::Item as BinderItem;
     let mut tag_id_set = BTreeSet::new();
@@ -490,6 +491,10 @@ fn get_edge_expand_predicate(edge_expand: &pb::EdgeExpand) -> Option<common_pb::
 }
 
 /// Assign a vertex or edge with the next_id, and add the next_id by one
+/// - For a vertex:
+/// - - if the vertex has tag, just use its tag id as the pattern id
+/// - - the next_id cannot be the same as another vertex's tag id (pattern id)
+/// - - otherwise the assigned pattern id will be repeated
 fn assign_id(next_id: &mut PatternId, tag_set_opt: Option<&BTreeSet<TagId>>) -> PatternId {
     if let Some(tag_set) = tag_set_opt {
         while tag_set.contains(&(*next_id as TagId)) {
@@ -526,6 +531,7 @@ fn assign_expand_dst_vertex_id(
         } else {
             None
         };
+        // if the dst vertex has tag, just use the tag id as its pattern id
         if let Some(tag) = dst_vertex_tag {
             Ok(tag as PatternId)
         } else {
