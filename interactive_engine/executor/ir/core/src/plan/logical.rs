@@ -404,7 +404,7 @@ impl LogicalPlan {
             Opr::Pattern(pattern) => {
                 if parent_ids.len() == 1 {
                     let strategy = NaiveStrategy::try_from(pattern.clone())?;
-                    let plan = strategy.build_logical_plan()?;
+                    let plan = strategy.build_logical_plan(None)?;
                     self.append_plan(plan, parent_ids.clone())
                 } else {
                     Err(IrError::Unsupported(
@@ -1589,6 +1589,8 @@ mod test {
                 vec![("knows".to_string(), 0), ("creates".to_string(), 1)],
                 vec![("id".to_string(), 0), ("name".to_string(), 1), ("age".to_string(), 2)],
             )),
+            catalogue: None,
+            pattern_meta: None,
         };
 
         let mut expression = str_to_expr_pb("@.~label == \"person\"".to_string()).unwrap();
@@ -1744,6 +1746,8 @@ mod test {
                 vec![("knows".to_string(), 0), ("creates".to_string(), 1)],
                 vec![("id".to_string(), 0), ("name".to_string(), 1), ("age".to_string(), 2)],
             )),
+            catalogue: None,
+            pattern_meta: None,
         };
 
         let mut scan = pb::Scan {
@@ -1825,6 +1829,8 @@ mod test {
             schema: Some(
                 Schema::from_json(std::fs::File::open("resource/modern_schema_pk.json").unwrap()).unwrap(),
             ),
+            catalogue: None,
+            pattern_meta: None,
         };
         let mut scan = pb::Scan {
             scan_opt: 0,

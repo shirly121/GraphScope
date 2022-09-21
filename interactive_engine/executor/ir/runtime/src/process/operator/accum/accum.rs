@@ -102,6 +102,19 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
             }
             EntryAccumulator::ToList(list) => {
                 let list_entry = list.finalize()?;
+                // let list_entry = list
+                //     .finalize()?
+                //     .into_iter()
+                //     .map(|entry| match entry {
+                //         Entry::Element(e) => Ok(e.clone()),
+                //         Entry::Collection(_) => {
+                //             Err(FnExecError::unsupported_error("fold collections in EntryAccumulator"))
+                //         }
+                //         Entry::Intersection(_) => {
+                //             Err(FnExecError::unsupported_error("fold intersections in EntryAccumulator"))
+                //         }
+                //     })
+                //     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Entry::Collection(list_entry))
             }
             EntryAccumulator::ToMin(min) => min
@@ -112,6 +125,19 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
                 .ok_or(FnExecError::accum_error("max_entry is none")),
             EntryAccumulator::ToSet(set) => {
                 let set_entry = set.finalize()?;
+                // let set_entry = set
+                //     .finalize()?
+                //     .into_iter()
+                //     .map(|entry| match entry {
+                //         Entry::Element(e) => Ok(e.clone()),
+                //         Entry::Collection(_) => Err(FnExecError::unsupported_error(
+                //             "fold collections as set in EntryAccumulator",
+                //         )),
+                //         Entry::Intersection(_) => Err(FnExecError::unsupported_error(
+                //             "fold intersections as set in EntryAccumulator",
+                //         )),
+                //     })
+                //     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Entry::Collection(set_entry))
             }
             EntryAccumulator::ToDistinctCount(distinct_count) => {

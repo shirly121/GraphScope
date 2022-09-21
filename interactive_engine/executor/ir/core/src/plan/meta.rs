@@ -26,6 +26,9 @@ use ir_common::generated::schema as schema_pb;
 use ir_common::NameOrId;
 use ir_common::{KeyId, OneOrMany};
 
+use crate::catalogue::catalog::Catalogue;
+use crate::catalogue::pattern::Pattern;
+use crate::catalogue::pattern_meta::PatternMeta;
 use crate::error::{IrError, IrResult};
 use crate::plan::logical::NodeId;
 use crate::JsonIO;
@@ -51,15 +54,55 @@ pub fn reset_schema() {
     }
 }
 
+pub fn set_catalogue(catalogue: Catalogue) {
+    if let Ok(mut meta) = STORE_META.write() {
+        meta.catalogue = Some(catalogue);
+    }
+}
+
+pub fn set_catalogue_from_pattern(pattern: &Pattern) {
+    if let Ok(mut meta) = STORE_META.write() {
+        let catalogue = Catalogue::build_from_pattern(&pattern);
+        meta.catalogue = Some(catalogue);
+    }
+}
+
+pub fn set_pattern_meta(pattern_meta: PatternMeta) {
+    if let Ok(mut meta) = STORE_META.write() {
+        meta.pattern_meta = Some(pattern_meta);
+    }
+}
+
+pub fn set_pattern_meta_from_json<R: io::Read>(read: R) {
+    if let Ok(mut meta) = STORE_META.write() {
+        if let Ok(schema) = Schema::from_json(read) {
+            let pattern_meta = PatternMeta::from(schema);
+            meta.pattern_meta = Some(pattern_meta);
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct StoreMeta {
     pub schema: Option<Schema>,
+    pub catalogue: Option<Catalogue>,
+    pub pattern_meta: Option<PatternMeta>,
 }
 
 #[derive(Clone, Debug)]
 pub struct LabelMeta {
     name: String,
     id: KeyId,
+}
+
+impl LabelMeta {
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_id(&self) -> i32 {
+        self.id
+    }
 }
 
 impl Default for LabelMeta {
@@ -196,6 +239,12 @@ impl Schema {
 
     pub fn is_table_id(&self) -> bool {
         self.is_table_id
+    }
+
+    pub fn get_pattern_meta_info(
+        &self,
+    ) -> (BTreeMap<String, (KeyType, i32)>, BTreeMap<KeyId, Vec<(LabelMeta, LabelMeta)>>) {
+        (self.table_name_to_id.clone(), self.relation_bound_labels.clone())
     }
 
     /// Check whether a given table contains a given column as a primary key.
