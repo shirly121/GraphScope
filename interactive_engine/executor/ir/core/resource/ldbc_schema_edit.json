@@ -518,8 +518,8 @@
             "name": "PERSON"
           },
           "dst": {
-            "id": 12,
-            "name": "UNIVERSITY"
+            "id": 5,
+            "name": "ORGANISATION"
           }
         }
       ],
@@ -570,12 +570,12 @@
       "entity_pairs": [
         {
           "src": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           },
           "dst": {
-            "id": 8,
-            "name": "COUNTRY"
+            "id": 0,
+            "name": "PLACE"
           }
         },
         {
@@ -850,8 +850,8 @@
             "name": "PERSON"
           },
           "dst": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           }
         },
         {

@@ -6,8 +6,8 @@ edition = "2018"
 
 [dependencies]
 pegasus_common = { path = "../common" }
-pegasus_network = { path = "../network"}
-pegasus_memory = { path = "../memory"}
+pegasus_network = { path = "../network" }
+pegasus_memory = { path = "../memory" }
 pegasus = { path = "../pegasus" }
 log = "0.4"
 crossbeam-utils = "0.8.7"
@@ -34,4 +34,3 @@ tonic-build = "0.5"
 default = []
 # set to generate code in place(generated codes are in current codebase);
 gcip = []
-
