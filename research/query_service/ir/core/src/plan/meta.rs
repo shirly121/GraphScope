@@ -62,6 +62,16 @@ pub struct LabelMeta {
     id: KeyId,
 }
 
+impl LabelMeta {
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_id(&self) -> i32 {
+        self.id
+    }
+}
+
 impl Default for LabelMeta {
     fn default() -> Self {
         Self { name: "INVALID".into(), id: INVALID_META_ID }
@@ -198,6 +208,11 @@ impl Schema {
         self.is_table_id
     }
 
+    pub fn get_pattern_meta_info(
+        &self,
+    ) -> (BTreeMap<String, (KeyType, i32)>, BTreeMap<KeyId, Vec<(LabelMeta, LabelMeta)>>) {
+        (self.table_name_to_id.clone(), self.relation_bound_labels.clone())
+    }
     /// Check whether a given table contains a given column as a primary key.
     /// Also return the number of primary keys of the given table.
     pub fn check_primary_key(&self, table: &str, col: &str) -> (bool, usize) {
