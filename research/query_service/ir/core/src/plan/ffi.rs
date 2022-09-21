@@ -161,6 +161,7 @@ impl From<IrError> for FfiError {
                 format!("the range ({:?}, {:?}) is invalid", l, u),
             ),
             IrError::Unsupported(err) => FfiError::new(ResultCode::UnSupported, err.to_string()),
+            _ => FfiError::new(ResultCode::Others, "catalog error".to_string()),
         }
     }
 }
