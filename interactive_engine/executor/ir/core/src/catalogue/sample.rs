@@ -303,7 +303,7 @@ impl SubTaskResult {
     }
 }
 
-fn get_src_records(
+pub fn get_src_records(
     graph: &LargeGraphDB<DefaultId, InternalId>, extend_steps: Vec<DefiniteExtendStep>,
     limit: Option<usize>,
 ) -> Vec<PatternRecord> {
