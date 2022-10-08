@@ -288,7 +288,7 @@ def parsed_packages():
     name = os.environ.get("package_name", "gs-coordinator")
     if name == "gs-coordinator":
         return find_packages(".")
-    return ["foo"]
+    return ["graphscope_runtime"]
 
 
 def parsed_package_data():
@@ -372,7 +372,11 @@ setup(
         "root": repo_root,
         "parse": parse_version,
     },
-    setup_requires=["setuptools_scm>=5.0.0", "grpcio", "grpcio-tools"],
+    setup_requires=[
+        "setuptools_scm>=5.0.0",
+        "grpcio<=1.43.0,>=1.40.0",
+        "grpcio-tools<=1.43.0,>=1.40.0",
+    ],
     package_dir=parsed_package_dir(),
     packages=parsed_packages(),
     package_data=parsed_package_data(),
