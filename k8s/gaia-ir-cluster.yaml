@@ -127,7 +127,7 @@ spec:
             - sh
             - -c
             - "DATA_PATH=/opt/graphs/ \
-              /opt/GraphScope/research/query_service/ir/target/release/start_rpc_server_k8s"
+              /opt/GraphScope/interactive_engine/executor/ir/target/release/start_rpc_server_k8s"
           volumeMounts:
             - name: graph-store-pvc
               mountPath: /opt/graphs
