@@ -29,7 +29,7 @@ use ir_common::NameOrId;
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::error::{IrError, IrResult};
-use crate::plan::meta::StoreMeta;
+use crate::plan::meta::{PlanMeta, StoreMeta};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd)]
 #[repr(i32)]
@@ -1159,8 +1159,10 @@ pub struct ExtendStrategy {
 
 /// Initializer of a ExtendStrategy
 impl ExtendStrategy {
-    pub fn init(pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta) -> IrResult<Self> {
-        let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta)?;
+    pub fn init(
+        pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta, plan_meta: &mut PlanMeta,
+    ) -> IrResult<Self> {
+        let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta, plan_meta)?;
         Ok(ExtendStrategy { pattern })
     }
 }

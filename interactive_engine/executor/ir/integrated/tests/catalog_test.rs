@@ -24,13 +24,16 @@ mod test {
     use std::sync::Arc;
     use std::time::Instant;
 
+    use ir_common::expr_parse::str_to_expr_pb;
     use ir_common::generated::algebra as pb;
+    use ir_core::catalogue::catalog::get_definite_extend_steps_recursively;
     use ir_core::catalogue::catalog::Catalogue;
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
-    use ir_core::catalogue::sample::load_sample_graph;
+    use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
     use ir_core::error::IrError;
     use ir_core::plan::logical::LogicalPlan;
+    use ir_core::plan::meta::PlanMeta;
     use ir_core::plan::physical::AsPhysical;
     use ir_core::{plan::meta::Schema, JsonIO};
     use pegasus_client::builder::JobBuilder;
@@ -57,22 +60,21 @@ mod test {
             expand_opt: 0,
             alias: None,
         };
+        let select_person =
+            pb::Select { predicate: Some(str_to_expr_pb("@.~label == 1".to_string()).unwrap()) };
         let pattern = pb::Pattern {
             sentences: vec![
                 pb::pattern::Sentence {
                     start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
+                    binders: vec![
+                        pb::pattern::Binder {
+                            item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                        },
+                        pb::pattern::Binder {
+                            item: Some(pb::pattern::binder::Item::Select(select_person.clone())),
+                        },
+                    ],
                     end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
                     join_kind: 0,
                 },
                 pb::pattern::Sentence {
@@ -83,9 +85,17 @@ mod test {
                     end: Some(TAG_C.into()),
                     join_kind: 0,
                 },
+                // pb::pattern::Sentence {
+                //     start: Some(TAG_B.into()),
+                //     binders: vec![pb::pattern::Binder {
+                //         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                //     }],
+                //     end: Some(TAG_C.into()),
+                //     join_kind: 0,
+                // },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -144,7 +154,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -211,7 +221,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     // Pattern from ldbc schema file and build from pb::Pattern message
@@ -287,7 +297,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     fn build_ldbc_bi11() -> Result<Pattern, IrError> {
@@ -390,7 +400,7 @@ mod test {
                 },
             ],
         };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata)
+        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
     }
 
     #[test]
@@ -443,8 +453,10 @@ mod test {
         let pb_plan = ldbc_pattern
             .generate_simple_extend_match_plan()
             .unwrap();
+        println!("{:?}", pb_plan);
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
+        println!("{:?}", plan);
         let mut job_builder = JobBuilder::default();
         let mut plan_meta = plan.get_meta().clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -458,6 +470,33 @@ mod test {
             }
         }
         println!("{}", count);
+    }
+
+    #[test]
+    fn test_get_src_records_pb_case1() {
+        if let Ok(sample_graph_path) = std::env::var("SAMPLE_PATH") {
+            let graph = load_sample_graph("/Users/meloyang/opt/Graphs/csr_ldbc_graph/scale_1/bin_p1");
+            let sample_graph = Arc::new(load_sample_graph(&sample_graph_path));
+            let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+            println!("start building catalog...");
+            let catalog_build_start_time = Instant::now();
+            let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+            catalog.estimate_graph(sample_graph, 1.0, None);
+            println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+            println!("start executing query...");
+            let query_execution_start_time = Instant::now();
+            let pattern_index = catalog
+                .get_pattern_index(&ldbc_pattern.encode_to())
+                .unwrap();
+            let (extend_steps, _) =
+                get_definite_extend_steps_recursively(&mut catalog, pattern_index, ldbc_pattern.clone());
+            let results = get_src_records(&graph, extend_steps, None);
+            println!("{}", results.len());
+            println!(
+                "executing query time cost is {:?} ms",
+                query_execution_start_time.elapsed().as_millis()
+            );
+        };
     }
 
     #[test]

@@ -75,7 +75,7 @@ pub struct LogicalPlan {
     pub(crate) nodes: VecMap<NodeType>,
     /// To record the nodes' maximum id in the logical plan. Note that the nodes
     /// **include the removed ones**
-    pub(crate) max_node_id: NodeId,
+    pub max_node_id: NodeId,
     /// The metadata of the logical plan
     pub(crate) meta: PlanMeta,
 }
