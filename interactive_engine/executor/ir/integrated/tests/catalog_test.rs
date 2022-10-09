@@ -85,14 +85,14 @@ mod test {
                     end: Some(TAG_C.into()),
                     join_kind: 0,
                 },
-                // pb::pattern::Sentence {
-                //     start: Some(TAG_B.into()),
-                //     binders: vec![pb::pattern::Binder {
-                //         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                //     }],
-                //     end: Some(TAG_C.into()),
-                //     join_kind: 0,
-                // },
+                pb::pattern::Sentence {
+                    start: Some(TAG_B.into()),
+                    binders: vec![pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                    }],
+                    end: Some(TAG_C.into()),
+                    join_kind: 0,
+                },
             ],
         };
         Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
