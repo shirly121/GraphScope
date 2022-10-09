@@ -77,6 +77,24 @@ spec:
           ports:
             - containerPort: 8182
               name: listen-query
+          env:
+            - name: WORKER_NUM
+              value: "2"
+            - name: TIMEOUT
+              value: "240000"
+            - name: BATCH_SIZE
+              value: "1024"
+            - name: OUTPUT_CAPACITY
+              value: "16"
+            - name: GRAPH_SCHEMA
+              value: "../executor/ir/core/resource/ldbc_schema.json"
+            - name: SERVERSSIZE
+              value: "2"
+          command:
+            - sh
+            - -c
+            - "cd /opt/GraphScope/interactive_engine/compiler && \
+              ./set_properties.sh && make run graph.schema:=$GRAPH_SCHEMA"
 ---
 # GAIA-IR-RPC Headless Service
 apiVersion: v1
