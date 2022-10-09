@@ -311,13 +311,14 @@ impl DefiniteExtendStep {
     }
 
     /// Generate the filter operator for DefiniteExtendStep;s target vertex
-    pub fn generate_vertex_filter_operator(&self, origin_pattern: &Pattern) -> pb::Select {
+    pub fn generate_vertex_filter_operator(&self, origin_pattern: &Pattern) -> Option<pb::Select> {
         // pick target vertex's property and predicate info from origin pattern
         let target_v_id = self.target_vertex_id;
-        let target_v_predicate = origin_pattern
-            .get_vertex_predicate(target_v_id)
-            .cloned();
-        pb::Select { predicate: target_v_predicate }
+        if let Some(target_v_predicate) = origin_pattern.get_vertex_predicate(target_v_id) {
+            Some(pb::Select { predicate: Some(target_v_predicate.clone()) })
+        } else {
+            None
+        }
     }
 }
 /// Get all the subsets of given Vec<T>
