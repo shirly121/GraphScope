@@ -12,7 +12,7 @@ hosts="pegasus.hosts: gaia-ir-rpc-0.gaia-ir-rpc-hs.default.svc.cluster.local:123
 count=1;
 while (($count<$SERVERSSIZE))
 do
-    hosts+=", gaia-ir-rpc-$count.gaia-ir-rpc-hs.default.svc.cluster.local:1234"
+    hosts+=",gaia-ir-rpc-$count.gaia-ir-rpc-hs.default.svc.cluster.local:1234"
     let "count++"
 done
 
