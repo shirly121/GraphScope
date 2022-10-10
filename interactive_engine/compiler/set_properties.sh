@@ -7,12 +7,16 @@ batch_size="pegasus.batch.size: $BATCH_SIZE";
 
 output_capacity="pegasus.output.capacity: $OUTPUT_CAPACITY";
 
-hosts="pegasus.hosts: gaia-ir-rpc-0.gaia-ir-rpc-hs.default.svc.cluster.local:1234"
+hosts="pegasus.hosts: $DNS_NAME_PREFIX_STORE:$GAIA_RPC_PORT";
+
+hosts="${hosts/"{}"/0}";
 
 count=1;
 while (($count<$SERVERSSIZE))
 do
-    hosts+=",gaia-ir-rpc-$count.gaia-ir-rpc-hs.default.svc.cluster.local:1234"
+    host=",$DNS_NAME_PREFIX_STORE:$GAIA_RPC_PORT"
+    host="${host/"{}"/$count}";
+    hosts+=$host
     let "count++"
 done
 

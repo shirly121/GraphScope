@@ -90,6 +90,10 @@ spec:
               value: "../executor/ir/core/resource/ldbc_schema.json"
             - name: SERVERSSIZE
               value: "2"
+            - name: DNS_NAME_PREFIX_STORE
+              value: "gaia-ir-rpc-{}.gaia-ir-rpc-hs.default.svc.cluster.local"
+            - name: GAIA_RPC_PORT
+              value: "1234"
           command:
             - sh
             - -c
@@ -141,6 +145,12 @@ spec:
           env:
             - name: SERVERSSIZE
               value: "2"
+            - name: DNS_NAME_PREFIX_STORE
+              value: "gaia-ir-rpc-{}.gaia-ir-rpc-hs.default.svc.cluster.local"
+            - name: GAIA_RPC_PORT
+              value: "1234"
+            - name: GAIA_ENGINE_PORT
+              value: "11234"
           command:
             - sh
             - -c
