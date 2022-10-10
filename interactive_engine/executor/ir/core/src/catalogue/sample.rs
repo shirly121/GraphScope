@@ -53,7 +53,6 @@ impl Catalogue {
                     if let Some(extend_weight) = self
                         .get_approach_weight(approach.get_approach_index())
                         .and_then(|approach_weight| approach_weight.get_extend_weight())
-                        .filter(|extend_weight| extend_weight.is_unset())
                     {
                         let extend_step = Arc::new(extend_weight.get_extend_step().clone());
                         let sub_task = SubTask::new(&pattern_count_info, &extend_step, &graph);
@@ -72,14 +71,8 @@ impl Catalogue {
                                 sub_task_result.target_pattern_count,
                             ));
                             relaxed_pattern_indices.insert(target_pattern_index);
-                            if self
-                                .get_pattern_weight(target_pattern_index)
-                                .unwrap()
-                                .is_unset()
-                            {
-                                pattern_counts_map
-                                    .insert(target_pattern_index, sub_task_result.target_pattern_count);
-                            }
+                            pattern_counts_map
+                                .insert(target_pattern_index, sub_task_result.target_pattern_count);
                         }
                     }
                 }
@@ -97,27 +90,7 @@ impl Catalogue {
     }
 
     fn get_start_pattern_indices(&self) -> Vec<NodeIndex> {
-        let mut start_pattern_indices = vec![];
-        for entry_index in self.entries_iter() {
-            if self
-                .get_pattern_weight(entry_index)
-                .unwrap()
-                .is_unset()
-            {
-                start_pattern_indices.push(entry_index);
-            }
-        }
-        for pattern_index in self
-            .pattern_indices_iter()
-            .filter(|&pattern_index| {
-                self.get_pattern_weight(pattern_index)
-                    .unwrap()
-                    .is_unset_out_related()
-            })
-        {
-            start_pattern_indices.push(pattern_index)
-        }
-        start_pattern_indices
+        self.entries_iter().collect()
     }
 
     fn get_start_pattern_count_infos(
@@ -137,13 +110,7 @@ impl Catalogue {
             let mut pattern_records = get_src_records(graph, extend_steps, limit);
             let pattern_count = pattern_records.len();
             relaxed_pattern_indices.insert(start_pattern_index);
-            if self
-                .get_pattern_weight(start_pattern_index)
-                .unwrap()
-                .is_unset()
-            {
-                pattern_counts_map.insert(start_pattern_index, pattern_count);
-            }
+            pattern_counts_map.insert(start_pattern_index, pattern_count);
             pattern_records = sample_records(pattern_records, rate, limit);
             pattern_nodes.push(PatternCountInfo::new(
                 pattern,

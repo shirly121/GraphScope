@@ -86,7 +86,7 @@ mod test {
                     join_kind: 0,
                 },
                 pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
+                    start: Some(TAG_A.into()),
                     binders: vec![pb::pattern::Binder {
                         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
                     }],

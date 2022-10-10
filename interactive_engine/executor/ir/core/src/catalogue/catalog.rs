@@ -46,7 +46,8 @@ pub struct PatternWeight {
     count: usize,
     /// Store previous 1 step estimated best approach to get the pattern
     best_approach: Option<Approach>,
-    weight_status: WeightStatus,
+    ///
+    out_approach_map: BTreeMap<Vec<u8>, Approach>,
 }
 
 impl PatternWeight {
@@ -60,38 +61,6 @@ impl PatternWeight {
 
     pub fn get_best_approach(&self) -> Option<Approach> {
         self.best_approach
-    }
-
-    pub fn is_set(&self) -> bool {
-        if let WeightStatus::Set = self.weight_status {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_unset(&self) -> bool {
-        if let WeightStatus::Unset = self.weight_status {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_unset_out_related(&self) -> bool {
-        if let WeightStatus::UnsetOutRelated = self.weight_status {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_unset_in_related(&self) -> bool {
-        if let WeightStatus::UnsetInRelated = self.weight_status {
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -113,12 +82,10 @@ impl JoinWeight {
 pub struct ExtendWeight {
     extend_step: ExtendStep,
     /// Target vertex's order in the target pattern
-    target_vertex_rank: usize,
+    target_vertex_rank: PatternId,
     /// count infos
-    count_sum: f64,
-    count_min: f64,
-    count_max: f64,
-    weight_status: WeightStatus,
+    extend_count: usize,
+    intersect_count: usize,
 }
 
 impl ExtendWeight {
@@ -130,32 +97,12 @@ impl ExtendWeight {
         self.target_vertex_rank
     }
 
-    pub fn get_count_sum(&self) -> f64 {
-        self.count_sum
+    pub fn get_extend_count(&self) -> usize {
+        self.extend_count
     }
 
-    pub fn get_count_min(&self) -> f64 {
-        self.count_min
-    }
-
-    pub fn get_count_max(&self) -> f64 {
-        self.count_max
-    }
-
-    pub fn is_set(&self) -> bool {
-        if let WeightStatus::Set = self.weight_status {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_unset(&self) -> bool {
-        if let WeightStatus::Unset = self.weight_status {
-            true
-        } else {
-            false
-        }
+    pub fn get_intersect_count(&self) -> usize {
+        self.intersect_count
     }
 }
 
@@ -204,14 +151,6 @@ impl ApproachWeight {
             None
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WeightStatus {
-    Set,
-    Unset,
-    UnsetOutRelated,
-    UnsetInRelated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -285,7 +224,7 @@ impl Catalogue {
                 pattern: new_pattern.clone(),
                 count: 0,
                 best_approach: None,
-                weight_status: WeightStatus::Unset,
+                out_approach_map: BTreeMap::new(),
             });
             catalog
                 .pattern_locate_map
@@ -317,7 +256,7 @@ impl Catalogue {
                         pattern: new_pattern.clone(),
                         count: 0,
                         best_approach: None,
-                        weight_status: WeightStatus::Unset,
+                        out_approach_map: BTreeMap::new(),
                     })
                 };
                 // Get all extend steps(comparators) between the relaxed pattern and new pattern
@@ -329,7 +268,7 @@ impl Catalogue {
                 if !extend_step_comparators.contains(&extend_step_comparator) {
                     extend_step_comparators.insert(extend_step_comparator.clone());
                     // Enocode extend step and add as an edge to the catalog graph
-                    catalog.store.add_edge(
+                    let approach_index = catalog.store.add_edge(
                         relaxed_pattern_index,
                         new_pattern_index,
                         ApproachWeight::ExtendStep(ExtendWeight {
@@ -337,10 +276,8 @@ impl Catalogue {
                             target_vertex_rank: new_pattern
                                 .get_vertex_rank(new_pattern.get_max_vertex_id())
                                 .unwrap(),
-                            count_sum: 0.0,
-                            count_min: 0.0,
-                            count_max: 0.0,
-                            weight_status: WeightStatus::Unset,
+                            extend_count: 0,
+                            intersect_count: 0,
                         }),
                     );
                     if !catalog
@@ -352,6 +289,7 @@ impl Catalogue {
                             .insert(new_pattern_code.clone(), new_pattern_index);
                         queue.push_back((new_pattern, new_pattern_code, new_pattern_index));
                     }
+                    let approach = Approach::new(relaxed_pattern_index, new_pattern_index, approach_index);
                 }
             }
         }
@@ -386,7 +324,7 @@ impl Catalogue {
                         pattern: new_pattern.clone(),
                         count: 0,
                         best_approach: None,
-                        weight_status: WeightStatus::Unset,
+                        out_approach_map: BTreeMap::new(),
                     });
                     self.pattern_locate_map
                         .insert(new_pattern_code.clone(), pattern_index);
@@ -468,7 +406,7 @@ impl Catalogue {
                                 pattern: new_pattern.clone(),
                                 count: 0,
                                 best_approach: None,
-                                weight_status: WeightStatus::Unset,
+                                out_approach_map: BTreeMap::new(),
                             })
                         };
                     // check whether the extend step exists in the catalog graph or not
@@ -488,25 +426,10 @@ impl Catalogue {
                                 target_vertex_rank: new_pattern
                                     .get_vertex_rank(adj_vertex_id)
                                     .unwrap(),
-                                count_sum: 0.0,
-                                count_min: 0.0,
-                                count_max: 0.0,
-                                weight_status: WeightStatus::Unset,
+                                extend_count: 0,
+                                intersect_count: 0,
                             }),
                         );
-                        if let Some(relaxed_pattern_weight) = self
-                            .store
-                            .node_weight_mut(relaxed_pattern_index)
-                        {
-                            if relaxed_pattern_weight.is_set() {
-                                relaxed_pattern_weight.weight_status = WeightStatus::UnsetOutRelated
-                            }
-                        }
-                        if let Some(new_pattern_weight) = self.store.node_weight_mut(new_pattern_index) {
-                            if new_pattern_weight.is_set() {
-                                new_pattern_weight.weight_status = WeightStatus::UnsetInRelated
-                            }
-                        }
                         if !self
                             .pattern_locate_map
                             .contains_key(&new_pattern_code)
@@ -576,49 +499,17 @@ impl Catalogue {
     pub fn set_pattern_count(&mut self, pattern_index: NodeIndex, count: usize) {
         if let Some(pattern_weight) = self.store.node_weight_mut(pattern_index) {
             pattern_weight.count = count;
-            pattern_weight.weight_status = WeightStatus::Set;
         }
     }
 
-    pub fn set_extend_count(&mut self, approach: Approach, extend_nums_counts: HashMap<ExtendEdge, f64>) {
+    pub fn set_extend_count(&mut self, approach: Approach, _extend_nums_counts: HashMap<ExtendEdge, f64>) {
         if let Some(approach_weight) = self
             .store
             .edge_weight_mut(approach.get_approach_index())
         {
             if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
-                extend_weight.count_sum = 0.0;
-                extend_weight.count_min = 0.0;
-                extend_weight.count_max = 0.0;
-                extend_weight
-                    .extend_step
-                    .sort_extend_edges(|extend_edge1, extend_edge2| {
-                        extend_nums_counts
-                            .get(extend_edge1)
-                            .partial_cmp(&extend_nums_counts.get(extend_edge2))
-                            .unwrap()
-                    });
-                for (_, count) in extend_nums_counts {
-                    extend_weight.count_sum += count;
-                    if count < extend_weight.count_min {
-                        extend_weight.count_min = count;
-                    }
-                    if count > extend_weight.count_max {
-                        extend_weight.count_max = count;
-                    }
-                }
+                if extend_weight.get_extend_count() == 1 {}
             }
-        }
-        if let Some(src_pattern_weight) = self
-            .store
-            .node_weight_mut(approach.get_src_pattern_index())
-        {
-            src_pattern_weight.weight_status = WeightStatus::Set;
-        };
-        if let Some(target_pattern_weight) = self
-            .store
-            .node_weight_mut(approach.get_target_pattern_index())
-        {
-            target_pattern_weight.weight_status = WeightStatus::Set;
         }
     }
 
@@ -814,8 +705,7 @@ fn pattern_roll_back(
     let pre_pattern_weight = catalog
         .get_pattern_weight(pre_pattern_index)
         .unwrap();
-    let this_step_cost =
-        total_cost_estimate(ALPHA, BETA, pre_pattern_weight, pattern_weight, approach_weight);
+    let this_step_cost = extend_cost_estimate(pre_pattern_weight, pattern_weight, approach_weight);
     let target_vertex_id = pattern
         .get_vertex_from_rank(
             approach_weight
@@ -891,8 +781,8 @@ fn sort_approaches(
         let pre_pattern_weight2 = catalog
             .get_pattern_weight(approach2.get_src_pattern_index())
             .unwrap();
-        total_cost_estimate(ALPHA, BETA, pre_pattern_weight1, pattern_weight, approach_weight1)
-            .cmp(&total_cost_estimate(ALPHA, BETA, pre_pattern_weight2, pattern_weight, approach_weight2))
+        extend_cost_estimate(pre_pattern_weight1, pattern_weight, approach_weight1)
+            .cmp(&extend_cost_estimate(pre_pattern_weight2, pattern_weight, approach_weight2))
     });
 }
 
@@ -1015,41 +905,17 @@ fn create_extend_step_comparator(extend_step: &ExtendStep, pattern: &Pattern) ->
 }
 
 /// Cost estimation functions
-fn total_cost_estimate(
-    alpha: f64, beta: f64, pre_pattern_weight: &PatternWeight, pattern_weight: &PatternWeight,
-    edge_weight: &ApproachWeight,
+fn extend_cost_estimate(
+    pre_pattern_weight: &PatternWeight, pattern_weight: &PatternWeight, edge_weight: &ApproachWeight,
 ) -> usize {
     if let ApproachWeight::ExtendStep(extend_weight) = edge_weight {
-        f_cost_estimate(alpha, pre_pattern_weight, extend_weight)
-            + i_cost_estimate(beta, pre_pattern_weight, extend_weight)
-            + e_cost_estimate(pattern_weight)
-            + d_cost_estimate(pre_pattern_weight)
+        pre_pattern_weight.count
+            + pattern_weight.count
+            + ((extend_weight.get_extend_count() as f64) * ALPHA) as usize
+            + ((extend_weight.get_intersect_count() as f64) * BETA) as usize
     } else {
         usize::MAX
     }
-}
-
-fn f_cost_estimate(alpha: f64, pre_pattern_weight: &PatternWeight, extend_weight: &ExtendWeight) -> usize {
-    (alpha * (pre_pattern_weight.count as f64) * (extend_weight.count_sum)) as usize
-}
-
-fn i_cost_estimate(beta: f64, pre_pattern_weight: &PatternWeight, extend_weight: &ExtendWeight) -> usize {
-    (beta
-        * (pre_pattern_weight.count as f64)
-        * extend_weight.count_max.log2()
-        * extend_weight.count_min
-        * ((extend_weight
-            .get_extend_step()
-            .get_extend_edges_num()
-            - 1) as f64)) as usize
-}
-
-fn e_cost_estimate(pattern_weight: &PatternWeight) -> usize {
-    pattern_weight.count
-}
-
-fn d_cost_estimate(pre_pattern_weight: &PatternWeight) -> usize {
-    pre_pattern_weight.count
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -77,6 +77,8 @@ pub mod catalog;
 
 pub mod canonical_label;
 
+pub mod codec;
+
 pub mod extend_step;
 
 pub mod pattern;
