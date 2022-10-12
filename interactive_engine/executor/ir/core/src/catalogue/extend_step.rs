@@ -13,7 +13,6 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::iter::Iterator;
@@ -80,6 +79,10 @@ impl ExtendStep {
         Box::new(self.extend_edges.iter())
     }
 
+    pub fn get_extend_edges(&self) -> Vec<ExtendEdge> {
+        self.extend_edges.clone()
+    }
+
     #[inline]
     pub fn get_target_vertex_label(&self) -> PatternLabelId {
         self.target_vertex_label
@@ -90,11 +93,9 @@ impl ExtendStep {
         self.extend_edges.len()
     }
 
-    pub(crate) fn sort_extend_edges<F>(&mut self, compare: F)
-    where
-        F: FnMut(&ExtendEdge, &ExtendEdge) -> Ordering,
-    {
-        self.extend_edges.sort_by(compare)
+    pub fn add_extend_edge(mut self, extend_edge: ExtendEdge) -> ExtendStep {
+        self.extend_edges.push(extend_edge);
+        self
     }
 }
 
@@ -380,4 +381,11 @@ mod tests {
         assert_eq!(extend_step1.get_target_vertex_label(), 1);
         assert_eq!(extend_step1.extend_edges.len(), 2);
     }
+
+    // #[test]
+    // fn test_get_subset() {
+    //     let vec = vec![1, 2, 3];
+    //     println!("{:?}", get_subsets(vec, |_, _| false));
+    //     // assert_eq!(get_subsets(vec, |_, _| false).len(), 7);
+    // }
 }

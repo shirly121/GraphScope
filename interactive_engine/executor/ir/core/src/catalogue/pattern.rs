@@ -30,7 +30,7 @@ use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::{PlanMeta, TagId};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PatternVertex {
     id: PatternId,
     label: PatternLabelId,
@@ -127,7 +127,7 @@ struct PatternEdgeData {
 }
 
 /// Adjacency records a vertex's neighboring edge and vertex
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Adjacency {
     /// the source vertex connect to the adjacent vertex through this edge
     edge_id: PatternId,

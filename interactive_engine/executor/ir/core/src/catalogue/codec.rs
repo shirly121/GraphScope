@@ -12,6 +12,7 @@
 //! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
+use std::collections::BinaryHeap;
 use std::convert::TryFrom;
 
 use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
@@ -89,8 +90,7 @@ impl Pattern {
 
 impl ExtendStep {
     pub fn encode_to(&self) -> Vec<u8> {
-        let mut extend_edges = self.iter().collect::<Vec<&ExtendEdge>>();
-        extend_edges.sort();
+        let extend_edges = self.iter().collect::<BinaryHeap<&ExtendEdge>>();
         let mut extend_code = Vec::with_capacity(extend_edges.len() * 9 + 4);
         for extend_edge in extend_edges {
             extend_code.extend_from_slice(&id_to_u8_array(extend_edge.get_src_vertex_rank()));
@@ -102,7 +102,7 @@ impl ExtendStep {
     }
 
     pub fn decode_from(code: &[u8]) -> Option<ExtendStep> {
-        if code.len() & 9 == 4 && code.len() != 4 {
+        if code.len() % 9 == 4 && code.len() != 4 {
             let extend_edges_num = code.len() / 9;
             let mut extend_edges = Vec::with_capacity(extend_edges_num);
             for i in 0..extend_edges_num {
