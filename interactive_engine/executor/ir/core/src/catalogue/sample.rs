@@ -95,7 +95,6 @@ impl Catalogue {
                     target_pattern_index,
                     Arc::new(PatternCountInfo::new(
                         target_pattern,
-                        target_pattern_index,
                         sub_task_result.target_pattern_records,
                         sub_task_result.target_pattern_count,
                     )),
@@ -139,12 +138,7 @@ impl Catalogue {
             pattern_records = sample_records(pattern_records, rate, limit);
             pattern_nodes.insert(
                 start_pattern_index,
-                Arc::new(PatternCountInfo::new(
-                    pattern,
-                    start_pattern_index,
-                    pattern_records,
-                    pattern_count,
-                )),
+                Arc::new(PatternCountInfo::new(pattern, pattern_records, pattern_count)),
             );
         }
         pattern_nodes
@@ -154,17 +148,15 @@ impl Catalogue {
 #[derive(Debug, Clone)]
 struct PatternCountInfo {
     pattern: Pattern,
-    pattern_index: NodeIndex,
     pattern_records: Vec<PatternRecord>,
     pattern_count: usize,
 }
 
 impl PatternCountInfo {
     fn new(
-        pattern: Pattern, pattern_index: NodeIndex, pattern_records: Vec<PatternRecord>,
-        pattern_count: usize,
+        pattern: Pattern, pattern_records: Vec<PatternRecord>, pattern_count: usize,
     ) -> PatternCountInfo {
-        PatternCountInfo { pattern, pattern_index, pattern_records, pattern_count }
+        PatternCountInfo { pattern, pattern_records, pattern_count }
     }
 }
 
