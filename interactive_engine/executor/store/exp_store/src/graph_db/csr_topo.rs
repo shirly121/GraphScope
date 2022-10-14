@@ -47,9 +47,7 @@ impl<I: IndexType> From<MutEdgeVec<I>> for EdgeVec<I> {
             for label in label_vec.keys().cloned().sorted() {
                 for vec in label_vec.get_mut(&label) {
                     vec.sort();
-                    offsets[node]
-                        .inner
-                        .insert(label, (I::new(num_edges), I::new(vec.len())));
+                    offsets[node].insert(label, (I::new(num_edges), I::new(vec.len())));
                     num_edges += vec.len();
                     edges.extend(vec.drain(..));
                 }
@@ -61,15 +59,7 @@ impl<I: IndexType> From<MutEdgeVec<I>> for EdgeVec<I> {
             offsets_no_label[node] += offsets_no_label[node - 1];
         }
         for (node, offset) in offsets_no_label.drain(..).enumerate() {
-            if offsets[node].inner.is_empty() {
-                offsets[node]
-                    .inner
-                    .insert(INVALID_LABEL_ID, (I::new(offset), I::default()));
-            } else {
-                for (_, range) in offsets[node].inner.iter_mut() {
-                    range.0 = I::new(range.0.index() + offset);
-                }
-            }
+            offsets[node].update_by_offset(offset);
         }
 
         let mut edge_vec = EdgeVec { offsets, edges };
@@ -104,23 +94,107 @@ impl<I: IndexType> MutEdgeVec<I> {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize, Deserialize)]
-struct RangeByLabel<K: IndexType, V: IndexType> {
-    /// K -> the key refers to label
-    /// (V, V) -> the first element refers to the starting index in the sparse row,
-    ///        -> the second element refers to the size of the elements regarding the given `K`
-    inner: IndexMap<K, (V, V)>,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+enum RangeByLabel<K: IndexType, V: IndexType> {
+    None,
+    /// One label with start offset, and its size
+    One((K, (V, V))),
+    /// Two labels
+    Two([(K, (V, V)); 2]),
+    /// More that two labels, maintaining each labels' start offset and its size
+    Many(IndexMap<K, (V, V)>),
+}
+
+impl<K: IndexType, V: IndexType> Default for RangeByLabel<K, V> {
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
+    #[inline]
     pub fn get_index(&self) -> Option<usize> {
-        self.inner.first().map(|(_, r)| r.0.index())
+        match self {
+            RangeByLabel::None => None,
+            RangeByLabel::One((_, (offset, _))) => Some(offset.index()),
+            RangeByLabel::Two(arr) => Some(arr[0].1 .0.index()),
+            RangeByLabel::Many(inner) => inner.first().map(|(_, r)| r.0.index()),
+        }
     }
 
+    #[inline]
     pub fn get_range(&self, label: K) -> Option<(usize, usize)> {
-        self.inner
-            .get(&label)
-            .map(|range| (range.0.index(), range.0.index() + range.1.index()))
+        match self {
+            RangeByLabel::None => None,
+            RangeByLabel::One((l, (offset, size))) => {
+                if *l == label {
+                    Some((offset.index(), offset.index() + size.index()))
+                } else {
+                    None
+                }
+            }
+            RangeByLabel::Two(arr) => {
+                if arr[0].0 == label {
+                    let (offset, size) = arr[0].1;
+                    Some((offset.index(), offset.index() + size.index()))
+                } else if arr[1].0 == label {
+                    let (offset, size) = arr[1].1;
+                    Some((offset.index(), offset.index() + size.index()))
+                } else {
+                    None
+                }
+            }
+            RangeByLabel::Many(inner) => inner
+                .get(&label)
+                .map(|range| (range.0.index(), range.0.index() + range.1.index())),
+        }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        match self {
+            RangeByLabel::None => 0,
+            RangeByLabel::One(_) => 1,
+            RangeByLabel::Two(_) => 2,
+            RangeByLabel::Many(inner) => inner.len(),
+        }
+    }
+
+    pub fn insert(&mut self, label: K, range: (V, V)) {
+        match self {
+            RangeByLabel::None => *self = RangeByLabel::One((label, range)),
+            RangeByLabel::One(s) => *self = RangeByLabel::Two([s.clone(), (label, range)]),
+            RangeByLabel::Two(t) => {
+                let mut inner = IndexMap::new();
+                inner.insert(t[0].0, t[0].1);
+                inner.insert(t[1].0, t[1].1);
+                *self = RangeByLabel::Many(inner)
+            }
+            RangeByLabel::Many(inner) => {
+                inner.insert(label, range);
+            }
+        }
+    }
+
+    pub fn update_by_offset(&mut self, offset: usize) {
+        match self {
+            RangeByLabel::None => {
+                *self =
+                    RangeByLabel::One((K::new(INVALID_LABEL_ID as usize), (V::new(offset), V::default())));
+            }
+            RangeByLabel::One((_, range)) => range.0 = V::new(range.0.index() + offset),
+            RangeByLabel::Two(arr) => {
+                let range = &mut arr[0].1;
+                range.0 = V::new(range.0.index() + offset);
+                let range = &mut arr[1].1;
+                range.0 = V::new(range.0.index() + offset);
+            }
+            RangeByLabel::Many(inner) => {
+                for (_, range) in inner.iter_mut() {
+                    range.0 = V::new(range.0.index() + offset);
+                }
+            }
+        }
     }
 }
 
@@ -175,16 +249,15 @@ impl<I: IndexType + Send + Sync> EdgeVec<I> {
     /// If the label is `None`, return all its adjacent edges
     pub fn adjacent_edges(&self, node: NodeIndex<I>, label: Option<LabelId>) -> &[EdgeIndex<I>] {
         if self.has_node(node) {
+            let offset = &self.offsets[node.index()];
             if let Some(l) = label {
-                if let Some((start, end)) = self.offsets[node.index()].get_range(l) {
+                if let Some((start, end)) = offset.get_range(l) {
                     &self.edges[start..end]
                 } else {
                     &[]
                 }
             } else {
-                let start = self.offsets[node.index()]
-                    .get_index()
-                    .unwrap_or(0);
+                let start = offset.get_index().unwrap_or(0);
                 let end = self.offsets[node.index() + 1]
                     .get_index()
                     .unwrap_or(0);
