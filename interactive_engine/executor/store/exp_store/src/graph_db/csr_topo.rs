@@ -98,11 +98,13 @@ impl<I: IndexType> MutEdgeVec<I> {
 enum RangeByLabel<K: IndexType, V: IndexType> {
     None,
     /// One label with start offset, and its size
-    One((K, (V, V))),
+    Single((K, (V, V))),
     /// Two labels
-    Two([(K, (V, V)); 2]),
+    Double([(K, (V, V)); 2]),
+    /// Three labels
+    Triple([(K, (V, V)); 3]),
     /// More that two labels, maintaining each labels' start offset and its size
-    Many(IndexMap<K, (V, V)>),
+    Multiple(IndexMap<K, (V, V)>),
 }
 
 impl<K: IndexType, V: IndexType> Default for RangeByLabel<K, V> {
@@ -116,9 +118,10 @@ impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
     pub fn get_index(&self) -> Option<usize> {
         match self {
             RangeByLabel::None => None,
-            RangeByLabel::One((_, (offset, _))) => Some(offset.index()),
-            RangeByLabel::Two(arr) => Some(arr[0].1 .0.index()),
-            RangeByLabel::Many(inner) => inner.first().map(|(_, r)| r.0.index()),
+            RangeByLabel::Single((_, (offset, _))) => Some(offset.index()),
+            RangeByLabel::Double(inner) => Some(inner[0].1 .0.index()),
+            RangeByLabel::Triple(inner) => Some(inner[0].1 .0.index()),
+            RangeByLabel::Multiple(inner) => inner.first().map(|(_, r)| r.0.index()),
         }
     }
 
@@ -126,25 +129,39 @@ impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
     pub fn get_range(&self, label: K) -> Option<(usize, usize)> {
         match self {
             RangeByLabel::None => None,
-            RangeByLabel::One((l, (offset, size))) => {
+            RangeByLabel::Single((l, (offset, size))) => {
                 if *l == label {
                     Some((offset.index(), offset.index() + size.index()))
                 } else {
                     None
                 }
             }
-            RangeByLabel::Two(arr) => {
-                if arr[0].0 == label {
-                    let (offset, size) = arr[0].1;
+            RangeByLabel::Double(inner) => {
+                if inner[0].0 == label {
+                    let (offset, size) = inner[0].1;
                     Some((offset.index(), offset.index() + size.index()))
-                } else if arr[1].0 == label {
-                    let (offset, size) = arr[1].1;
+                } else if inner[1].0 == label {
+                    let (offset, size) = inner[1].1;
                     Some((offset.index(), offset.index() + size.index()))
                 } else {
                     None
                 }
             }
-            RangeByLabel::Many(inner) => inner
+            RangeByLabel::Triple(inner) => {
+                if inner[0].0 == label {
+                    let (offset, size) = inner[0].1;
+                    Some((offset.index(), offset.index() + size.index()))
+                } else if inner[1].0 == label {
+                    let (offset, size) = inner[1].1;
+                    Some((offset.index(), offset.index() + size.index()))
+                } else if inner[2].0 == label {
+                    let (offset, size) = inner[2].1;
+                    Some((offset.index(), offset.index() + size.index()))
+                } else {
+                    None
+                }
+            }
+            RangeByLabel::Multiple(inner) => inner
                 .get(&label)
                 .map(|range| (range.0.index(), range.0.index() + range.1.index())),
         }
@@ -154,23 +171,27 @@ impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
     pub fn len(&self) -> usize {
         match self {
             RangeByLabel::None => 0,
-            RangeByLabel::One(_) => 1,
-            RangeByLabel::Two(_) => 2,
-            RangeByLabel::Many(inner) => inner.len(),
+            RangeByLabel::Single(_) => 1,
+            RangeByLabel::Double(_) => 2,
+            RangeByLabel::Triple(_) => 3,
+            RangeByLabel::Multiple(inner) => inner.len(),
         }
     }
 
     pub fn insert(&mut self, label: K, range: (V, V)) {
         match self {
-            RangeByLabel::None => *self = RangeByLabel::One((label, range)),
-            RangeByLabel::One(s) => *self = RangeByLabel::Two([s.clone(), (label, range)]),
-            RangeByLabel::Two(t) => {
-                let mut inner = IndexMap::new();
-                inner.insert(t[0].0, t[0].1);
-                inner.insert(t[1].0, t[1].1);
-                *self = RangeByLabel::Many(inner)
+            RangeByLabel::None => *self = RangeByLabel::Single((label, range)),
+            RangeByLabel::Single(inner) => *self = RangeByLabel::Double([inner.clone(), (label, range)]),
+            RangeByLabel::Double(inner) => {
+                *self = RangeByLabel::Triple([inner[0], inner[1], (label, range)]);
             }
-            RangeByLabel::Many(inner) => {
+            RangeByLabel::Triple(t) => {
+                let mut inner = IndexMap::new();
+                inner.extend(t.iter().cloned());
+                inner.insert(label, range);
+                *self = RangeByLabel::Multiple(inner)
+            }
+            RangeByLabel::Multiple(inner) => {
                 inner.insert(label, range);
             }
         }
@@ -179,17 +200,23 @@ impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
     pub fn update_by_offset(&mut self, offset: usize) {
         match self {
             RangeByLabel::None => {
-                *self =
-                    RangeByLabel::One((K::new(INVALID_LABEL_ID as usize), (V::new(offset), V::default())));
+                *self = RangeByLabel::Single((
+                    K::new(INVALID_LABEL_ID as usize),
+                    (V::new(offset), V::default()),
+                ));
             }
-            RangeByLabel::One((_, range)) => range.0 = V::new(range.0.index() + offset),
-            RangeByLabel::Two(arr) => {
-                let range = &mut arr[0].1;
-                range.0 = V::new(range.0.index() + offset);
-                let range = &mut arr[1].1;
-                range.0 = V::new(range.0.index() + offset);
+            RangeByLabel::Single((_, range)) => range.0 = V::new(range.0.index() + offset),
+            RangeByLabel::Double(inner) => {
+                for (_, range) in inner.iter_mut() {
+                    range.0 = V::new(range.0.index() + offset);
+                }
             }
-            RangeByLabel::Many(inner) => {
+            RangeByLabel::Triple(inner) => {
+                for (_, range) in inner.iter_mut() {
+                    range.0 = V::new(range.0.index() + offset);
+                }
+            }
+            RangeByLabel::Multiple(inner) => {
                 for (_, range) in inner.iter_mut() {
                     range.0 = V::new(range.0.index() + offset);
                 }
@@ -241,6 +268,21 @@ impl<I: IndexType> EdgeVec<I> {
     pub fn shrink_to_fit(&mut self) {
         self.edges.shrink_to_fit();
         self.offsets.shrink_to_fit();
+    }
+
+    pub fn print_statistics(&self) {
+        let mut stats = vec![0_usize; 10];
+        for range in &self.offsets {
+            match range {
+                RangeByLabel::None => stats[0] += 1,
+                RangeByLabel::Single(_) => stats[1] += 1,
+                RangeByLabel::Double(_) => stats[2] += 1,
+                RangeByLabel::Triple(_) => stats[3] += 1,
+                RangeByLabel::Multiple(inner) => stats[inner.len()] += 1,
+            }
+        }
+
+        println!("{:?}", stats);
     }
 }
 
@@ -421,6 +463,11 @@ impl<I: IndexType + Send + Sync> CsrTopo<I> {
                 .incoming
                 .adjacent_edges(node, edge_label),
         }
+    }
+
+    pub fn print_statistics(&self) {
+        self.csr.outgoing.print_statistics();
+        self.csr.incoming.print_statistics();
     }
 }
 

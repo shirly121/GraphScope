@@ -422,6 +422,10 @@ where
             self.topology.edges_count(),
         );
     }
+
+    pub fn get_topology(&self) -> &T {
+        &self.topology
+    }
 }
 
 /// Do not expose these apis, only for internal use
