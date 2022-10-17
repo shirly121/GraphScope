@@ -15,7 +15,6 @@
 //!
 
 use ahash::{HashMap, HashMapExt};
-use indexmap::map::IndexMap;
 use itertools::Itertools;
 use petgraph::graph::IndexType;
 use petgraph::prelude::{Direction, EdgeIndex, NodeIndex};
@@ -47,7 +46,9 @@ impl<I: IndexType> From<MutEdgeVec<I>> for EdgeVec<I> {
             for label in label_vec.keys().cloned().sorted() {
                 for vec in label_vec.get_mut(&label) {
                     vec.sort();
-                    offsets[node].insert(label, (I::new(num_edges), I::new(vec.len())));
+                    offsets[node]
+                        .inner
+                        .push((label, I::new(num_edges)));
                     num_edges += vec.len();
                     edges.extend(vec.drain(..));
                 }
@@ -94,132 +95,42 @@ impl<I: IndexType> MutEdgeVec<I> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum RangeByLabel<K: IndexType, V: IndexType> {
-    None,
-    /// One label with start offset, and its size
-    Single((K, (V, V))),
-    /// Two labels
-    Double([(K, (V, V)); 2]),
-    /// Three labels
-    Triple([(K, (V, V)); 3]),
-    /// More that two labels, maintaining each labels' start offset and its size
-    Multiple(IndexMap<K, (V, V)>),
-}
-
-impl<K: IndexType, V: IndexType> Default for RangeByLabel<K, V> {
-    fn default() -> Self {
-        Self::None
-    }
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize, Deserialize)]
+struct RangeByLabel<K: IndexType, V: IndexType> {
+    /// K -> the key refers to label
+    /// (V, V) -> the first element refers to the starting index in the sparse row,
+    ///        -> the second element refers to the size of the elements regarding the given `K`
+    inner: Vec<(K, V)>,
 }
 
 impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
     #[inline]
     pub fn get_index(&self) -> Option<usize> {
-        match self {
-            RangeByLabel::None => None,
-            RangeByLabel::Single((_, (offset, _))) => Some(offset.index()),
-            RangeByLabel::Double(inner) => Some(inner[0].1 .0.index()),
-            RangeByLabel::Triple(inner) => Some(inner[0].1 .0.index()),
-            RangeByLabel::Multiple(inner) => inner.first().map(|(_, r)| r.0.index()),
-        }
+        self.inner.first().map(|(_, r)| r.index())
     }
 
     #[inline]
-    pub fn get_range(&self, label: K) -> Option<(usize, usize)> {
-        match self {
-            RangeByLabel::None => None,
-            RangeByLabel::Single((l, (offset, size))) => {
-                if *l == label {
-                    Some((offset.index(), offset.index() + size.index()))
-                } else {
-                    None
-                }
-            }
-            RangeByLabel::Double(inner) => {
-                if inner[0].0 == label {
-                    let (offset, size) = inner[0].1;
-                    Some((offset.index(), offset.index() + size.index()))
-                } else if inner[1].0 == label {
-                    let (offset, size) = inner[1].1;
-                    Some((offset.index(), offset.index() + size.index()))
-                } else {
-                    None
-                }
-            }
-            RangeByLabel::Triple(inner) => {
-                if inner[0].0 == label {
-                    let (offset, size) = inner[0].1;
-                    Some((offset.index(), offset.index() + size.index()))
-                } else if inner[1].0 == label {
-                    let (offset, size) = inner[1].1;
-                    Some((offset.index(), offset.index() + size.index()))
-                } else if inner[2].0 == label {
-                    let (offset, size) = inner[2].1;
-                    Some((offset.index(), offset.index() + size.index()))
-                } else {
-                    None
-                }
-            }
-            RangeByLabel::Multiple(inner) => inner
-                .get(&label)
-                .map(|range| (range.0.index(), range.0.index() + range.1.index())),
-        }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        match self {
-            RangeByLabel::None => 0,
-            RangeByLabel::Single(_) => 1,
-            RangeByLabel::Double(_) => 2,
-            RangeByLabel::Triple(_) => 3,
-            RangeByLabel::Multiple(inner) => inner.len(),
-        }
-    }
-
-    pub fn insert(&mut self, label: K, range: (V, V)) {
-        match self {
-            RangeByLabel::None => *self = RangeByLabel::Single((label, range)),
-            RangeByLabel::Single(inner) => *self = RangeByLabel::Double([inner.clone(), (label, range)]),
-            RangeByLabel::Double(inner) => {
-                *self = RangeByLabel::Triple([inner[0], inner[1], (label, range)]);
-            }
-            RangeByLabel::Triple(t) => {
-                let mut inner = IndexMap::new();
-                inner.extend(t.iter().cloned());
-                inner.insert(label, range);
-                *self = RangeByLabel::Multiple(inner)
-            }
-            RangeByLabel::Multiple(inner) => {
-                inner.insert(label, range);
-            }
+    pub fn get_range(&self, label: K) -> Option<(usize, Option<usize>)> {
+        if let Ok(index) = self
+            .inner
+            .binary_search_by_key(&label, |&(a, _)| a)
+        {
+            let start: usize = self.inner[index].1.index();
+            let end: Option<usize> =
+                if index < self.inner.len() - 1 { Some(self.inner[index + 1].1.index()) } else { None };
+            Some((start, end))
+        } else {
+            None
         }
     }
 
     pub fn update_by_offset(&mut self, offset: usize) {
-        match self {
-            RangeByLabel::None => {
-                *self = RangeByLabel::Single((
-                    K::new(INVALID_LABEL_ID as usize),
-                    (V::new(offset), V::default()),
-                ));
-            }
-            RangeByLabel::Single((_, range)) => range.0 = V::new(range.0.index() + offset),
-            RangeByLabel::Double(inner) => {
-                for (_, range) in inner.iter_mut() {
-                    range.0 = V::new(range.0.index() + offset);
-                }
-            }
-            RangeByLabel::Triple(inner) => {
-                for (_, range) in inner.iter_mut() {
-                    range.0 = V::new(range.0.index() + offset);
-                }
-            }
-            RangeByLabel::Multiple(inner) => {
-                for (_, range) in inner.iter_mut() {
-                    range.0 = V::new(range.0.index() + offset);
-                }
+        if self.inner.is_empty() {
+            self.inner
+                .push((K::new(INVALID_LABEL_ID as usize), V::new(offset)));
+        } else {
+            for (_, off) in self.inner.iter_mut() {
+                *off = V::new(off.index() + offset);
             }
         }
     }
@@ -232,7 +143,7 @@ struct EdgeVec<I: IndexType> {
     /// * `offsets[i][j]` maintains the start and end indices of the adjacent edges of
     /// the label j for node i, if node i has connection to the edge of label j
     offsets: Vec<RangeByLabel<LabelId, I>>,
-    /// A vector to maintain edges' id
+    /// A vector to maintain the compressed sparse row, each recording the adjacent edges
     edges: Vec<EdgeIndex<I>>,
 }
 
@@ -243,17 +154,22 @@ impl<I: IndexType> EdgeVec<I> {
     }
 
     #[inline]
+    pub fn edges_count(&self) -> usize {
+        self.edges.len()
+    }
+
+    #[inline]
     pub fn degree(&self, node: NodeIndex<I>) -> usize {
         if self.has_node(node) {
-            // must at least have an index
-            let start = self.offsets[node.index()]
-                .get_index()
-                .unwrap_or(0);
-            let end = self.offsets[node.index() + 1]
-                .get_index()
-                .unwrap_or(0);
+            if let Some(start) = self.offsets[node.index()].get_index() {
+                let end = self.offsets[node.index() + 1]
+                    .get_index()
+                    .unwrap_or(start);
 
-            end - start
+                end - start
+            } else {
+                0
+            }
         } else {
             0
         }
@@ -270,19 +186,13 @@ impl<I: IndexType> EdgeVec<I> {
         self.offsets.shrink_to_fit();
     }
 
-    pub fn print_statistics(&self) {
-        let mut stats = vec![0_usize; 10];
+    pub fn get_label_frequencies(&self) -> Vec<usize> {
+        let mut count_by_label = vec![0; 10];
         for range in &self.offsets {
-            match range {
-                RangeByLabel::None => stats[0] += 1,
-                RangeByLabel::Single(_) => stats[1] += 1,
-                RangeByLabel::Double(_) => stats[2] += 1,
-                RangeByLabel::Triple(_) => stats[3] += 1,
-                RangeByLabel::Multiple(inner) => stats[inner.len()] += 1,
-            }
+            count_by_label[range.inner.len()] += 1;
         }
 
-        println!("{:?}", stats);
+        count_by_label
     }
 }
 
@@ -291,19 +201,29 @@ impl<I: IndexType + Send + Sync> EdgeVec<I> {
     /// If the label is `None`, return all its adjacent edges
     pub fn adjacent_edges(&self, node: NodeIndex<I>, label: Option<LabelId>) -> &[EdgeIndex<I>] {
         if self.has_node(node) {
-            let offset = &self.offsets[node.index()];
             if let Some(l) = label {
-                if let Some((start, end)) = offset.get_range(l) {
+                if let Some((start, end_)) = self.offsets[node.index()].get_range(l) {
+                    let end = if let Some(end) = end_ {
+                        end
+                    } else {
+                        self.offsets[node.index() + 1]
+                            .get_index()
+                            .unwrap_or(start)
+                    };
+
                     &self.edges[start..end]
                 } else {
                     &[]
                 }
             } else {
-                let start = offset.get_index().unwrap_or(0);
-                let end = self.offsets[node.index() + 1]
-                    .get_index()
-                    .unwrap_or(0);
-                &self.edges[start..end]
+                if let Some(start) = self.offsets[node.index()].get_index() {
+                    let end = self.offsets[node.index() + 1]
+                        .get_index()
+                        .unwrap_or(start);
+                    &self.edges[start..end]
+                } else {
+                    &[]
+                }
             }
         } else {
             &[]
@@ -465,9 +385,24 @@ impl<I: IndexType + Send + Sync> CsrTopo<I> {
         }
     }
 
+    #[inline]
+    pub fn shrink_to_fit(&mut self) {
+        self.nodes.shrink_to_fit();
+        self.edges.shrink_to_fit();
+        self.csr.incoming.shrink_to_fit();
+        self.csr.outgoing.shrink_to_fit();
+    }
+
+    #[inline]
     pub fn print_statistics(&self) {
-        self.csr.outgoing.print_statistics();
-        self.csr.incoming.print_statistics();
+        println!("the number of nodes: {:?}", self.nodes.len());
+        println!("the number of edges: {:?}", self.edges.len());
+        println!("the number of nodes in incoming csr: {:?}", self.csr.incoming.nodes_count());
+        println!("the number of edges in incoming csr: {:?}", self.csr.incoming.edges_count());
+        println!("the number of nodes in outgoing csr: {:?}", self.csr.outgoing.nodes_count());
+        println!("the number of edges in outgoing csr: {:?}", self.csr.outgoing.edges_count());
+        println!("the incoming csr label frequencies: {:?}", self.csr.incoming.get_label_frequencies());
+        println!("the outgoing csr label frequencies: {:?}", self.csr.outgoing.get_label_frequencies());
     }
 }
 
