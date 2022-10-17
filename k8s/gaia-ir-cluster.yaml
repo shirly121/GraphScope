@@ -44,7 +44,7 @@ metadata:
   labels:
     app: gaia-ir-compiler
 spec:
-  type: NodePort
+  type: LoadBalancer
   ports:
     - port: 8182
       targetPort: 8182
