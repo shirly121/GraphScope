@@ -102,7 +102,17 @@ public class IrDataEncodeMapper extends MapperBase {
     public void map(long recordNum, Record record, TaskContext context) throws IOException {
         char separator = context.getJobConf().get(IrDataBuild.SEPARATOR).charAt(0);
         String tableName = context.getInputTableInfo().getTableName();
-        String content = ignoreQuote(record.getString(0));
+        int columnCount = record.getColumnCount();
+        StringBuilder stringBuilder = new StringBuilder();
+        for (int i = 0; i < columnCount; i++) {
+            if (i > 0) {
+                stringBuilder.append(separator);
+            }
+            if (record.get(i) != null) {
+                stringBuilder.append(ignoreQuote(record.get(i).toString()));
+            }
+        }
+        String content = stringBuilder.toString();
         String labelName = this.columnMappingMeta.getLabelName(tableName);
         long type = this.columnMappingMeta.getElementType(tableName);
         if (type == 0) { // encode vertex
