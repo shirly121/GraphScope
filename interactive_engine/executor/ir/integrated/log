@@ -1,0 +1,3 @@
+    Blocking waiting for file lock on build directory
+   Compiling runtime_integration v0.1.0 (/Users/yanglaoyuan/Documents/GitHub/new_GraphScope/GraphScope/interactive_engine/executor/ir/integrated)
+    Finished dev [optimized + debuginfo] target(s) in 32.65s
