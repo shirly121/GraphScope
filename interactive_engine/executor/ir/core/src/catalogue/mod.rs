@@ -85,6 +85,8 @@ pub mod pattern;
 
 pub mod pattern_meta;
 
+pub mod plan;
+
 pub mod sample;
 
 pub mod sparsify;

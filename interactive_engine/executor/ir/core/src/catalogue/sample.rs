@@ -24,9 +24,10 @@ use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
 use graph_store::prelude::{DefaultId, GlobalStoreTrait, GraphDBConfig, InternalId, LabelId, LargeGraphDB};
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::{get_definite_extend_steps_recursively, Catalogue};
+use crate::catalogue::catalog::Catalogue;
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
+use crate::catalogue::plan::get_definite_extend_steps_recursively;
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
 
 type PatternRecord = BTreeMap<PatternId, DefaultId>;
@@ -390,9 +391,9 @@ pub fn load_sample_graph(graph_path: &str) -> LargeGraphDB<DefaultId, InternalId
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::catalogue::catalog::get_definite_extend_steps_recursively;
     use crate::catalogue::extend_step::{ExtendEdge, ExtendStep};
     use crate::catalogue::pattern::{PatternEdge, PatternVertex};
+    use crate::catalogue::plan::get_definite_extend_steps_recursively;
     use crate::catalogue::sample::*;
     use crate::catalogue::PatternDirection;
 

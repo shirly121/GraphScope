@@ -26,10 +26,10 @@ mod test {
 
     use ir_common::expr_parse::str_to_expr_pb;
     use ir_common::generated::algebra as pb;
-    use ir_core::catalogue::catalog::get_definite_extend_steps_recursively;
     use ir_core::catalogue::catalog::Catalogue;
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
+    use ir_core::catalogue::plan::get_definite_extend_steps_recursively;
     use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
     use ir_core::error::IrError;
     use ir_core::plan::logical::LogicalPlan;
