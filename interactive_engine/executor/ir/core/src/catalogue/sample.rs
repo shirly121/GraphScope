@@ -356,15 +356,19 @@ fn sample_records(records: Vec<PatternRecord>, rate: f64, limit: Option<usize>) 
     } else {
         ((records.len() as f64) * rate).floor() as usize
     };
-    let step = (1.0 / rate).floor() as usize;
-    records
-        .into_iter()
-        .enumerate()
-        .filter(|&(i, _)| i % step == 0)
-        .enumerate()
-        .filter(|&(i, _)| i < expected_len)
-        .map(|(_, (_, record))| record)
-        .collect()
+    if expected_len == records.len() {
+        records
+    } else {
+        let step = (1.0 / rate).floor() as usize;
+        records
+            .into_iter()
+            .enumerate()
+            .filter(|&(i, _)| i % step == 0)
+            .enumerate()
+            .filter(|&(i, _)| i < expected_len)
+            .map(|(_, (_, record))| record)
+            .collect()
+    }
 }
 
 fn split_vector<T>(vector: &Vec<T>, thread_num: usize, thread_id: usize) -> &[T] {
