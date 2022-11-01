@@ -416,7 +416,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -451,7 +451,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan()
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
             .unwrap();
         println!("{:?}", pb_plan);
         initialize();
@@ -512,7 +512,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!("{:?}", plan);
@@ -547,7 +547,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan()
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -579,7 +579,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -614,7 +614,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case3() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan()
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -646,7 +646,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -681,7 +681,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case4() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan()
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -713,7 +713,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog)
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -748,7 +748,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_bi11() {
         let ldbc_pattern = build_ldbc_bi11().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan()
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();

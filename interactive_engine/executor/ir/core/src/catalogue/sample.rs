@@ -15,6 +15,7 @@
 //!
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fs::File;
 use std::iter::FromIterator;
 use std::path::Path;
 use std::sync::{mpsc, mpsc::Sender, Arc};
@@ -27,8 +28,11 @@ use petgraph::graph::NodeIndex;
 use crate::catalogue::catalog::Catalogue;
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
+use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::plan::get_definite_extend_steps_recursively;
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
+use crate::plan::meta::Schema;
+use crate::JsonIO;
 
 type PatternRecord = BTreeMap<PatternId, DefaultId>;
 
@@ -325,7 +329,7 @@ fn get_adj_vertices_set(
     graph: &LargeGraphDB<DefaultId, InternalId>, pattern_record: &PatternRecord,
     extend_edge: &DefiniteExtendEdge, target_vertex_label: PatternLabelId,
 ) -> BTreeSet<DefaultId> {
-    let src_pattern_vertex_id = extend_edge.get_src_vertex_id();
+    let src_pattern_vertex_id = extend_edge.get_src_vertex().get_id();
     let src_graph_vertex_id = *pattern_record
         .get(&src_pattern_vertex_id)
         .unwrap();
@@ -385,6 +389,13 @@ pub fn load_sample_graph(graph_path: &str) -> LargeGraphDB<DefaultId, InternalId
         )
         .open()
         .expect("Open graph error")
+}
+
+pub fn load_pattern_meta(schema_path: &str) -> PatternMeta {
+    info!("Read the patternm meta from {:?}.", schema_path);
+    let schema_file = File::open(schema_path).unwrap();
+    let schema = Schema::from_json(schema_file).unwrap();
+    PatternMeta::from(schema)
 }
 
 #[cfg(test)]
@@ -657,8 +668,9 @@ mod tests {
         assert_eq!(catalog.get_patterns_num(), 10);
         assert_eq!(catalog.get_approaches_num(), 12);
         let sample_graph = Arc::new(load_sample_graph("../core/resource/test_graph"));
+        let pattern_meta = load_pattern_meta("../core/resource/test_graph/graph_schema/schema.json");
         catalog.estimate_graph(Arc::clone(&sample_graph), 0.1, Some(10000));
-        println!("{:?}", pattern.generate_optimized_match_plan_greedily(&catalog));
+        println!("{:?}", pattern.generate_optimized_match_plan_greedily(&catalog, &pattern_meta));
     }
 
     #[test]

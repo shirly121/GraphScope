@@ -1170,23 +1170,16 @@ impl ExtendStrategy {
 /// Build pattern match Logical Plan for ExtendStrategy
 impl MatchingStrategy for ExtendStrategy {
     fn build_logical_plan(&self, store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
-        // if can find catalog, generate optimized logical plan
-        if let Some(store_meta) = store_meta {
-            if let Some(catalog) = store_meta.catalogue.as_ref() {
-                if let Ok(match_plan) = self
-                    .pattern
-                    .generate_optimized_match_plan_greedily(catalog)
-                {
-                    Ok(match_plan)
-                } else {
-                    // generate optimized logical plan fails, use simple plan instead
-                    self.pattern.generate_simple_extend_match_plan()
-                }
+        if let Some(pattern_meta) = store_meta.and_then(|store_meta| store_meta.pattern_meta.as_ref()) {
+            if let Some(catalog) = store_meta.and_then(|store_meta| store_meta.catalogue.as_ref()) {
+                self.pattern
+                    .generate_optimized_match_plan_greedily(catalog, pattern_meta)
             } else {
-                self.pattern.generate_simple_extend_match_plan()
+                self.pattern
+                    .generate_simple_extend_match_plan(pattern_meta)
             }
         } else {
-            self.pattern.generate_simple_extend_match_plan()
+            Err(IrError::MissingData("Missing PatternMeta".to_string()))
         }
     }
 }

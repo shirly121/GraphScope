@@ -1,6 +1,23 @@
+//
+//! Copyright 2020 Alibaba Group Holding Limited.
+//!
+//! Licensed under the Apache License, Version 2.0 (the "License");
+//! you may not use this file except in compliance with the License.
+//! You may obtain a copy of the License at
+//!
+//! http://www.apache.org/licenses/LICENSE-2.0
+//!
+//! Unless required by applicable law or agreed to in writing, software
+//! distributed under the License is distributed on an "AS IS" BASIS,
+//! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//! See the License for the specific language governing permissions and
+//! limitations under the License.
+
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::convert::{TryFrom, TryInto};
 
+use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use petgraph::graph::NodeIndex;
@@ -8,6 +25,8 @@ use petgraph::graph::NodeIndex;
 use crate::catalogue::catalog::{Approach, Catalogue, ExtendWeight, PatternWeight};
 use crate::catalogue::extend_step::DefiniteExtendStep;
 use crate::catalogue::pattern::Pattern;
+use crate::catalogue::pattern_meta::PatternMeta;
+use crate::catalogue::PatternDirection;
 use crate::catalogue::{query_params, PatternId};
 use crate::error::{IrError, IrResult};
 
@@ -17,7 +36,9 @@ static BETA: f64 = 0.5;
 /// Methods for Pattern to generate pb Logical plan of pattern matching
 impl Pattern {
     /// Generate a naive extend based pattern match plan
-    pub fn generate_simple_extend_match_plan(&self) -> IrResult<pb::LogicalPlan> {
+    pub fn generate_simple_extend_match_plan(
+        &self, pattern_meta: &PatternMeta,
+    ) -> IrResult<pb::LogicalPlan> {
         let mut trace_pattern = self.clone();
         let mut definite_extend_steps = vec![];
         while trace_pattern.get_vertices_num() > 1 {
@@ -25,54 +46,7 @@ impl Pattern {
                 .vertices_iter()
                 .map(|v| v.get_id())
                 .collect();
-            // Sort the vertices by order/incoming order/ out going order
-            // Vertex with larger degree will be extended later
-            all_vertex_ids.sort_by(|&v1_id, &v2_id| {
-                let v1_has_predicate = trace_pattern
-                    .get_vertex_predicate(v1_id)
-                    .is_some();
-                let v2_has_predicate = trace_pattern
-                    .get_vertex_predicate(v2_id)
-                    .is_some();
-                if v1_has_predicate && !v2_has_predicate {
-                    Ordering::Greater
-                } else if !v1_has_predicate && v2_has_predicate {
-                    Ordering::Less
-                } else {
-                    let v1_edges_predicate_num = trace_pattern
-                        .adjacencies_iter(v1_id)
-                        .filter(|adj| {
-                            trace_pattern
-                                .get_edge_predicate(adj.get_edge_id())
-                                .is_some()
-                        })
-                        .count();
-                    let v2_edges_predicate_num = trace_pattern
-                        .adjacencies_iter(v2_id)
-                        .filter(|adj| {
-                            trace_pattern
-                                .get_edge_predicate(adj.get_edge_id())
-                                .is_some()
-                        })
-                        .count();
-                    if v1_edges_predicate_num > v2_edges_predicate_num {
-                        Ordering::Greater
-                    } else if v2_edges_predicate_num > v1_edges_predicate_num {
-                        Ordering::Less
-                    } else {
-                        let degree_order = trace_pattern
-                            .get_vertex_degree(v1_id)
-                            .cmp(&trace_pattern.get_vertex_degree(v2_id));
-                        if let Ordering::Equal = degree_order {
-                            trace_pattern
-                                .get_vertex_out_degree(v1_id)
-                                .cmp(&trace_pattern.get_vertex_out_degree(v2_id))
-                        } else {
-                            degree_order
-                        }
-                    }
-                }
-            });
+            sort_vertex_ids(&mut all_vertex_ids, &trace_pattern);
             let select_vertex_id = *all_vertex_ids.first().unwrap();
             let definite_extend_step =
                 DefiniteExtendStep::from_target_pattern(&trace_pattern, select_vertex_id).unwrap();
@@ -80,12 +54,14 @@ impl Pattern {
             trace_pattern.remove_vertex(select_vertex_id);
         }
         definite_extend_steps.push(trace_pattern.try_into()?);
-        build_logical_plan(self, definite_extend_steps)
+        build_logical_plan(self, definite_extend_steps, pattern_meta)
     }
 
     /// Generate an optimized extend based pattern match plan
     /// Current implementation is Top-Down Greedy method
-    pub fn generate_optimized_match_plan_greedily(&self, catalog: &Catalogue) -> IrResult<pb::LogicalPlan> {
+    pub fn generate_optimized_match_plan_greedily(
+        &self, catalog: &Catalogue, pattern_meta: &PatternMeta,
+    ) -> IrResult<pb::LogicalPlan> {
         let pattern_code = self.encode_to();
         // locate the pattern node in the catalog graph
         if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
@@ -124,14 +100,14 @@ impl Pattern {
             }
             // transform the one-vertex pattern into definite extend step
             definite_extend_steps.push(trace_pattern.try_into()?);
-            build_logical_plan(self, definite_extend_steps)
+            build_logical_plan(self, definite_extend_steps, pattern_meta)
         } else {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
     }
 
     pub fn generate_optimized_match_plan_recursively(
-        &self, catalog: &mut Catalogue,
+        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta,
     ) -> IrResult<pb::LogicalPlan> {
         let pattern_code = self.encode_to();
         if let Some(pattern_index) = catalog.get_pattern_index(&pattern_code) {
@@ -139,7 +115,7 @@ impl Pattern {
             let (mut definite_extend_steps, _) =
                 get_definite_extend_steps_recursively(catalog, pattern_index, self.clone());
             definite_extend_steps.reverse();
-            build_logical_plan(self, definite_extend_steps)
+            build_logical_plan(self, definite_extend_steps, pattern_meta)
         } else {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
@@ -231,6 +207,46 @@ fn pattern_roll_back(
     (pre_pattern, definite_extend_step, this_step_cost)
 }
 
+fn vertex_has_predicate(pattern: &Pattern, vertex_id: PatternId) -> bool {
+    pattern
+        .get_vertex_predicate(vertex_id)
+        .is_some()
+}
+
+fn get_adj_edges_filter_num(pattern: &Pattern, vertex_id: PatternId) -> usize {
+    pattern
+        .adjacencies_iter(vertex_id)
+        .filter(|adj| {
+            pattern
+                .get_edge_predicate(adj.get_edge_id())
+                .is_some()
+        })
+        .count()
+}
+
+fn sort_vertex_ids(vertex_ids: &mut Vec<PatternId>, pattern: &Pattern) {
+    vertex_ids.sort_by(|&v1_id, &v2_id| {
+        // compare v1 and v2's vertex predicate
+        let v1_has_predicate = vertex_has_predicate(pattern, v1_id);
+        let v2_has_predicate = vertex_has_predicate(pattern, v2_id);
+        // compare v1 and v2's adjacent edges' predicate num
+        let v1_edges_predicate_num = get_adj_edges_filter_num(pattern, v1_id);
+        let v2_edges_predicate_num = get_adj_edges_filter_num(pattern, v2_id);
+        // compare v1 and v2's degree
+        let v1_degree = pattern.get_vertex_degree(v1_id);
+        let v2_degree = pattern.get_vertex_degree(v2_id);
+        // compare v1 and v2's out degree
+        let v1_out_degree = pattern.get_vertex_out_degree(v1_id);
+        let v2_out_degree = pattern.get_vertex_out_degree(v2_id);
+        (v1_has_predicate, v1_edges_predicate_num, v1_degree, v1_out_degree).cmp(&(
+            v2_has_predicate,
+            v2_edges_predicate_num,
+            v2_degree,
+            v2_out_degree,
+        ))
+    });
+}
+
 fn sort_extend_approaches(
     approaches: &mut Vec<Approach>, catalog: &Catalogue, pattern: &Pattern, pattern_weight: &PatternWeight,
 ) {
@@ -280,6 +296,7 @@ fn sort_extend_approaches(
 ///            intersect
 fn build_logical_plan(
     origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
+    pattern_meta: &PatternMeta,
 ) -> IrResult<pb::LogicalPlan> {
     let mut match_plan = pb::LogicalPlan::default();
     let mut child_offset = 1;
@@ -337,6 +354,17 @@ fn build_logical_plan(
                 "Build logical plan error: extend step is not source but has 0 edges".to_string(),
             ));
         }
+        if check_target_vertex_label_num(&definite_extend_step, pattern_meta) > 1 {
+            let target_vertex_label = definite_extend_step.get_target_vertex_label();
+            let label_filter = pb::Select {
+                predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
+            };
+            let label_filter_id = child_offset;
+            pre_node.children.push(label_filter_id);
+            match_plan.nodes.push(pre_node);
+            pre_node = pb::logical_plan::Node { opr: Some(label_filter.into()), children: vec![] };
+            child_offset += 1;
+        }
         if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(origin_pattern) {
             let filter_id = child_offset;
             pre_node.children.push(filter_id);
@@ -347,7 +375,6 @@ fn build_logical_plan(
     }
     pre_node.children.push(child_offset);
     match_plan.nodes.push(pre_node);
-
     let sink = {
         pb::Sink {
             tags: origin_pattern
@@ -375,4 +402,32 @@ fn extend_cost_estimate(
         + pattern_weight.get_count()
         + ((extend_weight.get_adjacency_count() as f64) * ALPHA) as usize
         + ((extend_weight.get_intersect_count() as f64) * BETA) as usize
+}
+
+fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta: &PatternMeta) -> usize {
+    let mut target_vertex_labels = HashSet::new();
+    for (i, extend_edge) in extend_step.iter().enumerate() {
+        let mut target_vertex_label_candis = HashSet::new();
+        let src_vertex_label = extend_edge.get_src_vertex().get_label();
+        let edge_label = extend_edge.get_edge_label();
+        let dir = extend_edge.get_direction();
+        for (start_vertex_label, end_vertex_label) in
+            pattern_meta.associated_vlabels_iter_by_elabel(edge_label)
+        {
+            if dir == PatternDirection::Out && src_vertex_label == start_vertex_label {
+                target_vertex_label_candis.insert(end_vertex_label);
+            } else if dir == PatternDirection::In && src_vertex_label == end_vertex_label {
+                target_vertex_label_candis.insert(start_vertex_label);
+            }
+        }
+        if i == 0 {
+            target_vertex_labels = target_vertex_label_candis;
+        } else {
+            target_vertex_labels = target_vertex_labels
+                .intersection(&target_vertex_label_candis)
+                .cloned()
+                .collect();
+        }
+    }
+    target_vertex_labels.len()
 }

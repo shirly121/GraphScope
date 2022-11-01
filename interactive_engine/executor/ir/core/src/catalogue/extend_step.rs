@@ -20,7 +20,7 @@ use std::iter::Iterator;
 use ir_common::generated::algebra as pb;
 use serde::{Deserialize, Serialize};
 
-use crate::catalogue::pattern::Pattern;
+use crate::catalogue::pattern::{Pattern, PatternVertex};
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 
@@ -102,7 +102,7 @@ impl ExtendStep {
 /// Given a DefiniteExtendEdge, we can uniquely locate an edge with dir in the pattern
 #[derive(Debug, Clone)]
 pub struct DefiniteExtendEdge {
-    src_vertex_id: PatternId,
+    src_vertex: PatternVertex,
     edge_id: PatternId,
     edge_label: PatternLabelId,
     dir: PatternDirection,
@@ -111,20 +111,17 @@ pub struct DefiniteExtendEdge {
 /// Initializer of DefiniteExtendEdge
 impl DefiniteExtendEdge {
     pub fn new(
-        src_vertex_id: PatternId, edge_id: PatternId, edge_label: PatternLabelId, dir: PatternDirection,
+        src_vertex: PatternVertex, edge_id: PatternId, edge_label: PatternLabelId, dir: PatternDirection,
     ) -> DefiniteExtendEdge {
-        DefiniteExtendEdge { src_vertex_id, edge_id, edge_label, dir }
+        DefiniteExtendEdge { src_vertex, edge_id, edge_label, dir }
     }
 
     pub fn from_extend_edge(extend_edge: &ExtendEdge, pattern: &Pattern) -> Option<DefiniteExtendEdge> {
-        if let Some(src_vertex_id) = pattern
-            .get_vertex_from_rank(extend_edge.get_src_vertex_rank())
-            .map(|src_vertex| src_vertex.get_id())
-        {
+        if let Some(&src_vertex) = pattern.get_vertex_from_rank(extend_edge.get_src_vertex_rank()) {
             let edge_id = pattern.get_max_edge_id() + 1;
             let edge_label = extend_edge.get_edge_label();
             let dir = extend_edge.get_direction();
-            Some(DefiniteExtendEdge { src_vertex_id, edge_id, edge_label, dir })
+            Some(DefiniteExtendEdge { src_vertex, edge_id, edge_label, dir })
         } else {
             None
         }
@@ -132,8 +129,8 @@ impl DefiniteExtendEdge {
 }
 
 impl DefiniteExtendEdge {
-    pub fn get_src_vertex_id(&self) -> PatternId {
-        self.src_vertex_id
+    pub fn get_src_vertex(&self) -> PatternVertex {
+        self.src_vertex
     }
 
     pub fn get_edge_id(&self) -> PatternId {
@@ -192,14 +189,14 @@ impl DefiniteExtendStep {
                 let edge = target_pattern.get_edge(edge_id).unwrap();
                 if let PatternDirection::In = dir {
                     extend_edges.push(DefiniteExtendEdge::new(
-                        edge.get_start_vertex().get_id(),
+                        edge.get_start_vertex(),
                         edge_id,
                         edge.get_label(),
                         PatternDirection::Out,
                     ));
                 } else {
                     extend_edges.push(DefiniteExtendEdge::new(
-                        edge.get_end_vertex().get_id(),
+                        edge.get_end_vertex(),
                         edge_id,
                         edge.get_label(),
                         PatternDirection::In,
@@ -237,7 +234,7 @@ impl DefiniteExtendStep {
                         .cloned()
                     {
                         definite_extend_edges.push(DefiniteExtendEdge::new(
-                            src_vertex_candidate.get_id(),
+                            src_vertex_candidate,
                             edge_id_to_assign,
                             extend_edge.get_edge_label(),
                             extend_edge.get_direction(),
@@ -292,7 +289,7 @@ impl DefiniteExtendStep {
 
             let edge_expand = pb::EdgeExpand {
                 // use start vertex id as tag
-                v_tag: Some((extend_edge.src_vertex_id as i32).into()),
+                v_tag: Some((extend_edge.get_src_vertex().get_id() as i32).into()),
                 direction: extend_edge.dir as i32,
                 params: Some(query_params(vec![extend_edge.edge_label.into()], vec![], edge_predicate)),
                 // expand vertex
@@ -381,11 +378,4 @@ mod tests {
         assert_eq!(extend_step1.get_target_vertex_label(), 1);
         assert_eq!(extend_step1.extend_edges.len(), 2);
     }
-
-    // #[test]
-    // fn test_get_subset() {
-    //     let vec = vec![1, 2, 3];
-    //     println!("{:?}", get_subsets(vec, |_, _| false));
-    //     // assert_eq!(get_subsets(vec, |_, _| false).len(), 7);
-    // }
 }
