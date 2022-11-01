@@ -95,7 +95,7 @@ mod tests {
     use crate::process::operator::tests::{
         init_source, init_source_with_tag, to_var_pb, PERSON_LABEL, TAG_A,
     };
-    use crate::process::record::Record;
+    use crate::process::record::{Entry, Record};
 
     fn sort_test(source: Vec<Record>, sort_opr: pb::OrderBy) -> ResultStream<Record> {
         let conf = JobConf::new("sort_test");

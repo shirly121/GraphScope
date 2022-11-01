@@ -15,6 +15,7 @@
 
 use std::borrow::BorrowMut;
 use std::convert::{TryFrom, TryInto};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Add;
 use std::sync::Arc;
@@ -27,59 +28,74 @@ use ir_common::generated::results as result_pb;
 use ir_common::{KeyId, NameOrId};
 use pegasus::api::function::DynIter;
 use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
+use pegasus::Data;
 use vec_map::VecMap;
 
 use crate::process::operator::map::Intersection;
 
+pub trait Entry: Data {
+    fn as_graph_vertex(&self) -> Option<&Vertex>;
+
+    fn as_graph_edge(&self) -> Option<&Edge>;
+
+    fn as_graph_path(&self) -> Option<&GraphPath>;
+
+    fn as_object(&self) -> Option<&Object>;
+
+    fn as_graph_path_mut(&mut self) -> Option<&mut GraphPath>;
+
+    fn is_none(&self) -> bool;
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
-pub enum Entry {
+pub enum CompleteEntry {
     V(Vertex),
     E(Edge),
     P(GraphPath),
     OffGraph(Object),
     Intersection(Intersection),
-    Collection(Vec<Entry>),
+    Collection(Vec<CompleteEntry>),
 }
 
-impl Entry {
-    pub fn as_graph_vertex(&self) -> Option<&Vertex> {
+impl Entry for CompleteEntry {
+    fn as_graph_vertex(&self) -> Option<&Vertex> {
         match self {
-            Entry::V(v) => Some(v),
+            CompleteEntry::V(v) => Some(v),
             _ => None,
         }
     }
 
-    pub fn as_graph_edge(&self) -> Option<&Edge> {
+    fn as_graph_edge(&self) -> Option<&Edge> {
         match self {
-            Entry::E(e) => Some(e),
+            CompleteEntry::E(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn as_graph_path(&self) -> Option<&GraphPath> {
+    fn as_graph_path(&self) -> Option<&GraphPath> {
         match self {
-            Entry::P(p) => Some(p),
+            CompleteEntry::P(p) => Some(p),
             _ => None,
         }
     }
 
-    pub fn as_object(&self) -> Option<&Object> {
+    fn as_object(&self) -> Option<&Object> {
         match self {
-            Entry::OffGraph(object) => Some(object),
+            CompleteEntry::OffGraph(object) => Some(object),
             _ => None,
         }
     }
 
-    pub fn as_graph_path_mut(&mut self) -> Option<&mut GraphPath> {
+    fn as_graph_path_mut(&mut self) -> Option<&mut GraphPath> {
         match self {
-            Entry::P(graph_path) => Some(graph_path),
+            CompleteEntry::P(graph_path) => Some(graph_path),
             _ => None,
         }
     }
 
-    pub fn is_none(&self) -> bool {
+    fn is_none(&self) -> bool {
         match self {
-            Entry::OffGraph(Object::None) => true,
+            CompleteEntry::OffGraph(Object::None) => true,
             _ => false,
         }
     }
@@ -87,12 +103,12 @@ impl Entry {
 
 #[derive(Debug, Clone, Default)]
 pub struct Record {
-    curr: Option<Arc<Entry>>,
-    columns: VecMap<Arc<Entry>>,
+    curr: Option<Arc<CompleteEntry>>,
+    columns: VecMap<Arc<CompleteEntry>>,
 }
 
 impl Record {
-    pub fn new<E: Into<Entry>>(entry: E, tag: Option<KeyId>) -> Self {
+    pub fn new<E: Into<CompleteEntry>>(entry: E, tag: Option<KeyId>) -> Self {
         let entry = Arc::new(entry.into());
         let mut columns = VecMap::new();
         if let Some(tag) = tag {
@@ -102,11 +118,11 @@ impl Record {
     }
 
     /// A handy api to append entry of different types that can be turned into `Entry`
-    pub fn append<E: Into<Entry>>(&mut self, entry: E, alias: Option<KeyId>) {
+    pub fn append<E: Into<CompleteEntry>>(&mut self, entry: E, alias: Option<KeyId>) {
         self.append_arc_entry(Arc::new(entry.into()), alias)
     }
 
-    pub fn append_arc_entry(&mut self, entry: Arc<Entry>, alias: Option<KeyId>) {
+    pub fn append_arc_entry(&mut self, entry: Arc<CompleteEntry>, alias: Option<KeyId>) {
         if let Some(alias) = alias {
             self.columns
                 .insert(alias as usize, entry.clone());
@@ -115,22 +131,22 @@ impl Record {
     }
 
     /// Set new current entry for the record
-    pub fn set_curr_entry(&mut self, entry: Option<Arc<Entry>>) {
+    pub fn set_curr_entry(&mut self, entry: Option<Arc<CompleteEntry>>) {
         self.curr = entry;
     }
 
-    pub fn get_column_mut(&mut self, tag: &KeyId) -> Option<&mut Entry> {
+    pub fn get_column_mut(&mut self, tag: &KeyId) -> Option<&mut CompleteEntry> {
         self.columns
             .get_mut(*tag as usize)
             .map(|e| Arc::get_mut(e))
             .unwrap_or(None)
     }
 
-    pub fn get_columns_mut(&mut self) -> &mut VecMap<Arc<Entry>> {
+    pub fn get_columns_mut(&mut self) -> &mut VecMap<Arc<CompleteEntry>> {
         self.columns.borrow_mut()
     }
 
-    pub fn get(&self, tag: Option<KeyId>) -> Option<&Arc<Entry>> {
+    pub fn get(&self, tag: Option<KeyId>) -> Option<&Arc<CompleteEntry>> {
         if let Some(tag) = tag {
             self.columns.get(tag as usize)
         } else {
@@ -138,7 +154,7 @@ impl Record {
         }
     }
 
-    pub fn take(&mut self, tag: Option<&KeyId>) -> Option<Arc<Entry>> {
+    pub fn take(&mut self, tag: Option<&KeyId>) -> Option<Arc<CompleteEntry>> {
         if let Some(tag) = tag {
             self.columns.remove(*tag as usize)
         } else {
@@ -171,26 +187,26 @@ impl Record {
     }
 }
 
-impl Into<Entry> for Vertex {
-    fn into(self) -> Entry {
-        Entry::V(self)
+impl Into<CompleteEntry> for Vertex {
+    fn into(self) -> CompleteEntry {
+        CompleteEntry::V(self)
     }
 }
 
-impl Into<Entry> for Edge {
-    fn into(self) -> Entry {
-        Entry::E(self)
+impl Into<CompleteEntry> for Edge {
+    fn into(self) -> CompleteEntry {
+        CompleteEntry::E(self)
     }
 }
 
-impl Into<Entry> for GraphPath {
-    fn into(self) -> Entry {
-        Entry::P(self)
+impl Into<CompleteEntry> for GraphPath {
+    fn into(self) -> CompleteEntry {
+        CompleteEntry::P(self)
     }
 }
 
-impl Into<Entry> for VertexOrEdge {
-    fn into(self) -> Entry {
+impl Into<CompleteEntry> for VertexOrEdge {
+    fn into(self) -> CompleteEntry {
         match self {
             VertexOrEdge::V(v) => v.into(),
             VertexOrEdge::E(e) => e.into(),
@@ -198,20 +214,20 @@ impl Into<Entry> for VertexOrEdge {
     }
 }
 
-impl Into<Entry> for Object {
-    fn into(self) -> Entry {
-        Entry::OffGraph(self)
+impl Into<CompleteEntry> for Object {
+    fn into(self) -> CompleteEntry {
+        CompleteEntry::OffGraph(self)
     }
 }
 
-impl Into<Entry> for Intersection {
-    fn into(self) -> Entry {
-        Entry::Intersection(self)
+impl Into<CompleteEntry> for Intersection {
+    fn into(self) -> CompleteEntry {
+        CompleteEntry::Intersection(self)
     }
 }
 
-impl Context<Entry> for Record {
-    fn get(&self, tag: Option<&NameOrId>) -> Option<&Entry> {
+impl Context<CompleteEntry> for Record {
+    fn get(&self, tag: Option<&NameOrId>) -> Option<&CompleteEntry> {
         let tag = if let Some(tag) = tag {
             match tag {
                 // TODO: may better throw an unsupported error if tag is a string_tag
@@ -223,45 +239,45 @@ impl Context<Entry> for Record {
         };
         self.get(tag)
             .map(|entry| match entry.as_ref() {
-                Entry::Collection(_) => None,
-                Entry::Intersection(_) => None,
+                CompleteEntry::Collection(_) => None,
+                CompleteEntry::Intersection(_) => None,
                 _ => Some(entry.as_ref()),
             })
             .unwrap_or(None)
     }
 }
 
-impl Element for Entry {
+impl Element for CompleteEntry {
     fn as_graph_element(&self) -> Option<&dyn GraphElement> {
         match self {
-            Entry::V(v) => v.as_graph_element(),
-            Entry::E(e) => e.as_graph_element(),
-            Entry::P(p) => p.as_graph_element(),
-            Entry::OffGraph(_) => None,
-            Entry::Collection(_) => None,
-            Entry::Intersection(_) => None,
+            CompleteEntry::V(v) => v.as_graph_element(),
+            CompleteEntry::E(e) => e.as_graph_element(),
+            CompleteEntry::P(p) => p.as_graph_element(),
+            CompleteEntry::OffGraph(_) => None,
+            CompleteEntry::Collection(_) => None,
+            CompleteEntry::Intersection(_) => None,
         }
     }
 
     fn len(&self) -> usize {
         match self {
-            Entry::V(v) => v.len(),
-            Entry::E(e) => e.len(),
-            Entry::P(p) => p.len(),
-            Entry::OffGraph(obj) => obj.len(),
-            Entry::Collection(c) => c.len(),
-            Entry::Intersection(i) => i.len(),
+            CompleteEntry::V(v) => v.len(),
+            CompleteEntry::E(e) => e.len(),
+            CompleteEntry::P(p) => p.len(),
+            CompleteEntry::OffGraph(obj) => obj.len(),
+            CompleteEntry::Collection(c) => c.len(),
+            CompleteEntry::Intersection(i) => i.len(),
         }
     }
 
     fn as_borrow_object(&self) -> BorrowObject {
         match self {
-            Entry::V(v) => v.as_borrow_object(),
-            Entry::E(e) => e.as_borrow_object(),
-            Entry::P(p) => p.as_borrow_object(),
-            Entry::OffGraph(obj) => obj.as_borrow(),
-            Entry::Collection(_) => unreachable!(),
-            Entry::Intersection(_) => unreachable!(),
+            CompleteEntry::V(v) => v.as_borrow_object(),
+            CompleteEntry::E(e) => e.as_borrow_object(),
+            CompleteEntry::P(p) => p.as_borrow_object(),
+            CompleteEntry::OffGraph(obj) => obj.as_borrow(),
+            CompleteEntry::Collection(_) => unreachable!(),
+            CompleteEntry::Intersection(_) => unreachable!(),
         }
     }
 }
@@ -269,20 +285,20 @@ impl Element for Entry {
 /// RecordKey is the key fields of a Record, with each key corresponding to a request column_tag
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct RecordKey {
-    key_fields: Vec<Arc<Entry>>,
+    key_fields: Vec<Arc<CompleteEntry>>,
 }
 
 impl RecordKey {
-    pub fn new(key_fields: Vec<Arc<Entry>>) -> Self {
+    pub fn new(key_fields: Vec<Arc<CompleteEntry>>) -> Self {
         RecordKey { key_fields }
     }
-    pub fn take(self) -> Vec<Arc<Entry>> {
+    pub fn take(self) -> Vec<Arc<CompleteEntry>> {
         self.key_fields
     }
 }
 
 impl Eq for RecordKey {}
-impl Eq for Entry {}
+impl Eq for CompleteEntry {}
 
 pub struct RecordExpandIter<E> {
     tag: Option<KeyId>,
@@ -296,7 +312,7 @@ impl<E> RecordExpandIter<E> {
     }
 }
 
-impl<E: Into<Entry>> Iterator for RecordExpandIter<E> {
+impl<E: Into<CompleteEntry>> Iterator for RecordExpandIter<E> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -323,7 +339,7 @@ impl<E> RecordPathExpandIter<E> {
     }
 }
 
-impl<E: Into<Entry>> Iterator for RecordPathExpandIter<E> {
+impl<E: Into<CompleteEntry>> Iterator for RecordPathExpandIter<E> {
     type Item = Record;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -334,13 +350,13 @@ impl<E: Into<Entry>> Iterator for RecordPathExpandIter<E> {
                 Some(elem) => {
                     let graph_obj = elem.into();
                     match graph_obj {
-                        Entry::V(v) => {
+                        CompleteEntry::V(v) => {
                             if curr_path.append(v) {
                                 record.append(curr_path, None);
                                 return Some(record);
                             }
                         }
-                        Entry::E(e) => {
+                        CompleteEntry::E(e) => {
                             if curr_path.append(e) {
                                 record.append(curr_path, None);
                                 return Some(record);
@@ -355,30 +371,30 @@ impl<E: Into<Entry>> Iterator for RecordPathExpandIter<E> {
     }
 }
 
-impl Encode for Entry {
+impl Encode for CompleteEntry {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         match self {
-            Entry::V(v) => {
+            CompleteEntry::V(v) => {
                 writer.write_u8(0)?;
                 v.write_to(writer)?;
             }
-            Entry::E(e) => {
+            CompleteEntry::E(e) => {
                 writer.write_u8(1)?;
                 e.write_to(writer)?;
             }
-            Entry::P(p) => {
+            CompleteEntry::P(p) => {
                 writer.write_u8(2)?;
                 p.write_to(writer)?;
             }
-            Entry::OffGraph(obj) => {
+            CompleteEntry::OffGraph(obj) => {
                 writer.write_u8(3)?;
                 obj.write_to(writer)?;
             }
-            Entry::Collection(collection) => {
+            CompleteEntry::Collection(collection) => {
                 writer.write_u8(4)?;
                 collection.write_to(writer)?
             }
-            Entry::Intersection(intersection) => {
+            CompleteEntry::Intersection(intersection) => {
                 writer.write_u8(5)?;
                 intersection.write_to(writer)?
             }
@@ -387,33 +403,33 @@ impl Encode for Entry {
     }
 }
 
-impl Decode for Entry {
+impl Decode for CompleteEntry {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let opt = reader.read_u8()?;
         match opt {
             0 => {
                 let v = <Vertex>::read_from(reader)?;
-                Ok(Entry::V(v))
+                Ok(CompleteEntry::V(v))
             }
             1 => {
                 let e = <Edge>::read_from(reader)?;
-                Ok(Entry::E(e))
+                Ok(CompleteEntry::E(e))
             }
             2 => {
                 let p = <GraphPath>::read_from(reader)?;
-                Ok(Entry::P(p))
+                Ok(CompleteEntry::P(p))
             }
             3 => {
                 let obj = <Object>::read_from(reader)?;
-                Ok(Entry::OffGraph(obj))
+                Ok(CompleteEntry::OffGraph(obj))
             }
             4 => {
-                let collection = <Vec<Entry>>::read_from(reader)?;
-                Ok(Entry::Collection(collection))
+                let collection = <Vec<CompleteEntry>>::read_from(reader)?;
+                Ok(CompleteEntry::Collection(collection))
             }
             5 => {
                 let intersection = <Intersection>::read_from(reader)?;
-                Ok(Entry::Intersection(intersection))
+                Ok(CompleteEntry::Intersection(intersection))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "unreachable")),
         }
@@ -443,12 +459,12 @@ impl Encode for Record {
 impl Decode for Record {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let opt = reader.read_u8()?;
-        let curr = if opt == 0 { None } else { Some(Arc::new(<Entry>::read_from(reader)?)) };
+        let curr = if opt == 0 { None } else { Some(Arc::new(<CompleteEntry>::read_from(reader)?)) };
         let size = <u64>::read_from(reader)? as usize;
         let mut columns = VecMap::with_capacity(size);
         for _i in 0..size {
             let k = <KeyId>::read_from(reader)? as usize;
-            let v = <Entry>::read_from(reader)?;
+            let v = <CompleteEntry>::read_from(reader)?;
             columns.insert(k, Arc::new(v));
         }
         Ok(Record { curr, columns })
@@ -470,21 +486,21 @@ impl Decode for RecordKey {
         let len = reader.read_u32()?;
         let mut key_fields = Vec::with_capacity(len as usize);
         for _i in 0..len {
-            let entry = <Entry>::read_from(reader)?;
+            let entry = <CompleteEntry>::read_from(reader)?;
             key_fields.push(Arc::new(entry))
         }
         Ok(RecordKey { key_fields })
     }
 }
 
-impl TryFrom<result_pb::Entry> for Entry {
+impl TryFrom<result_pb::Entry> for CompleteEntry {
     type Error = ParsePbError;
 
     fn try_from(entry_pb: result_pb::Entry) -> Result<Self, Self::Error> {
         if let Some(inner) = entry_pb.inner {
             match inner {
                 result_pb::entry::Inner::Element(e) => Ok(e.try_into()?),
-                result_pb::entry::Inner::Collection(c) => Ok(Entry::Collection(
+                result_pb::entry::Inner::Collection(c) => Ok(CompleteEntry::Collection(
                     c.collection
                         .into_iter()
                         .map(|e| e.try_into())
@@ -497,15 +513,15 @@ impl TryFrom<result_pb::Entry> for Entry {
     }
 }
 
-impl TryFrom<result_pb::Element> for Entry {
+impl TryFrom<result_pb::Element> for CompleteEntry {
     type Error = ParsePbError;
     fn try_from(e: result_pb::Element) -> Result<Self, Self::Error> {
         if let Some(inner) = e.inner {
             match inner {
-                result_pb::element::Inner::Vertex(v) => Ok(Entry::V(v.try_into()?)),
-                result_pb::element::Inner::Edge(e) => Ok(Entry::E(e.try_into()?)),
-                result_pb::element::Inner::GraphPath(p) => Ok(Entry::P(p.try_into()?)),
-                result_pb::element::Inner::Object(o) => Ok(Entry::OffGraph(o.try_into()?)),
+                result_pb::element::Inner::Vertex(v) => Ok(CompleteEntry::V(v.try_into()?)),
+                result_pb::element::Inner::Edge(e) => Ok(CompleteEntry::E(e.try_into()?)),
+                result_pb::element::Inner::GraphPath(p) => Ok(CompleteEntry::P(p.try_into()?)),
+                result_pb::element::Inner::Object(o) => Ok(CompleteEntry::OffGraph(o.try_into()?)),
             }
         } else {
             Err(ParsePbError::EmptyFieldError("element inner is empty".to_string()))?
@@ -513,12 +529,12 @@ impl TryFrom<result_pb::Element> for Entry {
     }
 }
 
-impl Add for Entry {
-    type Output = Entry;
+impl Add for CompleteEntry {
+    type Output = CompleteEntry;
 
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Entry::OffGraph(o1), Entry::OffGraph(o2)) => match (o1, o2) {
+            (CompleteEntry::OffGraph(o1), CompleteEntry::OffGraph(o2)) => match (o1, o2) {
                 (o, Object::None) | (Object::None, o) => o.into(),
                 (Object::Primitive(p1), Object::Primitive(p2)) => Object::Primitive(p1.add(p2)).into(),
                 _ => Object::None.into(),

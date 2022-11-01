@@ -28,7 +28,7 @@ mod test {
     use pegasus_client::builder::*;
     use pegasus_server::JobRequest;
     use prost::Message;
-    use runtime::process::record::Entry;
+    use runtime::process::record::{CompleteEntry, Entry};
 
     use crate::common::test::*;
 
@@ -206,7 +206,7 @@ mod test {
             match result {
                 Ok(res) => {
                     let record = parse_result(res).unwrap();
-                    if let Entry::OffGraph(obj) = record.get(None).unwrap().as_ref() {
+                    if let CompleteEntry::OffGraph(obj) = record.get(None).unwrap().as_ref() {
                         result_collection.push(obj.to_string())
                     }
                 }
@@ -238,7 +238,7 @@ mod test {
             match result {
                 Ok(res) => {
                     let record = parse_result(res).unwrap();
-                    if let Entry::OffGraph(obj) = record.get(None).unwrap().as_ref() {
+                    if let CompleteEntry::OffGraph(obj) = record.get(None).unwrap().as_ref() {
                         result_collection.push(obj.to_string())
                     }
                 }

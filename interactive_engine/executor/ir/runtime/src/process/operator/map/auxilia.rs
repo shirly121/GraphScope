@@ -22,7 +22,7 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Entry, Record};
 
 /// An Auxilia operator to get extra information for the current entity.
 /// Specifically, we will update the old entity by appending the new extra information,
@@ -47,7 +47,7 @@ impl FilterMapFunction<Record, Record> for AuxiliaOperator {
             if self.query_params.is_queryable() {
                 // If queryable, then turn into graph element and do the query
                 let graph = get_graph().ok_or(FnExecError::NullGraphError)?;
-                let new_entry: Option<Entry> = if let Some(v) = entry.as_graph_vertex() {
+                let new_entry: Option<CompleteEntry> = if let Some(v) = entry.as_graph_vertex() {
                     let mut result_iter = graph.get_vertex(&[v.id()], &self.query_params)?;
                     result_iter.next().map(|mut vertex| {
                         if let Some(details) = v.details() {

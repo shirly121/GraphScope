@@ -86,7 +86,7 @@ mod tests {
 
     use crate::process::operator::keyed::KeyFunctionGen;
     use crate::process::operator::tests::PERSON_LABEL;
-    use crate::process::record::Record;
+    use crate::process::record::{Entry, Record};
 
     fn source_gen() -> Box<dyn Iterator<Item = Record> + Send> {
         let p1: HashMap<NameOrId, Object> = vec![("age".into(), 27.into())]

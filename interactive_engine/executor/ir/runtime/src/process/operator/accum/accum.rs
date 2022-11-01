@@ -30,19 +30,19 @@ use crate::process::operator::accum::accumulator::{
 };
 use crate::process::operator::accum::AccumFactoryGen;
 use crate::process::operator::TagKey;
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Entry, Record};
 
 #[derive(Debug, Clone)]
 pub enum EntryAccumulator {
     // TODO(bingqing): more accum kind
     ToCount(Count<()>),
-    ToList(ToList<Entry>),
-    ToMin(Minimum<Entry>),
-    ToMax(Maximum<Entry>),
-    ToSet(ToSet<Entry>),
-    ToDistinctCount(DistinctCount<Entry>),
-    ToSum(Sum<Entry>),
-    ToAvg(Sum<Entry>, Count<()>),
+    ToList(ToList<CompleteEntry>),
+    ToMin(Minimum<CompleteEntry>),
+    ToMax(Maximum<CompleteEntry>),
+    ToSet(ToSet<CompleteEntry>),
+    ToDistinctCount(DistinctCount<CompleteEntry>),
+    ToSum(Sum<CompleteEntry>),
+    ToAvg(Sum<CompleteEntry>, Count<()>),
 }
 
 /// Accumulator for Record, including multiple accumulators for entries(columns) in Record.
@@ -72,8 +72,8 @@ impl Accumulator<Record, Record> for RecordAccumulator {
     }
 }
 
-impl Accumulator<Entry, Entry> for EntryAccumulator {
-    fn accum(&mut self, next: Entry) -> FnExecResult<()> {
+impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
+    fn accum(&mut self, next: CompleteEntry) -> FnExecResult<()> {
         // ignore non-exist tag/label/property values;
         if !next.is_none() {
             match self {
@@ -94,7 +94,7 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
         }
     }
 
-    fn finalize(&mut self) -> FnExecResult<Entry> {
+    fn finalize(&mut self) -> FnExecResult<CompleteEntry> {
         match self {
             EntryAccumulator::ToCount(count) => {
                 let cnt = count.finalize()?;
@@ -115,7 +115,7 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
                 //         }
                 //     })
                 //     .collect::<Result<Vec<_>, _>>()?;
-                Ok(Entry::Collection(list_entry))
+                Ok(CompleteEntry::Collection(list_entry))
             }
             EntryAccumulator::ToMin(min) => min
                 .finalize()?
@@ -138,7 +138,7 @@ impl Accumulator<Entry, Entry> for EntryAccumulator {
                 //         )),
                 //     })
                 //     .collect::<Result<Vec<_>, _>>()?;
-                Ok(Entry::Collection(set_entry))
+                Ok(CompleteEntry::Collection(set_entry))
             }
             EntryAccumulator::ToDistinctCount(distinct_count) => {
                 let cnt = distinct_count.finalize()?;
@@ -277,31 +277,31 @@ impl Decode for EntryAccumulator {
                 Ok(EntryAccumulator::ToCount(cnt))
             }
             1 => {
-                let list = <ToList<Entry>>::read_from(reader)?;
+                let list = <ToList<CompleteEntry>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToList(list))
             }
             2 => {
-                let min = <Minimum<Entry>>::read_from(reader)?;
+                let min = <Minimum<CompleteEntry>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToMin(min))
             }
             3 => {
-                let max = <Maximum<Entry>>::read_from(reader)?;
+                let max = <Maximum<CompleteEntry>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToMax(max))
             }
             4 => {
-                let set = <ToSet<Entry>>::read_from(reader)?;
+                let set = <ToSet<CompleteEntry>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToSet(set))
             }
             5 => {
-                let distinct_count = <DistinctCount<Entry>>::read_from(reader)?;
+                let distinct_count = <DistinctCount<CompleteEntry>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToDistinctCount(distinct_count))
             }
             6 => {
-                let sum = <Sum<Entry>>::read_from(reader)?;
+                let sum = <Sum<CompleteEntry>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToSum(sum))
             }
             7 => {
-                let sum = <Sum<Entry>>::read_from(reader)?;
+                let sum = <Sum<CompleteEntry>>::read_from(reader)?;
                 let count = <Count<()>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToAvg(sum, count))
             }
@@ -351,7 +351,7 @@ mod tests {
     use crate::process::operator::accum::accumulator::Accumulator;
     use crate::process::operator::accum::AccumFactoryGen;
     use crate::process::operator::tests::{init_source, init_vertex1, init_vertex2, TAG_A, TAG_B};
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Record};
 
     fn fold_test(source: Vec<Record>, fold_opr_pb: pb::GroupBy) -> ResultStream<Record> {
         let conf = JobConf::new("fold_test");
@@ -388,8 +388,8 @@ mod tests {
         };
         let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
         let mut result = fold_test(init_source(), fold_opr_pb);
-        let mut fold_result = Entry::Collection(vec![]);
-        let expected_result = Entry::Collection(vec![init_vertex1().into(), init_vertex2().into()]);
+        let mut fold_result = CompleteEntry::Collection(vec![]);
+        let expected_result = CompleteEntry::Collection(vec![init_vertex1().into(), init_vertex2().into()]);
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 fold_result = entry.as_ref().clone();
@@ -408,8 +408,8 @@ mod tests {
         };
         let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
         let mut result = fold_test(init_source(), fold_opr_pb);
-        let mut fold_result = Entry::Collection(vec![]);
-        let expected_result = Entry::Collection(vec![init_vertex1().into(), init_vertex2().into()]);
+        let mut fold_result = CompleteEntry::Collection(vec![]);
+        let expected_result = CompleteEntry::Collection(vec![init_vertex1().into(), init_vertex2().into()]);
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(None) {
                 fold_result = entry.as_ref().clone();
@@ -432,7 +432,7 @@ mod tests {
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 cnt = match entry.as_ref() {
-                    Entry::OffGraph(cnt) => cnt.as_u64().unwrap(),
+                    CompleteEntry::OffGraph(cnt) => cnt.as_u64().unwrap(),
                     _ => {
                         unreachable!()
                     }
@@ -457,9 +457,12 @@ mod tests {
         };
         let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function_1, function_2] };
         let mut result = fold_test(init_source(), fold_opr_pb);
-        let mut fold_result: (Entry, Entry) = (Entry::Collection(vec![]), object!(0).into());
-        let expected_result: (Entry, Entry) =
-            (Entry::Collection(vec![init_vertex1().into(), init_vertex2().into()]), object!(2).into());
+        let mut fold_result: (CompleteEntry, CompleteEntry) =
+            (CompleteEntry::Collection(vec![]), object!(0).into());
+        let expected_result: (CompleteEntry, CompleteEntry) = (
+            CompleteEntry::Collection(vec![init_vertex1().into(), init_vertex2().into()]),
+            object!(2).into(),
+        );
         if let Some(Ok(record)) = result.next() {
             let collection_entry = record
                 .get(Some(TAG_A))
@@ -493,7 +496,7 @@ mod tests {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 res = match entry.as_ref() {
                     // this is Prop, since get_entry returns entry type of prop
-                    Entry::OffGraph(obj) => obj.clone(),
+                    CompleteEntry::OffGraph(obj) => obj.clone(),
                     _ => {
                         unreachable!()
                     }
@@ -520,7 +523,7 @@ mod tests {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 res = match entry.as_ref() {
                     // this is Prop, since get_entry returns entry type of prop
-                    Entry::OffGraph(obj) => obj.clone(),
+                    CompleteEntry::OffGraph(obj) => obj.clone(),
                     _ => {
                         unreachable!()
                     }
@@ -551,7 +554,7 @@ mod tests {
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 cnt = match entry.as_ref() {
-                    Entry::OffGraph(cnt) => cnt.as_u64().unwrap(),
+                    CompleteEntry::OffGraph(cnt) => cnt.as_u64().unwrap(),
                     _ => {
                         unreachable!()
                     }
@@ -575,14 +578,14 @@ mod tests {
         };
         let fold_opr_pb = pb::GroupBy { mappings: vec![], functions: vec![function] };
         let mut result = fold_test(source, fold_opr_pb);
-        let mut fold_result = Entry::Collection(vec![]);
-        let expected_result = Entry::Collection(vec![init_vertex1().into(), init_vertex2().into()]);
+        let mut fold_result = CompleteEntry::Collection(vec![]);
+        let expected_result = CompleteEntry::Collection(vec![init_vertex1().into(), init_vertex2().into()]);
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 fold_result = entry.as_ref().clone();
             }
         }
-        if let Entry::Collection(collection) = fold_result.borrow_mut() {
+        if let CompleteEntry::Collection(collection) = fold_result.borrow_mut() {
             collection.sort_by(|v1, v2| v1.partial_cmp(&v2).unwrap_or(Ordering::Equal));
         }
         assert_eq!(fold_result, expected_result);
@@ -605,7 +608,7 @@ mod tests {
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(Some(TAG_A)) {
                 res = match entry.as_ref() {
-                    Entry::OffGraph(obj) => obj.clone(),
+                    CompleteEntry::OffGraph(obj) => obj.clone(),
                     _ => {
                         unreachable!()
                     }
@@ -632,7 +635,7 @@ mod tests {
         if let Some(Ok(record)) = result.next() {
             if let Some(entry) = record.get(None) {
                 res = match entry.as_ref() {
-                    Entry::OffGraph(obj) => obj.clone(),
+                    CompleteEntry::OffGraph(obj) => obj.clone(),
                     _ => {
                         unreachable!()
                     }

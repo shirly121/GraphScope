@@ -24,7 +24,7 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::Record;
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct GetVertexOperator {

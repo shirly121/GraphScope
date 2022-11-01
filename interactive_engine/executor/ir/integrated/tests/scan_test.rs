@@ -27,7 +27,7 @@ mod test {
     use graph_store::ldbc::LDBCVertexParser;
     use ir_common::generated::algebra as pb;
     use runtime::process::operator::source::SourceOperator;
-    use runtime::process::record::Record;
+    use runtime::process::record::{Entry, Record};
 
     use crate::common::test::*;
 

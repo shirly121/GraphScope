@@ -36,7 +36,7 @@ mod test {
     use runtime::process::operator::flatmap::FlatMapFuncGen;
     use runtime::process::operator::map::FilterMapFuncGen;
     use runtime::process::operator::source::SourceOperator;
-    use runtime::process::record::{Entry, Record};
+    use runtime::process::record::{CompleteEntry, Entry, Record};
 
     use crate::common::test::*;
 
@@ -746,7 +746,7 @@ mod test {
             vec![expected_collection.clone(), expected_collection.clone(), expected_collection];
         let mut result_collections: Vec<Vec<usize>> = vec![];
         while let Some(Ok(record)) = result.next() {
-            if let Entry::Intersection(intersection) = record.get(Some(TAG_C)).unwrap().borrow() {
+            if let CompleteEntry::Intersection(intersection) = record.get(Some(TAG_C)).unwrap().borrow() {
                 let mut result_collection: Vec<usize> = intersection
                     .clone()
                     .into_iter()
@@ -819,7 +819,7 @@ mod test {
         let expected_collections = vec![vec![v4]];
         let mut result_collections = vec![];
         while let Some(Ok(record)) = result.next() {
-            if let Entry::Intersection(intersection) = record.get(Some(TAG_C)).unwrap().borrow() {
+            if let CompleteEntry::Intersection(intersection) = record.get(Some(TAG_C)).unwrap().borrow() {
                 let mut result_collection: Vec<DefaultId> = intersection
                     .clone()
                     .into_iter()

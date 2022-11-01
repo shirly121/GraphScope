@@ -24,7 +24,7 @@ use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{Record, RecordExpandIter};
+use crate::process::record::{Entry, Record, RecordExpandIter};
 
 #[derive(Debug)]
 struct GetBothVOperator {

@@ -27,13 +27,13 @@ use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Entry, Record};
 
 /// An ExpandOrIntersect operator to expand neighbors
 /// and intersect with the ones of the same tag found previously (if exists).
 /// Notice that start_v_tag (from which tag to expand from)
 /// and edge_or_end_v_tag (the alias of expanded neighbors) must be specified.
-struct ExpandOrIntersect<E: Into<Entry>> {
+struct ExpandOrIntersect<E: Into<CompleteEntry>> {
     start_v_tag: KeyId,
     edge_or_end_v_tag: KeyId,
     stmt: Box<dyn Statement<ID, E>>,
@@ -117,7 +117,7 @@ impl Decode for Intersection {
     }
 }
 
-impl<E: Into<Entry> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
+impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
     fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
         let entry = input
             .get(Some(self.start_v_tag))
@@ -128,8 +128,8 @@ impl<E: Into<Entry> + 'static> FilterMapFunction<Record, Record> for ExpandOrInt
         if let Some(v) = entry.as_graph_vertex() {
             let id = v.id();
             let iter = self.stmt.exec(id)?.map(|e| match e.into() {
-                Entry::V(v) => v,
-                Entry::E(e) => {
+                CompleteEntry::V(v) => v,
+                CompleteEntry::E(e) => {
                     Vertex::new(e.get_other_id(), e.get_other_label().cloned(), DynDetails::default())
                 }
                 _ => {
@@ -139,7 +139,7 @@ impl<E: Into<Entry> + 'static> FilterMapFunction<Record, Record> for ExpandOrInt
             if let Some(pre_entry) = input.get_column_mut(&self.edge_or_end_v_tag) {
                 // the case of expansion and intersection
                 match pre_entry {
-                    Entry::Intersection(pre_intersection) => {
+                    CompleteEntry::Intersection(pre_intersection) => {
                         let mut seeker = BTreeMap::new();
                         for v in iter {
                             *seeker.entry(v.id()).or_default() += 1;

@@ -30,7 +30,7 @@ use prost::Message;
 
 use crate::error::FnGenResult;
 use crate::process::operator::sink::{SinkGen, Sinker};
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Record};
 
 #[derive(Debug)]
 pub struct RecordSinkEncoder {
@@ -41,9 +41,9 @@ pub struct RecordSinkEncoder {
 }
 
 impl RecordSinkEncoder {
-    fn entry_to_pb(&self, e: &Entry) -> result_pb::Entry {
+    fn entry_to_pb(&self, e: &CompleteEntry) -> result_pb::Entry {
         let inner = match e {
-            Entry::Collection(collection) => {
+            CompleteEntry::Collection(collection) => {
                 let mut collection_pb = Vec::with_capacity(collection.len());
                 for element in collection.into_iter() {
                     let element_pb = self.element_to_pb(element);
@@ -53,7 +53,7 @@ impl RecordSinkEncoder {
                     collection: collection_pb,
                 }))
             }
-            Entry::Intersection(intersection) => {
+            CompleteEntry::Intersection(intersection) => {
                 let mut collection_pb = Vec::with_capacity(intersection.len());
                 for v in intersection.iter() {
                     let vertex_pb = self.vertex_to_pb(v);
@@ -73,28 +73,28 @@ impl RecordSinkEncoder {
         result_pb::Entry { inner }
     }
 
-    fn element_to_pb(&self, e: &Entry) -> result_pb::Element {
+    fn element_to_pb(&self, e: &CompleteEntry) -> result_pb::Element {
         let inner = match e {
-            Entry::V(v) => {
+            CompleteEntry::V(v) => {
                 let vertex_pb = self.vertex_to_pb(v);
                 Some(result_pb::element::Inner::Vertex(vertex_pb))
             }
-            Entry::E(e) => {
+            CompleteEntry::E(e) => {
                 let edge_pb = self.edge_to_pb(e);
                 Some(result_pb::element::Inner::Edge(edge_pb))
             }
-            Entry::P(p) => {
+            CompleteEntry::P(p) => {
                 let path_pb = self.path_to_pb(p);
                 Some(result_pb::element::Inner::GraphPath(path_pb))
             }
-            Entry::OffGraph(o) => {
+            CompleteEntry::OffGraph(o) => {
                 let obj_pb = self.object_to_pb(o.clone());
                 Some(result_pb::element::Inner::Object(obj_pb))
             }
-            Entry::Collection(_) => {
+            CompleteEntry::Collection(_) => {
                 unreachable!()
             }
-            Entry::Intersection(_) => {
+            CompleteEntry::Intersection(_) => {
                 unreachable!()
             }
         };

@@ -22,7 +22,7 @@ use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Record};
 
 #[derive(Debug)]
 /// Unfold the Collection entry referred by a given `tag`.
@@ -49,7 +49,7 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
         input.take(None);
         if let Some(entry) = Arc::get_mut(&mut entry) {
             match entry {
-                Entry::Collection(collection) => {
+                CompleteEntry::Collection(collection) => {
                     let mut res = Vec::with_capacity(collection.len());
                     for item in collection.drain(..) {
                         let mut new_entry = input.clone();
@@ -58,7 +58,7 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
                     }
                     Ok(Box::new(res.into_iter()))
                 }
-                Entry::Intersection(intersection) => {
+                CompleteEntry::Intersection(intersection) => {
                     let mut res = Vec::with_capacity(intersection.len());
                     for item in intersection.iter() {
                         let mut new_entry = input.clone();
@@ -67,7 +67,7 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
                     }
                     Ok(Box::new(res.into_iter()))
                 }
-                Entry::P(_) => {
+                CompleteEntry::P(_) => {
                     // TODO: to support path_unwinding
                     Err(FnExecError::unsupported_error(&format!(
                         "unfold path entry {:?} in UnfoldOperator",
@@ -117,7 +117,7 @@ mod tests {
     use crate::process::operator::accum::accumulator::Accumulator;
     use crate::process::operator::flatmap::FlatMapFuncGen;
     use crate::process::operator::tests::{init_source, TAG_A};
-    use crate::process::record::Record;
+    use crate::process::record::{Entry, Record};
 
     fn fold_unfold_test(fold_opr_pb: pb::GroupBy, unfold_opr_pb: pb::Unfold) -> ResultStream<Record> {
         let conf = JobConf::new("fold_unfold_test");

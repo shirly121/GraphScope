@@ -34,7 +34,7 @@ mod test {
     use runtime::process::operator::flatmap::FlatMapFuncGen;
     use runtime::process::operator::map::FilterMapFuncGen;
     use runtime::process::operator::source::SourceOperator;
-    use runtime::process::record::Record;
+    use runtime::process::record::{Entry, Record};
 
     use crate::common::test::*;
 

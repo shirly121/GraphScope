@@ -36,7 +36,7 @@ pub mod test {
     use pegasus_server::rpc::RpcSink;
     use pegasus_server::JobRequest;
     use prost::Message;
-    use runtime::process::record::{Entry, Record};
+    use runtime::process::record::{CompleteEntry, Record};
     use runtime::IRJobAssembly;
     use runtime_integration::{InitializeJobAssembly, QueryExpGraph};
 
@@ -116,9 +116,9 @@ pub mod test {
                 // append entry without moving head
                 if let Some(tag) = tag {
                     let columns = record.get_columns_mut();
-                    columns.insert(tag as usize, Arc::new(Entry::try_from(entry).unwrap()));
+                    columns.insert(tag as usize, Arc::new(CompleteEntry::try_from(entry).unwrap()));
                 } else {
-                    record.append(Entry::try_from(entry).unwrap(), None);
+                    record.append(CompleteEntry::try_from(entry).unwrap(), None);
                 }
             }
             Some(record)

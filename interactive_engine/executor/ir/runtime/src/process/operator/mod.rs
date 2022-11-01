@@ -37,7 +37,7 @@ use ir_common::{KeyId, NameOrId};
 use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
 use crate::error::{FnExecError, FnExecResult};
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Record};
 
 #[derive(Clone, Debug, Default)]
 pub struct TagKey {
@@ -47,7 +47,7 @@ pub struct TagKey {
 
 impl TagKey {
     /// This is for key generation, which generate the key of the input Record according to the tag_key field
-    pub fn get_arc_entry(&self, input: &Record) -> FnExecResult<Arc<Entry>> {
+    pub fn get_arc_entry(&self, input: &Record) -> FnExecResult<Arc<CompleteEntry>> {
         if let Some(entry) = input.get(self.tag) {
             if let Some(prop_key) = self.key.as_ref() {
                 let prop = self.get_key(entry, prop_key)?;
@@ -61,7 +61,7 @@ impl TagKey {
     }
 
     /// This is for accum, which get the entry of the input Record according to the tag_key field
-    pub fn get_entry(&self, input: &Record) -> FnExecResult<Entry> {
+    pub fn get_entry(&self, input: &Record) -> FnExecResult<CompleteEntry> {
         if let Some(entry) = input.get(self.tag) {
             if let Some(prop_key) = self.key.as_ref() {
                 Ok(self.get_key(entry, prop_key)?)
@@ -73,7 +73,7 @@ impl TagKey {
         }
     }
 
-    fn get_key(&self, element: &Arc<Entry>, prop_key: &PropKey) -> FnExecResult<Entry> {
+    fn get_key(&self, element: &Arc<CompleteEntry>, prop_key: &PropKey) -> FnExecResult<CompleteEntry> {
         if let Some(element) = element.as_graph_element() {
             let prop_obj = match prop_key {
                 PropKey::Id => element.id().into(),
@@ -191,6 +191,7 @@ impl Decode for TagKey {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::process::record::Entry;
     use ahash::HashMap;
     use dyn_type::Object;
     use graph_proxy::apis::{DynDetails, GraphElement, Vertex};
@@ -325,7 +326,7 @@ pub(crate) mod tests {
         let record = init_record();
         let entry = tag_key.get_arc_entry(&record).unwrap();
         match entry.as_ref() {
-            Entry::OffGraph(obj) => {
+            CompleteEntry::OffGraph(obj) => {
                 assert_eq!(obj.clone(), object!(expected));
             }
             _ => {

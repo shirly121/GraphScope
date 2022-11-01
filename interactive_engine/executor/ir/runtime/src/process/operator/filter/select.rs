@@ -62,7 +62,7 @@ mod tests {
 
     use crate::process::operator::filter::FilterFuncGen;
     use crate::process::operator::tests::{init_source, PERSON_LABEL};
-    use crate::process::record::Record;
+    use crate::process::record::{Entry, Record};
 
     fn select_test(source: Vec<Record>, select_opr_pb: pb::Select) -> ResultStream<Record> {
         let conf = JobConf::new("select_test");

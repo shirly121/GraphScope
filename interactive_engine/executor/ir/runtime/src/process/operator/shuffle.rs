@@ -23,7 +23,7 @@ use ir_common::KeyId;
 use pegasus::api::function::{FnResult, RouteFunction};
 
 use crate::error::FnExecError;
-use crate::process::record::Record;
+use crate::process::record::{Entry, Record};
 
 pub struct RecordRouter {
     p: Arc<dyn Partitioner>,

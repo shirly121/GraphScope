@@ -26,7 +26,7 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 use crate::error::{FnExecResult, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
 use crate::process::operator::TagKey;
-use crate::process::record::{Entry, Record};
+use crate::process::record::{CompleteEntry, Entry, Record};
 
 /// Project entries with specified tags or further their properties.
 /// Notice that when projecting a single column, if the result is a None-Entry,
@@ -51,10 +51,10 @@ pub enum Projector {
 //    we may need to further distinguish the cases of none-exist tags (filtering case) and none-exist properties (output none-entry).
 // 2. When projecting multiple columns, even all projected columns are none-entry, the record won't be filtered for now.
 //    This seems ambiguous. But multi-column project always appears in the end of the query. Can modify this logic if necessary.
-fn exec_projector(input: &Record, projector: &Projector) -> FnExecResult<Arc<Entry>> {
+fn exec_projector(input: &Record, projector: &Projector) -> FnExecResult<Arc<CompleteEntry>> {
     let entry = match projector {
         Projector::ExprProjector(evaluator) => {
-            let projected_result = evaluator.eval::<Entry, Record>(Some(&input))?;
+            let projected_result = evaluator.eval::<CompleteEntry, Record>(Some(&input))?;
             Arc::new(projected_result.into())
         }
         Projector::GraphElementProjector(tag_key) => tag_key.get_arc_entry(input)?,
@@ -164,7 +164,7 @@ mod tests {
         init_source, init_source_with_multi_tags, init_source_with_tag, init_vertex1, init_vertex2,
         to_expr_var_pb, to_expr_vars_pb, PERSON_LABEL, TAG_A, TAG_B, TAG_C, TAG_D, TAG_E,
     };
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record};
 
     fn project_test(source: Vec<Record>, project_opr_pb: pb::Project) -> ResultStream<Record> {
         let conf = JobConf::new("project_test");
@@ -197,7 +197,7 @@ mod tests {
         let mut object_result = vec![];
         while let Some(Ok(res)) = result.next() {
             match res.get(None).unwrap().as_ref() {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     object_result.push(val.clone());
                 }
                 _ => {}
@@ -224,7 +224,7 @@ mod tests {
             let a_entry = res.get(Some(TAG_A));
             assert_eq!(a_entry, None);
             match res.get(Some(TAG_B)).unwrap().as_ref() {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     object_result.push(val.clone());
                 }
                 _ => {}
@@ -248,7 +248,7 @@ mod tests {
         let mut object_result = vec![];
         while let Some(Ok(res)) = result.next() {
             match res.get(None).unwrap().as_ref() {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     object_result.push(val.clone());
                 }
                 _ => {}
@@ -282,7 +282,7 @@ mod tests {
             let age_val = res.get(Some(TAG_B)).unwrap();
             let name_val = res.get(Some(TAG_C)).unwrap();
             match (age_val.as_ref(), name_val.as_ref()) {
-                (Entry::OffGraph(age), Entry::OffGraph(name)) => {
+                (CompleteEntry::OffGraph(age), CompleteEntry::OffGraph(name)) => {
                     object_result.push((age.clone(), name.clone()));
                 }
                 _ => {}
@@ -315,7 +315,7 @@ mod tests {
             let age_val = res.get(Some(TAG_B)).unwrap();
             let name_val = res.get(Some(TAG_C)).unwrap();
             match (age_val.as_ref(), name_val.as_ref()) {
-                (Entry::OffGraph(age), Entry::OffGraph(name)) => {
+                (CompleteEntry::OffGraph(age), CompleteEntry::OffGraph(name)) => {
                     object_result.push((age.clone(), name.clone()));
                 }
                 _ => {}
@@ -369,7 +369,11 @@ mod tests {
             let a_name_val = res.get(Some(TAG_D)).unwrap();
             let b_name_val = res.get(Some(TAG_E)).unwrap();
             match (a_age_val.as_ref(), a_name_val.as_ref(), b_name_val.as_ref()) {
-                (Entry::OffGraph(a_age), Entry::OffGraph(a_name), Entry::OffGraph(b_name)) => {
+                (
+                    CompleteEntry::OffGraph(a_age),
+                    CompleteEntry::OffGraph(a_name),
+                    CompleteEntry::OffGraph(b_name),
+                ) => {
                     object_result.push((a_age.clone(), a_name.clone(), b_name.clone()));
                 }
                 _ => {}
@@ -403,7 +407,7 @@ mod tests {
                 .unwrap();
             let b_entry = res.get(Some(TAG_B)).unwrap().as_ref();
             match b_entry {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     a_results.push(v.id());
                     b_results.push(val.clone());
                 }
@@ -438,7 +442,7 @@ mod tests {
             let age_val = res.get(Some(TAG_B)).unwrap();
             let name_val = res.get(Some(TAG_C)).unwrap();
             match (age_val.as_ref(), name_val.as_ref()) {
-                (Entry::OffGraph(age), Entry::OffGraph(name)) => {
+                (CompleteEntry::OffGraph(age), CompleteEntry::OffGraph(name)) => {
                     object_result.push((age.clone(), name.clone()));
                 }
                 _ => {}
@@ -491,7 +495,7 @@ mod tests {
         let mut object_result = vec![];
         while let Some(Ok(res)) = result.next() {
             match res.get(None).unwrap().as_ref() {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     object_result.push(val.clone());
                 }
                 _ => {}
@@ -518,7 +522,7 @@ mod tests {
         let mut object_result = vec![];
         while let Some(Ok(res)) = result.next() {
             match res.get(None).unwrap().as_ref() {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     object_result.push(val.clone());
                 }
                 _ => {}
@@ -565,7 +569,7 @@ mod tests {
         let mut object_result = vec![];
         while let Some(Ok(res)) = result.next() {
             match res.get(None).unwrap().as_ref() {
-                Entry::OffGraph(val) => {
+                CompleteEntry::OffGraph(val) => {
                     object_result.push(val.clone());
                 }
                 _ => {}
@@ -683,7 +687,7 @@ mod tests {
             let c_val = res.get(Some(TAG_C)).unwrap();
             let d_val = res.get(Some(TAG_D)).unwrap();
             match (c_val.as_ref(), d_val.as_ref()) {
-                (Entry::OffGraph(Object::None), Entry::OffGraph(Object::None)) => {
+                (CompleteEntry::OffGraph(Object::None), CompleteEntry::OffGraph(Object::None)) => {
                     assert!(true)
                 }
                 _ => {
@@ -719,7 +723,7 @@ mod tests {
             let c_val = res.get(Some(TAG_C)).unwrap();
             let d_val = res.get(Some(TAG_D)).unwrap();
             match (c_val.as_ref(), d_val.as_ref()) {
-                (Entry::OffGraph(Object::None), Entry::OffGraph(Object::None)) => {
+                (CompleteEntry::OffGraph(Object::None), CompleteEntry::OffGraph(Object::None)) => {
                     assert!(true)
                 }
                 _ => {

@@ -97,7 +97,7 @@ mod tests {
     use crate::process::operator::tests::{
         init_source, init_vertex1, init_vertex2, PERSON_LABEL, TAG_A, TAG_B, TAG_C,
     };
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Record};
 
     // v1: marko, 29;
     // v2: vadas, 27;
@@ -162,10 +162,10 @@ mod tests {
         let group_opr_pb = pb::GroupBy { mappings: vec![key_alias], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, Entry)> = [
-            (init_vertex1().into(), Entry::Collection(vec![(init_vertex1().into())])),
-            (init_vertex2().into(), Entry::Collection(vec![(init_vertex2().into())])),
-            (init_vertex3().into(), Entry::Collection(vec![(init_vertex3().into())])),
+        let expected_result: HashSet<(CompleteEntry, CompleteEntry)> = [
+            (init_vertex1().into(), CompleteEntry::Collection(vec![(init_vertex1().into())])),
+            (init_vertex2().into(), CompleteEntry::Collection(vec![(init_vertex2().into())])),
+            (init_vertex3().into(), CompleteEntry::Collection(vec![(init_vertex3().into())])),
         ]
         .iter()
         .cloned()
@@ -194,12 +194,12 @@ mod tests {
         let group_opr_pb = pb::GroupBy { mappings: vec![key_alias], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, Entry)> = [
+        let expected_result: HashSet<(CompleteEntry, CompleteEntry)> = [
             (
                 object!("marko").into(),
-                Entry::Collection(vec![(init_vertex1().into()), (init_vertex3().into())]),
+                CompleteEntry::Collection(vec![(init_vertex1().into()), (init_vertex3().into())]),
             ),
-            (object!("vadas").into(), Entry::Collection(vec![(init_vertex2().into())])),
+            (object!("vadas").into(), CompleteEntry::Collection(vec![(init_vertex2().into())])),
         ]
         .iter()
         .cloned()
@@ -233,18 +233,18 @@ mod tests {
             pb::GroupBy { mappings: vec![key_alias_1, key_alias_2], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<((Entry, Entry), Entry)> = [
+        let expected_result: HashSet<((CompleteEntry, CompleteEntry), CompleteEntry)> = [
             (
                 (object!(1).into(), object!("marko").into()),
-                Entry::Collection(vec![(init_vertex1().into())]),
+                CompleteEntry::Collection(vec![(init_vertex1().into())]),
             ),
             (
                 (object!(2).into(), object!("vadas").into()),
-                Entry::Collection(vec![(init_vertex2().into())]),
+                CompleteEntry::Collection(vec![(init_vertex2().into())]),
             ),
             (
                 (object!(3).into(), object!("marko").into()),
-                Entry::Collection(vec![(init_vertex3().into())]),
+                CompleteEntry::Collection(vec![(init_vertex3().into())]),
             ),
         ]
         .iter()
@@ -281,18 +281,18 @@ mod tests {
             pb::GroupBy { mappings: vec![key_alias], functions: vec![function_1, function_2] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, (Entry, Entry))> = [
+        let expected_result: HashSet<(CompleteEntry, (CompleteEntry, CompleteEntry))> = [
             (
                 init_vertex1().into(),
-                (Entry::Collection(vec![(init_vertex1().into())]), object!(1u64).into()),
+                (CompleteEntry::Collection(vec![(init_vertex1().into())]), object!(1u64).into()),
             ),
             (
                 init_vertex2().into(),
-                (Entry::Collection(vec![(init_vertex2().into())]), object!(1u64).into()),
+                (CompleteEntry::Collection(vec![(init_vertex2().into())]), object!(1u64).into()),
             ),
             (
                 init_vertex3().into(),
-                (Entry::Collection(vec![(init_vertex3().into())]), object!(1u64).into()),
+                (CompleteEntry::Collection(vec![(init_vertex3().into())]), object!(1u64).into()),
             ),
         ]
         .iter()
@@ -323,7 +323,7 @@ mod tests {
         let group_opr_pb = pb::GroupBy { mappings: vec![key_alias], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, Entry)> = [
+        let expected_result: HashSet<(CompleteEntry, CompleteEntry)> = [
             (init_vertex1().into(), object!(1u64).into()),
             (init_vertex2().into(), object!(1u64).into()),
             (init_vertex3().into(), object!(1u64).into()),
@@ -354,7 +354,7 @@ mod tests {
         let group_opr_pb = pb::GroupBy { mappings: vec![key_alias], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, Entry)> = [
+        let expected_result: HashSet<(CompleteEntry, CompleteEntry)> = [
             (object!("marko").into(), object!(2u64).into()),
             (object!("vadas").into(), object!(1u64).into()),
         ]
@@ -384,7 +384,7 @@ mod tests {
         let group_opr_pb = pb::GroupBy { mappings: vec![key_alias], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, Entry)> =
+        let expected_result: HashSet<(CompleteEntry, CompleteEntry)> =
             [(object!("vadas").into(), object!(27).into()), (object!("marko").into(), object!(27).into())]
                 .iter()
                 .cloned()
@@ -413,7 +413,7 @@ mod tests {
         let group_opr_pb = pb::GroupBy { mappings: vec![key_alias], functions: vec![function] };
         let mut result = group_test(group_opr_pb);
         let mut group_result = HashSet::new();
-        let expected_result: HashSet<(Entry, Entry)> =
+        let expected_result: HashSet<(CompleteEntry, CompleteEntry)> =
             [(object!("marko").into(), object!(29).into()), (object!("vadas").into(), object!(27).into())]
                 .iter()
                 .cloned()

@@ -51,7 +51,7 @@ mod tests {
     use pegasus::JobConf;
 
     use crate::process::functions::JoinKeyGen;
-    use crate::process::record::Record;
+    use crate::process::record::{Entry, Record};
 
     fn source_s1_gen() -> Box<dyn Iterator<Item = Record> + Send> {
         let v1 = Vertex::new(1, None, DynDetails::default());
