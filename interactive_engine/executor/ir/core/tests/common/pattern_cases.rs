@@ -2448,3 +2448,17 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
     ];
     (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
 }
+
+pub fn build_pattern_rank_ranking_case21() -> Pattern {
+    let vertex0 = PatternVertex::new(0, 1);
+    let vertex1 = PatternVertex::new(1, 2);
+    let vertex3 = PatternVertex::new(3, 0);
+    let vertex4 = PatternVertex::new(4, 1);
+    let vertex5 = PatternVertex::new(5, 2);
+    let edge0 = PatternEdge::new(0, 13, vertex0, vertex1);
+    let edge2 = PatternEdge::new(2, 11, vertex0, vertex3);
+    let edge4 = PatternEdge::new(4, 11, vertex4, vertex3);
+    let edge6 = PatternEdge::new(6, 13, vertex4, vertex5);
+    let edges = vec![edge0, edge2, edge4, edge6];
+    Pattern::try_from(edges).unwrap()
+}

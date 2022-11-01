@@ -367,8 +367,8 @@ impl CanonicalLabelManager {
         }
 
         // Compare Adjacencies
-        let mut v1_adjacencies_iter = pattern.adjacencies_iter(v1_id);
-        let mut v2_adjacencies_iter = pattern.adjacencies_iter(v2_id);
+        let mut v1_adjacencies_iter = self.adjacencies_iter(v1_id);
+        let mut v2_adjacencies_iter = self.adjacencies_iter(v2_id);
         loop {
             let v1_adjacency = v1_adjacencies_iter.next();
             let v2_adjacency = v2_adjacencies_iter.next();
@@ -437,5 +437,13 @@ impl CanonicalLabelManager {
                     }
                 });
             });
+    }
+
+    fn adjacencies_iter(&self, vertex_id: PatternId) -> DynIter<&Adjacency> {
+        if let Some(adjacencies) = self.vertex_adjacencies_map.get(&vertex_id) {
+            Box::new(adjacencies.iter())
+        } else {
+            Box::new(std::iter::empty())
+        }
     }
 }
