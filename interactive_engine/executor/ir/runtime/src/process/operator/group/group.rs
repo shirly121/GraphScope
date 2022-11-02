@@ -24,10 +24,12 @@ use crate::error::{FnExecError, FnGenResult};
 use crate::process::functions::{GroupGen, KeyFunction};
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
 use crate::process::operator::keyed::KeyFunctionGen;
-use crate::process::record::{Record, RecordKey};
+use crate::process::record::{CompleteEntry, Record, RecordKey};
 
-impl GroupGen<Record, RecordKey, Record> for algebra_pb::GroupBy {
-    fn gen_group_key(&self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+impl GroupGen<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for algebra_pb::GroupBy {
+    fn gen_group_key(
+        &self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
         self.clone().gen_key()
     }
 
@@ -35,7 +37,9 @@ impl GroupGen<Record, RecordKey, Record> for algebra_pb::GroupBy {
         self.clone().gen_accum()
     }
 
-    fn gen_group_map(&self) -> FnGenResult<Box<dyn MapFunction<(RecordKey, Record), Record>>> {
+    fn gen_group_map(
+        &self,
+    ) -> FnGenResult<Box<dyn MapFunction<(RecordKey, Record<CompleteEntry>), Record<CompleteEntry>>>> {
         let mut key_aliases = Vec::with_capacity(self.mappings.len());
         for key_alias in self.mappings.iter() {
             let alias: Option<KeyId> = Some(
@@ -60,8 +64,10 @@ struct GroupMap {
     key_aliases: Vec<KeyId>,
 }
 
-impl MapFunction<(RecordKey, Record), Record> for GroupMap {
-    fn exec(&self, (group_key, mut group_value): (RecordKey, Record)) -> FnResult<Record> {
+impl MapFunction<(RecordKey, Record<CompleteEntry>), Record<CompleteEntry>> for GroupMap {
+    fn exec(
+        &self, (group_key, mut group_value): (RecordKey, Record<CompleteEntry>),
+    ) -> FnResult<Record<CompleteEntry>> {
         let group_key_entries = group_key.take();
         if group_key_entries.len() != self.key_aliases.len() {
             Err(FnExecError::unexpected_data_error(
@@ -102,7 +108,7 @@ mod tests {
     // v1: marko, 29;
     // v2: vadas, 27;
     // v3: marko, 27;
-    fn init_group_source() -> Vec<Record> {
+    fn init_group_source() -> Vec<Record<CompleteEntry>> {
         let mut source = init_source();
         source.push(Record::new(init_vertex3(), None));
         source
@@ -116,7 +122,7 @@ mod tests {
         Vertex::new(3, Some(PERSON_LABEL), DynDetails::new(map3))
     }
 
-    fn group_test(group_opr_pb: pb::GroupBy) -> ResultStream<Record> {
+    fn group_test(group_opr_pb: pb::GroupBy) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("group_test");
         let result = pegasus::run(conf, || {
             let group_opr_pb = group_opr_pb.clone();

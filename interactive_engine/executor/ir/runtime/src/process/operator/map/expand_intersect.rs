@@ -117,8 +117,10 @@ impl Decode for Intersection {
     }
 }
 
-impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect<E> {
-    fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
+impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>
+    for ExpandOrIntersect<E>
+{
+    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
         let entry = input
             .get(Some(self.start_v_tag))
             .ok_or(FnExecError::get_tag_error(&format!(
@@ -179,7 +181,9 @@ impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record, Record> for Exp
 }
 
 impl FilterMapFuncGen for algebra_pb::EdgeExpand {
-    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record, Record>>> {
+    fn gen_filter_map(
+        self,
+    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
         let graph = graph_proxy::apis::get_graph().ok_or(FnGenError::NullGraphError)?;
         let start_v_tag = self
             .v_tag

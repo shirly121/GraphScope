@@ -22,17 +22,33 @@ use ir_common::generated::algebra as algebra_pb;
 use pegasus::api::function::{DynIter, FlatMapFunction};
 
 use crate::error::FnGenResult;
-use crate::process::record::Record;
+use crate::process::record::{CompleteEntry, Record};
 
 pub trait FlatMapFuncGen {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>>;
+    ) -> FnGenResult<
+        Box<
+            dyn FlatMapFunction<
+                Record<CompleteEntry>,
+                Record<CompleteEntry>,
+                Target = DynIter<Record<CompleteEntry>>,
+            >,
+        >,
+    >;
 }
 impl FlatMapFuncGen for algebra_pb::logical_plan::operator::Opr {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>> {
+    ) -> FnGenResult<
+        Box<
+            dyn FlatMapFunction<
+                Record<CompleteEntry>,
+                Record<CompleteEntry>,
+                Target = DynIter<Record<CompleteEntry>>,
+            >,
+        >,
+    > {
         match self {
             algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
             algebra_pb::logical_plan::operator::Opr::Vertex(get_vertex) => get_vertex.gen_flat_map(),

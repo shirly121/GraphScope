@@ -101,13 +101,34 @@ impl Entry for CompleteEntry {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Record {
-    curr: Option<Arc<CompleteEntry>>,
-    columns: VecMap<Arc<CompleteEntry>>,
+#[derive(Debug, Clone)]
+pub struct Record<E: Entry> {
+    curr: Option<Arc<E>>,
+    columns: VecMap<Arc<E>>,
 }
 
-impl Record {
+impl<E: Entry> Default for Record<E> {
+    fn default() -> Self {
+        Record { curr: None, columns: VecMap::new() }
+    }
+}
+
+impl<E: Entry> Record<E> {
+    /// A handy api to append entry of different types that can be turned into `Entry`
+    pub fn append<IE: Into<E>>(&mut self, entry: IE, alias: Option<KeyId>) {
+        self.append_arc_entry(Arc::new(entry.into()), alias)
+    }
+
+    pub fn append_arc_entry(&mut self, entry: Arc<E>, alias: Option<KeyId>) {
+        if let Some(alias) = alias {
+            self.columns
+                .insert(alias as usize, entry.clone());
+        }
+        self.curr = Some(entry);
+    }
+}
+
+impl Record<CompleteEntry> {
     pub fn new<E: Into<CompleteEntry>>(entry: E, tag: Option<KeyId>) -> Self {
         let entry = Arc::new(entry.into());
         let mut columns = VecMap::new();
@@ -115,19 +136,6 @@ impl Record {
             columns.insert(tag as usize, entry.clone());
         }
         Record { curr: Some(entry), columns }
-    }
-
-    /// A handy api to append entry of different types that can be turned into `Entry`
-    pub fn append<E: Into<CompleteEntry>>(&mut self, entry: E, alias: Option<KeyId>) {
-        self.append_arc_entry(Arc::new(entry.into()), alias)
-    }
-
-    pub fn append_arc_entry(&mut self, entry: Arc<CompleteEntry>, alias: Option<KeyId>) {
-        if let Some(alias) = alias {
-            self.columns
-                .insert(alias as usize, entry.clone());
-        }
-        self.curr = Some(entry);
     }
 
     /// Set new current entry for the record
@@ -168,7 +176,9 @@ impl Record {
     /// * `is_left_opt = None` -> set as `None`,
     /// * `is_left_opt = Some(true)` -> set as left record,
     /// * `is_left_opt = Some(false)` -> set as right record.
-    pub fn join(mut self, mut other: Record, is_left_opt: Option<bool>) -> Record {
+    pub fn join(
+        mut self, mut other: Record<CompleteEntry>, is_left_opt: Option<bool>,
+    ) -> Record<CompleteEntry> {
         for column in other.columns.drain() {
             if !self.columns.contains_key(column.0) {
                 self.columns.insert(column.0, column.1);
@@ -226,7 +236,7 @@ impl Into<CompleteEntry> for Intersection {
     }
 }
 
-impl Context<CompleteEntry> for Record {
+impl Context<CompleteEntry> for Record<CompleteEntry> {
     fn get(&self, tag: Option<&NameOrId>) -> Option<&CompleteEntry> {
         let tag = if let Some(tag) = tag {
             match tag {
@@ -300,20 +310,20 @@ impl RecordKey {
 impl Eq for RecordKey {}
 impl Eq for CompleteEntry {}
 
-pub struct RecordExpandIter<E> {
+pub struct RecordExpandIter<E: Entry, IE> {
     tag: Option<KeyId>,
-    origin: Record,
-    children: DynIter<E>,
+    origin: Record<E>,
+    children: DynIter<IE>,
 }
 
-impl<E> RecordExpandIter<E> {
-    pub fn new(origin: Record, tag: Option<&KeyId>, children: DynIter<E>) -> Self {
+impl<E: Entry, IE> RecordExpandIter<E, IE> {
+    pub fn new(origin: Record<E>, tag: Option<&KeyId>, children: DynIter<IE>) -> Self {
         RecordExpandIter { tag: tag.map(|e| e.clone()), origin, children }
     }
 }
 
-impl<E: Into<CompleteEntry>> Iterator for RecordExpandIter<E> {
-    type Item = Record;
+impl<E: Entry, IE: Into<E>> Iterator for RecordExpandIter<E, IE> {
+    type Item = Record<E>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = self.origin.clone();
@@ -327,20 +337,20 @@ impl<E: Into<CompleteEntry>> Iterator for RecordExpandIter<E> {
     }
 }
 
-pub struct RecordPathExpandIter<E> {
-    origin: Record,
+pub struct RecordPathExpandIter<E: Entry, IE> {
+    origin: Record<E>,
     curr_path: GraphPath,
-    children: DynIter<E>,
+    children: DynIter<IE>,
 }
 
-impl<E> RecordPathExpandIter<E> {
-    pub fn new(origin: Record, curr_path: GraphPath, children: DynIter<E>) -> Self {
+impl<E: Entry, IE> RecordPathExpandIter<E, IE> {
+    pub fn new(origin: Record<E>, curr_path: GraphPath, children: DynIter<IE>) -> Self {
         RecordPathExpandIter { origin, curr_path, children }
     }
 }
 
-impl<E: Into<CompleteEntry>> Iterator for RecordPathExpandIter<E> {
-    type Item = Record;
+impl<IE: Into<CompleteEntry>> Iterator for RecordPathExpandIter<CompleteEntry, IE> {
+    type Item = Record<CompleteEntry>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = self.origin.clone();
@@ -436,7 +446,7 @@ impl Decode for CompleteEntry {
     }
 }
 
-impl Encode for Record {
+impl Encode for Record<CompleteEntry> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         match &self.curr {
             None => {
@@ -456,7 +466,7 @@ impl Encode for Record {
     }
 }
 
-impl Decode for Record {
+impl Decode for Record<CompleteEntry> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let opt = reader.read_u8()?;
         let curr = if opt == 0 { None } else { Some(Arc::new(<CompleteEntry>::read_from(reader)?)) };

@@ -47,7 +47,7 @@ pub struct TagKey {
 
 impl TagKey {
     /// This is for key generation, which generate the key of the input Record according to the tag_key field
-    pub fn get_arc_entry(&self, input: &Record) -> FnExecResult<Arc<CompleteEntry>> {
+    pub fn get_arc_entry(&self, input: &Record<CompleteEntry>) -> FnExecResult<Arc<CompleteEntry>> {
         if let Some(entry) = input.get(self.tag) {
             if let Some(prop_key) = self.key.as_ref() {
                 let prop = self.get_key(entry, prop_key)?;
@@ -61,7 +61,7 @@ impl TagKey {
     }
 
     /// This is for accum, which get the entry of the input Record according to the tag_key field
-    pub fn get_entry(&self, input: &Record) -> FnExecResult<CompleteEntry> {
+    pub fn get_entry(&self, input: &Record<CompleteEntry>) -> FnExecResult<CompleteEntry> {
         if let Some(entry) = input.get(self.tag) {
             if let Some(prop_key) = self.key.as_ref() {
                 Ok(self.get_key(entry, prop_key)?)
@@ -191,7 +191,7 @@ impl Decode for TagKey {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::process::record::Entry;
+    use crate::process::record::{CompleteEntry, Entry};
     use ahash::HashMap;
     use dyn_type::Object;
     use graph_proxy::apis::{DynDetails, GraphElement, Vertex};
@@ -227,7 +227,7 @@ pub(crate) mod tests {
         Vertex::new(2, Some(PERSON_LABEL), DynDetails::new(map2))
     }
 
-    fn init_record() -> Record {
+    fn init_record() -> Record<CompleteEntry> {
         let vertex1 = init_vertex1();
         let vertex2 = init_vertex2();
         let object3 = object!(10);
@@ -238,7 +238,7 @@ pub(crate) mod tests {
         record
     }
 
-    pub fn init_source() -> Vec<Record> {
+    pub fn init_source() -> Vec<Record<CompleteEntry>> {
         let v1 = init_vertex1();
         let v2 = init_vertex2();
         let r1 = Record::new(v1, None);
@@ -246,7 +246,7 @@ pub(crate) mod tests {
         vec![r1, r2]
     }
 
-    pub fn init_source_with_tag() -> Vec<Record> {
+    pub fn init_source_with_tag() -> Vec<Record<CompleteEntry>> {
         let v1 = init_vertex1();
         let v2 = init_vertex2();
         let r1 = Record::new(v1, Some(TAG_A.into()));
@@ -254,7 +254,7 @@ pub(crate) mod tests {
         vec![r1, r2]
     }
 
-    pub fn init_source_with_multi_tags() -> Vec<Record> {
+    pub fn init_source_with_multi_tags() -> Vec<Record<CompleteEntry>> {
         let v1 = init_vertex1();
         let v2 = init_vertex2();
         let mut r1 = Record::new(v1, Some(TAG_A.into()));

@@ -205,8 +205,8 @@ impl RecordSinkEncoder {
     }
 }
 
-impl MapFunction<Record, Vec<u8>> for RecordSinkEncoder {
-    fn exec(&self, input: Record) -> FnResult<Vec<u8>> {
+impl MapFunction<Record<CompleteEntry>, Vec<u8>> for RecordSinkEncoder {
+    fn exec(&self, input: Record<CompleteEntry>) -> FnResult<Vec<u8>> {
         let mut sink_columns = Vec::with_capacity(self.sink_keys.len());
         for sink_key in self.sink_keys.iter() {
             if let Some(entry) = input.get(sink_key.clone()) {

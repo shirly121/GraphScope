@@ -41,13 +41,17 @@ mod test {
     use crate::common::test::*;
 
     // g.V()
-    fn source_gen(alias: Option<common_pb::NameOrId>) -> Box<dyn Iterator<Item = Record> + Send> {
+    fn source_gen(
+        alias: Option<common_pb::NameOrId>,
+    ) -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         create_exp_store();
         let scan_opr_pb = pb::Scan { scan_opt: 0, alias, params: None, idx_predicate: None };
         source_gen_with_scan_opr(scan_opr_pb)
     }
 
-    fn source_gen_with_scan_opr(scan_opr_pb: pb::Scan) -> Box<dyn Iterator<Item = Record> + Send> {
+    fn source_gen_with_scan_opr(
+        scan_opr_pb: pb::Scan,
+    ) -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         create_exp_store();
         let source = SourceOperator::new(
             pb::logical_plan::operator::Opr::Scan(scan_opr_pb),
@@ -59,7 +63,7 @@ mod test {
         source.gen_source(0).unwrap()
     }
 
-    fn expand_test(expand: pb::EdgeExpand) -> ResultStream<Record> {
+    fn expand_test(expand: pb::EdgeExpand) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("expand_test");
         let result = pegasus::run(conf, || {
             let expand = expand.clone();
@@ -74,7 +78,7 @@ mod test {
         result
     }
 
-    fn expand_degree_fused_test(expand: pb::EdgeExpand) -> ResultStream<Record> {
+    fn expand_degree_fused_test(expand: pb::EdgeExpand) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("expand_degree_fused_test");
         let mut fused = pb::FusedOperator { oprs: vec![] };
         fused.oprs.push(
@@ -113,7 +117,7 @@ mod test {
 
     fn expand_test_with_source_tag(
         source_tag: common_pb::NameOrId, expand: pb::EdgeExpand,
-    ) -> ResultStream<Record> {
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("expand_test");
         let result = pegasus::run(conf, || {
             let source_tag = source_tag.clone();

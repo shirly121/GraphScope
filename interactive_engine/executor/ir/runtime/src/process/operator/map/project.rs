@@ -51,10 +51,12 @@ pub enum Projector {
 //    we may need to further distinguish the cases of none-exist tags (filtering case) and none-exist properties (output none-entry).
 // 2. When projecting multiple columns, even all projected columns are none-entry, the record won't be filtered for now.
 //    This seems ambiguous. But multi-column project always appears in the end of the query. Can modify this logic if necessary.
-fn exec_projector(input: &Record, projector: &Projector) -> FnExecResult<Arc<CompleteEntry>> {
+fn exec_projector(
+    input: &Record<CompleteEntry>, projector: &Projector,
+) -> FnExecResult<Arc<CompleteEntry>> {
     let entry = match projector {
         Projector::ExprProjector(evaluator) => {
-            let projected_result = evaluator.eval::<CompleteEntry, Record>(Some(&input))?;
+            let projected_result = evaluator.eval::<CompleteEntry, Record<CompleteEntry>>(Some(&input))?;
             Arc::new(projected_result.into())
         }
         Projector::GraphElementProjector(tag_key) => tag_key.get_arc_entry(input)?,
@@ -62,8 +64,8 @@ fn exec_projector(input: &Record, projector: &Projector) -> FnExecResult<Arc<Com
     Ok(entry)
 }
 
-impl FilterMapFunction<Record, Record> for ProjectOperator {
-    fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
+impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for ProjectOperator {
+    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
         if self.is_append {
             if self.projected_columns.len() == 1 {
                 let (projector, alias) = self.projected_columns.get(0).unwrap();
@@ -114,7 +116,9 @@ impl FilterMapFunction<Record, Record> for ProjectOperator {
 }
 
 impl FilterMapFuncGen for algebra_pb::Project {
-    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record, Record>>> {
+    fn gen_filter_map(
+        self,
+    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
         let mut projected_columns = Vec::with_capacity(self.mappings.len());
         for expr_alias in self.mappings.into_iter() {
             let alias = expr_alias
@@ -166,7 +170,9 @@ mod tests {
     };
     use crate::process::record::{CompleteEntry, Entry, Record};
 
-    fn project_test(source: Vec<Record>, project_opr_pb: pb::Project) -> ResultStream<Record> {
+    fn project_test(
+        source: Vec<Record<CompleteEntry>>, project_opr_pb: pb::Project,
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("project_test");
         let result = pegasus::run(conf, || {
             let source = source.clone();

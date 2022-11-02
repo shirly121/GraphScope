@@ -19,16 +19,20 @@ use ir_common::generated::algebra::join::JoinKind;
 use crate::error::FnGenResult;
 use crate::process::functions::{JoinKeyGen, KeyFunction};
 use crate::process::operator::keyed::KeySelector;
-use crate::process::record::{Record, RecordKey};
+use crate::process::record::{CompleteEntry, Record, RecordKey};
 
-impl JoinKeyGen<Record, RecordKey, Record> for algebra_pb::Join {
-    fn gen_left_kv_fn(&self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+impl JoinKeyGen<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for algebra_pb::Join {
+    fn gen_left_kv_fn(
+        &self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
         let left_kv_fn = KeySelector::with(self.left_keys.clone())?;
         debug!("Runtime join operator left_kv_fn {:?}", left_kv_fn);
         Ok(Box::new(left_kv_fn))
     }
 
-    fn gen_right_kv_fn(&self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+    fn gen_right_kv_fn(
+        &self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
         let right_kv_fn = KeySelector::with(self.right_keys.clone())?;
         debug!("Runtime join operator right_kv_fn {:?}", right_kv_fn);
         Ok(Box::new(right_kv_fn))
@@ -51,9 +55,9 @@ mod tests {
     use pegasus::JobConf;
 
     use crate::process::functions::JoinKeyGen;
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record};
 
-    fn source_s1_gen() -> Box<dyn Iterator<Item = Record> + Send> {
+    fn source_s1_gen() -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         let v1 = Vertex::new(1, None, DynDetails::default());
         let v2 = Vertex::new(2, None, DynDetails::default());
         let r1 = Record::new(v1, None);
@@ -61,7 +65,7 @@ mod tests {
         Box::new(vec![r1, r2].into_iter())
     }
 
-    fn source_s2_gen() -> Box<dyn Iterator<Item = Record> + Send> {
+    fn source_s2_gen() -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         let v3 = Vertex::new(1, None, DynDetails::default());
         let v4 = Vertex::new(4, None, DynDetails::default());
         let r3 = Record::new(v3, None);

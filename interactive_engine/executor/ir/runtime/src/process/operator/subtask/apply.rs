@@ -32,8 +32,12 @@ struct ApplyOperator {
     alias: Option<KeyId>,
 }
 
-impl BinaryFunction<Record, Vec<Record>, Option<Record>> for ApplyOperator {
-    fn exec(&self, mut parent: Record, sub: Vec<Record>) -> FnResult<Option<Record>> {
+impl BinaryFunction<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Record<CompleteEntry>>>
+    for ApplyOperator
+{
+    fn exec(
+        &self, mut parent: Record<CompleteEntry>, sub: Vec<Record<CompleteEntry>>,
+    ) -> FnResult<Option<Record<CompleteEntry>>> {
         match self.join_kind {
             JoinKind::Inner => {
                 if sub.is_empty() {
@@ -87,14 +91,24 @@ impl BinaryFunction<Record, Vec<Record>, Option<Record>> for ApplyOperator {
     }
 }
 
-impl ApplyGen<Record, Vec<Record>, Option<Record>> for algebra_pb::Apply {
+impl ApplyGen<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Record<CompleteEntry>>>
+    for algebra_pb::Apply
+{
     fn get_join_kind(&self) -> JoinKind {
         unsafe { ::std::mem::transmute(self.join_kind) }
     }
 
     fn gen_left_join_func(
         &self,
-    ) -> FnGenResult<Box<dyn BinaryFunction<Record, Vec<Record>, Option<Record>>>> {
+    ) -> FnGenResult<
+        Box<
+            dyn BinaryFunction<
+                Record<CompleteEntry>,
+                Vec<Record<CompleteEntry>>,
+                Option<Record<CompleteEntry>>,
+            >,
+        >,
+    > {
         let join_kind: JoinKind = unsafe { ::std::mem::transmute(self.join_kind) };
         let alias = self
             .alias

@@ -34,8 +34,8 @@ struct AuxiliaOperator {
     alias: Option<KeyId>,
 }
 
-impl FilterMapFunction<Record, Record> for AuxiliaOperator {
-    fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
+impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for AuxiliaOperator {
+    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
         if let Some(entry) = input.get(self.tag) {
             let entry = entry.clone();
             // Make sure there is anything to query with
@@ -95,7 +95,9 @@ impl FilterMapFunction<Record, Record> for AuxiliaOperator {
 }
 
 impl FilterMapFuncGen for algebra_pb::Auxilia {
-    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record, Record>>> {
+    fn gen_filter_map(
+        self,
+    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
         let tag = self
             .tag
             .map(|alias| alias.try_into())

@@ -96,7 +96,7 @@ pub mod test {
         results
     }
 
-    pub fn parse_result(result: Vec<u8>) -> Option<Record> {
+    pub fn parse_result(result: Vec<u8>) -> Option<Record<CompleteEntry>> {
         let result: result_pb::Results = result_pb::Results::decode(result.as_slice()).unwrap();
         if let Some(result_pb::results::Inner::Record(record_pb)) = result.inner {
             let mut record = Record::default();

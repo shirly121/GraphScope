@@ -46,19 +46,19 @@ use crate::process::operator::sink::{SinkGen, Sinker};
 use crate::process::operator::sort::CompareFunctionGen;
 use crate::process::operator::source::SourceOperator;
 use crate::process::operator::subtask::RecordLeftJoinGen;
-use crate::process::record::{Record, RecordKey};
+use crate::process::record::{CompleteEntry, Record, RecordKey};
 
-type RecordMap = Box<dyn MapFunction<Record, Record>>;
-type RecordFilterMap = Box<dyn FilterMapFunction<Record, Record>>;
-type RecordFlatMap = Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>;
-type RecordFilter = Box<dyn FilterFunction<Record>>;
-type RecordLeftJoin = Box<dyn ApplyGen<Record, Vec<Record>, Option<Record>>>;
-type RecordShuffle = Box<dyn RouteFunction<Record>>;
-type RecordCompare = Box<dyn CompareFunction<Record>>;
-type RecordJoin = Box<dyn JoinKeyGen<Record, RecordKey, Record>>;
-type RecordKeySelector = Box<dyn KeyFunction<Record, RecordKey, Record>>;
-type RecordGroup = Box<dyn GroupGen<Record, RecordKey, Record>>;
-type RecordFold = Box<dyn FoldGen<u64, Record>>;
+type RecordMap<E> = Box<dyn MapFunction<Record<E>, Record<E>>>;
+type RecordFilterMap<E> = Box<dyn FilterMapFunction<Record<E>, Record<E>>>;
+type RecordFlatMap<E> = Box<dyn FlatMapFunction<Record<E>, Record<E>, Target = DynIter<Record<E>>>>;
+type RecordFilter<E> = Box<dyn FilterFunction<Record<E>>>;
+type RecordLeftJoin<E> = Box<dyn ApplyGen<Record<E>, Vec<Record<E>>, Option<Record<E>>>>;
+type RecordShuffle<E> = Box<dyn RouteFunction<Record<E>>>;
+type RecordCompare<E> = Box<dyn CompareFunction<Record<E>>>;
+type RecordJoin<E> = Box<dyn JoinKeyGen<Record<E>, RecordKey, Record<E>>>;
+type RecordKeySelector<E> = Box<dyn KeyFunction<Record<E>, RecordKey, Record<E>>>;
+type RecordGroup<E> = Box<dyn GroupGen<Record<E>, RecordKey, Record<E>>>;
+type RecordFold<E> = Box<dyn FoldGen<u64, Record<E>>>;
 type BinaryResource = Vec<u8>;
 
 pub struct IRJobAssembly {
@@ -74,7 +74,7 @@ impl FnGenerator {
         FnGenerator { partitioner }
     }
 
-    fn gen_source(&self, opr: AlgebraOpr) -> FnGenResult<DynIter<Record>> {
+    fn gen_source(&self, opr: AlgebraOpr) -> FnGenResult<DynIter<Record<CompleteEntry>>> {
         let worker_id = pegasus::get_current_worker();
         let source_opr = SourceOperator::new(
             opr,
@@ -85,7 +85,7 @@ impl FnGenerator {
         Ok(source_opr.gen_source(worker_id.index as usize)?)
     }
 
-    fn gen_shuffle(&self, res: &BinaryResource) -> FnGenResult<RecordShuffle> {
+    fn gen_shuffle(&self, res: &BinaryResource) -> FnGenResult<RecordShuffle<CompleteEntry>> {
         let p = self.partitioner.clone();
         let num_workers = pegasus::get_current_worker().local_peers as usize;
         let shuffle_key = decode::<common_pb::NameOrIdKey>(res)?;
@@ -93,43 +93,43 @@ impl FnGenerator {
         Ok(Box::new(record_router))
     }
 
-    fn gen_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordMap> {
+    fn gen_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordMap<CompleteEntry>> {
         Ok(opr.gen_map()?)
     }
 
-    fn gen_filter_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordFilterMap> {
+    fn gen_filter_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordFilterMap<CompleteEntry>> {
         Ok(opr.gen_filter_map()?)
     }
 
-    fn gen_flat_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordFlatMap> {
+    fn gen_flat_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordFlatMap<CompleteEntry>> {
         Ok(opr.gen_flat_map()?)
     }
 
-    fn gen_filter(&self, opr: AlgebraOpr) -> FnGenResult<RecordFilter> {
+    fn gen_filter(&self, opr: AlgebraOpr) -> FnGenResult<RecordFilter<CompleteEntry>> {
         Ok(opr.gen_filter()?)
     }
 
-    fn gen_cmp(&self, opr: AlgebraOpr) -> FnGenResult<RecordCompare> {
+    fn gen_cmp(&self, opr: AlgebraOpr) -> FnGenResult<RecordCompare<CompleteEntry>> {
         Ok(opr.gen_cmp()?)
     }
 
-    fn gen_group(&self, opr: AlgebraOpr) -> FnGenResult<RecordGroup> {
+    fn gen_group(&self, opr: AlgebraOpr) -> FnGenResult<RecordGroup<CompleteEntry>> {
         Ok(opr.gen_group()?)
     }
 
-    fn gen_fold(&self, opr: AlgebraOpr) -> FnGenResult<RecordFold> {
+    fn gen_fold(&self, opr: AlgebraOpr) -> FnGenResult<RecordFold<CompleteEntry>> {
         Ok(opr.gen_fold()?)
     }
 
-    fn gen_subtask(&self, opr: AlgebraOpr) -> FnGenResult<RecordLeftJoin> {
+    fn gen_subtask(&self, opr: AlgebraOpr) -> FnGenResult<RecordLeftJoin<CompleteEntry>> {
         Ok(opr.gen_subtask()?)
     }
 
-    fn gen_join(&self, opr: AlgebraOpr) -> FnGenResult<RecordJoin> {
+    fn gen_join(&self, opr: AlgebraOpr) -> FnGenResult<RecordJoin<CompleteEntry>> {
         Ok(opr.gen_join()?)
     }
 
-    fn gen_key(&self, opr: AlgebraOpr) -> FnGenResult<RecordKeySelector> {
+    fn gen_key(&self, opr: AlgebraOpr) -> FnGenResult<RecordKeySelector<CompleteEntry>> {
         Ok(opr.gen_key()?)
     }
 
@@ -151,8 +151,8 @@ impl IRJobAssembly {
     }
 
     fn install(
-        &self, mut stream: Stream<Record>, plan: &[server_pb::OperatorDef],
-    ) -> Result<Stream<Record>, BuildJobError> {
+        &self, mut stream: Stream<Record<CompleteEntry>>, plan: &[server_pb::OperatorDef],
+    ) -> Result<Stream<Record<CompleteEntry>>, BuildJobError> {
         for op in &plan[..] {
             if let Some(ref op_kind) = op.op_kind {
                 match op_kind {
@@ -368,7 +368,7 @@ impl IRJobAssembly {
                                 .apply(|sub_start| {
                                     let sub_end = self
                                         .install(sub_start, &sub_task.plan[..])?
-                                        .collect::<Vec<Record>>()?;
+                                        .collect::<Vec<Record<CompleteEntry>>>()?;
                                     Ok(sub_end)
                                 })?
                                 .filter_map(move |(parent, sub)| join_func.exec(parent, sub))?,
@@ -471,8 +471,10 @@ impl IRJobAssembly {
     }
 }
 
-impl JobAssembly<Record> for IRJobAssembly {
-    fn assemble(&self, plan: &JobDesc, worker: &mut Worker<Record, Vec<u8>>) -> Result<(), BuildJobError> {
+impl JobAssembly<Record<CompleteEntry>> for IRJobAssembly {
+    fn assemble(
+        &self, plan: &JobDesc, worker: &mut Worker<Record<CompleteEntry>, Vec<u8>>,
+    ) -> Result<(), BuildJobError> {
         worker.dataflow(move |input, output| {
             let source = decode::<server_pb::Source>(&plan.input)?;
             let source_iter = self

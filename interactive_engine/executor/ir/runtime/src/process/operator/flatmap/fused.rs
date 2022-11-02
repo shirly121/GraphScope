@@ -20,17 +20,25 @@ use pegasus::api::function::{DynIter, FilterMapFunction, FlatMapFunction, FnResu
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::Record;
+use crate::process::record::{CompleteEntry, Record};
 
 enum FusedFunc {
-    FilterMap(Box<dyn FilterMapFunction<Record, Record>>),
-    FlatMap(Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>),
+    FilterMap(Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>),
+    FlatMap(
+        Box<
+            dyn FlatMapFunction<
+                Record<CompleteEntry>,
+                Record<CompleteEntry>,
+                Target = DynIter<Record<CompleteEntry>>,
+            >,
+        >,
+    ),
 }
 
-impl FlatMapFunction<Record, Record> for FusedFunc {
-    type Target = DynIter<Record>;
+impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for FusedFunc {
+    type Target = DynIter<Record<CompleteEntry>>;
 
-    fn exec(&self, input: Record) -> FnResult<Self::Target> {
+    fn exec(&self, input: Record<CompleteEntry>) -> FnResult<Self::Target> {
         let mut results = vec![];
         match self {
             FusedFunc::FilterMap(filter_map) => {
@@ -51,11 +59,11 @@ struct FusedOperator {
     funcs: Vec<FusedFunc>,
 }
 
-impl FlatMapFunction<Record, Record> for FusedOperator {
-    type Target = DynIter<Record>;
+impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for FusedOperator {
+    type Target = DynIter<Record<CompleteEntry>>;
 
-    fn exec(&self, input: Record) -> FnResult<Self::Target> {
-        let mut results: Vec<Record> = vec![];
+    fn exec(&self, input: Record<CompleteEntry>) -> FnResult<Self::Target> {
+        let mut results: Vec<Record<CompleteEntry>> = vec![];
         let mut temp_container = vec![];
         if self.funcs.is_empty() {
             return Err(Box::new(FnExecError::unexpected_data_error("zero operator in `FusedOperator`")));
@@ -75,7 +83,15 @@ impl FlatMapFunction<Record, Record> for FusedOperator {
 impl FlatMapFuncGen for algebra_pb::FusedOperator {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>> {
+    ) -> FnGenResult<
+        Box<
+            dyn FlatMapFunction<
+                Record<CompleteEntry>,
+                Record<CompleteEntry>,
+                Target = DynIter<Record<CompleteEntry>>,
+            >,
+        >,
+    > {
         let mut funcs = vec![];
         for op in &self.oprs {
             let inner_op = op

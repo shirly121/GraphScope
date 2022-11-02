@@ -24,7 +24,7 @@ use crate::error::FnGenResult;
 use crate::process::functions::KeyFunction;
 use crate::process::operator::keyed::KeyFunctionGen;
 use crate::process::operator::TagKey;
-use crate::process::record::{Record, RecordKey};
+use crate::process::record::{CompleteEntry, Record, RecordKey};
 
 #[derive(Debug)]
 pub struct KeySelector {
@@ -41,8 +41,8 @@ impl KeySelector {
     }
 }
 
-impl KeyFunction<Record, RecordKey, Record> for KeySelector {
-    fn get_kv(&self, mut input: Record) -> FnResult<(RecordKey, Record)> {
+impl KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for KeySelector {
+    fn get_kv(&self, mut input: Record<CompleteEntry>) -> FnResult<(RecordKey, Record<CompleteEntry>)> {
         let keys = self
             .keys
             .iter()
@@ -53,7 +53,9 @@ impl KeyFunction<Record, RecordKey, Record> for KeySelector {
 }
 
 impl KeyFunctionGen for algebra_pb::GroupBy {
-    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+    fn gen_key(
+        self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
         let key_selector = KeySelector::with(
             self.mappings
                 .iter()
@@ -66,7 +68,9 @@ impl KeyFunctionGen for algebra_pb::GroupBy {
 }
 
 impl KeyFunctionGen for algebra_pb::Dedup {
-    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+    fn gen_key(
+        self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
         let key_selector = KeySelector::with(self.keys)?;
         debug!("Runtime dedup operator key_selector: {:?}", key_selector);
         Ok(Box::new(key_selector))
@@ -86,9 +90,9 @@ mod tests {
 
     use crate::process::operator::keyed::KeyFunctionGen;
     use crate::process::operator::tests::PERSON_LABEL;
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record};
 
-    fn source_gen() -> Box<dyn Iterator<Item = Record> + Send> {
+    fn source_gen() -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         let p1: HashMap<NameOrId, Object> = vec![("age".into(), 27.into())]
             .into_iter()
             .collect();

@@ -19,14 +19,22 @@ use ir_common::generated::algebra as algebra_pb;
 
 use crate::error::{FnGenError, FnGenResult};
 use crate::process::functions::ApplyGen;
-use crate::process::record::Record;
+use crate::process::record::{CompleteEntry, Record};
 
 pub trait RecordLeftJoinGen {
-    fn gen_subtask(self) -> FnGenResult<Box<dyn ApplyGen<Record, Vec<Record>, Option<Record>>>>;
+    fn gen_subtask(
+        self,
+    ) -> FnGenResult<
+        Box<dyn ApplyGen<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Record<CompleteEntry>>>>,
+    >;
 }
 
 impl RecordLeftJoinGen for algebra_pb::logical_plan::operator::Opr {
-    fn gen_subtask(self) -> FnGenResult<Box<dyn ApplyGen<Record, Vec<Record>, Option<Record>>>> {
+    fn gen_subtask(
+        self,
+    ) -> FnGenResult<
+        Box<dyn ApplyGen<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Record<CompleteEntry>>>>,
+    > {
         match self {
             algebra_pb::logical_plan::operator::Opr::Apply(apply) => Ok(Box::new(apply)),
             algebra_pb::logical_plan::operator::Opr::SegApply(_seg_apply) => {

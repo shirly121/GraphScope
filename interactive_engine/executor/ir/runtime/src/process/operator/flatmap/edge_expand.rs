@@ -34,10 +34,12 @@ pub struct EdgeExpandOperator<E: Into<CompleteEntry>> {
     expand_opt: ExpandOpt,
 }
 
-impl<E: Into<CompleteEntry> + 'static> FlatMapFunction<Record, Record> for EdgeExpandOperator<E> {
-    type Target = DynIter<Record>;
+impl<E: Into<CompleteEntry> + 'static> FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>
+    for EdgeExpandOperator<E>
+{
+    type Target = DynIter<Record<CompleteEntry>>;
 
-    fn exec(&self, mut input: Record) -> FnResult<Self::Target> {
+    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Self::Target> {
         if let Some(entry) = input.get(self.start_v_tag) {
             if let Some(v) = entry.as_graph_vertex() {
                 let id = v.id();
@@ -92,7 +94,15 @@ impl<E: Into<CompleteEntry> + 'static> FlatMapFunction<Record, Record> for EdgeE
 impl FlatMapFuncGen for algebra_pb::EdgeExpand {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>> {
+    ) -> FnGenResult<
+        Box<
+            dyn FlatMapFunction<
+                Record<CompleteEntry>,
+                Record<CompleteEntry>,
+                Target = DynIter<Record<CompleteEntry>>,
+            >,
+        >,
+    > {
         let graph = get_graph().ok_or(FnGenError::NullGraphError)?;
         let start_v_tag = self
             .v_tag

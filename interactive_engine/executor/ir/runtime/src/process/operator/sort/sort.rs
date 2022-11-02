@@ -24,15 +24,15 @@ use crate::error::FnGenResult;
 use crate::process::functions::CompareFunction;
 use crate::process::operator::sort::CompareFunctionGen;
 use crate::process::operator::TagKey;
-use crate::process::record::Record;
+use crate::process::record::{CompleteEntry, Record};
 
 #[derive(Debug)]
 struct RecordCompare {
     tag_key_order: Vec<(TagKey, Order)>,
 }
 
-impl CompareFunction<Record> for RecordCompare {
-    fn compare(&self, left: &Record, right: &Record) -> Ordering {
+impl CompareFunction<Record<CompleteEntry>> for RecordCompare {
+    fn compare(&self, left: &Record<CompleteEntry>, right: &Record<CompleteEntry>) -> Ordering {
         let mut result = Ordering::Equal;
         for (tag_key, order) in self.tag_key_order.iter() {
             let left_obj = tag_key.get_arc_entry(left).ok();
@@ -55,7 +55,7 @@ impl CompareFunction<Record> for RecordCompare {
 }
 
 impl CompareFunctionGen for algebra_pb::OrderBy {
-    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record>>> {
+    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record<CompleteEntry>>>> {
         let record_compare = RecordCompare::try_from(self)?;
         debug!("Runtime order operator cmp: {:?}", record_compare);
         Ok(Box::new(record_compare))
@@ -95,9 +95,11 @@ mod tests {
     use crate::process::operator::tests::{
         init_source, init_source_with_tag, to_var_pb, PERSON_LABEL, TAG_A,
     };
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record};
 
-    fn sort_test(source: Vec<Record>, sort_opr: pb::OrderBy) -> ResultStream<Record> {
+    fn sort_test(
+        source: Vec<Record<CompleteEntry>>, sort_opr: pb::OrderBy,
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("sort_test");
         let result = pegasus::run(conf, || {
             let source = source.clone();

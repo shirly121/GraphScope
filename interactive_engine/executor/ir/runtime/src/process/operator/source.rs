@@ -25,7 +25,7 @@ use ir_common::generated::algebra as algebra_pb;
 use ir_common::{KeyId, NameOrId};
 
 use crate::error::{FnGenError, FnGenResult};
-use crate::process::record::Record;
+use crate::process::record::{CompleteEntry, Record};
 
 #[derive(Debug)]
 pub enum SourceType {
@@ -127,7 +127,9 @@ impl SourceOperator {
 }
 
 impl SourceOperator {
-    pub fn gen_source(self, worker_index: usize) -> FnGenResult<Box<dyn Iterator<Item = Record> + Send>> {
+    pub fn gen_source(
+        self, worker_index: usize,
+    ) -> FnGenResult<Box<dyn Iterator<Item = Record<CompleteEntry>> + Send>> {
         let graph = get_graph().ok_or(FnGenError::NullGraphError)?;
         match self.source_type {
             SourceType::Vertex => {

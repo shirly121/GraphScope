@@ -25,7 +25,7 @@ use crate::process::functions::FoldGen;
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
 use crate::process::record::{CompleteEntry, Record};
 
-impl FoldGen<u64, Record> for algebra_pb::GroupBy {
+impl FoldGen<u64, Record<CompleteEntry>> for algebra_pb::GroupBy {
     fn get_accum_kind(&self) -> server_pb::AccumKind {
         let accum_functions = &self.functions;
         if accum_functions.len() == 1 {
@@ -40,7 +40,7 @@ impl FoldGen<u64, Record> for algebra_pb::GroupBy {
         }
     }
 
-    fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<u64, Record>>> {
+    fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<u64, Record<CompleteEntry>>>> {
         if self.get_accum_kind() == server_pb::AccumKind::Cnt {
             let count_alias = self.functions[0]
                 .alias
@@ -63,8 +63,8 @@ struct CountAlias {
     alias: Option<KeyId>,
 }
 
-impl MapFunction<u64, Record> for CountAlias {
-    fn exec(&self, cnt: u64) -> FnResult<Record> {
+impl MapFunction<u64, Record<CompleteEntry>> for CountAlias {
+    fn exec(&self, cnt: u64) -> FnResult<Record<CompleteEntry>> {
         let cnt_entry: CompleteEntry = object!(cnt).into();
         Ok(Record::new(cnt_entry, self.alias.clone()))
     }
@@ -83,7 +83,9 @@ mod tests {
     use crate::process::operator::tests::{init_source, TAG_A};
     use crate::process::record::{CompleteEntry, Record};
 
-    fn count_test(source: Vec<Record>, fold_opr_pb: pb::GroupBy) -> ResultStream<Record> {
+    fn count_test(
+        source: Vec<Record<CompleteEntry>>, fold_opr_pb: pb::GroupBy,
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("fold_test");
         let result = pegasus::run(conf, || {
             let fold_opr_pb = fold_opr_pb.clone();

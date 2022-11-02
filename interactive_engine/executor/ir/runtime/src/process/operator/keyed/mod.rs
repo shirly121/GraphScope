@@ -21,14 +21,18 @@ pub use keyed::KeySelector;
 
 use crate::error::{FnGenError, FnGenResult};
 use crate::process::functions::KeyFunction;
-use crate::process::record::{Record, RecordKey};
+use crate::process::record::{CompleteEntry, Record, RecordKey};
 
 pub trait KeyFunctionGen {
-    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>>;
+    fn gen_key(
+        self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>>;
 }
 
 impl KeyFunctionGen for algebra_pb::logical_plan::operator::Opr {
-    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+    fn gen_key(
+        self,
+    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::GroupBy(group) => group.gen_key(),
             algebra_pb::logical_plan::operator::Opr::Dedup(dedup) => dedup.gen_key(),

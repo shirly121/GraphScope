@@ -34,12 +34,14 @@ mod test {
     use runtime::process::operator::flatmap::FlatMapFuncGen;
     use runtime::process::operator::map::FilterMapFuncGen;
     use runtime::process::operator::source::SourceOperator;
-    use runtime::process::record::{Entry, Record};
+    use runtime::process::record::{CompleteEntry, Entry, Record};
 
     use crate::common::test::*;
 
     // g.V()
-    fn source_gen(alias: Option<common_pb::NameOrId>) -> Box<dyn Iterator<Item = Record> + Send> {
+    fn source_gen(
+        alias: Option<common_pb::NameOrId>,
+    ) -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         create_exp_store();
         let scan_opr_pb = pb::Scan { scan_opt: 0, alias, params: None, idx_predicate: None };
         let source_opr_pb = pb::logical_plan::operator::Opr::Scan(scan_opr_pb);

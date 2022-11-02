@@ -22,15 +22,15 @@ use pegasus::api::function::{FilterFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::filter::FilterFuncGen;
-use crate::process::record::Record;
+use crate::process::record::{CompleteEntry, Record};
 
 #[derive(Debug)]
 struct SelectOperator {
     pub filter: PEvaluator,
 }
 
-impl FilterFunction<Record> for SelectOperator {
-    fn test(&self, input: &Record) -> FnResult<bool> {
+impl FilterFunction<Record<CompleteEntry>> for SelectOperator {
+    fn test(&self, input: &Record<CompleteEntry>) -> FnResult<bool> {
         let res = self
             .filter
             .eval_bool(Some(input))
@@ -40,7 +40,7 @@ impl FilterFunction<Record> for SelectOperator {
 }
 
 impl FilterFuncGen for algebra_pb::Select {
-    fn gen_filter(self) -> FnGenResult<Box<dyn FilterFunction<Record>>> {
+    fn gen_filter(self) -> FnGenResult<Box<dyn FilterFunction<Record<CompleteEntry>>>> {
         if let Some(predicate) = self.predicate {
             let select_operator = SelectOperator { filter: predicate.try_into()? };
             debug!("Runtime select operator: {:?}", select_operator);
@@ -62,9 +62,11 @@ mod tests {
 
     use crate::process::operator::filter::FilterFuncGen;
     use crate::process::operator::tests::{init_source, PERSON_LABEL};
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record};
 
-    fn select_test(source: Vec<Record>, select_opr_pb: pb::Select) -> ResultStream<Record> {
+    fn select_test(
+        source: Vec<Record<CompleteEntry>>, select_opr_pb: pb::Select,
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("select_test");
         let result = pegasus::run(conf, || {
             let source = source.clone();

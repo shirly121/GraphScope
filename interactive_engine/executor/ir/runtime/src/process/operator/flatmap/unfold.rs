@@ -33,10 +33,10 @@ pub struct UnfoldOperator {
     alias: Option<KeyId>,
 }
 
-impl FlatMapFunction<Record, Record> for UnfoldOperator {
-    type Target = DynIter<Record>;
+impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for UnfoldOperator {
+    type Target = DynIter<Record<CompleteEntry>>;
 
-    fn exec(&self, mut input: Record) -> FnResult<Self::Target> {
+    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Self::Target> {
         // Consider 'take' the column since the collection won't be used anymore in most cases.
         // e.g., in EdgeExpandIntersection case, we only set alias of the collection to give the hint of intersection.
         // TODO: This may be an opt for other operators as well, as long as the tag is not in need anymore.
@@ -92,7 +92,15 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
 impl FlatMapFuncGen for algebra_pb::Unfold {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>> {
+    ) -> FnGenResult<
+        Box<
+            dyn FlatMapFunction<
+                Record<CompleteEntry>,
+                Record<CompleteEntry>,
+                Target = DynIter<Record<CompleteEntry>>,
+            >,
+        >,
+    > {
         let tag = self.tag.map(|tag| tag.try_into()).transpose()?;
         let alias = self
             .alias
@@ -117,9 +125,11 @@ mod tests {
     use crate::process::operator::accum::accumulator::Accumulator;
     use crate::process::operator::flatmap::FlatMapFuncGen;
     use crate::process::operator::tests::{init_source, TAG_A};
-    use crate::process::record::{Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record};
 
-    fn fold_unfold_test(fold_opr_pb: pb::GroupBy, unfold_opr_pb: pb::Unfold) -> ResultStream<Record> {
+    fn fold_unfold_test(
+        fold_opr_pb: pb::GroupBy, unfold_opr_pb: pb::Unfold,
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("fold_unfold_test");
         pegasus::run(conf, || {
             let source = init_source().clone();

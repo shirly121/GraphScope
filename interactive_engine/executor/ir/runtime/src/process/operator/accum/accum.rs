@@ -53,8 +53,8 @@ pub struct RecordAccumulator {
     accum_ops: Vec<(EntryAccumulator, TagKey, Option<KeyId>)>,
 }
 
-impl Accumulator<Record, Record> for RecordAccumulator {
-    fn accum(&mut self, mut next: Record) -> FnExecResult<()> {
+impl Accumulator<Record<CompleteEntry>, Record<CompleteEntry>> for RecordAccumulator {
+    fn accum(&mut self, mut next: Record<CompleteEntry>) -> FnExecResult<()> {
         for (accumulator, tag_key, _) in self.accum_ops.iter_mut() {
             let entry = tag_key.get_entry(&mut next)?;
             accumulator.accum(entry)?;
@@ -62,7 +62,7 @@ impl Accumulator<Record, Record> for RecordAccumulator {
         Ok(())
     }
 
-    fn finalize(&mut self) -> FnExecResult<Record> {
+    fn finalize(&mut self) -> FnExecResult<Record<CompleteEntry>> {
         let mut record = Record::default();
         for (accumulator, _, alias) in self.accum_ops.iter_mut() {
             let entry = accumulator.finalize()?;
@@ -353,7 +353,9 @@ mod tests {
     use crate::process::operator::tests::{init_source, init_vertex1, init_vertex2, TAG_A, TAG_B};
     use crate::process::record::{CompleteEntry, Record};
 
-    fn fold_test(source: Vec<Record>, fold_opr_pb: pb::GroupBy) -> ResultStream<Record> {
+    fn fold_test(
+        source: Vec<Record<CompleteEntry>>, fold_opr_pb: pb::GroupBy,
+    ) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("fold_test");
         let result = pegasus::run(conf, || {
             let fold_opr_pb = fold_opr_pb.clone();

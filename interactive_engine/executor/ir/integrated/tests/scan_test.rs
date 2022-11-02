@@ -27,12 +27,12 @@ mod test {
     use graph_store::ldbc::LDBCVertexParser;
     use ir_common::generated::algebra as pb;
     use runtime::process::operator::source::SourceOperator;
-    use runtime::process::record::{Entry, Record};
+    use runtime::process::record::{CompleteEntry, Entry, Record};
 
     use crate::common::test::*;
 
     // g.V()
-    fn scan_gen(scan_opr_pb: pb::Scan) -> Box<dyn Iterator<Item = Record> + Send> {
+    fn scan_gen(scan_opr_pb: pb::Scan) -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         create_exp_store();
         let source_opr_pb = pb::logical_plan::operator::Opr::Scan(scan_opr_pb);
         let source =
