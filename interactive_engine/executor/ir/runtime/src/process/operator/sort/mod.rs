@@ -19,14 +19,14 @@ use ir_common::generated::algebra as algebra_pb;
 
 use crate::error::FnGenResult;
 use crate::process::functions::CompareFunction;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 pub trait CompareFunctionGen {
-    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record<CompleteEntry>>>>;
+    fn gen_cmp<E: Entry>(self) -> FnGenResult<Box<dyn CompareFunction<Record<E>>>>;
 }
 
 impl CompareFunctionGen for algebra_pb::logical_plan::operator::Opr {
-    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record<CompleteEntry>>>> {
+    fn gen_cmp<E: Entry>(self) -> FnGenResult<Box<dyn CompareFunction<Record<E>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::OrderBy(order) => order.gen_cmp(),
             _ => Err(ParsePbError::from("algebra_pb op is not a order").into()),

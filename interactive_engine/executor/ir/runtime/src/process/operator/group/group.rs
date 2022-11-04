@@ -24,12 +24,16 @@ use crate::error::{FnExecError, FnGenResult};
 use crate::process::functions::{GroupGen, KeyFunction};
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
 use crate::process::operator::keyed::KeyFunctionGen;
-use crate::process::record::{CompleteEntry, Record, RecordKey};
+use crate::process::record::{CompleteEntry, Entry, Record, RecordKey};
 
-impl GroupGen<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for algebra_pb::GroupBy {
+impl GroupGen<Record<CompleteEntry>, RecordKey<CompleteEntry>, Record<CompleteEntry>>
+    for algebra_pb::GroupBy
+{
     fn gen_group_key(
         &self,
-    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
+    ) -> FnGenResult<
+        Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey<CompleteEntry>, Record<CompleteEntry>>>,
+    > {
         self.clone().gen_key()
     }
 
@@ -39,7 +43,9 @@ impl GroupGen<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for algeb
 
     fn gen_group_map(
         &self,
-    ) -> FnGenResult<Box<dyn MapFunction<(RecordKey, Record<CompleteEntry>), Record<CompleteEntry>>>> {
+    ) -> FnGenResult<
+        Box<dyn MapFunction<(RecordKey<CompleteEntry>, Record<CompleteEntry>), Record<CompleteEntry>>>,
+    > {
         let mut key_aliases = Vec::with_capacity(self.mappings.len());
         for key_alias in self.mappings.iter() {
             let alias: Option<KeyId> = Some(
@@ -64,10 +70,8 @@ struct GroupMap {
     key_aliases: Vec<KeyId>,
 }
 
-impl MapFunction<(RecordKey, Record<CompleteEntry>), Record<CompleteEntry>> for GroupMap {
-    fn exec(
-        &self, (group_key, mut group_value): (RecordKey, Record<CompleteEntry>),
-    ) -> FnResult<Record<CompleteEntry>> {
+impl<E: Entry> MapFunction<(RecordKey<E>, Record<E>), Record<E>> for GroupMap {
+    fn exec(&self, (group_key, mut group_value): (RecordKey<E>, Record<E>)) -> FnResult<Record<E>> {
         let group_key_entries = group_key.take();
         if group_key_entries.len() != self.key_aliases.len() {
             Err(FnExecError::unexpected_data_error(

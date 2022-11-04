@@ -80,7 +80,7 @@ impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for FusedOper
     }
 }
 
-impl FlatMapFuncGen for algebra_pb::FusedOperator {
+impl FlatMapFuncGen<CompleteEntry> for algebra_pb::FusedOperator {
     fn gen_flat_map(
         self,
     ) -> FnGenResult<

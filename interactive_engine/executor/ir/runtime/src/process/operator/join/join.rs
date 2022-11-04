@@ -19,20 +19,16 @@ use ir_common::generated::algebra::join::JoinKind;
 use crate::error::FnGenResult;
 use crate::process::functions::{JoinKeyGen, KeyFunction};
 use crate::process::operator::keyed::KeySelector;
-use crate::process::record::{CompleteEntry, Record, RecordKey};
+use crate::process::record::{Entry, Record, RecordKey};
 
-impl JoinKeyGen<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for algebra_pb::Join {
-    fn gen_left_kv_fn(
-        &self,
-    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
+impl<E: Entry> JoinKeyGen<Record<E>, RecordKey<E>, Record<E>> for algebra_pb::Join {
+    fn gen_left_kv_fn(&self) -> FnGenResult<Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>> {
         let left_kv_fn = KeySelector::with(self.left_keys.clone())?;
         debug!("Runtime join operator left_kv_fn {:?}", left_kv_fn);
         Ok(Box::new(left_kv_fn))
     }
 
-    fn gen_right_kv_fn(
-        &self,
-    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
+    fn gen_right_kv_fn(&self) -> FnGenResult<Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>> {
         let right_kv_fn = KeySelector::with(self.right_keys.clone())?;
         debug!("Runtime join operator right_kv_fn {:?}", right_kv_fn);
         Ok(Box::new(right_kv_fn))
@@ -55,7 +51,7 @@ mod tests {
     use pegasus::JobConf;
 
     use crate::process::functions::JoinKeyGen;
-    use crate::process::record::{CompleteEntry, Entry, Record};
+    use crate::process::record::{CompleteEntry, Entry, Record, RecordKey};
 
     fn source_s1_gen() -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
         let v1 = Vertex::new(1, None, DynDetails::default());
@@ -86,7 +82,11 @@ mod tests {
                 };
                 let left_key_selector = join_opr_pb.gen_left_kv_fn()?;
                 let right_key_selector = join_opr_pb.gen_right_kv_fn()?;
-                let join_kind = join_opr_pb.get_join_kind();
+                let join_kind = JoinKeyGen::<
+                    Record<CompleteEntry>,
+                    RecordKey<CompleteEntry>,
+                    Record<CompleteEntry>,
+                >::get_join_kind(&join_opr_pb);
                 let left_stream = s1
                     .key_by(move |record| left_key_selector.get_kv(record))?
                     // TODO(bingqing): remove this when new keyed-join in gaia-x is ready;

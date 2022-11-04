@@ -19,14 +19,14 @@ use ir_common::generated::algebra as algebra_pb;
 use pegasus::api::function::FilterFunction;
 
 use crate::error::FnGenResult;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 pub trait FilterFuncGen {
-    fn gen_filter(self) -> FnGenResult<Box<dyn FilterFunction<Record<CompleteEntry>>>>;
+    fn gen_filter<E: Entry>(self) -> FnGenResult<Box<dyn FilterFunction<Record<E>>>>;
 }
 
 impl FilterFuncGen for algebra_pb::logical_plan::operator::Opr {
-    fn gen_filter(self) -> FnGenResult<Box<dyn FilterFunction<Record<CompleteEntry>>>> {
+    fn gen_filter<E: Entry>(self) -> FnGenResult<Box<dyn FilterFunction<Record<E>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::Select(select) => select.gen_filter(),
             _ => Err(ParsePbError::from("algebra_pb op is not a filter"))?,

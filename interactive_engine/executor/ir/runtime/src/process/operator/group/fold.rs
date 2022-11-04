@@ -23,7 +23,7 @@ use pegasus_server::job_pb as server_pb;
 use crate::error::{FnGenError, FnGenResult};
 use crate::process::functions::FoldGen;
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{CompleteEntry, Entry, Record};
 
 impl FoldGen<u64, Record<CompleteEntry>> for algebra_pb::GroupBy {
     fn get_accum_kind(&self) -> server_pb::AccumKind {
@@ -63,9 +63,9 @@ struct CountAlias {
     alias: Option<KeyId>,
 }
 
-impl MapFunction<u64, Record<CompleteEntry>> for CountAlias {
-    fn exec(&self, cnt: u64) -> FnResult<Record<CompleteEntry>> {
-        let cnt_entry: CompleteEntry = object!(cnt).into();
+impl<E: Entry> MapFunction<u64, Record<E>> for CountAlias {
+    fn exec(&self, cnt: u64) -> FnResult<Record<E>> {
+        let cnt_entry = E::from_object(object!(cnt));
         Ok(Record::new(cnt_entry, self.alias.clone()))
     }
 }

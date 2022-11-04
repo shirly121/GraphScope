@@ -22,15 +22,15 @@ use pegasus::api::function::{FilterFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::filter::FilterFuncGen;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct SelectOperator {
     pub filter: PEvaluator,
 }
 
-impl FilterFunction<Record<CompleteEntry>> for SelectOperator {
-    fn test(&self, input: &Record<CompleteEntry>) -> FnResult<bool> {
+impl<E: Entry> FilterFunction<Record<E>> for SelectOperator {
+    fn test(&self, input: &Record<E>) -> FnResult<bool> {
         let res = self
             .filter
             .eval_bool(Some(input))
@@ -40,7 +40,7 @@ impl FilterFunction<Record<CompleteEntry>> for SelectOperator {
 }
 
 impl FilterFuncGen for algebra_pb::Select {
-    fn gen_filter(self) -> FnGenResult<Box<dyn FilterFunction<Record<CompleteEntry>>>> {
+    fn gen_filter<E: Entry>(self) -> FnGenResult<Box<dyn FilterFunction<Record<E>>>> {
         if let Some(predicate) = self.predicate {
             let select_operator = SelectOperator { filter: predicate.try_into()? };
             debug!("Runtime select operator: {:?}", select_operator);

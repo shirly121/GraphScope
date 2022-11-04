@@ -24,7 +24,7 @@ use crate::error::FnGenResult;
 use crate::process::functions::KeyFunction;
 use crate::process::operator::keyed::KeyFunctionGen;
 use crate::process::operator::TagKey;
-use crate::process::record::{CompleteEntry, Record, RecordKey};
+use crate::process::record::{Entry, Record, RecordKey};
 
 #[derive(Debug)]
 pub struct KeySelector {
@@ -41,8 +41,8 @@ impl KeySelector {
     }
 }
 
-impl KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for KeySelector {
-    fn get_kv(&self, mut input: Record<CompleteEntry>) -> FnResult<(RecordKey, Record<CompleteEntry>)> {
+impl<E: Entry> KeyFunction<Record<E>, RecordKey<E>, Record<E>> for KeySelector {
+    fn get_kv(&self, mut input: Record<E>) -> FnResult<(RecordKey<E>, Record<E>)> {
         let keys = self
             .keys
             .iter()
@@ -53,9 +53,7 @@ impl KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>> for Ke
 }
 
 impl KeyFunctionGen for algebra_pb::GroupBy {
-    fn gen_key(
-        self,
-    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
+    fn gen_key<E: Entry>(self) -> FnGenResult<Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>> {
         let key_selector = KeySelector::with(
             self.mappings
                 .iter()
@@ -68,9 +66,7 @@ impl KeyFunctionGen for algebra_pb::GroupBy {
 }
 
 impl KeyFunctionGen for algebra_pb::Dedup {
-    fn gen_key(
-        self,
-    ) -> FnGenResult<Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey, Record<CompleteEntry>>>> {
+    fn gen_key<E: Entry>(self) -> FnGenResult<Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>> {
         let key_selector = KeySelector::with(self.keys)?;
         debug!("Runtime dedup operator key_selector: {:?}", key_selector);
         Ok(Box::new(key_selector))

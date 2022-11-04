@@ -180,7 +180,7 @@ impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record<CompleteEntry>, 
     }
 }
 
-impl FilterMapFuncGen for algebra_pb::EdgeExpand {
+impl FilterMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
     fn gen_filter_map(
         self,
     ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {

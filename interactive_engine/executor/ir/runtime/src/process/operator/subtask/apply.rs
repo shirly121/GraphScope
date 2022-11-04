@@ -24,7 +24,7 @@ use pegasus::api::function::{BinaryFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::functions::ApplyGen;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct ApplyOperator {
@@ -32,12 +32,8 @@ struct ApplyOperator {
     alias: Option<KeyId>,
 }
 
-impl BinaryFunction<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Record<CompleteEntry>>>
-    for ApplyOperator
-{
-    fn exec(
-        &self, mut parent: Record<CompleteEntry>, sub: Vec<Record<CompleteEntry>>,
-    ) -> FnResult<Option<Record<CompleteEntry>>> {
+impl<E: Entry> BinaryFunction<Record<E>, Vec<Record<E>>, Option<Record<E>>> for ApplyOperator {
+    fn exec(&self, mut parent: Record<E>, sub: Vec<Record<E>>) -> FnResult<Option<Record<E>>> {
         match self.join_kind {
             JoinKind::Inner => {
                 if sub.is_empty() {
@@ -60,7 +56,7 @@ impl BinaryFunction<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Re
             }
             JoinKind::LeftOuter => {
                 if sub.is_empty() {
-                    let entry: Arc<CompleteEntry> = Arc::new(Object::None.into());
+                    let entry: Arc<E> = Arc::new(E::from_object(Object::None));
                     if let Some(alias) = self.alias.as_ref() {
                         let columns = parent.get_columns_mut();
                         columns.insert(*alias as usize, entry.clone());
@@ -91,24 +87,14 @@ impl BinaryFunction<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Re
     }
 }
 
-impl ApplyGen<Record<CompleteEntry>, Vec<Record<CompleteEntry>>, Option<Record<CompleteEntry>>>
-    for algebra_pb::Apply
-{
+impl<E: Entry> ApplyGen<Record<E>, Vec<Record<E>>, Option<Record<E>>> for algebra_pb::Apply {
     fn get_join_kind(&self) -> JoinKind {
         unsafe { ::std::mem::transmute(self.join_kind) }
     }
 
     fn gen_left_join_func(
         &self,
-    ) -> FnGenResult<
-        Box<
-            dyn BinaryFunction<
-                Record<CompleteEntry>,
-                Vec<Record<CompleteEntry>>,
-                Option<Record<CompleteEntry>>,
-            >,
-        >,
-    > {
+    ) -> FnGenResult<Box<dyn BinaryFunction<Record<E>, Vec<Record<E>>, Option<Record<E>>>>> {
         let join_kind: JoinKind = unsafe { ::std::mem::transmute(self.join_kind) };
         let alias = self
             .alias

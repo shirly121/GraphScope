@@ -24,15 +24,15 @@ use crate::error::FnGenResult;
 use crate::process::functions::CompareFunction;
 use crate::process::operator::sort::CompareFunctionGen;
 use crate::process::operator::TagKey;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct RecordCompare {
     tag_key_order: Vec<(TagKey, Order)>,
 }
 
-impl CompareFunction<Record<CompleteEntry>> for RecordCompare {
-    fn compare(&self, left: &Record<CompleteEntry>, right: &Record<CompleteEntry>) -> Ordering {
+impl<E: Entry> CompareFunction<Record<E>> for RecordCompare {
+    fn compare(&self, left: &Record<E>, right: &Record<E>) -> Ordering {
         let mut result = Ordering::Equal;
         for (tag_key, order) in self.tag_key_order.iter() {
             let left_obj = tag_key.get_arc_entry(left).ok();
@@ -55,7 +55,7 @@ impl CompareFunction<Record<CompleteEntry>> for RecordCompare {
 }
 
 impl CompareFunctionGen for algebra_pb::OrderBy {
-    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record<CompleteEntry>>>> {
+    fn gen_cmp<E: Entry>(self) -> FnGenResult<Box<dyn CompareFunction<Record<E>>>> {
         let record_compare = RecordCompare::try_from(self)?;
         debug!("Runtime order operator cmp: {:?}", record_compare);
         Ok(Box::new(record_compare))

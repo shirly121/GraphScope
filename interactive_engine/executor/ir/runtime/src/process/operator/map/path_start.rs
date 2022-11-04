@@ -50,7 +50,7 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for PathSta
     }
 }
 
-impl FilterMapFuncGen for algebra_pb::PathStart {
+impl FilterMapFuncGen<CompleteEntry> for algebra_pb::PathStart {
     fn gen_filter_map(
         self,
     ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {

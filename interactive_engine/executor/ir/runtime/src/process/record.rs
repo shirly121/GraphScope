@@ -33,7 +33,7 @@ use vec_map::VecMap;
 
 use crate::process::operator::map::Intersection;
 
-pub trait Entry: Data {
+pub trait Entry: Data + Element + PartialEq + PartialOrd {
     fn as_graph_vertex(&self) -> Option<&Vertex>;
 
     fn as_graph_edge(&self) -> Option<&Edge>;
@@ -44,7 +44,17 @@ pub trait Entry: Data {
 
     fn as_graph_path_mut(&mut self) -> Option<&mut GraphPath>;
 
+    fn as_intersection(&self) -> Option<&Intersection>;
+
+    fn as_intersection_mut(&mut self) -> Option<&mut Intersection>;
+
+    fn as_collection(&self) -> Option<&Vec<Self>>;
+
+    fn as_collection_mut(&mut self) -> Option<&mut Vec<Self>>;
+
     fn is_none(&self) -> bool;
+
+    fn from_object(object: Object) -> Self;
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
@@ -93,11 +103,43 @@ impl Entry for CompleteEntry {
         }
     }
 
+    fn as_intersection(&self) -> Option<&Intersection> {
+        match self {
+            CompleteEntry::Intersection(intersection) => Some(intersection),
+            _ => None,
+        }
+    }
+
+    fn as_intersection_mut(&mut self) -> Option<&mut Intersection> {
+        match self {
+            CompleteEntry::Intersection(intersection) => Some(intersection),
+            _ => None,
+        }
+    }
+
+    fn as_collection(&self) -> Option<&Vec<CompleteEntry>> {
+        match self {
+            CompleteEntry::Collection(collection) => Some(collection),
+            _ => None,
+        }
+    }
+
+    fn as_collection_mut(&mut self) -> Option<&mut Vec<Self>> {
+        match self {
+            CompleteEntry::Collection(collection) => Some(collection),
+            _ => None,
+        }
+    }
+
     fn is_none(&self) -> bool {
         match self {
             CompleteEntry::OffGraph(Object::None) => true,
             _ => false,
         }
+    }
+
+    fn from_object(object: Object) -> Self {
+        CompleteEntry::OffGraph(object)
     }
 }
 
@@ -114,6 +156,15 @@ impl<E: Entry> Default for Record<E> {
 }
 
 impl<E: Entry> Record<E> {
+    pub fn new<IE: Into<E>>(entry: IE, tag: Option<KeyId>) -> Self {
+        let entry = Arc::new(entry.into());
+        let mut columns = VecMap::new();
+        if let Some(tag) = tag {
+            columns.insert(tag as usize, entry.clone());
+        }
+        Record { curr: Some(entry), columns }
+    }
+
     /// A handy api to append entry of different types that can be turned into `Entry`
     pub fn append<IE: Into<E>>(&mut self, entry: IE, alias: Option<KeyId>) {
         self.append_arc_entry(Arc::new(entry.into()), alias)
@@ -126,35 +177,24 @@ impl<E: Entry> Record<E> {
         }
         self.curr = Some(entry);
     }
-}
-
-impl Record<CompleteEntry> {
-    pub fn new<E: Into<CompleteEntry>>(entry: E, tag: Option<KeyId>) -> Self {
-        let entry = Arc::new(entry.into());
-        let mut columns = VecMap::new();
-        if let Some(tag) = tag {
-            columns.insert(tag as usize, entry.clone());
-        }
-        Record { curr: Some(entry), columns }
-    }
 
     /// Set new current entry for the record
-    pub fn set_curr_entry(&mut self, entry: Option<Arc<CompleteEntry>>) {
+    pub fn set_curr_entry(&mut self, entry: Option<Arc<E>>) {
         self.curr = entry;
     }
 
-    pub fn get_column_mut(&mut self, tag: &KeyId) -> Option<&mut CompleteEntry> {
+    pub fn get_column_mut(&mut self, tag: &KeyId) -> Option<&mut E> {
         self.columns
             .get_mut(*tag as usize)
             .map(|e| Arc::get_mut(e))
             .unwrap_or(None)
     }
 
-    pub fn get_columns_mut(&mut self) -> &mut VecMap<Arc<CompleteEntry>> {
+    pub fn get_columns_mut(&mut self) -> &mut VecMap<Arc<E>> {
         self.columns.borrow_mut()
     }
 
-    pub fn get(&self, tag: Option<KeyId>) -> Option<&Arc<CompleteEntry>> {
+    pub fn get(&self, tag: Option<KeyId>) -> Option<&Arc<E>> {
         if let Some(tag) = tag {
             self.columns.get(tag as usize)
         } else {
@@ -162,7 +202,7 @@ impl Record<CompleteEntry> {
         }
     }
 
-    pub fn take(&mut self, tag: Option<&KeyId>) -> Option<Arc<CompleteEntry>> {
+    pub fn take(&mut self, tag: Option<&KeyId>) -> Option<Arc<E>> {
         if let Some(tag) = tag {
             self.columns.remove(*tag as usize)
         } else {
@@ -176,9 +216,7 @@ impl Record<CompleteEntry> {
     /// * `is_left_opt = None` -> set as `None`,
     /// * `is_left_opt = Some(true)` -> set as left record,
     /// * `is_left_opt = Some(false)` -> set as right record.
-    pub fn join(
-        mut self, mut other: Record<CompleteEntry>, is_left_opt: Option<bool>,
-    ) -> Record<CompleteEntry> {
+    pub fn join(mut self, mut other: Record<E>, is_left_opt: Option<bool>) -> Record<E> {
         for column in other.columns.drain() {
             if !self.columns.contains_key(column.0) {
                 self.columns.insert(column.0, column.1);
@@ -236,8 +274,8 @@ impl Into<CompleteEntry> for Intersection {
     }
 }
 
-impl Context<CompleteEntry> for Record<CompleteEntry> {
-    fn get(&self, tag: Option<&NameOrId>) -> Option<&CompleteEntry> {
+impl<E: Entry> Context<E> for Record<E> {
+    fn get(&self, tag: Option<&NameOrId>) -> Option<&E> {
         let tag = if let Some(tag) = tag {
             match tag {
                 // TODO: may better throw an unsupported error if tag is a string_tag
@@ -248,10 +286,12 @@ impl Context<CompleteEntry> for Record<CompleteEntry> {
             None
         };
         self.get(tag)
-            .map(|entry| match entry.as_ref() {
-                CompleteEntry::Collection(_) => None,
-                CompleteEntry::Intersection(_) => None,
-                _ => Some(entry.as_ref()),
+            .map(|entry| {
+                if let (None, None) = (entry.as_collection(), entry.as_intersection()) {
+                    Some(entry.as_ref())
+                } else {
+                    None
+                }
             })
             .unwrap_or(None)
     }
@@ -294,20 +334,20 @@ impl Element for CompleteEntry {
 
 /// RecordKey is the key fields of a Record, with each key corresponding to a request column_tag
 #[derive(Clone, Debug, Hash, PartialEq)]
-pub struct RecordKey {
-    key_fields: Vec<Arc<CompleteEntry>>,
+pub struct RecordKey<E: Entry> {
+    key_fields: Vec<Arc<E>>,
 }
 
-impl RecordKey {
-    pub fn new(key_fields: Vec<Arc<CompleteEntry>>) -> Self {
+impl<E: Entry> RecordKey<E> {
+    pub fn new(key_fields: Vec<Arc<E>>) -> Self {
         RecordKey { key_fields }
     }
-    pub fn take(self) -> Vec<Arc<CompleteEntry>> {
+    pub fn take(self) -> Vec<Arc<E>> {
         self.key_fields
     }
 }
 
-impl Eq for RecordKey {}
+impl<E: Entry> Eq for RecordKey<E> {}
 impl Eq for CompleteEntry {}
 
 pub struct RecordExpandIter<E: Entry, IE> {
@@ -446,7 +486,7 @@ impl Decode for CompleteEntry {
     }
 }
 
-impl Encode for Record<CompleteEntry> {
+impl<E: Entry> Encode for Record<E> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         match &self.curr {
             None => {
@@ -466,22 +506,22 @@ impl Encode for Record<CompleteEntry> {
     }
 }
 
-impl Decode for Record<CompleteEntry> {
+impl<E: Entry> Decode for Record<E> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let opt = reader.read_u8()?;
-        let curr = if opt == 0 { None } else { Some(Arc::new(<CompleteEntry>::read_from(reader)?)) };
+        let curr = if opt == 0 { None } else { Some(Arc::new(<E>::read_from(reader)?)) };
         let size = <u64>::read_from(reader)? as usize;
         let mut columns = VecMap::with_capacity(size);
         for _i in 0..size {
             let k = <KeyId>::read_from(reader)? as usize;
-            let v = <CompleteEntry>::read_from(reader)?;
+            let v = <E>::read_from(reader)?;
             columns.insert(k, Arc::new(v));
         }
         Ok(Record { curr, columns })
     }
 }
 
-impl Encode for RecordKey {
+impl<E: Entry> Encode for RecordKey<E> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         writer.write_u32(self.key_fields.len() as u32)?;
         for key in self.key_fields.iter() {
@@ -491,12 +531,12 @@ impl Encode for RecordKey {
     }
 }
 
-impl Decode for RecordKey {
+impl<E: Entry> Decode for RecordKey<E> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let len = reader.read_u32()?;
         let mut key_fields = Vec::with_capacity(len as usize);
         for _i in 0..len {
-            let entry = <CompleteEntry>::read_from(reader)?;
+            let entry = <E>::read_from(reader)?;
             key_fields.push(Arc::new(entry))
         }
         Ok(RecordKey { key_fields })

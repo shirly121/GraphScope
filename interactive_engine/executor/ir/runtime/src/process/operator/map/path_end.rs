@@ -41,7 +41,7 @@ impl MapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for PathEndOperat
     }
 }
 
-impl MapFuncGen for algebra_pb::PathEnd {
+impl MapFuncGen<CompleteEntry> for algebra_pb::PathEnd {
     fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
         let alias = self
             .alias

@@ -25,13 +25,13 @@ use ir_common::generated::algebra as algebra_pb;
 use pegasus::api::function::{FilterMapFunction, MapFunction};
 
 use crate::error::FnGenResult;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{CompleteEntry, Entry, Record};
 
-pub trait MapFuncGen {
-    fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>>;
+pub trait MapFuncGen<E: Entry> {
+    fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<E>, Record<E>>>>;
 }
 
-impl MapFuncGen for algebra_pb::logical_plan::operator::Opr {
+impl MapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
     fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::PathEnd(path_end) => path_end.gen_map(),
@@ -40,13 +40,11 @@ impl MapFuncGen for algebra_pb::logical_plan::operator::Opr {
     }
 }
 
-pub trait FilterMapFuncGen {
-    fn gen_filter_map(
-        self,
-    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>>;
+pub trait FilterMapFuncGen<E: Entry> {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>>;
 }
 
-impl FilterMapFuncGen for algebra_pb::logical_plan::operator::Opr {
+impl FilterMapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
     fn gen_filter_map(
         self,
     ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {

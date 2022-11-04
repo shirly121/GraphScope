@@ -91,7 +91,7 @@ impl<E: Into<CompleteEntry> + 'static> FlatMapFunction<Record<CompleteEntry>, Re
     }
 }
 
-impl FlatMapFuncGen for algebra_pb::EdgeExpand {
+impl FlatMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
     fn gen_flat_map(
         self,
     ) -> FnGenResult<

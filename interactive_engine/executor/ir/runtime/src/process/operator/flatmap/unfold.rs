@@ -89,7 +89,7 @@ impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for UnfoldOpe
     }
 }
 
-impl FlatMapFuncGen for algebra_pb::Unfold {
+impl FlatMapFuncGen<CompleteEntry> for algebra_pb::Unfold {
     fn gen_flat_map(
         self,
     ) -> FnGenResult<

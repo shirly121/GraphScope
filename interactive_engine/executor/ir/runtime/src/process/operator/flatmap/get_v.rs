@@ -58,7 +58,7 @@ impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for GetBothVO
     }
 }
 
-impl FlatMapFuncGen for algebra_pb::GetV {
+impl FlatMapFuncGen<CompleteEntry> for algebra_pb::GetV {
     fn gen_flat_map(
         self,
     ) -> FnGenResult<

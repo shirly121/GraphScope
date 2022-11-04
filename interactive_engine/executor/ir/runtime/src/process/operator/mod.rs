@@ -30,14 +30,14 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 
 use dyn_type::Object;
-use graph_proxy::apis::{Details, Element, PropKey};
+use graph_proxy::apis::{Details, PropKey};
 use ir_common::error::ParsePbError;
 use ir_common::generated::common as common_pb;
 use ir_common::{KeyId, NameOrId};
 use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
 use crate::error::{FnExecError, FnExecResult};
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Clone, Debug, Default)]
 pub struct TagKey {
@@ -47,7 +47,7 @@ pub struct TagKey {
 
 impl TagKey {
     /// This is for key generation, which generate the key of the input Record according to the tag_key field
-    pub fn get_arc_entry(&self, input: &Record<CompleteEntry>) -> FnExecResult<Arc<CompleteEntry>> {
+    pub fn get_arc_entry<E: Entry>(&self, input: &Record<E>) -> FnExecResult<Arc<E>> {
         if let Some(entry) = input.get(self.tag) {
             if let Some(prop_key) = self.key.as_ref() {
                 let prop = self.get_key(entry, prop_key)?;
@@ -56,12 +56,12 @@ impl TagKey {
                 Ok(entry.clone())
             }
         } else {
-            Ok(Arc::new((Object::None).into()))
+            Ok(Arc::new(E::from_object(Object::None)))
         }
     }
 
     /// This is for accum, which get the entry of the input Record according to the tag_key field
-    pub fn get_entry(&self, input: &Record<CompleteEntry>) -> FnExecResult<CompleteEntry> {
+    pub fn get_entry<E: Entry>(&self, input: &Record<E>) -> FnExecResult<E> {
         if let Some(entry) = input.get(self.tag) {
             if let Some(prop_key) = self.key.as_ref() {
                 Ok(self.get_key(entry, prop_key)?)
@@ -69,11 +69,11 @@ impl TagKey {
                 Ok(entry.as_ref().clone())
             }
         } else {
-            Ok((Object::None).into())
+            Ok(E::from_object(Object::None))
         }
     }
 
-    fn get_key(&self, element: &Arc<CompleteEntry>, prop_key: &PropKey) -> FnExecResult<CompleteEntry> {
+    fn get_key<E: Entry>(&self, element: &Arc<E>, prop_key: &PropKey) -> FnExecResult<E> {
         if let Some(element) = element.as_graph_element() {
             let prop_obj = match prop_key {
                 PropKey::Id => element.id().into(),
@@ -121,7 +121,7 @@ impl TagKey {
                 }
             };
 
-            Ok(prop_obj.into())
+            Ok(E::from_object(prop_obj))
         } else {
             Err(FnExecError::unexpected_data_error(&format!(
                 "

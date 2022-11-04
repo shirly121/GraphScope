@@ -115,7 +115,7 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for Project
     }
 }
 
-impl FilterMapFuncGen for algebra_pb::Project {
+impl FilterMapFuncGen<CompleteEntry> for algebra_pb::Project {
     fn gen_filter_map(
         self,
     ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {

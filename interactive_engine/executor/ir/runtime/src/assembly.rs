@@ -55,9 +55,9 @@ type RecordFilter<E> = Box<dyn FilterFunction<Record<E>>>;
 type RecordLeftJoin<E> = Box<dyn ApplyGen<Record<E>, Vec<Record<E>>, Option<Record<E>>>>;
 type RecordShuffle<E> = Box<dyn RouteFunction<Record<E>>>;
 type RecordCompare<E> = Box<dyn CompareFunction<Record<E>>>;
-type RecordJoin<E> = Box<dyn JoinKeyGen<Record<E>, RecordKey, Record<E>>>;
-type RecordKeySelector<E> = Box<dyn KeyFunction<Record<E>, RecordKey, Record<E>>>;
-type RecordGroup<E> = Box<dyn GroupGen<Record<E>, RecordKey, Record<E>>>;
+type RecordJoin<E> = Box<dyn JoinKeyGen<Record<E>, RecordKey<E>, Record<E>>>;
+type RecordKeySelector<E> = Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>;
+type RecordGroup<E> = Box<dyn GroupGen<Record<E>, RecordKey<E>, Record<E>>>;
 type RecordFold<E> = Box<dyn FoldGen<u64, Record<E>>>;
 type BinaryResource = Vec<u8>;
 

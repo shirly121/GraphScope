@@ -70,7 +70,7 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for GetVert
     }
 }
 
-impl FilterMapFuncGen for algebra_pb::GetV {
+impl FilterMapFuncGen<CompleteEntry> for algebra_pb::GetV {
     fn gen_filter_map(
         self,
     ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
