@@ -36,7 +36,7 @@ mod test {
     use runtime::process::operator::flatmap::FlatMapFuncGen;
     use runtime::process::operator::map::FilterMapFuncGen;
     use runtime::process::operator::source::SourceOperator;
-    use runtime::process::record::{CompleteEntry, Entry, Record};
+    use runtime::process::record::{CompleteEntry, Entry, Record, SimpleEntry};
 
     use crate::common::test::*;
 
@@ -63,12 +63,42 @@ mod test {
         source.gen_source(0).unwrap()
     }
 
+    fn source_gen_simple(
+        alias: Option<common_pb::NameOrId>,
+    ) -> Box<dyn Iterator<Item = Record<SimpleEntry>> + Send> {
+        create_exp_store();
+        let scan_opr_pb = pb::Scan { scan_opt: 0, alias, params: None, idx_predicate: None };
+        let source = SourceOperator::new(
+            pb::logical_plan::operator::Opr::Scan(scan_opr_pb),
+            1,
+            1,
+            Arc::new(SimplePartition { num_servers: 1 }),
+        )
+        .unwrap();
+        source.gen_source_simple(0).unwrap()
+    }
+
     fn expand_test(expand: pb::EdgeExpand) -> ResultStream<Record<CompleteEntry>> {
         let conf = JobConf::new("expand_test");
         let result = pegasus::run(conf, || {
             let expand = expand.clone();
             |input, output| {
                 let mut stream = input.input_from(source_gen(None))?;
+                let flatmap_func = expand.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| flatmap_func.exec(input))?;
+                stream.sink_into(output)
+            }
+        })
+        .expect("build job failure");
+        result
+    }
+
+    fn expand_test_simple(expand: pb::EdgeExpand) -> ResultStream<Record<SimpleEntry>> {
+        let conf = JobConf::new("expand_test");
+        let result = pegasus::run(conf, || {
+            let expand = expand.clone();
+            |input, output| {
+                let mut stream = input.input_from(source_gen_simple(None))?;
                 let flatmap_func = expand.gen_flat_map().unwrap();
                 stream = stream.flat_map(move |input| flatmap_func.exec(input))?;
                 stream.sink_into(output)
@@ -139,6 +169,28 @@ mod test {
         let expand_opr_pb =
             pb::EdgeExpand { v_tag: None, direction: 0, params: None, expand_opt: 0, alias: None };
         let mut result = expand_test(expand_opr_pb);
+        let mut result_ids = vec![];
+        let v2: DefaultId = LDBCVertexParser::to_global_id(2, 0);
+        let v3: DefaultId = LDBCVertexParser::to_global_id(3, 1);
+        let v4: DefaultId = LDBCVertexParser::to_global_id(4, 0);
+        let v5: DefaultId = LDBCVertexParser::to_global_id(5, 1);
+        let mut expected_ids = vec![v2, v3, v3, v3, v4, v5];
+        while let Some(Ok(record)) = result.next() {
+            if let Some(element) = record.get(None).unwrap().as_graph_vertex() {
+                result_ids.push(element.id() as usize)
+            }
+        }
+        result_ids.sort();
+        expected_ids.sort();
+        assert_eq!(result_ids, expected_ids)
+    }
+
+    // g.V().out()
+    #[test]
+    fn expand_outv_test_simple() {
+        let expand_opr_pb =
+            pb::EdgeExpand { v_tag: None, direction: 0, params: None, expand_opt: 0, alias: None };
+        let mut result = expand_test_simple(expand_opr_pb);
         let mut result_ids = vec![];
         let v2: DefaultId = LDBCVertexParser::to_global_id(2, 0);
         let v3: DefaultId = LDBCVertexParser::to_global_id(3, 1);

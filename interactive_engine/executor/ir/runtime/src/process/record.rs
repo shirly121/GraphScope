@@ -33,7 +33,7 @@ use vec_map::VecMap;
 
 use crate::process::operator::map::Intersection;
 
-pub trait Entry: Data + Element + PartialEq + PartialOrd {
+pub trait Entry: Data + Element + PartialEq + PartialOrd + From<Vertex> + From<Intersection> {
     fn as_graph_vertex(&self) -> Option<&Vertex>;
 
     fn as_graph_edge(&self) -> Option<&Edge>;
@@ -143,6 +143,144 @@ impl Entry for CompleteEntry {
     }
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
+pub enum SimpleEntry {
+    V(Vertex),
+    I(Intersection),
+    Null,
+}
+
+impl Entry for SimpleEntry {
+    fn as_graph_vertex(&self) -> Option<&Vertex> {
+        match self {
+            SimpleEntry::V(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    fn as_graph_edge(&self) -> Option<&Edge> {
+        None
+    }
+
+    fn as_graph_path(&self) -> Option<&GraphPath> {
+        None
+    }
+
+    fn as_object(&self) -> Option<&Object> {
+        None
+    }
+
+    fn as_graph_path_mut(&mut self) -> Option<&mut GraphPath> {
+        None
+    }
+
+    fn as_intersection(&self) -> Option<&Intersection> {
+        match self {
+            SimpleEntry::I(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    fn as_intersection_mut(&mut self) -> Option<&mut Intersection> {
+        match self {
+            SimpleEntry::I(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    fn as_collection(&self) -> Option<&Vec<Self>> {
+        None
+    }
+
+    fn as_collection_mut(&mut self) -> Option<&mut Vec<Self>> {
+        None
+    }
+
+    fn is_none(&self) -> bool {
+        match self {
+            SimpleEntry::Null => true,
+            _ => false,
+        }
+    }
+
+    fn from_object(_object: Object) -> Self {
+        SimpleEntry::Null
+    }
+}
+
+impl Element for SimpleEntry {
+    fn as_graph_element(&self) -> Option<&dyn GraphElement> {
+        match self {
+            SimpleEntry::V(v) => v.as_graph_element(),
+            _ => None,
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            SimpleEntry::V(v) => v.len(),
+            SimpleEntry::I(i) => i.len(),
+            SimpleEntry::Null => 0,
+        }
+    }
+
+    fn as_borrow_object(&self) -> BorrowObject {
+        match self {
+            SimpleEntry::V(v) => v.as_borrow_object(),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Encode for SimpleEntry {
+    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            SimpleEntry::V(v) => {
+                writer.write_u8(0)?;
+                v.write_to(writer)?;
+            }
+            SimpleEntry::I(i) => {
+                writer.write_u8(1)?;
+                i.write_to(writer)?;
+            }
+            SimpleEntry::Null => {
+                writer.write_u8(2)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Decode for SimpleEntry {
+    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
+        let opt = reader.read_u8()?;
+        match opt {
+            0 => {
+                let v = <Vertex>::read_from(reader)?;
+                Ok(SimpleEntry::V(v))
+            }
+            1 => {
+                let i = <Intersection>::read_from(reader)?;
+                Ok(SimpleEntry::I(i))
+            }
+            2 => Ok(SimpleEntry::Null),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "unreachable")),
+        }
+    }
+}
+
+impl From<Vertex> for SimpleEntry {
+    fn from(v: Vertex) -> Self {
+        SimpleEntry::V(v)
+    }
+}
+
+impl From<Intersection> for SimpleEntry {
+    fn from(i: Intersection) -> Self {
+        SimpleEntry::I(i)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Record<E: Entry> {
     curr: Option<Arc<E>>,
@@ -235,9 +373,9 @@ impl<E: Entry> Record<E> {
     }
 }
 
-impl Into<CompleteEntry> for Vertex {
-    fn into(self) -> CompleteEntry {
-        CompleteEntry::V(self)
+impl From<Vertex> for CompleteEntry {
+    fn from(v: Vertex) -> Self {
+        CompleteEntry::V(v)
     }
 }
 
@@ -268,9 +406,9 @@ impl Into<CompleteEntry> for Object {
     }
 }
 
-impl Into<CompleteEntry> for Intersection {
-    fn into(self) -> CompleteEntry {
-        CompleteEntry::Intersection(self)
+impl From<Intersection> for CompleteEntry {
+    fn from(i: Intersection) -> Self {
+        CompleteEntry::Intersection(i)
     }
 }
 

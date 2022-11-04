@@ -15,6 +15,7 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use graph_proxy::apis::graph::element::GraphElement;
@@ -27,16 +28,17 @@ use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 /// An ExpandOrIntersect operator to expand neighbors
 /// and intersect with the ones of the same tag found previously (if exists).
 /// Notice that start_v_tag (from which tag to expand from)
 /// and edge_or_end_v_tag (the alias of expanded neighbors) must be specified.
-struct ExpandOrIntersect<E: Into<CompleteEntry>> {
+struct ExpandOrIntersect<E: Entry, IE: Into<E>> {
     start_v_tag: KeyId,
     edge_or_end_v_tag: KeyId,
-    stmt: Box<dyn Statement<ID, E>>,
+    stmt: Box<dyn Statement<ID, IE>>,
+    phantom: PhantomData<E>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
@@ -117,10 +119,8 @@ impl Decode for Intersection {
     }
 }
 
-impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>
-    for ExpandOrIntersect<E>
-{
-    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
+impl<E: Entry, IE: Into<E> + 'static> FilterMapFunction<Record<E>, Record<E>> for ExpandOrIntersect<E, IE> {
+    fn exec(&self, mut input: Record<E>) -> FnResult<Option<Record<E>>> {
         let entry = input
             .get(Some(self.start_v_tag))
             .ok_or(FnExecError::get_tag_error(&format!(
@@ -129,34 +129,34 @@ impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record<CompleteEntry>, 
             )))?;
         if let Some(v) = entry.as_graph_vertex() {
             let id = v.id();
-            let iter = self.stmt.exec(id)?.map(|e| match e.into() {
-                CompleteEntry::V(v) => v,
-                CompleteEntry::E(e) => {
+            let iter = self.stmt.exec(id)?.map(|e| {
+                let entry: E = e.into();
+                if let Some(v) = entry.as_graph_vertex() {
+                    v.clone()
+                } else if let Some(e) = entry.as_graph_edge() {
                     Vertex::new(e.get_other_id(), e.get_other_label().cloned(), DynDetails::default())
-                }
-                _ => {
+                } else {
                     unreachable!()
                 }
             });
             if let Some(pre_entry) = input.get_column_mut(&self.edge_or_end_v_tag) {
                 // the case of expansion and intersection
-                match pre_entry {
-                    CompleteEntry::Intersection(pre_intersection) => {
-                        let mut seeker = BTreeMap::new();
-                        for v in iter {
-                            *seeker.entry(v.id()).or_default() += 1;
-                        }
-                        pre_intersection.intersect(&seeker);
-                        if pre_intersection.is_empty() {
-                            Ok(None)
-                        } else {
-                            Ok(Some(input))
-                        }
+                if let Some(pre_intersection) = pre_entry.as_intersection_mut() {
+                    let mut seeker = BTreeMap::new();
+                    for v in iter {
+                        *seeker.entry(v.id()).or_default() += 1;
                     }
-                    _ => Err(FnExecError::unexpected_data_error(&format!(
+                    pre_intersection.intersect(&seeker);
+                    if pre_intersection.is_empty() {
+                        Ok(None)
+                    } else {
+                        Ok(Some(input))
+                    }
+                } else {
+                    Err(FnExecError::unexpected_data_error(&format!(
                         "entry {:?} is not a intersection in ExpandOrIntersect",
                         pre_entry
-                    )))?,
+                    )))?
                 }
             } else {
                 // the case of expansion only
@@ -180,10 +180,8 @@ impl<E: Into<CompleteEntry> + 'static> FilterMapFunction<Record<CompleteEntry>, 
     }
 }
 
-impl FilterMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
-    fn gen_filter_map(
-        self,
-    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> FilterMapFuncGen<E> for algebra_pb::EdgeExpand {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>> {
         let graph = graph_proxy::apis::get_graph().ok_or(FnGenError::NullGraphError)?;
         let start_v_tag = self
             .v_tag
@@ -207,13 +205,17 @@ impl FilterMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
             if query_params.filter.is_some() {
                 // Expand vertices with filters on edges.
                 // This can be regarded as a combination of EdgeExpand (with expand_opt as Edge) + GetV
-                let stmt = graph.prepare_explore_edge(direction, &query_params)?;
-                let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
-                Ok(Box::new(edge_expand_operator))
+                // ToDo: support it in SimpleEntry
+                Err(FnGenError::unsupported_error("expand vertices with edge filters"))
             } else {
                 // Expand vertices without any filters
                 let stmt = graph.prepare_explore_vertex(direction, &query_params)?;
-                let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                let edge_expand_operator = ExpandOrIntersect {
+                    start_v_tag,
+                    edge_or_end_v_tag,
+                    stmt,
+                    phantom: PhantomData::default(),
+                };
                 Ok(Box::new(edge_expand_operator))
             }
         }

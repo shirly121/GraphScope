@@ -14,6 +14,7 @@
 //! limitations under the License.
 
 use std::convert::TryInto;
+use std::marker::PhantomData;
 
 use graph_proxy::apis::{
     get_graph, Direction, DynDetails, GraphElement, QueryParams, Statement, Vertex, ID,
@@ -25,17 +26,20 @@ use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{CompleteEntry, Entry, Record, RecordExpandIter, RecordPathExpandIter};
+use crate::process::record::{
+    CompleteEntry, Entry, Record, RecordExpandIter, RecordPathExpandIter, SimpleEntry,
+};
 
-pub struct EdgeExpandOperator<E: Into<CompleteEntry>> {
+pub struct EdgeExpandOperator<E: Entry, IE: Into<E>> {
     start_v_tag: Option<KeyId>,
     alias: Option<KeyId>,
-    stmt: Box<dyn Statement<ID, E>>,
+    stmt: Box<dyn Statement<ID, IE>>,
     expand_opt: ExpandOpt,
+    phantom: PhantomData<E>,
 }
 
-impl<E: Into<CompleteEntry> + 'static> FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>
-    for EdgeExpandOperator<E>
+impl<IE: Into<CompleteEntry> + 'static> FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>
+    for EdgeExpandOperator<CompleteEntry, IE>
 {
     type Target = DynIter<Record<CompleteEntry>>;
 
@@ -91,6 +95,25 @@ impl<E: Into<CompleteEntry> + 'static> FlatMapFunction<Record<CompleteEntry>, Re
     }
 }
 
+impl<IE: Into<SimpleEntry> + 'static> FlatMapFunction<Record<SimpleEntry>, Record<SimpleEntry>>
+    for EdgeExpandOperator<SimpleEntry, IE>
+{
+    type Target = DynIter<Record<SimpleEntry>>;
+
+    fn exec(&self, input: Record<SimpleEntry>) -> FnResult<Self::Target> {
+        if let Some(entry) = input.get(self.start_v_tag) {
+            let id = entry
+                .as_graph_vertex()
+                .ok_or(FnExecError::UnSupported("Only support simple vertex espansion".to_string()))?
+                .id();
+            let iter = self.stmt.exec(id)?;
+            Ok(Box::new(RecordExpandIter::new(input, self.alias.as_ref(), iter)))
+        } else {
+            Err(FnExecError::unexpected_data_error(&format!("Cannot Expand from current entry")))?
+        }
+    }
+}
+
 impl FlatMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
     fn gen_flat_map(
         self,
@@ -133,6 +156,7 @@ impl FlatMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
                         alias: edge_or_end_v_tag,
                         stmt,
                         expand_opt: ExpandOpt::Vertex,
+                        phantom: PhantomData::default(),
                     };
                     Ok(Box::new(edge_expand_operator))
                 } else {
@@ -143,6 +167,7 @@ impl FlatMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
                         alias: edge_or_end_v_tag,
                         stmt,
                         expand_opt: ExpandOpt::Edge,
+                        phantom: PhantomData::default(),
                     };
                     Ok(Box::new(edge_expand_operator))
                 }
@@ -150,10 +175,67 @@ impl FlatMapFuncGen<CompleteEntry> for algebra_pb::EdgeExpand {
             _ => {
                 // Expand edges or degree
                 let stmt = graph.prepare_explore_edge(direction, &query_params)?;
-                let edge_expand_operator =
-                    EdgeExpandOperator { start_v_tag, alias: edge_or_end_v_tag, stmt, expand_opt };
+                let edge_expand_operator = EdgeExpandOperator {
+                    start_v_tag,
+                    alias: edge_or_end_v_tag,
+                    stmt,
+                    expand_opt,
+                    phantom: PhantomData::default(),
+                };
                 Ok(Box::new(edge_expand_operator))
             }
+        }
+    }
+}
+
+impl FlatMapFuncGen<SimpleEntry> for algebra_pb::EdgeExpand {
+    fn gen_flat_map(
+        self,
+    ) -> FnGenResult<
+        Box<
+            dyn FlatMapFunction<
+                Record<SimpleEntry>,
+                Record<SimpleEntry>,
+                Target = DynIter<Record<SimpleEntry>>,
+            >,
+        >,
+    > {
+        let graph = get_graph().ok_or(FnGenError::NullGraphError)?;
+        let start_v_tag = self
+            .v_tag
+            .map(|v_tag| v_tag.try_into())
+            .transpose()?;
+        let end_v_tag = self
+            .alias
+            .map(|alias| alias.try_into())
+            .transpose()?;
+        let direction_pb: algebra_pb::edge_expand::Direction =
+            unsafe { ::std::mem::transmute(self.direction) };
+        let direction = Direction::from(direction_pb);
+        let query_params: QueryParams = self.params.try_into()?;
+        let expand_opt: ExpandOpt = unsafe { ::std::mem::transmute(self.expand_opt) };
+        debug!(
+            "Runtime expand operator of edge with start_v_tag {:?}, edge_tag {:?}, direction {:?}, query_params {:?}, expand_opt {:?}", 
+            start_v_tag, end_v_tag, direction, query_params, expand_opt
+        );
+        match expand_opt {
+            ExpandOpt::Vertex => {
+                if query_params.filter.is_none() {
+                    // Expand vertices without any filters
+                    let stmt = graph.prepare_explore_vertex(direction, &query_params)?;
+                    let edge_expand_operator = EdgeExpandOperator {
+                        start_v_tag,
+                        alias: end_v_tag,
+                        stmt,
+                        expand_opt: ExpandOpt::Edge,
+                        phantom: PhantomData::default(),
+                    };
+                    Ok(Box::new(edge_expand_operator))
+                } else {
+                    Err(FnGenError::UnSupported("Only support simple vertex espansion".to_string()))
+                }
+            }
+            _ => Err(FnGenError::UnSupported("Only support simple vertex espansion".to_string())),
         }
     }
 }

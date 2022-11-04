@@ -42,6 +42,10 @@ impl Vertex {
     pub fn get_details_mut(&mut self) -> &mut DynDetails {
         &mut self.details
     }
+
+    pub fn remove_details(&mut self) {
+        self.details = DynDetails::Empty
+    }
 }
 
 impl Element for Vertex {

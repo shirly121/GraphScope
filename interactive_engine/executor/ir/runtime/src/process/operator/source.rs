@@ -25,7 +25,7 @@ use ir_common::generated::algebra as algebra_pb;
 use ir_common::{KeyId, NameOrId};
 
 use crate::error::{FnGenError, FnGenResult};
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{CompleteEntry, Record, SimpleEntry};
 
 #[derive(Debug)]
 pub enum SourceType {
@@ -172,6 +172,43 @@ impl SourceOperator {
                 Ok(Box::new(e_source.map(move |e| Record::new(e, self.alias.clone()))))
             }
             SourceType::Table => Err(FnGenError::unsupported_error("data source of `Table` type"))?,
+        }
+    }
+
+    pub fn gen_source_simple(
+        self, worker_index: usize,
+    ) -> FnGenResult<Box<dyn Iterator<Item = Record<SimpleEntry>> + Send>> {
+        let graph = get_graph().ok_or(FnGenError::NullGraphError)?;
+        match self.source_type {
+            SourceType::Vertex => {
+                let mut v_source = Box::new(std::iter::empty()) as Box<dyn Iterator<Item = Vertex> + Send>;
+                if let Some(ref seeds) = self.src {
+                    if let Some(src) = seeds.get(&(worker_index as u64)) {
+                        if !src.is_empty() {
+                            v_source = graph.get_vertex(src, &self.query_params)?;
+                        }
+                    }
+                } else if let Some(ref indexed_values) = self.primary_key_values {
+                    if self.query_params.labels.len() != 1 {
+                        Err(FnGenError::unsupported_error("indexed_scan with empty/multiple labels"))?
+                    }
+                    if let Some(v) = graph.index_scan_vertex(
+                        self.query_params.labels[0],
+                        indexed_values,
+                        &self.query_params,
+                    )? {
+                        v_source = Box::new(vec![v].into_iter())
+                    }
+                } else {
+                    // parallel scan, and each worker should scan the partitions assigned to it in self.v_params.partitions
+                    v_source = graph.scan_vertex(&self.query_params)?;
+                };
+                Ok(Box::new(v_source.map(move |mut v| {
+                    v.remove_details();
+                    Record::new(v, self.alias.clone())
+                })))
+            }
+            _ => Err(FnGenError::unsupported_error("Simple Entry only support"))?,
         }
     }
 }

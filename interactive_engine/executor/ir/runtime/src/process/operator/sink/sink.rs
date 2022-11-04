@@ -30,7 +30,7 @@ use prost::Message;
 
 use crate::error::FnGenResult;
 use crate::process::operator::sink::{SinkGen, Sinker};
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 pub struct RecordSinkEncoder {
@@ -41,62 +41,45 @@ pub struct RecordSinkEncoder {
 }
 
 impl RecordSinkEncoder {
-    fn entry_to_pb(&self, e: &CompleteEntry) -> result_pb::Entry {
-        let inner = match e {
-            CompleteEntry::Collection(collection) => {
-                let mut collection_pb = Vec::with_capacity(collection.len());
-                for element in collection.into_iter() {
-                    let element_pb = self.element_to_pb(element);
-                    collection_pb.push(element_pb);
-                }
-                Some(result_pb::entry::Inner::Collection(result_pb::Collection {
-                    collection: collection_pb,
-                }))
+    fn entry_to_pb<E: Entry>(&self, e: &E) -> result_pb::Entry {
+        let inner = if let Some(collection) = e.as_collection() {
+            let mut collection_pb = Vec::with_capacity(collection.len());
+            for element in collection.into_iter() {
+                let element_pb = self.element_to_pb(element);
+                collection_pb.push(element_pb);
             }
-            CompleteEntry::Intersection(intersection) => {
-                let mut collection_pb = Vec::with_capacity(intersection.len());
-                for v in intersection.iter() {
-                    let vertex_pb = self.vertex_to_pb(v);
-                    let element_pb =
-                        result_pb::Element { inner: Some(result_pb::element::Inner::Vertex(vertex_pb)) };
-                    collection_pb.push(element_pb);
-                }
-                Some(result_pb::entry::Inner::Collection(result_pb::Collection {
-                    collection: collection_pb,
-                }))
+            Some(result_pb::entry::Inner::Collection(result_pb::Collection { collection: collection_pb }))
+        } else if let Some(intersection) = e.as_intersection() {
+            let mut collection_pb = Vec::with_capacity(intersection.len());
+            for v in intersection.iter() {
+                let vertex_pb = self.vertex_to_pb(v);
+                let element_pb =
+                    result_pb::Element { inner: Some(result_pb::element::Inner::Vertex(vertex_pb)) };
+                collection_pb.push(element_pb);
             }
-            _ => {
-                let element_pb = self.element_to_pb(e);
-                Some(result_pb::entry::Inner::Element(element_pb))
-            }
+            Some(result_pb::entry::Inner::Collection(result_pb::Collection { collection: collection_pb }))
+        } else {
+            let element_pb = self.element_to_pb(e);
+            Some(result_pb::entry::Inner::Element(element_pb))
         };
         result_pb::Entry { inner }
     }
 
-    fn element_to_pb(&self, e: &CompleteEntry) -> result_pb::Element {
-        let inner = match e {
-            CompleteEntry::V(v) => {
-                let vertex_pb = self.vertex_to_pb(v);
-                Some(result_pb::element::Inner::Vertex(vertex_pb))
-            }
-            CompleteEntry::E(e) => {
-                let edge_pb = self.edge_to_pb(e);
-                Some(result_pb::element::Inner::Edge(edge_pb))
-            }
-            CompleteEntry::P(p) => {
-                let path_pb = self.path_to_pb(p);
-                Some(result_pb::element::Inner::GraphPath(path_pb))
-            }
-            CompleteEntry::OffGraph(o) => {
-                let obj_pb = self.object_to_pb(o.clone());
-                Some(result_pb::element::Inner::Object(obj_pb))
-            }
-            CompleteEntry::Collection(_) => {
-                unreachable!()
-            }
-            CompleteEntry::Intersection(_) => {
-                unreachable!()
-            }
+    fn element_to_pb<E: Entry>(&self, e: &E) -> result_pb::Element {
+        let inner = if let Some(v) = e.as_graph_vertex() {
+            let vertex_pb = self.vertex_to_pb(v);
+            Some(result_pb::element::Inner::Vertex(vertex_pb))
+        } else if let Some(e) = e.as_graph_edge() {
+            let edge_pb = self.edge_to_pb(e);
+            Some(result_pb::element::Inner::Edge(edge_pb))
+        } else if let Some(p) = e.as_graph_path() {
+            let path_pb = self.path_to_pb(p);
+            Some(result_pb::element::Inner::GraphPath(path_pb))
+        } else if let Some(o) = e.as_object() {
+            let obj_pb = self.object_to_pb(o.clone());
+            Some(result_pb::element::Inner::Object(obj_pb))
+        } else {
+            unreachable!()
         };
         result_pb::Element { inner }
     }
@@ -205,8 +188,8 @@ impl RecordSinkEncoder {
     }
 }
 
-impl MapFunction<Record<CompleteEntry>, Vec<u8>> for RecordSinkEncoder {
-    fn exec(&self, input: Record<CompleteEntry>) -> FnResult<Vec<u8>> {
+impl<E: Entry> MapFunction<Record<E>, Vec<u8>> for RecordSinkEncoder {
+    fn exec(&self, input: Record<E>) -> FnResult<Vec<u8>> {
         let mut sink_columns = Vec::with_capacity(self.sink_keys.len());
         for sink_key in self.sink_keys.iter() {
             if let Some(entry) = input.get(sink_key.clone()) {

@@ -22,7 +22,7 @@ use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 /// Unfold the Collection entry referred by a given `tag`.
@@ -33,10 +33,10 @@ pub struct UnfoldOperator {
     alias: Option<KeyId>,
 }
 
-impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for UnfoldOperator {
-    type Target = DynIter<Record<CompleteEntry>>;
+impl<E: Entry> FlatMapFunction<Record<E>, Record<E>> for UnfoldOperator {
+    type Target = DynIter<Record<E>>;
 
-    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Self::Target> {
+    fn exec(&self, mut input: Record<E>) -> FnResult<Self::Target> {
         // Consider 'take' the column since the collection won't be used anymore in most cases.
         // e.g., in EdgeExpandIntersection case, we only set alias of the collection to give the hint of intersection.
         // TODO: This may be an opt for other operators as well, as long as the tag is not in need anymore.
@@ -48,36 +48,27 @@ impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for UnfoldOpe
         // besides, head will be replaced by the items in collections anyway.
         input.take(None);
         if let Some(entry) = Arc::get_mut(&mut entry) {
-            match entry {
-                CompleteEntry::Collection(collection) => {
-                    let mut res = Vec::with_capacity(collection.len());
-                    for item in collection.drain(..) {
-                        let mut new_entry = input.clone();
-                        new_entry.append(item, self.alias);
-                        res.push(new_entry);
-                    }
-                    Ok(Box::new(res.into_iter()))
+            if let Some(collection) = entry.as_collection_mut() {
+                let mut res = Vec::with_capacity(collection.len());
+                for item in collection.drain(..) {
+                    let mut new_entry = input.clone();
+                    new_entry.append(item, self.alias);
+                    res.push(new_entry);
                 }
-                CompleteEntry::Intersection(intersection) => {
-                    let mut res = Vec::with_capacity(intersection.len());
-                    for item in intersection.iter() {
-                        let mut new_entry = input.clone();
-                        new_entry.append(item.clone(), self.alias);
-                        res.push(new_entry);
-                    }
-                    Ok(Box::new(res.into_iter()))
+                Ok(Box::new(res.into_iter()))
+            } else if let Some(intersection) = entry.as_intersection_mut() {
+                let mut res = Vec::with_capacity(intersection.len());
+                for item in intersection.iter() {
+                    let mut new_entry = input.clone();
+                    new_entry.append(item.clone(), self.alias);
+                    res.push(new_entry);
                 }
-                CompleteEntry::P(_) => {
-                    // TODO: to support path_unwinding
-                    Err(FnExecError::unsupported_error(&format!(
-                        "unfold path entry {:?} in UnfoldOperator",
-                        entry
-                    )))?
-                }
-                _ => Err(FnExecError::unexpected_data_error(&format!(
-                    "unfold entry {:?} in UnfoldOperator",
+                Ok(Box::new(res.into_iter()))
+            } else {
+                Err(FnExecError::unsupported_error(&format!(
+                    "unfold path entry {:?} in UnfoldOperator",
                     entry
-                )))?,
+                )))?
             }
         } else {
             Err(FnExecError::unexpected_data_error(&format!(
@@ -89,18 +80,10 @@ impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for UnfoldOpe
     }
 }
 
-impl FlatMapFuncGen<CompleteEntry> for algebra_pb::Unfold {
+impl<E: Entry> FlatMapFuncGen<E> for algebra_pb::Unfold {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<
-        Box<
-            dyn FlatMapFunction<
-                Record<CompleteEntry>,
-                Record<CompleteEntry>,
-                Target = DynIter<Record<CompleteEntry>>,
-            >,
-        >,
-    > {
+    ) -> FnGenResult<Box<dyn FlatMapFunction<Record<E>, Record<E>, Target = DynIter<Record<E>>>>> {
         let tag = self.tag.map(|tag| tag.try_into()).transpose()?;
         let alias = self
             .alias
