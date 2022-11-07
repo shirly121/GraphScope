@@ -39,6 +39,12 @@ fn main() {
                     "The delimiter of the raw data [comma|semicolon|pipe]. pipe (|) is the default option",
                 )
                 .takes_value(true),
+            Arg::with_name("header")
+                .short("h")
+                .long_help(
+                    "Whether has header or not [true|T|false|F] of the raw data. False (false|F) is the default option",
+                )
+                .takes_value(true),
         ])
         .get_matches();
 
@@ -62,6 +68,11 @@ fn main() {
         .unwrap_or("pipe")
         .to_uppercase();
 
+    let has_header_str = matches
+        .value_of("header")
+        .unwrap_or("false")
+        .to_uppercase();
+
     let delimiter = if delimiter_str.as_str() == "COMMA" {
         b','
     } else if delimiter_str.as_str() == "SEMICOLON" {
@@ -69,6 +80,9 @@ fn main() {
     } else {
         b'|'
     };
+
+    let has_header =
+        if has_header_str.as_str() == "TRUE" || has_header_str.as_str() == "T" { true } else { false };
 
     // Copy graph schema to graph_data_dir/graph_schema/schema.json if no there
     let out_data_dir = PathBuf::from(format!("{}/{}", graph_data_dir, DIR_GRAPH_SCHEMA));
@@ -85,7 +99,9 @@ fn main() {
 
         let handle = std::thread::spawn(move || {
             let mut loader: GraphLoader = GraphLoader::new(raw_dir, graph_dir, meta_f, i, partition_num);
-            loader = loader.with_delimiter(delimiter);
+            loader = loader
+                .with_delimiter(delimiter)
+                .with_header(has_header);
             if i == 0 {
                 // the first thread
                 let schema = loader.get_ldbc_parser().get_graph_schema();

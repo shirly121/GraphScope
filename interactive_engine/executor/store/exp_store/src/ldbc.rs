@@ -505,6 +505,8 @@ pub struct GraphLoader<
     peers: usize,
     /// Detailed performance metrics
     perf_metrics: PerfMetrices,
+    /// Whether has head or not,
+    has_header: bool,
     /// Phantomize the generic types
     ph1: PhantomData<G>,
     ph2: PhantomData<I>,
@@ -690,7 +692,7 @@ impl<G: IndexType + Eq + FromStr + Send + Sync, I: IndexType + Send + Sync> Grap
                     .buffer_capacity(4096)
                     .comment(Some(b'#'))
                     .flexible(true)
-                    .has_headers(true)
+                    .has_headers(self.has_header)
                     .from_reader(BufReader::new(File::open(path).unwrap()));
 
                 self.load_vertices_to_db(filename, rdr);
@@ -708,7 +710,7 @@ impl<G: IndexType + Eq + FromStr + Send + Sync, I: IndexType + Send + Sync> Grap
                     .buffer_capacity(4096)
                     .comment(Some(b'#'))
                     .flexible(true)
-                    .has_headers(true)
+                    .has_headers(self.has_header)
                     .from_reader(BufReader::new(File::open(path).unwrap()));
 
                 self.load_edges_to_db(filename, rdr);
@@ -747,6 +749,7 @@ impl<G: FromStr + Send + Sync + IndexType, I: Send + Sync + IndexType> GraphLoad
             work_id,
             peers,
             perf_metrics: PerfMetrices::default(),
+            has_header: false,
             ph1: PhantomData,
             ph2: PhantomData,
         }
@@ -755,6 +758,12 @@ impl<G: FromStr + Send + Sync + IndexType, I: Send + Sync + IndexType> GraphLoad
     /// For specifying a different delimiter
     pub fn with_delimiter(mut self, delim: u8) -> Self {
         self.delim = delim;
+        self
+    }
+
+    /// For specifying whether has header
+    pub fn with_header(mut self, has_header: bool) -> Self {
+        self.has_header = has_header;
         self
     }
 
