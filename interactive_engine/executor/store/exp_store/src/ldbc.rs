@@ -15,12 +15,14 @@
 
 // Contains some dummy codes for LDBC dataset
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::fs::read_dir;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io::{BufReader, Read};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -360,6 +362,24 @@ impl<G: IndexType> LDBCVertexParser<G> {
     }
 }
 
+fn ldbc_str_id_to_id(str_id: String) -> usize {
+    let mut hasher = DefaultHasher::new();
+    str_id.hash(&mut hasher);
+    let uid = hasher.finish() as usize;
+    (uid << 8 * std::mem::size_of::<LabelId>()) >> 8 * std::mem::size_of::<LabelId>()
+}
+
+fn parse_record_as_id(record: &str) -> GDBResult<usize> {
+    if let Ok(uid) = record.parse::<usize>() {
+        Ok(uid)
+    } else {
+        let str_id = record
+            .parse::<String>()
+            .map_err(|_e| GDBError::FieldNotExistError)?;
+        Ok(ldbc_str_id_to_id(str_id))
+    }
+}
+
 impl<G: FromStr + PartialEq + Default + IndexType> ParserTrait<G> for LDBCVertexParser<G> {
     fn parse_vertex_meta<'a, Iter: Iterator<Item = &'a str>>(
         &self, record_iter: Iter,
@@ -369,7 +389,7 @@ impl<G: FromStr + PartialEq + Default + IndexType> ParserTrait<G> for LDBCVertex
         for (index, record) in record_iter.enumerate() {
             if let Some(label_index) = self.label_index {
                 if index == self.id_index {
-                    id = record.parse::<usize>()?;
+                    id = parse_record_as_id(record)?;
                 } else if index == label_index {
                     extra_label_id = *self
                         .vertex_type_to_id
@@ -380,7 +400,7 @@ impl<G: FromStr + PartialEq + Default + IndexType> ParserTrait<G> for LDBCVertex
                 }
             } else {
                 if index == self.id_index {
-                    id = record.parse::<usize>()?;
+                    id = parse_record_as_id(record)?;
                     break;
                 }
             }
@@ -429,22 +449,22 @@ impl<G: FromStr + PartialEq + Default + IndexType> ParserTrait<G> for LDBCEdgePa
     fn parse_edge_meta<'a, Iter: Iterator<Item = &'a str>>(
         &self, record_iter: Iter,
     ) -> GDBResult<EdgeMeta<G>> {
-        let mut src_ldbc_id: i64 = -1;
-        let mut dst_ldbc_id: i64 = -1;
+        let mut src_ldbc_id = usize::MAX;
+        let mut dst_ldbc_id = usize::MAX;
 
         for (index, record) in record_iter.enumerate() {
             if index == self.src_id_index {
-                src_ldbc_id = record.parse::<i64>()?;
+                src_ldbc_id = parse_record_as_id(record)?;
             } else if index == self.dst_id_index {
-                dst_ldbc_id = record.parse::<i64>()?;
+                dst_ldbc_id = parse_record_as_id(record)?;
             }
-            if src_ldbc_id != -1 && dst_ldbc_id != -1 {
+            if src_ldbc_id != usize::MAX && dst_ldbc_id != usize::MAX {
                 break;
             }
         }
 
-        let src_global_id = LDBCVertexParser::to_global_id(src_ldbc_id as usize, self.src_vertex_type);
-        let dst_global_id = LDBCVertexParser::to_global_id(dst_ldbc_id as usize, self.dst_vertex_type);
+        let src_global_id = LDBCVertexParser::to_global_id(src_ldbc_id, self.src_vertex_type);
+        let dst_global_id = LDBCVertexParser::to_global_id(dst_ldbc_id, self.dst_vertex_type);
 
         let edge_meta = EdgeMeta {
             src_global_id,
@@ -670,7 +690,7 @@ impl<G: IndexType + Eq + FromStr + Send + Sync, I: IndexType + Send + Sync> Grap
                     .buffer_capacity(4096)
                     .comment(Some(b'#'))
                     .flexible(true)
-                    .has_headers(false)
+                    .has_headers(true)
                     .from_reader(BufReader::new(File::open(path).unwrap()));
 
                 self.load_vertices_to_db(filename, rdr);
@@ -688,7 +708,7 @@ impl<G: IndexType + Eq + FromStr + Send + Sync, I: IndexType + Send + Sync> Grap
                     .buffer_capacity(4096)
                     .comment(Some(b'#'))
                     .flexible(true)
-                    .has_headers(false)
+                    .has_headers(true)
                     .from_reader(BufReader::new(File::open(path).unwrap()));
 
                 self.load_edges_to_db(filename, rdr);
