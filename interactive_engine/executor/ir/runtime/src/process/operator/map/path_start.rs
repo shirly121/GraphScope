@@ -24,7 +24,7 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct PathStartOperator {
@@ -33,8 +33,8 @@ struct PathStartOperator {
     result_opt: ResultOpt,
 }
 
-impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for PathStartOperator {
-    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
+impl<E: Entry> FilterMapFunction<Record<E>, Record<E>> for PathStartOperator {
+    fn exec(&self, mut input: Record<E>) -> FnResult<Option<Record<E>>> {
         if let Some(entry) = input.get(self.start_tag) {
             let v = entry
                 .as_graph_vertex()
@@ -50,10 +50,8 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for PathSta
     }
 }
 
-impl FilterMapFuncGen<CompleteEntry> for algebra_pb::PathStart {
-    fn gen_filter_map(
-        self,
-    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> FilterMapFuncGen<E> for algebra_pb::PathStart {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>> {
         let start_tag = self
             .start_tag
             .map(|tag| tag.try_into())

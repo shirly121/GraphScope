@@ -19,13 +19,17 @@ mod common;
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
     use std::convert::TryInto;
     use std::fs::File;
     use std::sync::Arc;
     use std::time::Instant;
 
+    use graph_proxy::{create_exp_store, SimplePartition};
+    use graph_store::graph_db::GlobalStoreTrait;
     use ir_common::expr_parse::str_to_expr_pb;
     use ir_common::generated::algebra as pb;
+    use ir_common::generated::common as common_pb;
     use ir_core::catalogue::catalog::Catalogue;
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
@@ -36,9 +40,43 @@ mod test {
     use ir_core::plan::meta::PlanMeta;
     use ir_core::plan::physical::AsPhysical;
     use ir_core::{plan::meta::Schema, JsonIO};
+    use pegasus::api::Count;
+    use pegasus::api::{Map, Sink};
+    use pegasus::JobConf;
     use pegasus_client::builder::JobBuilder;
+    use petgraph::Direction;
+    use runtime::process::operator::flatmap::FlatMapFuncGen;
+    use runtime::process::operator::map::FilterMapFuncGen;
+    use runtime::process::operator::source::SourceOperator;
+    use runtime::process::record::{Record, SimpleEntry};
 
     use crate::common::test::*;
+
+    fn source_gen_simple(
+        alias: Option<common_pb::NameOrId>,
+    ) -> Box<dyn Iterator<Item = Record<SimpleEntry>> + Send> {
+        let scan_opr_pb = pb::Scan {
+            scan_opt: 0,
+            alias,
+            params: Some(query_params(vec![1.into()], vec![], None)),
+            idx_predicate: None,
+        };
+        let source = SourceOperator::new(
+            pb::logical_plan::operator::Opr::Scan(scan_opr_pb),
+            1,
+            1,
+            Arc::new(SimplePartition { num_servers: 1 }),
+        )
+        .unwrap();
+        source.gen_source_simple(0).unwrap()
+    }
+
+    fn get_partition(id: u64, num_servers: usize, worker_num: usize) -> u64 {
+        let magic_num = id / (num_servers as u64);
+        let num_servers = num_servers as u64;
+        let worker_num = worker_num as u64;
+        (id - magic_num * num_servers) * worker_num + magic_num % worker_num
+    }
 
     pub fn get_ldbc_pattern_meta() -> PatternMeta {
         let ldbc_schema_file = File::open("../core/resource/ldbc_schema_edit.json").unwrap();
@@ -65,7 +103,7 @@ mod test {
         let pattern = pb::Pattern {
             sentences: vec![
                 pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
+                    start: Some(TAG_B.into()),
                     binders: vec![
                         pb::pattern::Binder {
                             item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
@@ -74,25 +112,25 @@ mod test {
                             item: Some(pb::pattern::binder::Item::Select(select_person.clone())),
                         },
                     ],
-                    end: Some(TAG_B.into()),
+                    end: Some(TAG_A.into()),
                     join_kind: 0,
                 },
                 pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
+                    start: Some(TAG_C.into()),
                     binders: vec![pb::pattern::Binder {
                         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
                     }],
-                    end: Some(TAG_C.into()),
+                    end: Some(TAG_A.into()),
                     join_kind: 0,
                 },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
+                // pb::pattern::Sentence {
+                //     start: Some(TAG_A.into()),
+                //     binders: vec![pb::pattern::Binder {
+                //         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                //     }],
+                //     end: Some(TAG_C.into()),
+                //     join_kind: 0,
+                // },
             ],
         };
         Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
@@ -765,5 +803,156 @@ mod test {
             }
         }
         println!("{}", count);
+    }
+
+    #[test]
+    fn expand_and_intersection_unfold_test_02() {
+        create_exp_store();
+        // A <-> B;
+        let expand_opr1 = pb::EdgeExpand {
+            v_tag: Some(TAG_A.into()),
+            direction: 1,                                              // in
+            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
+            expand_opt: 0,
+            alias: Some(TAG_B.into()),
+        };
+
+        // A <-> C: expand C;
+        let expand_opr2 = pb::EdgeExpand {
+            v_tag: Some(TAG_A.into()),
+            direction: 1,                                              // in
+            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
+            expand_opt: 0,
+            alias: Some(TAG_C.into()),
+        };
+
+        // B <-> C: expand C and intersect on C;
+        let expand_opr3 = pb::EdgeExpand {
+            v_tag: Some(TAG_B.into()),
+            direction: 1,                                              // in
+            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
+            expand_opt: 0,
+            alias: Some(TAG_C.into()),
+        };
+
+        // unfold tag C
+        let unfold_opr = pb::Unfold { tag: Some(TAG_C.into()), alias: Some(TAG_C.into()) };
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
+        let conf = JobConf::new("expand_and_intersection_unfold_multiv_test");
+        let mut result = pegasus::run(conf, || {
+            let expand1 = expand_opr1.clone();
+            let expand2 = expand_opr2.clone();
+            let expand3 = expand_opr3.clone();
+            let unfold = unfold_opr.clone();
+            |input, output| {
+                let source_iter = source_gen_simple(Some(TAG_A.into()));
+                let mut stream = input.input_from(source_iter)?;
+                let flatmap_func1 = expand1.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| flatmap_func1.exec(input))?;
+                let map_func2 = expand2.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| map_func2.exec(input))?;
+                // let map_func3 = expand3.gen_filter_map().unwrap();
+                // stream = stream.filter_map(move |input| map_func3.exec(input))?;
+                // let unfold_func = unfold.gen_flat_map().unwrap();
+                // stream = stream.flat_map(move |input| unfold_func.exec(input))?;
+                stream.sink_into(output)
+            }
+        })
+        .expect("build job failure");
+
+        let mut count = 0;
+        while let Some(result) = result.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
+    }
+
+    #[test]
+    fn pure_test() {
+        create_exp_store();
+        use graph_proxy::GRAPH;
+        let conf = JobConf::new("pure test");
+        let num_servers = if conf.servers().len() == 0 { 1 } else { conf.servers().len() };
+        let worker_num = conf.workers as usize;
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
+        let mut result = pegasus::run(conf, move || {
+            move |input, output| {
+                let v_label_ids = vec![1];
+                input
+                    .input_from(
+                        GRAPH
+                            .get_all_vertices(Some(&v_label_ids))
+                            .map(|v| (v.get_id() as u64))
+                            // .filter(move |v_id| {
+                            //     let worker_index = pegasus::get_current_worker().index as u64;
+                            //     get_partition(*v_id, num_servers, worker_num) == worker_index
+                            // }),
+                    )?
+                    // .repartition(move |id| Ok(get_partition(*id, num_servers, worker_num)))
+                    .flat_map(|v_id| {
+                        let e_label_ids = vec![12];
+                        let adj_vertices =
+                            GRAPH.get_adj_vertices(v_id as usize, Some(&e_label_ids), Direction::Incoming);
+                        Ok(adj_vertices.map(move |v| {
+                            let mut path = vec![];
+                            path.push(v_id);
+                            path.push(v.get_id() as u64);
+                            path
+                        }))
+                    })?
+                    .repartition(move |path| Ok(get_partition(path[1], num_servers, worker_num)))
+                    .flat_map(|path| {
+                        let extend_item_id = path[0];
+                        let e_label_ids = vec![12];
+                        let adj_vectices = GRAPH.get_adj_vertices(extend_item_id as usize, Some(&e_label_ids), Direction::Incoming);
+                        Ok(adj_vectices.map(move |v| {
+                            let mut new_path = path.clone();
+                            new_path.push(v.get_id() as u64);
+                            new_path
+                        }))
+                    })?
+                    // .repartition(move |path| Ok(get_partition(path[1], num_servers, worker_num)))
+                    // .flat_map(|path| {
+                    //     let extend_item_id0 = path[0];
+                    //     let extend_item_id1 = path[1];
+                    //     let e_label_ids = vec![12];
+                    //     let adj_vectices1 = GRAPH
+                    //         .get_adj_vertices(
+                    //             extend_item_id1 as usize,
+                    //             Some(&e_label_ids),
+                    //             Direction::Outgoing,
+                    //         )
+                    //         .map(|v| v.get_id() as u64);
+                    //     let vertices_set1: HashSet<u64> = adj_vectices1.collect();
+                    //     let adj_vectices0 = GRAPH
+                    //         .get_adj_vertices(
+                    //             extend_item_id0 as usize,
+                    //             Some(&e_label_ids),
+                    //             Direction::Outgoing,
+                    //         )
+                    //         .filter(move |v| vertices_set1.contains(&(v.get_id() as u64)));
+                    //     Ok(adj_vectices0.map(move |v| {
+                    //         let mut new_path = path.clone();
+                    //         new_path.push(v.get_id() as u64);
+                    //         new_path
+                    //     }))
+                    // })?
+                    .sink_into(output)
+            }
+        })
+        .unwrap();
+        let mut count = 0;
+        while let Some(result) = result.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 }

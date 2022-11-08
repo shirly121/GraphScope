@@ -22,7 +22,7 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 /// An Auxilia operator to get extra information for the current entity.
 /// Specifically, we will update the old entity by appending the new extra information,
@@ -34,8 +34,8 @@ struct AuxiliaOperator {
     alias: Option<KeyId>,
 }
 
-impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for AuxiliaOperator {
-    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
+impl<E: Entry> FilterMapFunction<Record<E>, Record<E>> for AuxiliaOperator {
+    fn exec(&self, mut input: Record<E>) -> FnResult<Option<Record<E>>> {
         if let Some(entry) = input.get(self.tag) {
             let entry = entry.clone();
             // Make sure there is anything to query with
@@ -47,7 +47,7 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for Auxilia
             if self.query_params.is_queryable() {
                 // If queryable, then turn into graph element and do the query
                 let graph = get_graph().ok_or(FnExecError::NullGraphError)?;
-                let new_entry: Option<CompleteEntry> = if let Some(v) = entry.as_graph_vertex() {
+                let new_entry: Option<E> = if let Some(v) = entry.as_graph_vertex() {
                     let mut result_iter = graph.get_vertex(&[v.id()], &self.query_params)?;
                     result_iter.next().map(|mut vertex| {
                         if let Some(details) = v.details() {
@@ -94,10 +94,8 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for Auxilia
     }
 }
 
-impl FilterMapFuncGen<CompleteEntry> for algebra_pb::Auxilia {
-    fn gen_filter_map(
-        self,
-    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> FilterMapFuncGen<E> for algebra_pb::Auxilia {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>> {
         let tag = self
             .tag
             .map(|alias| alias.try_into())

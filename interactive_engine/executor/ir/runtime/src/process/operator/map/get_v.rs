@@ -24,7 +24,7 @@ use pegasus::api::function::{FilterMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::map::FilterMapFuncGen;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct GetVertexOperator {
@@ -33,8 +33,8 @@ struct GetVertexOperator {
     alias: Option<KeyId>,
 }
 
-impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for GetVertexOperator {
-    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Option<Record<CompleteEntry>>> {
+impl<E: Entry> FilterMapFunction<Record<E>, Record<E>> for GetVertexOperator {
+    fn exec(&self, mut input: Record<E>) -> FnResult<Option<Record<E>>> {
         if let Some(entry) = input.get(self.start_tag) {
             if let Some(e) = entry.as_graph_edge() {
                 let (id, label) = match self.opt {
@@ -70,10 +70,8 @@ impl FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for GetVert
     }
 }
 
-impl FilterMapFuncGen<CompleteEntry> for algebra_pb::GetV {
-    fn gen_filter_map(
-        self,
-    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> FilterMapFuncGen<E> for algebra_pb::GetV {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>> {
         let start_tag = self
             .tag
             .map(|name_or_id| name_or_id.try_into())

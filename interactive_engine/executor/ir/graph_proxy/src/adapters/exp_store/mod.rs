@@ -17,4 +17,4 @@ mod partitioner;
 mod read_graph;
 
 pub use partitioner::SimplePartition;
-pub use read_graph::create_exp_store;
+pub use read_graph::{create_exp_store, GRAPH};

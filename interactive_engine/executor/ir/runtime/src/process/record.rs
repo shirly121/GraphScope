@@ -33,7 +33,18 @@ use vec_map::VecMap;
 
 use crate::process::operator::map::Intersection;
 
-pub trait Entry: Data + Element + PartialEq + PartialOrd + From<Vertex> + From<Intersection> {
+pub trait Entry:
+    Data
+    + Element
+    + PartialEq
+    + PartialOrd
+    + From<Vertex>
+    + From<Edge>
+    + From<Intersection>
+    + From<GraphPath>
+    + From<Object>
+    + From<VertexOrEdge>
+{
     fn as_graph_vertex(&self) -> Option<&Vertex>;
 
     fn as_graph_edge(&self) -> Option<&Edge>;
@@ -281,6 +292,30 @@ impl From<Intersection> for SimpleEntry {
     }
 }
 
+impl From<GraphPath> for SimpleEntry {
+    fn from(_: GraphPath) -> Self {
+        SimpleEntry::Null
+    }
+}
+
+impl From<Object> for SimpleEntry {
+    fn from(_: Object) -> Self {
+        SimpleEntry::Null
+    }
+}
+
+impl From<VertexOrEdge> for SimpleEntry {
+    fn from(_: VertexOrEdge) -> Self {
+        SimpleEntry::Null
+    }
+}
+
+impl From<Edge> for SimpleEntry {
+    fn from(_: Edge) -> Self {
+        SimpleEntry::Null
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Record<E: Entry> {
     curr: Option<Arc<E>>,
@@ -379,30 +414,30 @@ impl From<Vertex> for CompleteEntry {
     }
 }
 
-impl Into<CompleteEntry> for Edge {
-    fn into(self) -> CompleteEntry {
-        CompleteEntry::E(self)
+impl From<Edge> for CompleteEntry {
+    fn from(e: Edge) -> Self {
+        CompleteEntry::E(e)
     }
 }
 
-impl Into<CompleteEntry> for GraphPath {
-    fn into(self) -> CompleteEntry {
-        CompleteEntry::P(self)
+impl From<GraphPath> for CompleteEntry {
+    fn from(p: GraphPath) -> Self {
+        CompleteEntry::P(p)
     }
 }
 
-impl Into<CompleteEntry> for VertexOrEdge {
-    fn into(self) -> CompleteEntry {
-        match self {
+impl From<VertexOrEdge> for CompleteEntry {
+    fn from(v_or_e: VertexOrEdge) -> Self {
+        match v_or_e {
             VertexOrEdge::V(v) => v.into(),
             VertexOrEdge::E(e) => e.into(),
         }
     }
 }
 
-impl Into<CompleteEntry> for Object {
-    fn into(self) -> CompleteEntry {
-        CompleteEntry::OffGraph(self)
+impl From<Object> for CompleteEntry {
+    fn from(o: Object) -> Self {
+        CompleteEntry::OffGraph(o)
     }
 }
 

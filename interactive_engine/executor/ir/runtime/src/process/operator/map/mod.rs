@@ -44,10 +44,8 @@ pub trait FilterMapFuncGen<E: Entry> {
     fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>>;
 }
 
-impl FilterMapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
-    fn gen_filter_map(
-        self,
-    ) -> FnGenResult<Box<dyn FilterMapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> FilterMapFuncGen<E> for algebra_pb::logical_plan::operator::Opr {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record<E>, Record<E>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::Vertex(get_vertex) => get_vertex.gen_filter_map(),
             algebra_pb::logical_plan::operator::Opr::PathStart(path_start) => path_start.gen_filter_map(),

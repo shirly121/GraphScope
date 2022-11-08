@@ -21,15 +21,15 @@ use pegasus::api::function::{FnResult, MapFunction};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::map::MapFuncGen;
-use crate::process::record::{CompleteEntry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug)]
 struct PathEndOperator {
     alias: Option<KeyId>,
 }
 
-impl MapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for PathEndOperator {
-    fn exec(&self, mut input: Record<CompleteEntry>) -> FnResult<Record<CompleteEntry>> {
+impl<E: Entry> MapFunction<Record<E>, Record<E>> for PathEndOperator {
+    fn exec(&self, mut input: Record<E>) -> FnResult<Record<E>> {
         let entry = input
             .get(None)
             .ok_or(FnExecError::get_tag_error("get tag failed in GetVertexOperator"))?
@@ -41,8 +41,8 @@ impl MapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for PathEndOperat
     }
 }
 
-impl MapFuncGen<CompleteEntry> for algebra_pb::PathEnd {
-    fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> MapFuncGen<E> for algebra_pb::PathEnd {
+    fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<E>, Record<E>>>> {
         let alias = self
             .alias
             .map(|alias| alias.try_into())
