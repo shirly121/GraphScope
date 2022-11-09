@@ -52,9 +52,28 @@ mod test {
     use runtime::process::operator::map::Intersection;
     use runtime::process::operator::source::SourceOperator;
     use runtime::process::record::Entry;
-    use runtime::process::record::{Record, SimpleEntry};
+    use runtime::process::record::{CompleteEntry, Record, SimpleEntry};
 
     use crate::common::test::*;
+
+    fn source_gen(
+        alias: Option<common_pb::NameOrId>,
+    ) -> Box<dyn Iterator<Item = Record<CompleteEntry>> + Send> {
+        let scan_opr_pb = pb::Scan {
+            scan_opt: 0,
+            alias,
+            params: Some(query_params(vec![1.into()], vec![], None)),
+            idx_predicate: None,
+        };
+        let source = SourceOperator::new(
+            pb::logical_plan::operator::Opr::Scan(scan_opr_pb),
+            1,
+            1,
+            Arc::new(SimplePartition { num_servers: 1 }),
+        )
+        .unwrap();
+        source.gen_source(0).unwrap()
+    }
 
     fn source_gen_simple(
         alias: Option<common_pb::NameOrId>,
@@ -97,25 +116,18 @@ mod test {
         // define pb pattern message
         let expand_opr = pb::EdgeExpand {
             v_tag: None,
-            direction: 0,                                              // out
+            direction: 1,                                              // in
             params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
             expand_opt: 0,
             alias: None,
         };
-        let select_person =
-            pb::Select { predicate: Some(str_to_expr_pb("@.~label == 1".to_string()).unwrap()) };
         let pattern = pb::Pattern {
             sentences: vec![
                 pb::pattern::Sentence {
                     start: Some(TAG_A.into()),
-                    binders: vec![
-                        pb::pattern::Binder {
-                            item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                        },
-                        pb::pattern::Binder {
-                            item: Some(pb::pattern::binder::Item::Select(select_person.clone())),
-                        },
-                    ],
+                    binders: vec![pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                    }],
                     end: Some(TAG_B.into()),
                     join_kind: 0,
                 },
@@ -127,14 +139,14 @@ mod test {
                     end: Some(TAG_C.into()),
                     join_kind: 0,
                 },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
+                // pb::pattern::Sentence {
+                //     start: Some(TAG_B.into()),
+                //     binders: vec![pb::pattern::Binder {
+                //         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                //     }],
+                //     end: Some(TAG_C.into()),
+                //     join_kind: 0,
+                // },
             ],
         };
         Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
@@ -814,11 +826,11 @@ mod test {
         create_exp_store();
         // A <-> B;
         let expand_opr1 = pb::EdgeExpand {
-            v_tag: Some(TAG_A.into()),
-            direction: 1,                                              // in
+            v_tag: Some(TAG_B.into()),
+            direction: 0,                                              // out
             params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
             expand_opt: 0,
-            alias: Some(TAG_B.into()),
+            alias: Some(TAG_A.into()),
         };
 
         // A <-> C: expand C;
@@ -850,12 +862,12 @@ mod test {
             let expand3 = expand_opr3.clone();
             let unfold = unfold_opr.clone();
             |input, output| {
-                let source_iter = source_gen_simple(Some(TAG_A.into()));
+                let source_iter = source_gen(Some(TAG_B.into()));
                 let mut stream = input.input_from(source_iter)?;
                 let flatmap_func1 = expand1.gen_flat_map().unwrap();
                 stream = stream.flat_map(move |input| flatmap_func1.exec(input))?;
-                let map_func2 = expand2.gen_filter_map().unwrap();
-                stream = stream.filter_map(move |input| map_func2.exec(input))?;
+                let map_func2 = expand2.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| map_func2.exec(input))?;
                 // let map_func3 = expand3.gen_filter_map().unwrap();
                 // stream = stream.filter_map(move |input| map_func3.exec(input))?;
                 // let unfold_func = unfold.gen_flat_map().unwrap();

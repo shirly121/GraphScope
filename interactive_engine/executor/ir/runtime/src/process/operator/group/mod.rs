@@ -21,22 +21,18 @@ use ir_common::generated::algebra as algebra_pb;
 
 use crate::error::FnGenResult;
 use crate::process::functions::{FoldGen, GroupGen};
-use crate::process::record::{CompleteEntry, Entry, Record, RecordKey};
+use crate::process::record::{Entry, Record, RecordKey};
 
 pub trait GroupFunctionGen<E: Entry> {
-    fn gen_group(self) -> FnGenResult<Box<dyn GroupGen<Record<E>, RecordKey<E>, Record<E>>>>;
+    fn gen_group(self) -> FnGenResult<Box<dyn GroupGen<Record<E>, RecordKey<E>, Record<E>, E>>>;
 }
 
 pub trait FoldFactoryGen<E: Entry> {
-    fn gen_fold(self) -> FnGenResult<Box<dyn FoldGen<u64, Record<E>>>>;
+    fn gen_fold(self) -> FnGenResult<Box<dyn FoldGen<u64, Record<E>, E>>>;
 }
 
-impl GroupFunctionGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
-    fn gen_group(
-        self,
-    ) -> FnGenResult<
-        Box<dyn GroupGen<Record<CompleteEntry>, RecordKey<CompleteEntry>, Record<CompleteEntry>>>,
-    > {
+impl<E: Entry> GroupFunctionGen<E> for algebra_pb::logical_plan::operator::Opr {
+    fn gen_group(self) -> FnGenResult<Box<dyn GroupGen<Record<E>, RecordKey<E>, Record<E>, E>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::GroupBy(group) => Ok(Box::new(group)),
             _ => Err(ParsePbError::from("algebra_pb op is not a group op").into()),
@@ -44,8 +40,8 @@ impl GroupFunctionGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr
     }
 }
 
-impl FoldFactoryGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
-    fn gen_fold(self) -> FnGenResult<Box<dyn FoldGen<u64, Record<CompleteEntry>>>> {
+impl<E: Entry> FoldFactoryGen<E> for algebra_pb::logical_plan::operator::Opr {
+    fn gen_fold(self) -> FnGenResult<Box<dyn FoldGen<u64, Record<E>, E>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::GroupBy(non_key_group) => Ok(Box::new(non_key_group)),
             _ => Err(ParsePbError::from("algebra_pb op is not a fold op").into()),

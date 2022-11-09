@@ -46,7 +46,7 @@ use crate::process::operator::sink::{SinkGen, Sinker};
 use crate::process::operator::sort::CompareFunctionGen;
 use crate::process::operator::source::SourceOperator;
 use crate::process::operator::subtask::RecordLeftJoinGen;
-use crate::process::record::{CompleteEntry, Record, RecordKey};
+use crate::process::record::{CompleteEntry, Entry, Record, RecordKey};
 
 type RecordMap<E> = Box<dyn MapFunction<Record<E>, Record<E>>>;
 type RecordFilterMap<E> = Box<dyn FilterMapFunction<Record<E>, Record<E>>>;
@@ -57,8 +57,8 @@ type RecordShuffle<E> = Box<dyn RouteFunction<Record<E>>>;
 type RecordCompare<E> = Box<dyn CompareFunction<Record<E>>>;
 type RecordJoin<E> = Box<dyn JoinKeyGen<Record<E>, RecordKey<E>, Record<E>>>;
 type RecordKeySelector<E> = Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>;
-type RecordGroup<E> = Box<dyn GroupGen<Record<E>, RecordKey<E>, Record<E>>>;
-type RecordFold<E> = Box<dyn FoldGen<u64, Record<E>>>;
+type RecordGroup<E> = Box<dyn GroupGen<Record<E>, RecordKey<E>, Record<E>, E>>;
+type RecordFold<E> = Box<dyn FoldGen<u64, Record<E>, E>>;
 type BinaryResource = Vec<u8>;
 
 pub struct IRJobAssembly {
@@ -74,7 +74,7 @@ impl FnGenerator {
         FnGenerator { partitioner }
     }
 
-    fn gen_source(&self, opr: AlgebraOpr) -> FnGenResult<DynIter<Record<CompleteEntry>>> {
+    fn gen_source<E: Entry>(&self, opr: AlgebraOpr) -> FnGenResult<DynIter<Record<E>>> {
         let worker_id = pegasus::get_current_worker();
         let source_opr = SourceOperator::new(
             opr,
@@ -85,7 +85,7 @@ impl FnGenerator {
         Ok(source_opr.gen_source(worker_id.index as usize)?)
     }
 
-    fn gen_shuffle(&self, res: &BinaryResource) -> FnGenResult<RecordShuffle<CompleteEntry>> {
+    fn gen_shuffle<E: Entry>(&self, res: &BinaryResource) -> FnGenResult<RecordShuffle<E>> {
         let p = self.partitioner.clone();
         let num_workers = pegasus::get_current_worker().local_peers as usize;
         let shuffle_key = decode::<common_pb::NameOrIdKey>(res)?;
@@ -93,15 +93,15 @@ impl FnGenerator {
         Ok(Box::new(record_router))
     }
 
-    fn gen_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordMap<CompleteEntry>> {
+    fn gen_map<E: Entry>(&self, opr: AlgebraOpr) -> FnGenResult<RecordMap<E>> {
         Ok(opr.gen_map()?)
     }
 
-    fn gen_filter_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordFilterMap<CompleteEntry>> {
+    fn gen_filter_map<E: Entry>(&self, opr: AlgebraOpr) -> FnGenResult<RecordFilterMap<E>> {
         Ok(opr.gen_filter_map()?)
     }
 
-    fn gen_flat_map(&self, opr: AlgebraOpr) -> FnGenResult<RecordFlatMap<CompleteEntry>> {
+    fn gen_flat_map<E: Entry>(&self, opr: AlgebraOpr) -> FnGenResult<RecordFlatMap<E>> {
         Ok(opr.gen_flat_map()?)
     }
 

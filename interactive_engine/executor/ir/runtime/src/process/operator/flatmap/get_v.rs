@@ -24,7 +24,7 @@ use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
 
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
-use crate::process::record::{CompleteEntry, Entry, Record, RecordExpandIter};
+use crate::process::record::{Entry, Record, RecordExpandIter};
 
 #[derive(Debug)]
 struct GetBothVOperator {
@@ -32,10 +32,10 @@ struct GetBothVOperator {
     alias: Option<KeyId>,
 }
 
-impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for GetBothVOperator {
-    type Target = DynIter<Record<CompleteEntry>>;
+impl<E: Entry> FlatMapFunction<Record<E>, Record<E>> for GetBothVOperator {
+    type Target = DynIter<Record<E>>;
 
-    fn exec(&self, input: Record<CompleteEntry>) -> FnResult<Self::Target> {
+    fn exec(&self, input: Record<E>) -> FnResult<Self::Target> {
         if let Some(entry) = input.get(self.start_tag) {
             if let Some(e) = entry.as_graph_edge() {
                 let src_vertex =
@@ -58,18 +58,10 @@ impl FlatMapFunction<Record<CompleteEntry>, Record<CompleteEntry>> for GetBothVO
     }
 }
 
-impl FlatMapFuncGen<CompleteEntry> for algebra_pb::GetV {
+impl<E: Entry> FlatMapFuncGen<E> for algebra_pb::GetV {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<
-        Box<
-            dyn FlatMapFunction<
-                Record<CompleteEntry>,
-                Record<CompleteEntry>,
-                Target = DynIter<Record<CompleteEntry>>,
-            >,
-        >,
-    > {
+    ) -> FnGenResult<Box<dyn FlatMapFunction<Record<E>, Record<E>, Target = DynIter<Record<E>>>>> {
         let start_tag = self
             .tag
             .map(|name_or_id| name_or_id.try_into())

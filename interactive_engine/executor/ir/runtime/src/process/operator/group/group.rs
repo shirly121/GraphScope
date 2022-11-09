@@ -24,28 +24,18 @@ use crate::error::{FnExecError, FnGenResult};
 use crate::process::functions::{GroupGen, KeyFunction};
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
 use crate::process::operator::keyed::KeyFunctionGen;
-use crate::process::record::{CompleteEntry, Entry, Record, RecordKey};
+use crate::process::record::{Entry, Record, RecordKey};
 
-impl GroupGen<Record<CompleteEntry>, RecordKey<CompleteEntry>, Record<CompleteEntry>>
-    for algebra_pb::GroupBy
-{
-    fn gen_group_key(
-        &self,
-    ) -> FnGenResult<
-        Box<dyn KeyFunction<Record<CompleteEntry>, RecordKey<CompleteEntry>, Record<CompleteEntry>>>,
-    > {
+impl<E: Entry> GroupGen<Record<E>, RecordKey<E>, Record<E>, E> for algebra_pb::GroupBy {
+    fn gen_group_key(&self) -> FnGenResult<Box<dyn KeyFunction<Record<E>, RecordKey<E>, Record<E>>>> {
         self.clone().gen_key()
     }
 
-    fn gen_group_accum(&self) -> FnGenResult<RecordAccumulator> {
+    fn gen_group_accum(&self) -> FnGenResult<RecordAccumulator<E>> {
         self.clone().gen_accum()
     }
 
-    fn gen_group_map(
-        &self,
-    ) -> FnGenResult<
-        Box<dyn MapFunction<(RecordKey<CompleteEntry>, Record<CompleteEntry>), Record<CompleteEntry>>>,
-    > {
+    fn gen_group_map(&self) -> FnGenResult<Box<dyn MapFunction<(RecordKey<E>, Record<E>), Record<E>>>> {
         let mut key_aliases = Vec::with_capacity(self.mappings.len());
         for key_alias in self.mappings.iter() {
             let alias: Option<KeyId> = Some(

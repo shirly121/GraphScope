@@ -21,6 +21,7 @@ use pegasus_server::job_pb::AccumKind;
 
 use crate::error::FnGenResult;
 use crate::process::operator::accum::RecordAccumulator;
+use crate::process::record::Entry;
 
 pub trait CompareFunction<D>: Send + 'static {
     fn compare(&self, left: &D, right: &D) -> Ordering;
@@ -38,15 +39,15 @@ pub trait JoinKeyGen<D, K, V>: Send + 'static {
     fn get_join_kind(&self) -> JoinKind;
 }
 
-pub trait GroupGen<D, K, V>: Send + 'static {
+pub trait GroupGen<D, K, V, E: Entry>: Send + 'static {
     fn gen_group_key(&self) -> FnGenResult<Box<dyn KeyFunction<D, K, V>>>;
 
-    fn gen_group_accum(&self) -> FnGenResult<RecordAccumulator>;
+    fn gen_group_accum(&self) -> FnGenResult<RecordAccumulator<E>>;
 
     fn gen_group_map(&self) -> FnGenResult<Box<dyn MapFunction<(K, V), D>>>;
 }
 
-pub trait FoldGen<I, O>: Send + 'static {
+pub trait FoldGen<I, O, E: Entry>: Send + 'static {
     // TODO(bingqing): get_accum_kind() and gen_fold_map() is for simple count optimization for tmp;
     // This will be processed in gen_fold_accum() in a unified way later
     fn get_accum_kind(&self) -> AccumKind;
@@ -54,7 +55,7 @@ pub trait FoldGen<I, O>: Send + 'static {
     fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<I, O>>>;
 
     // TODO(bingqing): enable fold_partition + fold_global optimization in RecordAccumulator
-    fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator>;
+    fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator<E>>;
 }
 
 pub trait ApplyGen<L, R, O>: Send + 'static {
@@ -95,12 +96,12 @@ mod box_impl {
         }
     }
 
-    impl<D, K, V, F: GroupGen<D, K, V> + ?Sized> GroupGen<D, K, V> for Box<F> {
+    impl<D, K, V, E: Entry, F: GroupGen<D, K, V, E> + ?Sized> GroupGen<D, K, V, E> for Box<F> {
         fn gen_group_key(&self) -> FnGenResult<Box<dyn KeyFunction<D, K, V>>> {
             (**self).gen_group_key()
         }
 
-        fn gen_group_accum(&self) -> FnGenResult<RecordAccumulator> {
+        fn gen_group_accum(&self) -> FnGenResult<RecordAccumulator<E>> {
             (**self).gen_group_accum()
         }
 
@@ -109,7 +110,7 @@ mod box_impl {
         }
     }
 
-    impl<I, O, F: FoldGen<I, O> + ?Sized> FoldGen<I, O> for Box<F> {
+    impl<I, O, E: Entry, F: FoldGen<I, O, E> + ?Sized> FoldGen<I, O, E> for Box<F> {
         fn get_accum_kind(&self) -> AccumKind {
             (**self).get_accum_kind()
         }
@@ -118,7 +119,7 @@ mod box_impl {
             (**self).gen_fold_map()
         }
 
-        fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator> {
+        fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator<E>> {
             (**self).gen_fold_accum()
         }
     }

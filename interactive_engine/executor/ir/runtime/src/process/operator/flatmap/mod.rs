@@ -23,7 +23,7 @@ use ir_common::generated::algebra as algebra_pb;
 use pegasus::api::function::{DynIter, FlatMapFunction};
 
 use crate::error::FnGenResult;
-use crate::process::record::{CompleteEntry, Entry, Record, SimpleEntry};
+use crate::process::record::{Entry, Record};
 
 pub trait FlatMapFuncGen<E: Entry> {
     fn gen_flat_map(
@@ -31,18 +31,10 @@ pub trait FlatMapFuncGen<E: Entry> {
     ) -> FnGenResult<Box<dyn FlatMapFunction<Record<E>, Record<E>, Target = DynIter<Record<E>>>>>;
 }
 
-impl FlatMapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
+impl<E: Entry> FlatMapFuncGen<E> for algebra_pb::logical_plan::operator::Opr {
     fn gen_flat_map(
         self,
-    ) -> FnGenResult<
-        Box<
-            dyn FlatMapFunction<
-                Record<CompleteEntry>,
-                Record<CompleteEntry>,
-                Target = DynIter<Record<CompleteEntry>>,
-            >,
-        >,
-    > {
+    ) -> FnGenResult<Box<dyn FlatMapFunction<Record<E>, Record<E>, Target = DynIter<Record<E>>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
             algebra_pb::logical_plan::operator::Opr::Vertex(get_vertex) => get_vertex.gen_flat_map(),
@@ -56,24 +48,24 @@ impl FlatMapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
     }
 }
 
-impl FlatMapFuncGen<SimpleEntry> for algebra_pb::logical_plan::operator::Opr {
-    fn gen_flat_map(
-        self,
-    ) -> FnGenResult<
-        Box<
-            dyn FlatMapFunction<
-                Record<SimpleEntry>,
-                Record<SimpleEntry>,
-                Target = DynIter<Record<SimpleEntry>>,
-            >,
-        >,
-    > {
-        match self {
-            algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
-            algebra_pb::logical_plan::operator::Opr::ExpandIntersect(expand_intersect) => {
-                expand_intersect.gen_flat_map()
-            }
-            _ => Err(ParsePbError::ParseError(format!("the operator: {:?} is not a `FlatMap`", self)))?,
-        }
-    }
-}
+// impl FlatMapFuncGen<SimpleEntry> for algebra_pb::logical_plan::operator::Opr {
+//     fn gen_flat_map(
+//         self,
+//     ) -> FnGenResult<
+//         Box<
+//             dyn FlatMapFunction<
+//                 Record<SimpleEntry>,
+//                 Record<SimpleEntry>,
+//                 Target = DynIter<Record<SimpleEntry>>,
+//             >,
+//         >,
+//     > {
+//         match self {
+//             algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
+//             algebra_pb::logical_plan::operator::Opr::ExpandIntersect(expand_intersect) => {
+//                 expand_intersect.gen_flat_map()
+//             }
+//             _ => Err(ParsePbError::ParseError(format!("the operator: {:?} is not a `FlatMap`", self)))?,
+//         }
+//     }
+// }

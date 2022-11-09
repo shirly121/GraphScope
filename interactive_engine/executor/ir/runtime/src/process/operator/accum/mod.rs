@@ -21,13 +21,14 @@ use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 
 use crate::error::FnGenResult;
+use crate::process::record::Entry;
 
-pub trait AccumFactoryGen {
-    fn gen_accum(self) -> FnGenResult<RecordAccumulator>;
+pub trait AccumFactoryGen<E: Entry> {
+    fn gen_accum(self) -> FnGenResult<RecordAccumulator<E>>;
 }
 
-impl AccumFactoryGen for algebra_pb::logical_plan::Operator {
-    fn gen_accum(self) -> FnGenResult<RecordAccumulator> {
+impl<E: Entry> AccumFactoryGen<E> for algebra_pb::logical_plan::Operator {
+    fn gen_accum(self) -> FnGenResult<RecordAccumulator<E>> {
         if let Some(opr) = self.opr {
             match opr {
                 // TODO: it should be different for group and fold; For fold, we should further consider fold_partition and fold;

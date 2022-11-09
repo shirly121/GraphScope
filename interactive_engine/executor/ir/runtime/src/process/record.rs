@@ -35,8 +35,10 @@ use crate::process::operator::map::Intersection;
 
 pub trait Entry:
     Data
+    + Hash
     + Element
     + PartialEq
+    + Eq
     + PartialOrd
     + From<Vertex>
     + From<Edge>
@@ -44,6 +46,9 @@ pub trait Entry:
     + From<GraphPath>
     + From<Object>
     + From<VertexOrEdge>
+    + TryFrom<result_pb::Entry>
+    + TryFrom<result_pb::Element>
+    + Add<Output = Self>
 {
     fn as_graph_vertex(&self) -> Option<&Vertex>;
 
@@ -306,6 +311,42 @@ impl From<Edge> for SimpleEntry {
     }
 }
 
+impl TryFrom<result_pb::Entry> for SimpleEntry {
+    type Error = ParsePbError;
+
+    fn try_from(entry_pb: result_pb::Entry) -> Result<Self, Self::Error> {
+        if let Some(_) = entry_pb.inner {
+            Ok(SimpleEntry::Null)
+        } else {
+            Err(ParsePbError::EmptyFieldError("entry inner is empty".to_string()))?
+        }
+    }
+}
+
+impl TryFrom<result_pb::Element> for SimpleEntry {
+    type Error = ParsePbError;
+    fn try_from(e: result_pb::Element) -> Result<Self, Self::Error> {
+        if let Some(inner) = e.inner {
+            match inner {
+                result_pb::element::Inner::Vertex(v) => Ok(SimpleEntry::V(v.try_into()?)),
+                _ => Ok(SimpleEntry::Null),
+            }
+        } else {
+            Err(ParsePbError::EmptyFieldError("element inner is empty".to_string()))?
+        }
+    }
+}
+
+impl Add for SimpleEntry {
+    type Output = SimpleEntry;
+
+    fn add(self, _rhs: Self) -> Self::Output {
+        SimpleEntry::Null
+    }
+}
+
+impl Eq for SimpleEntry {}
+
 #[derive(Debug, Clone)]
 pub struct Record<E: Entry> {
     curr: Option<Arc<E>>,
@@ -552,8 +593,8 @@ impl<E: Entry, IE> RecordPathExpandIter<E, IE> {
     }
 }
 
-impl<IE: Into<CompleteEntry>> Iterator for RecordPathExpandIter<CompleteEntry, IE> {
-    type Item = Record<CompleteEntry>;
+impl<E: Entry, IE: Into<E>> Iterator for RecordPathExpandIter<E, IE> {
+    type Item = Record<E>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = self.origin.clone();
@@ -561,21 +602,17 @@ impl<IE: Into<CompleteEntry>> Iterator for RecordPathExpandIter<CompleteEntry, I
         loop {
             match self.children.next() {
                 Some(elem) => {
-                    let graph_obj = elem.into();
-                    match graph_obj {
-                        CompleteEntry::V(v) => {
-                            if curr_path.append(v) {
-                                record.append(curr_path, None);
-                                return Some(record);
-                            }
+                    let graph_obj: E = elem.into();
+                    if let Some(v) = graph_obj.as_graph_vertex() {
+                        if curr_path.append(v.clone()) {
+                            record.append(curr_path, None);
+                            return Some(record);
                         }
-                        CompleteEntry::E(e) => {
-                            if curr_path.append(e) {
-                                record.append(curr_path, None);
-                                return Some(record);
-                            }
+                    } else if let Some(e) = graph_obj.as_graph_edge() {
+                        if curr_path.append(e.clone()) {
+                            record.append(curr_path, None);
+                            return Some(record);
                         }
-                        _ => {}
                     }
                 }
                 None => return None,

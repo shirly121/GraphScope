@@ -23,9 +23,9 @@ use pegasus_server::job_pb as server_pb;
 use crate::error::{FnGenError, FnGenResult};
 use crate::process::functions::FoldGen;
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
-impl FoldGen<u64, Record<CompleteEntry>> for algebra_pb::GroupBy {
+impl<E: Entry> FoldGen<u64, Record<E>, E> for algebra_pb::GroupBy {
     fn get_accum_kind(&self) -> server_pb::AccumKind {
         let accum_functions = &self.functions;
         if accum_functions.len() == 1 {
@@ -40,8 +40,8 @@ impl FoldGen<u64, Record<CompleteEntry>> for algebra_pb::GroupBy {
         }
     }
 
-    fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<u64, Record<CompleteEntry>>>> {
-        if self.get_accum_kind() == server_pb::AccumKind::Cnt {
+    fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<u64, Record<E>>>> {
+        if <Self as FoldGen<u64, Record<E>, E>>::get_accum_kind(self) == server_pb::AccumKind::Cnt {
             let count_alias = self.functions[0]
                 .alias
                 .clone()
@@ -53,7 +53,7 @@ impl FoldGen<u64, Record<CompleteEntry>> for algebra_pb::GroupBy {
         }
     }
 
-    fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator> {
+    fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator<E>> {
         self.clone().gen_accum()
     }
 }
@@ -92,7 +92,11 @@ mod tests {
             let source = source.clone();
             move |input, output| {
                 let mut stream = input.input_from(source.into_iter())?;
-                if let server_pb::AccumKind::Cnt = fold_opr_pb.get_accum_kind() {
+                if let server_pb::AccumKind::Cnt =
+                    <pb::GroupBy as FoldGen<u64, Record<CompleteEntry>, CompleteEntry>>::get_accum_kind(
+                        &fold_opr_pb,
+                    )
+                {
                     let fold_map = fold_opr_pb.gen_fold_map()?;
                     stream = stream
                         .count()?

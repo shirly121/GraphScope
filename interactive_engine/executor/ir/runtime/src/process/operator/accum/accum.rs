@@ -30,31 +30,31 @@ use crate::process::operator::accum::accumulator::{
 };
 use crate::process::operator::accum::AccumFactoryGen;
 use crate::process::operator::TagKey;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 #[derive(Debug, Clone)]
-pub enum EntryAccumulator {
+pub enum EntryAccumulator<E: Entry> {
     // TODO(bingqing): more accum kind
     ToCount(Count<()>),
-    ToList(ToList<CompleteEntry>),
-    ToMin(Minimum<CompleteEntry>),
-    ToMax(Maximum<CompleteEntry>),
-    ToSet(ToSet<CompleteEntry>),
-    ToDistinctCount(DistinctCount<CompleteEntry>),
-    ToSum(Sum<CompleteEntry>),
-    ToAvg(Sum<CompleteEntry>, Count<()>),
+    ToList(ToList<E>),
+    ToMin(Minimum<E>),
+    ToMax(Maximum<E>),
+    ToSet(ToSet<E>),
+    ToDistinctCount(DistinctCount<E>),
+    ToSum(Sum<E>),
+    ToAvg(Sum<E>, Count<()>),
 }
 
 /// Accumulator for Record, including multiple accumulators for entries(columns) in Record.
 /// Notice that if the entry is a None-Entry (i.e., Object::None), it won't be accumulated.
 // TODO: if the none-entry counts, we may further need a flag to identify.
 #[derive(Debug, Clone)]
-pub struct RecordAccumulator {
-    accum_ops: Vec<(EntryAccumulator, TagKey, Option<KeyId>)>,
+pub struct RecordAccumulator<E: Entry> {
+    accum_ops: Vec<(EntryAccumulator<E>, TagKey, Option<KeyId>)>,
 }
 
-impl Accumulator<Record<CompleteEntry>, Record<CompleteEntry>> for RecordAccumulator {
-    fn accum(&mut self, mut next: Record<CompleteEntry>) -> FnExecResult<()> {
+impl<E: Entry> Accumulator<Record<E>, Record<E>> for RecordAccumulator<E> {
+    fn accum(&mut self, mut next: Record<E>) -> FnExecResult<()> {
         for (accumulator, tag_key, _) in self.accum_ops.iter_mut() {
             let entry = tag_key.get_entry(&mut next)?;
             accumulator.accum(entry)?;
@@ -62,7 +62,7 @@ impl Accumulator<Record<CompleteEntry>, Record<CompleteEntry>> for RecordAccumul
         Ok(())
     }
 
-    fn finalize(&mut self) -> FnExecResult<Record<CompleteEntry>> {
+    fn finalize(&mut self) -> FnExecResult<Record<E>> {
         let mut record = Record::default();
         for (accumulator, _, alias) in self.accum_ops.iter_mut() {
             let entry = accumulator.finalize()?;
@@ -72,8 +72,8 @@ impl Accumulator<Record<CompleteEntry>, Record<CompleteEntry>> for RecordAccumul
     }
 }
 
-impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
-    fn accum(&mut self, next: CompleteEntry) -> FnExecResult<()> {
+impl<E: Entry> Accumulator<E, E> for EntryAccumulator<E> {
+    fn accum(&mut self, next: E) -> FnExecResult<()> {
         // ignore non-exist tag/label/property values;
         if !next.is_none() {
             match self {
@@ -94,14 +94,14 @@ impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
         }
     }
 
-    fn finalize(&mut self) -> FnExecResult<CompleteEntry> {
+    fn finalize(&mut self) -> FnExecResult<E> {
         match self {
             EntryAccumulator::ToCount(count) => {
                 let cnt = count.finalize()?;
                 Ok(object!(cnt).into())
             }
-            EntryAccumulator::ToList(list) => {
-                let list_entry = list.finalize()?;
+            EntryAccumulator::ToList(_list) => {
+                // let list_entry = list.finalize()?;
                 // let list_entry = list
                 //     .finalize()?
                 //     .into_iter()
@@ -115,7 +115,8 @@ impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
                 //         }
                 //     })
                 //     .collect::<Result<Vec<_>, _>>()?;
-                Ok(CompleteEntry::Collection(list_entry))
+                // Ok(CompleteEntry::Collection(list_entry))
+                Err(FnExecError::accum_error("To Do, trait entry doesn't support"))
             }
             EntryAccumulator::ToMin(min) => min
                 .finalize()?
@@ -123,8 +124,8 @@ impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
             EntryAccumulator::ToMax(max) => max
                 .finalize()?
                 .ok_or(FnExecError::accum_error("max_entry is none")),
-            EntryAccumulator::ToSet(set) => {
-                let set_entry = set.finalize()?;
+            EntryAccumulator::ToSet(_set) => {
+                // let set_entry = set.finalize()?;
                 // let set_entry = set
                 //     .finalize()?
                 //     .into_iter()
@@ -138,7 +139,8 @@ impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
                 //         )),
                 //     })
                 //     .collect::<Result<Vec<_>, _>>()?;
-                Ok(CompleteEntry::Collection(set_entry))
+                // Ok(CompleteEntry::Collection(set_entry))
+                Err(FnExecError::accum_error("To Do, trait entry doesn't support"))
             }
             EntryAccumulator::ToDistinctCount(distinct_count) => {
                 let cnt = distinct_count.finalize()?;
@@ -181,8 +183,8 @@ impl Accumulator<CompleteEntry, CompleteEntry> for EntryAccumulator {
     }
 }
 
-impl AccumFactoryGen for algebra_pb::GroupBy {
-    fn gen_accum(self) -> FnGenResult<RecordAccumulator> {
+impl<E: Entry> AccumFactoryGen<E> for algebra_pb::GroupBy {
+    fn gen_accum(self) -> FnGenResult<RecordAccumulator<E>> {
         let mut accum_ops = Vec::with_capacity(self.functions.len());
         let multi_accum_flag = if self.functions.len() > 1 { true } else { false };
         for agg_func in self.functions {
@@ -227,7 +229,7 @@ impl AccumFactoryGen for algebra_pb::GroupBy {
     }
 }
 
-impl Encode for EntryAccumulator {
+impl<E: Entry> Encode for EntryAccumulator<E> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         match self {
             EntryAccumulator::ToCount(count) => {
@@ -268,7 +270,7 @@ impl Encode for EntryAccumulator {
     }
 }
 
-impl Decode for EntryAccumulator {
+impl<E: Entry> Decode for EntryAccumulator<E> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let e = reader.read_u8()?;
         match e {
@@ -277,31 +279,31 @@ impl Decode for EntryAccumulator {
                 Ok(EntryAccumulator::ToCount(cnt))
             }
             1 => {
-                let list = <ToList<CompleteEntry>>::read_from(reader)?;
+                let list = <ToList<E>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToList(list))
             }
             2 => {
-                let min = <Minimum<CompleteEntry>>::read_from(reader)?;
+                let min = <Minimum<E>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToMin(min))
             }
             3 => {
-                let max = <Maximum<CompleteEntry>>::read_from(reader)?;
+                let max = <Maximum<E>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToMax(max))
             }
             4 => {
-                let set = <ToSet<CompleteEntry>>::read_from(reader)?;
+                let set = <ToSet<E>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToSet(set))
             }
             5 => {
-                let distinct_count = <DistinctCount<CompleteEntry>>::read_from(reader)?;
+                let distinct_count = <DistinctCount<E>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToDistinctCount(distinct_count))
             }
             6 => {
-                let sum = <Sum<CompleteEntry>>::read_from(reader)?;
+                let sum = <Sum<E>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToSum(sum))
             }
             7 => {
-                let sum = <Sum<CompleteEntry>>::read_from(reader)?;
+                let sum = <Sum<E>>::read_from(reader)?;
                 let count = <Count<()>>::read_from(reader)?;
                 Ok(EntryAccumulator::ToAvg(sum, count))
             }
@@ -310,7 +312,7 @@ impl Decode for EntryAccumulator {
     }
 }
 
-impl Encode for RecordAccumulator {
+impl<E: Entry> Encode for RecordAccumulator<E> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         writer.write_u32(self.accum_ops.len() as u32)?;
         for (accumulator, tag_key, alias) in self.accum_ops.iter() {
@@ -322,12 +324,12 @@ impl Encode for RecordAccumulator {
     }
 }
 
-impl Decode for RecordAccumulator {
+impl<E: Entry> Decode for RecordAccumulator<E> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let len = reader.read_u32()?;
         let mut accum_ops = Vec::with_capacity(len as usize);
         for _ in 0..len {
-            let accumulator = <EntryAccumulator>::read_from(reader)?;
+            let accumulator = <EntryAccumulator<E>>::read_from(reader)?;
             let tag_key = <TagKey>::read_from(reader)?;
             let alias = <Option<KeyId>>::read_from(reader)?;
             accum_ops.push((accumulator, tag_key, alias));
