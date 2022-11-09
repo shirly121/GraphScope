@@ -65,7 +65,7 @@ struct CountAlias {
 
 impl<E: Entry> MapFunction<u64, Record<E>> for CountAlias {
     fn exec(&self, cnt: u64) -> FnResult<Record<E>> {
-        let cnt_entry = E::from_object(object!(cnt));
+        let cnt_entry = E::from(object!(cnt));
         Ok(Record::new(cnt_entry, self.alias.clone()))
     }
 }

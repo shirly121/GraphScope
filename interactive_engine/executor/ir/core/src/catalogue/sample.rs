@@ -674,7 +674,7 @@ mod tests {
         let sample_graph = Arc::new(load_sample_graph("../core/resource/test_graph"));
         let pattern_meta = load_pattern_meta("../core/resource/test_graph/graph_schema/schema.json");
         catalog.estimate_graph(Arc::clone(&sample_graph), 0.1, Some(10000));
-        println!("{:?}", pattern.generate_optimized_match_plan_greedily(&catalog, &pattern_meta));
+        println!("{:?}", pattern.generate_optimized_match_plan_greedily(&catalog, &pattern_meta, false));
     }
 
     #[test]

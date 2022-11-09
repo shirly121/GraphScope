@@ -547,6 +547,12 @@ impl From<pb::Sink> for pb::logical_plan::Operator {
     }
 }
 
+impl From<pb::ExpandAndIntersect> for pb::logical_plan::Operator {
+    fn from(opr: pb::ExpandAndIntersect) -> Self {
+        pb::logical_plan::Operator { opr: Some(pb::logical_plan::operator::Opr::ExpandIntersect(opr)) }
+    }
+}
+
 impl From<Object> for common_pb::Value {
     fn from(value: Object) -> Self {
         let item = match value {
@@ -609,6 +615,7 @@ impl pb::logical_plan::operator::Opr {
             Opr::Pattern(_) => "Pattern",
             Opr::Fused(_) => "Fused",
             Opr::Intersect(_) => "Intersect",
+            Opr::ExpandIntersect(_) => "ExpandAndIntersect",
         };
         name.to_string()
     }

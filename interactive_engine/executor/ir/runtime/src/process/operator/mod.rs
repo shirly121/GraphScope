@@ -56,7 +56,7 @@ impl TagKey {
                 Ok(entry.clone())
             }
         } else {
-            Ok(Arc::new(E::from_object(Object::None)))
+            Ok(Arc::new(E::from(Object::None)))
         }
     }
 
@@ -69,7 +69,7 @@ impl TagKey {
                 Ok(entry.as_ref().clone())
             }
         } else {
-            Ok(E::from_object(Object::None))
+            Ok(E::from(Object::None))
         }
     }
 
@@ -120,8 +120,7 @@ impl TagKey {
                     }
                 }
             };
-
-            Ok(E::from_object(prop_obj))
+            Ok(E::from(prop_obj))
         } else {
             Err(FnExecError::unexpected_data_error(&format!(
                 "

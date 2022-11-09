@@ -25,14 +25,14 @@ use ir_common::generated::algebra as algebra_pb;
 use pegasus::api::function::{FilterMapFunction, MapFunction};
 
 use crate::error::FnGenResult;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 pub trait MapFuncGen<E: Entry> {
     fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<E>, Record<E>>>>;
 }
 
-impl MapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
-    fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<CompleteEntry>, Record<CompleteEntry>>>> {
+impl<E: Entry> MapFuncGen<E> for algebra_pb::logical_plan::operator::Opr {
+    fn gen_map(self) -> FnGenResult<Box<dyn MapFunction<Record<E>, Record<E>>>> {
         match self {
             algebra_pb::logical_plan::operator::Opr::PathEnd(path_end) => path_end.gen_map(),
             _ => Err(ParsePbError::ParseError(format!("the operator: {:?} is not a `Map`", self)))?,

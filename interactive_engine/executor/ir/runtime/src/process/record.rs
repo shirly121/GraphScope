@@ -64,8 +64,6 @@ pub trait Entry:
     fn as_collection_mut(&mut self) -> Option<&mut Vec<Self>>;
 
     fn is_none(&self) -> bool;
-
-    fn from_object(object: Object) -> Self;
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
@@ -148,10 +146,6 @@ impl Entry for CompleteEntry {
             _ => false,
         }
     }
-
-    fn from_object(object: Object) -> Self {
-        CompleteEntry::OffGraph(object)
-    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
@@ -212,10 +206,6 @@ impl Entry for SimpleEntry {
             SimpleEntry::Null => true,
             _ => false,
         }
-    }
-
-    fn from_object(_object: Object) -> Self {
-        SimpleEntry::Null
     }
 }
 

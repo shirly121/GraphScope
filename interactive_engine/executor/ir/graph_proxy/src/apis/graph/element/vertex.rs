@@ -108,10 +108,18 @@ impl PartialEq for Vertex {
     }
 }
 
+impl Eq for Vertex {}
+
 impl PartialOrd for Vertex {
     // TODO: not sure if it is reasonable. Vertex may be not comparable.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.id().partial_cmp(&other.id())
+    }
+}
+
+impl Ord for Vertex {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id().cmp(&other.id())
     }
 }
 

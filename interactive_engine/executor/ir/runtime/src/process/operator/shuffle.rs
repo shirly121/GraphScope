@@ -23,7 +23,7 @@ use ir_common::KeyId;
 use pegasus::api::function::{FnResult, RouteFunction};
 
 use crate::error::FnExecError;
-use crate::process::record::{CompleteEntry, Entry, Record};
+use crate::process::record::{Entry, Record};
 
 pub struct RecordRouter {
     p: Arc<dyn Partitioner>,
@@ -44,8 +44,8 @@ impl RecordRouter {
     }
 }
 
-impl RouteFunction<Record<CompleteEntry>> for RecordRouter {
-    fn route(&self, t: &Record<CompleteEntry>) -> FnResult<u64> {
+impl<E: Entry> RouteFunction<Record<E>> for RecordRouter {
+    fn route(&self, t: &Record<E>) -> FnResult<u64> {
         if let Some(entry) = t.get(self.shuffle_key.clone()) {
             if let Some(v) = entry.as_graph_vertex() {
                 Ok(self

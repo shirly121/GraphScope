@@ -75,7 +75,7 @@ mod test {
             Arc::new(SimplePartition { num_servers: 1 }),
         )
         .unwrap();
-        source.gen_source_simple(0).unwrap()
+        source.gen_source(0).unwrap()
     }
 
     fn expand_test(expand: pb::EdgeExpand) -> ResultStream<Record<CompleteEntry>> {

@@ -56,7 +56,7 @@ impl<E: Entry> BinaryFunction<Record<E>, Vec<Record<E>>, Option<Record<E>>> for 
             }
             JoinKind::LeftOuter => {
                 if sub.is_empty() {
-                    let entry: Arc<E> = Arc::new(E::from_object(Object::None));
+                    let entry: Arc<E> = Arc::new(E::from(Object::None));
                     if let Some(alias) = self.alias.as_ref() {
                         let columns = parent.get_columns_mut();
                         columns.insert(*alias as usize, entry.clone());

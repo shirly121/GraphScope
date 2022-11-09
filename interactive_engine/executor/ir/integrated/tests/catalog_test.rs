@@ -19,12 +19,15 @@ mod common;
 
 #[cfg(test)]
 mod test {
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
     use std::collections::HashSet;
     use std::convert::TryInto;
     use std::fs::File;
     use std::sync::Arc;
     use std::time::Instant;
 
+    use graph_proxy::apis::{DynDetails, GraphElement, QueryParams, Statement, Vertex, ID};
     use graph_proxy::{create_exp_store, SimplePartition};
     use graph_store::graph_db::GlobalStoreTrait;
     use ir_common::expr_parse::str_to_expr_pb;
@@ -40,14 +43,15 @@ mod test {
     use ir_core::plan::meta::PlanMeta;
     use ir_core::plan::physical::AsPhysical;
     use ir_core::{plan::meta::Schema, JsonIO};
-    use pegasus::api::Count;
     use pegasus::api::{Map, Sink};
     use pegasus::JobConf;
     use pegasus_client::builder::JobBuilder;
     use petgraph::Direction;
     use runtime::process::operator::flatmap::FlatMapFuncGen;
     use runtime::process::operator::map::FilterMapFuncGen;
+    use runtime::process::operator::map::Intersection;
     use runtime::process::operator::source::SourceOperator;
+    use runtime::process::record::Entry;
     use runtime::process::record::{Record, SimpleEntry};
 
     use crate::common::test::*;
@@ -68,7 +72,7 @@ mod test {
             Arc::new(SimplePartition { num_servers: 1 }),
         )
         .unwrap();
-        source.gen_source_simple(0).unwrap()
+        source.gen_source(0).unwrap()
     }
 
     fn get_partition(id: u64, num_servers: usize, worker_num: usize) -> u64 {
@@ -103,7 +107,7 @@ mod test {
         let pattern = pb::Pattern {
             sentences: vec![
                 pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
+                    start: Some(TAG_A.into()),
                     binders: vec![
                         pb::pattern::Binder {
                             item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
@@ -112,25 +116,25 @@ mod test {
                             item: Some(pb::pattern::binder::Item::Select(select_person.clone())),
                         },
                     ],
-                    end: Some(TAG_A.into()),
+                    end: Some(TAG_B.into()),
                     join_kind: 0,
                 },
                 pb::pattern::Sentence {
-                    start: Some(TAG_C.into()),
+                    start: Some(TAG_A.into()),
                     binders: vec![pb::pattern::Binder {
                         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
                     }],
-                    end: Some(TAG_A.into()),
+                    end: Some(TAG_C.into()),
                     join_kind: 0,
                 },
-                // pb::pattern::Sentence {
-                //     start: Some(TAG_A.into()),
-                //     binders: vec![pb::pattern::Binder {
-                //         item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                //     }],
-                //     end: Some(TAG_C.into()),
-                //     join_kind: 0,
-                // },
+                pb::pattern::Sentence {
+                    start: Some(TAG_B.into()),
+                    binders: vec![pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
+                    }],
+                    end: Some(TAG_C.into()),
+                    join_kind: 0,
+                },
             ],
         };
         Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
@@ -454,7 +458,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta(), false)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -489,7 +493,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
             .unwrap();
         println!("{:?}", pb_plan);
         initialize();
@@ -550,7 +554,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta(), false)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!("{:?}", plan);
@@ -585,7 +589,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -617,7 +621,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta(), false)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -652,7 +656,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case3() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -684,7 +688,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta(), false)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -719,7 +723,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case4() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -751,7 +755,7 @@ mod test {
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
             let pb_plan = ldbc_pattern
-                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta())
+                .generate_optimized_match_plan_recursively(&mut catalog, &get_ldbc_pattern_meta(), false)
                 .unwrap();
             let plan: LogicalPlan = pb_plan.try_into().unwrap();
             println!(
@@ -786,7 +790,7 @@ mod test {
     fn test_generate_simple_matching_plan_for_ldbc_bi11() {
         let ldbc_pattern = build_ldbc_bi11().unwrap();
         let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta())
+            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
             .unwrap();
         initialize();
         let plan: LogicalPlan = pb_plan.try_into().unwrap();
@@ -850,12 +854,73 @@ mod test {
                 let mut stream = input.input_from(source_iter)?;
                 let flatmap_func1 = expand1.gen_flat_map().unwrap();
                 stream = stream.flat_map(move |input| flatmap_func1.exec(input))?;
-                let map_func2 = expand2.gen_flat_map().unwrap();
-                stream = stream.flat_map(move |input| map_func2.exec(input))?;
+                let map_func2 = expand2.gen_filter_map().unwrap();
+                stream = stream.filter_map(move |input| map_func2.exec(input))?;
                 // let map_func3 = expand3.gen_filter_map().unwrap();
                 // stream = stream.filter_map(move |input| map_func3.exec(input))?;
                 // let unfold_func = unfold.gen_flat_map().unwrap();
                 // stream = stream.flat_map(move |input| unfold_func.exec(input))?;
+                stream.sink_into(output)
+            }
+        })
+        .expect("build job failure");
+
+        let mut count = 0;
+        while let Some(result) = result.next() {
+            if let Ok(_) = result {
+                count += 1;
+            }
+        }
+        println!("{}", count);
+        println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
+    }
+
+    #[test]
+    fn expand_and_intersection_test_02() {
+        create_exp_store();
+        // A <-> B;
+        let expand_opr1 = pb::EdgeExpand {
+            v_tag: Some(TAG_A.into()),
+            direction: 1,                                              // in
+            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
+            expand_opt: 0,
+            alias: Some(TAG_B.into()),
+        };
+
+        // A <-> C: expand C;
+        let expand_opr2 = pb::EdgeExpand {
+            v_tag: Some(TAG_A.into()),
+            direction: 1,                                              // in
+            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
+            expand_opt: 0,
+            alias: Some(TAG_C.into()),
+        };
+
+        // B <-> C: expand C and intersect on C;
+        let expand_opr3 = pb::EdgeExpand {
+            v_tag: Some(TAG_B.into()),
+            direction: 1,                                              // in
+            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
+            expand_opt: 0,
+            alias: Some(TAG_C.into()),
+        };
+
+        // unfold tag C
+        let expand_intersect_opr = pb::ExpandAndIntersect { edge_expands: vec![expand_opr2, expand_opr3] };
+        println!("start executing query...");
+        let query_execution_start_time = Instant::now();
+        let conf = JobConf::new("expand_and_intersection_unfold_multiv_test");
+        let mut result = pegasus::run(conf, || {
+            let expand1 = expand_opr1.clone();
+
+            let expand_intersect = expand_intersect_opr.clone();
+            |input, output| {
+                let source_iter = source_gen_simple(Some(TAG_A.into()));
+                let mut stream = input.input_from(source_iter)?;
+                let flatmap_func1 = expand1.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| flatmap_func1.exec(input))?;
+                let map_func2 = expand_intersect.gen_flat_map().unwrap();
+                stream = stream.flat_map(move |input| map_func2.exec(input))?;
                 stream.sink_into(output)
             }
         })
@@ -888,35 +953,97 @@ mod test {
                         GRAPH
                             .get_all_vertices(Some(&v_label_ids))
                             .map(|v| (v.get_id() as u64))
-                            // .filter(move |v_id| {
-                            //     let worker_index = pegasus::get_current_worker().index as u64;
-                            //     get_partition(*v_id, num_servers, worker_num) == worker_index
-                            // }),
+                            .filter(move |v_id| {
+                                let worker_index = pegasus::get_current_worker().index as u64;
+                                get_partition(*v_id, num_servers, worker_num) == worker_index
+                            })
+                            .map(|v_id| {
+                                Record::<SimpleEntry>::new(
+                                    Vertex::new(v_id, None, DynDetails::Empty),
+                                    Some(0),
+                                )
+                            }),
                     )?
                     // .repartition(move |id| Ok(get_partition(*id, num_servers, worker_num)))
-                    .flat_map(|v_id| {
+                    .flat_map(|record| {
+                        let v_id = record
+                            .get(Some(0))
+                            .unwrap()
+                            .as_graph_vertex()
+                            .unwrap()
+                            .id();
                         let e_label_ids = vec![12];
                         let adj_vertices =
                             GRAPH.get_adj_vertices(v_id as usize, Some(&e_label_ids), Direction::Incoming);
                         Ok(adj_vertices.map(move |v| {
-                            let mut path = vec![];
-                            path.push(v_id);
-                            path.push(v.get_id() as u64);
-                            path
-                        }))
-                    })?
-                    .repartition(move |path| Ok(get_partition(path[1], num_servers, worker_num)))
-                    .flat_map(|path| {
-                        let extend_item_id = path[0];
-                        let e_label_ids = vec![12];
-                        let adj_vectices = GRAPH.get_adj_vertices(extend_item_id as usize, Some(&e_label_ids), Direction::Incoming);
-                        Ok(adj_vectices.map(move |v| {
-                            let mut new_path = path.clone();
-                            new_path.push(v.get_id() as u64);
-                            new_path
+                            let mut new_record = record.clone();
+                            new_record
+                                .append(Vertex::new(v.get_id() as u64, None, DynDetails::Empty), Some(1));
+                            new_record
                         }))
                     })?
                     // .repartition(move |path| Ok(get_partition(path[1], num_servers, worker_num)))
+                    // .flat_map(|path| {
+                    //     let extend_item_id = path[0];
+                    //     let e_label_ids = vec![12];
+                    //     let adj_vectices = GRAPH.get_adj_vertices(
+                    //         extend_item_id as usize,
+                    //         Some(&e_label_ids),
+                    //         Direction::Incoming,
+                    //     );
+                    //     Ok(adj_vectices.map(move |v| {
+                    //         let mut new_path = path.clone();
+                    //         new_path.push(v.get_id() as u64);
+                    //         new_path
+                    //     }))
+                    // })?
+                    // .repartition(move |path| Ok(get_partition(path[1], num_servers, worker_num)))
+                    .flat_map(|record| {
+                        let extend_item_id0 = record
+                            .get(Some(0))
+                            .unwrap()
+                            .as_graph_vertex()
+                            .unwrap()
+                            .id();
+                        let extend_item_id1 = record
+                            .get(Some(1))
+                            .unwrap()
+                            .as_graph_vertex()
+                            .unwrap()
+                            .id();
+                        let e_label_ids = vec![12];
+                        let adj_vectices0: HashSet<Vertex> = GRAPH
+                            .get_adj_vertices(
+                                extend_item_id0 as usize,
+                                Some(&e_label_ids),
+                                Direction::Incoming,
+                            )
+                            .map(|v| Vertex::new(v.get_id() as u64, None, DynDetails::Empty))
+                            .collect();
+                        let adj_vectices1: HashSet<Vertex> = GRAPH
+                            .get_adj_vertices(
+                                extend_item_id1 as usize,
+                                Some(&e_label_ids),
+                                Direction::Incoming,
+                            )
+                            .map(|v| Vertex::new(v.get_id() as u64, None, DynDetails::Empty))
+                            .collect();
+                        // let mut neighbors_intersection0 = Intersection::from_iter(adj_vectices0);
+                        // let mut seeker = BTreeMap::new();
+                        // for v in adj_vectices1 {
+                        //     *seeker.entry(v).or_default() += 1;
+                        // }
+                        // neighbors_intersection0.intersect(&seeker);
+                        let intersection: Vec<Vertex> = adj_vectices0
+                            .intersection(&adj_vectices1)
+                            .cloned()
+                            .collect();
+                        Ok(intersection.into_iter().map(move |vertex| {
+                            let mut new_record = record.clone();
+                            new_record.append(vertex, Some(2));
+                            new_record
+                        }))
+                    })?
                     // .flat_map(|path| {
                     //     let extend_item_id0 = path[0];
                     //     let extend_item_id1 = path[1];
@@ -935,10 +1062,16 @@ mod test {
                     //             Some(&e_label_ids),
                     //             Direction::Outgoing,
                     //         )
-                    //         .filter(move |v| vertices_set1.contains(&(v.get_id() as u64)));
-                    //     Ok(adj_vectices0.map(move |v| {
+                    //         .map(|v| v.get_id() as u64);
+                    //     // .filter(move |v| vertices_set1.contains(&(v.get_id() as u64)));
+                    //     let vertices_set_0: HashSet<u64> = adj_vectices0.collect();
+                    //     let intersection: Vec<u64> = vertices_set1
+                    //         .intersection(&vertices_set_0)
+                    //         .cloned()
+                    //         .collect();
+                    //     Ok(intersection.into_iter().map(move |v| {
                     //         let mut new_path = path.clone();
-                    //         new_path.push(v.get_id() as u64);
+                    //         new_path.push(v);
                     //         new_path
                     //     }))
                     // })?

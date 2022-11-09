@@ -13,6 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 mod edge_expand;
+mod expand_intersect;
 mod fused;
 mod get_v;
 mod unfold;
@@ -47,6 +48,9 @@ impl FlatMapFuncGen<CompleteEntry> for algebra_pb::logical_plan::operator::Opr {
             algebra_pb::logical_plan::operator::Opr::Vertex(get_vertex) => get_vertex.gen_flat_map(),
             algebra_pb::logical_plan::operator::Opr::Unfold(unfold) => unfold.gen_flat_map(),
             algebra_pb::logical_plan::operator::Opr::Fused(fused) => fused.gen_flat_map(),
+            algebra_pb::logical_plan::operator::Opr::ExpandIntersect(expand_intersect) => {
+                expand_intersect.gen_flat_map()
+            }
             _ => Err(ParsePbError::ParseError(format!("the operator: {:?} is not a `FlatMap`", self)))?,
         }
     }
@@ -66,7 +70,9 @@ impl FlatMapFuncGen<SimpleEntry> for algebra_pb::logical_plan::operator::Opr {
     > {
         match self {
             algebra_pb::logical_plan::operator::Opr::Edge(edge_expand) => edge_expand.gen_flat_map(),
-            // algebra_pb::logical_plan::operator::Opr::Unfold(unfold) => unfold.gen_flat_map(),
+            algebra_pb::logical_plan::operator::Opr::ExpandIntersect(expand_intersect) => {
+                expand_intersect.gen_flat_map()
+            }
             _ => Err(ParsePbError::ParseError(format!("the operator: {:?} is not a `FlatMap`", self)))?,
         }
     }
