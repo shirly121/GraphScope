@@ -37,7 +37,7 @@ static BETA: f64 = 0.5;
 impl Pattern {
     /// Generate a naive extend based pattern match plan
     pub fn generate_simple_extend_match_plan(
-        &self, pattern_meta: &PatternMeta,
+        &self, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
         let mut trace_pattern = self.clone();
         let mut definite_extend_steps = vec![];
@@ -54,13 +54,17 @@ impl Pattern {
             trace_pattern.remove_vertex(select_vertex_id);
         }
         definite_extend_steps.push(trace_pattern.try_into()?);
-        build_logical_plan(self, definite_extend_steps, pattern_meta)
+        if is_distributed {
+            build_distributed_match_plan(self, definite_extend_steps, pattern_meta)
+        } else {
+            build_stand_alone_match_plan(self, definite_extend_steps, pattern_meta)
+        }
     }
 
     /// Generate an optimized extend based pattern match plan
     /// Current implementation is Top-Down Greedy method
     pub fn generate_optimized_match_plan_greedily(
-        &self, catalog: &Catalogue, pattern_meta: &PatternMeta,
+        &self, catalog: &Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
         let pattern_code = self.encode_to();
         // locate the pattern node in the catalog graph
@@ -100,14 +104,18 @@ impl Pattern {
             }
             // transform the one-vertex pattern into definite extend step
             definite_extend_steps.push(trace_pattern.try_into()?);
-            build_logical_plan(self, definite_extend_steps, pattern_meta)
+            if is_distributed {
+                build_distributed_match_plan(self, definite_extend_steps, pattern_meta)
+            } else {
+                build_stand_alone_match_plan(self, definite_extend_steps, pattern_meta)
+            }
         } else {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
     }
 
     pub fn generate_optimized_match_plan_recursively(
-        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta,
+        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
         let pattern_code = self.encode_to();
         if let Some(pattern_index) = catalog.get_pattern_index(&pattern_code) {
@@ -115,7 +123,11 @@ impl Pattern {
             let (mut definite_extend_steps, _) =
                 get_definite_extend_steps_recursively(catalog, pattern_index, self.clone());
             definite_extend_steps.reverse();
-            build_logical_plan(self, definite_extend_steps, pattern_meta)
+            if is_distributed {
+                build_distributed_match_plan(self, definite_extend_steps, pattern_meta)
+            } else {
+                build_stand_alone_match_plan(self, definite_extend_steps, pattern_meta)
+            }
         } else {
             Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
@@ -294,33 +306,13 @@ fn sort_extend_approaches(
 ///           /   |    \
 ///           \   |    /
 ///            intersect
-fn build_logical_plan(
+fn build_distributed_match_plan(
     origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
     pattern_meta: &PatternMeta,
 ) -> IrResult<pb::LogicalPlan> {
     let mut match_plan = pb::LogicalPlan::default();
     let mut child_offset = 1;
-    let source = {
-        let source_extend = match definite_extend_steps.pop() {
-            Some(src_extend) => src_extend,
-            None => {
-                return Err(IrError::InvalidPattern(
-                    "Build logical plan error: from empty extend steps!".to_string(),
-                ))
-            }
-        };
-        let source_vertex_label = source_extend.get_target_vertex_label();
-        let source_vertex_id = source_extend.get_target_vertex_id();
-        let source_vertex_predicate = origin_pattern
-            .get_vertex_predicate(source_vertex_id)
-            .cloned();
-        pb::Scan {
-            scan_opt: 0,
-            alias: Some((source_vertex_id as i32).into()),
-            params: Some(query_params(vec![source_vertex_label.into()], vec![], source_vertex_predicate)),
-            idx_predicate: None,
-        }
-    };
+    let source = generate_source_operator(origin_pattern, &mut definite_extend_steps)?;
     // pre_node will have some children, need a subplan
     let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
     for definite_extend_step in definite_extend_steps.into_iter().rev() {
@@ -375,19 +367,64 @@ fn build_logical_plan(
     }
     pre_node.children.push(child_offset);
     match_plan.nodes.push(pre_node);
-    let sink = {
-        pb::Sink {
-            tags: origin_pattern
-                .vertices_with_tag_iter()
-                .map(|v_tuple| common_pb::NameOrIdKey { key: Some((v_tuple.get_id() as i32).into()) })
-                .collect(),
-            sink_target: Some(pb::sink::SinkTarget {
-                inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
-                    id_name_mappings: vec![],
-                })),
-            }),
+    let sink = generate_sink_operator(origin_pattern);
+    match_plan
+        .nodes
+        .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
+    Ok(match_plan)
+}
+
+fn build_stand_alone_match_plan(
+    origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
+    pattern_meta: &PatternMeta,
+) -> IrResult<pb::LogicalPlan> {
+    let mut match_plan = pb::LogicalPlan::default();
+    let mut child_offset = 1;
+    let source = generate_source_operator(origin_pattern, &mut definite_extend_steps)?;
+    match_plan
+        .nodes
+        .push(pb::logical_plan::Node { opr: Some(source.into()), children: vec![child_offset] });
+    child_offset += 1;
+    for definite_extend_step in definite_extend_steps.into_iter().rev() {
+        let mut edge_expands = definite_extend_step.generate_expand_operators(origin_pattern);
+        if edge_expands.len() == 0 {
+            return Err(IrError::InvalidPattern(
+                "Build logical plan error: extend step is not source but has 0 edges".to_string(),
+            ));
+        } else if edge_expands.len() == 1 {
+            match_plan.nodes.push(pb::logical_plan::Node {
+                opr: Some(edge_expands.remove(0).into()),
+                children: vec![child_offset],
+            });
+            child_offset += 1;
+        } else {
+            let expand_intersect_opr = pb::ExpandAndIntersect { edge_expands };
+            match_plan.nodes.push(pb::logical_plan::Node {
+                opr: Some(expand_intersect_opr.into()),
+                children: vec![child_offset],
+            });
+            child_offset += 1;
         }
-    };
+
+        if check_target_vertex_label_num(&definite_extend_step, pattern_meta) > 1 {
+            let target_vertex_label = definite_extend_step.get_target_vertex_label();
+            let label_filter = pb::Select {
+                predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
+            };
+            match_plan.nodes.push(pb::logical_plan::Node {
+                opr: Some(label_filter.into()),
+                children: vec![child_offset],
+            });
+            child_offset += 1;
+        }
+        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(origin_pattern) {
+            match_plan
+                .nodes
+                .push(pb::logical_plan::Node { opr: Some(filter.into()), children: vec![child_offset] });
+            child_offset += 1;
+        }
+    }
+    let sink = generate_sink_operator(origin_pattern);
     match_plan
         .nodes
         .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
@@ -402,6 +439,39 @@ fn extend_cost_estimate(
         + pattern_weight.get_count()
         + ((extend_weight.get_adjacency_count() as f64) * ALPHA) as usize
         + ((extend_weight.get_intersect_count() as f64) * BETA) as usize
+}
+
+fn generate_source_operator(
+    origin_pattern: &Pattern, definite_extend_steps: &mut Vec<DefiniteExtendStep>,
+) -> IrResult<pb::Scan> {
+    let source_extend = definite_extend_steps
+        .pop()
+        .ok_or(IrError::InvalidPattern("Build logical plan error: from empty extend steps!".to_string()))?;
+    let source_vertex_label = source_extend.get_target_vertex_label();
+    let source_vertex_id = source_extend.get_target_vertex_id();
+    let source_vertex_predicate = origin_pattern
+        .get_vertex_predicate(source_vertex_id)
+        .cloned();
+    Ok(pb::Scan {
+        scan_opt: 0,
+        alias: Some((source_vertex_id as i32).into()),
+        params: Some(query_params(vec![source_vertex_label.into()], vec![], source_vertex_predicate)),
+        idx_predicate: None,
+    })
+}
+
+fn generate_sink_operator(origin_pattern: &Pattern) -> pb::Sink {
+    pb::Sink {
+        tags: origin_pattern
+            .vertices_with_tag_iter()
+            .map(|vertex| common_pb::NameOrIdKey { key: Some((vertex.get_id() as i32).into()) })
+            .collect(),
+        sink_target: Some(pb::sink::SinkTarget {
+            inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
+                id_name_mappings: vec![],
+            })),
+        }),
+    }
 }
 
 fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta: &PatternMeta) -> usize {

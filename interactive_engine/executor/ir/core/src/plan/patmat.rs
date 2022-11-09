@@ -1173,10 +1173,10 @@ impl MatchingStrategy for ExtendStrategy {
         if let Some(pattern_meta) = store_meta.and_then(|store_meta| store_meta.pattern_meta.as_ref()) {
             if let Some(catalog) = store_meta.and_then(|store_meta| store_meta.catalogue.as_ref()) {
                 self.pattern
-                    .generate_optimized_match_plan_greedily(catalog, pattern_meta)
+                    .generate_optimized_match_plan_greedily(catalog, pattern_meta, true)
             } else {
                 self.pattern
-                    .generate_simple_extend_match_plan(pattern_meta)
+                    .generate_simple_extend_match_plan(pattern_meta, true)
             }
         } else {
             Err(IrError::MissingData("Missing PatternMeta".to_string()))

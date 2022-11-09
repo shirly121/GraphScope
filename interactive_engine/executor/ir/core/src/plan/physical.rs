@@ -496,6 +496,13 @@ impl AsPhysical for pb::Sink {
     }
 }
 
+impl AsPhysical for pb::ExpandAndIntersect {
+    fn add_job_builder(&self, builder: &mut JobBuilder, _plan_meta: &mut PlanMeta) -> IrResult<()> {
+        let opr = pb::logical_plan::Operator::from(self.clone());
+        simple_add_job_builder(builder, &opr, SimpleOpr::Flatmap)
+    }
+}
+
 impl AsPhysical for pb::logical_plan::Operator {
     fn add_job_builder(&self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
         use pb::logical_plan::operator::Opr::*;
@@ -517,6 +524,7 @@ impl AsPhysical for pb::logical_plan::Operator {
                 Union(_) => Ok(()),
                 Intersect(_) => Ok(()),
                 Unfold(unfold) => unfold.add_job_builder(builder, plan_meta),
+                ExpandIntersect(expand_intersect) => expand_intersect.add_job_builder(builder, plan_meta),
                 _ => Err(IrError::Unsupported(format!("the operator {:?}", self))),
             }
         } else {
