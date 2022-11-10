@@ -667,6 +667,19 @@ impl AsPhysical for LogicalPlan {
                     if plan_meta.is_partition() {
                         builder.repartition(key_pb.encode_to_vec());
                     }
+                } else if let Some(ExpandIntersect(expand_intersect)) = curr_node.borrow().opr.opr.as_ref()
+                {
+                    let key_pb = common_pb::NameOrIdKey {
+                        key: expand_intersect
+                            .edge_expands
+                            .get(0)
+                            .unwrap()
+                            .v_tag
+                            .clone(),
+                    };
+                    if plan_meta.is_partition() {
+                        builder.repartition(key_pb.encode_to_vec());
+                    }
                 }
                 curr_node.add_job_builder(builder, plan_meta)?;
             }
