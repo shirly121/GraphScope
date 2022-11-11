@@ -625,7 +625,7 @@ impl Catalogue {
                             .unwrap()
                             .get_count();
                         if sub_intersect_count + sub_target_pattern_count < min_intersect_count {
-                            min_intersect_count = sub_intersect_count + target_pattern_count;
+                            min_intersect_count = sub_intersect_count + sub_target_pattern_count;
                             extend_step_with_min_count = Some(
                                 sub_extend_weight
                                     .get_extend_step()

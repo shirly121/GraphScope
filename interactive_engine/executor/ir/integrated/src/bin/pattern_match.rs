@@ -14,6 +14,7 @@
 //! limitations under the License.
 //!
 
+use graph_proxy::create_exp_store;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::generated::results as result_pb;
@@ -56,8 +57,9 @@ lazy_static! {
     static ref FACTORY: IRJobAssembly = initialize_job_assembly();
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
+    pegasus_common::logs::init_log();
+    create_exp_store();
     let config = Config::from_args();
     let server_config = if let Some(config_dir) = config.config_dir {
         pegasus_server::config::load_configs(config_dir)?.0
@@ -65,8 +67,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Configuration::singleton()
     };
     pegasus::startup(server_config)?;
-    let mut conf = JobConf::new("GLogue Universal Test");
-    conf.set_workers(config.workers);
     let pattern_meta = read_pattern_meta()?;
     let pattern = read_pattern()?;
     let mut catalog = read_catalogue()?;
@@ -78,14 +78,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
     pb_plan_add_count_sink_operator(&mut pb_plan);
     let plan: LogicalPlan = pb_plan.try_into().unwrap();
+    println!("plan:\n {:?}", plan);
     let mut job_builder = JobBuilder::default();
     let mut plan_meta = plan.get_meta().clone().with_partition();
     plan.add_job_builder(&mut job_builder, &mut plan_meta)
         .unwrap();
     let request = job_builder.build().unwrap();
+    let mut conf = JobConf::new("GLogue Universal Test");
+    conf.set_workers(config.workers);
     println!("start executing query...");
+    submit_query(request, conf);
+    Ok(())
+}
+
+fn submit_query(job_req: JobRequest, conf: JobConf) {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let sink = ResultSink::new(tx);
+    let cancel_hook = sink.get_cancel_hook().clone();
+    let mut results = ResultStream::new(conf.job_id, cancel_hook, rx);
+    let service = &FACTORY;
+    let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
     let query_execution_start_time = Instant::now();
-    let mut results = submit_query(request, config.workers);
+    run_opt(conf, sink, move |worker| service.assemble(&job, worker)).expect("submit job failure;");
     while let Some(result) = results.next() {
         if let Ok(record_code) = result {
             if let Some(record) = parse_result(record_code) {
@@ -94,20 +108,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
-    Ok(())
-}
-
-fn submit_query(job_req: JobRequest, num_workers: u32) -> ResultStream<Vec<u8>> {
-    let mut conf = JobConf::default();
-    conf.workers = num_workers;
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let sink = ResultSink::new(tx);
-    let cancel_hook = sink.get_cancel_hook().clone();
-    let results = ResultStream::new(conf.job_id, cancel_hook, rx);
-    let service = &FACTORY;
-    let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
-    run_opt(conf, sink, move |worker| service.assemble(&job, worker)).expect("submit job failure;");
-    results
 }
 
 fn parse_result(result: Vec<u8>) -> Option<Record> {

@@ -16,12 +16,12 @@
 use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::operator::flatmap::FlatMapFuncGen;
 use crate::process::record::{Entry, Record, RecordExpandIter};
+use ahash::HashSet;
 use graph_proxy::apis::{get_graph, Direction, GraphElement, QueryParams, Statement, Vertex, ID};
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 use ir_common::KeyId;
 use pegasus::api::function::{DynIter, FlatMapFunction, FnResult};
-use std::collections::HashSet;
 use std::convert::TryInto;
 
 struct ExpandAndIntersect<IE: Into<Entry>> {
@@ -41,7 +41,7 @@ impl<IE: Into<Entry> + 'static> FlatMapFunction<Record, Record> for ExpandAndInt
     type Target = DynIter<Record>;
 
     fn exec(&self, input: Record) -> FnResult<Self::Target> {
-        let mut intersection = HashSet::new();
+        let mut intersection = HashSet::default();
         let mut is_init = true;
         for i in 0..self.len {
             let start_tag = *self
