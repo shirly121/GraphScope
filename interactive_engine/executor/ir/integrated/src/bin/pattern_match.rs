@@ -72,26 +72,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut catalog = read_catalogue()?;
     println!("start generating plan...");
     let plan_generation_start_time = Instant::now();
-    let mut pb_plan = pattern
-        .generate_optimized_match_plan_recursively(&mut catalog, &pattern_meta, config.is_distributed)
-        .unwrap();
+    let mut pb_plan = pattern.generate_optimized_match_plan_recursively(
+        &mut catalog,
+        &pattern_meta,
+        config.is_distributed,
+    )?;
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
     pb_plan_add_count_sink_operator(&mut pb_plan);
-    let plan: LogicalPlan = pb_plan.try_into().unwrap();
+    let plan: LogicalPlan = pb_plan.try_into()?;
     println!("plan:\n {:?}", plan);
     let mut job_builder = JobBuilder::default();
     let mut plan_meta = plan.get_meta().clone().with_partition();
     plan.add_job_builder(&mut job_builder, &mut plan_meta)
         .unwrap();
-    let request = job_builder.build().unwrap();
+    let request = job_builder.build()?;
     let mut conf = JobConf::new("GLogue Universal Test");
     conf.set_workers(config.workers);
     println!("start executing query...");
-    submit_query(request, conf);
+    submit_query(request, conf)?;
     Ok(())
 }
 
-fn submit_query(job_req: JobRequest, conf: JobConf) {
+fn submit_query(job_req: JobRequest, conf: JobConf) -> Result<(), Box<dyn Error>> {
     let (tx, rx) = crossbeam_channel::unbounded();
     let sink = ResultSink::new(tx);
     let cancel_hook = sink.get_cancel_hook().clone();
@@ -99,7 +101,7 @@ fn submit_query(job_req: JobRequest, conf: JobConf) {
     let service = &FACTORY;
     let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
     let query_execution_start_time = Instant::now();
-    run_opt(conf, sink, move |worker| service.assemble(&job, worker)).expect("submit job failure;");
+    run_opt(conf, sink, move |worker| service.assemble(&job, worker))?;
     while let Some(result) = results.next() {
         if let Ok(record_code) = result {
             if let Some(record) = parse_result(record_code) {
@@ -108,6 +110,7 @@ fn submit_query(job_req: JobRequest, conf: JobConf) {
         }
     }
     println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
+    Ok(())
 }
 
 fn parse_result(result: Vec<u8>) -> Option<Record> {
