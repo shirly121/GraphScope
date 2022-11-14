@@ -20,6 +20,7 @@ import com.alibaba.graphscope.dataload.encode.IrDataEncodeMapper;
 import com.alibaba.graphscope.dataload.graph.IrWriteGraphMapper;
 import com.alibaba.graphscope.dataload.graph.IrWriteGraphPartitioner;
 import com.alibaba.graphscope.dataload.graph.IrWriteGraphReducer;
+import com.alibaba.graphscope.dataload.graph.IrWriteRawReducer;
 import com.alibaba.maxgraph.dataload.databuild.OfflineBuildOdps;
 import com.aliyun.odps.data.TableInfo;
 import com.aliyun.odps.mapred.JobClient;
@@ -62,6 +63,7 @@ public class IrDataBuild {
         Properties properties = new Properties();
         properties.load(new FileInputStream(file));
 
+        // ENCODE / WRITE_GRAPH / WRITE_RAW
         String mode = properties.getProperty(DATA_BUILD_MODE, "ENCODE");
         int splitSize = Integer.valueOf(properties.getProperty(SPLIT_SIZE, "256"));
         String columnMappingJson = properties.getProperty(COLUMN_MAPPING_META, "");
@@ -101,6 +103,26 @@ public class IrDataBuild {
             job.setMapperClass(IrWriteGraphMapper.class);
             job.setNumReduceTasks(reducerNum);
             job.setReducerClass(IrWriteGraphReducer.class);
+            job.setPartitionerClass(IrWriteGraphPartitioner.class);
+            job.set(GRAPH_REDUCER_NUM, String.valueOf(reducerNum));
+            job.set(WRITE_GRAPH_OSS_PATH, graphOssPath);
+            job.set(OfflineBuildOdps.OSS_ENDPOINT, endpoint);
+            job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);
+            job.set(OfflineBuildOdps.OSS_ACCESS_KEY, accessKey);
+            job.set(OfflineBuildOdps.OSS_BUCKET_NAME, bucketName);
+            job.setMapOutputKeySchema(
+                    SchemaUtils.fromString(
+                            "id:bigint,type:bigint")); // globalId for partition, typeId (vertex or
+            // edge)
+            job.setMapOutputValueSchema(
+                    SchemaUtils.fromString(
+                            "id1:bigint,id2:bigint,id3:bigint,id4:bigint,id5:bigint,bytes:string,len:bigint,code:bigint"));
+            loadGraphInputTable(job, properties);
+        } else if (mode.equals("WRITE_RAW")) {
+            job.setSplitSize(splitSize);
+            job.setMapperClass(IrWriteGraphMapper.class);
+            job.setNumReduceTasks(reducerNum);
+            job.setReducerClass(IrWriteRawReducer.class);
             job.setPartitionerClass(IrWriteGraphPartitioner.class);
             job.set(GRAPH_REDUCER_NUM, String.valueOf(reducerNum));
             job.set(WRITE_GRAPH_OSS_PATH, graphOssPath);

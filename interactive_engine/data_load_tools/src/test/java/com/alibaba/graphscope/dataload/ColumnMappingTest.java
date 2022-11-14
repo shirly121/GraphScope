@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.dataload;
 
+import com.alibaba.graphscope.dataload.jna.ExprGraphStoreLibrary;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Resources;
@@ -27,6 +28,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class ColumnMappingTest {
+    private static final ExprGraphStoreLibrary LIB = ExprGraphStoreLibrary.INSTANCE;
+
     @Test
     public void mappingJsonTest() throws Exception {
         URL url = Resources.getResource("meta.json");
@@ -41,5 +44,21 @@ public class ColumnMappingTest {
         Assert.assertEquals(12, columnMappingMeta.getLabelId("KNOWS"));
         Assert.assertEquals("PERSON", columnMappingMeta.getSrcLabel(tableName));
         Assert.assertEquals("PERSON", columnMappingMeta.getDstLabel(tableName));
+
+        //        IrEdgeData edgeData = new IrEdgeData();
+        //        Pointer parser = LIB.initParserFromJson(columnMappingJson);
+        //        Pointer edgeParser = LIB.getEdgeParser(parser, new
+        // FfiEdgeTypeTuple.ByValue("KNOWS", "PERSON", "PERSON"));
+        //        File edgeFile = new File("edges.raw");
+        //
+        //        List<String> contents = Arrays.asList(
+        //                "332|2866|2012-07-30T10:20:38.216+00:00",
+        //                "332|2869|2010-05-06T06:38:09.470+00:00"
+        //                );
+        //        for(String content : contents) {
+        //            FfiEdgeData.ByValue data = LIB.encodeEdge(edgeParser, content, '|');
+        //            edgeData.toIrEdgeData(data);
+        //            FileUtils.writeByteArrayToFile(edgeFile, edgeData.toBytes(), true);
+        //        }
     }
 }

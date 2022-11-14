@@ -23,6 +23,8 @@ import com.aliyun.odps.data.Record;
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public class IrVertexData implements RecordRWritable {
@@ -34,9 +36,11 @@ public class IrVertexData implements RecordRWritable {
     public int len;
     public int code;
     private Pointer propBuffer;
+    private ByteBuffer byteBuffer;
 
     public IrVertexData() {
         this.propBuffer = new Memory(IrDataBuild.PROP_BUFFER_SIZE);
+        this.byteBuffer = ByteBuffer.allocate(1 << 20);
     }
 
     public IrVertexData toIrVertexData(FfiVertexData.ByValue vertexData) {
@@ -105,5 +109,32 @@ public class IrVertexData implements RecordRWritable {
                 + ", propBuffer="
                 + propBuffer
                 + '}';
+    }
+
+    public String toLine(String separator) {
+        String propertyBytes = new String(this.bytes, StandardCharsets.UTF_8);
+        return String.format(
+                "%s" + separator + "%s" + separator + "%s" + separator + "%s\n",
+                this.id,
+                this.primaryLabel,
+                this.secondaryLabel,
+                propertyBytes);
+    }
+
+    public byte[] toBytes() {
+        this.byteBuffer.clear();
+        this.byteBuffer.putLong(this.id);
+        this.byteBuffer.putInt(this.primaryLabel);
+        this.byteBuffer.putInt(this.secondaryLabel);
+        this.byteBuffer.putLong(this.len);
+        for (int i = 0; i < this.len; ++i) {
+            this.byteBuffer.put(this.bytes[i]);
+        }
+        this.byteBuffer.flip();
+
+        int newSize = this.byteBuffer.limit();
+        byte[] newBytes = new byte[newSize];
+        System.arraycopy(this.byteBuffer.array(), 0, newBytes, 0, newSize);
+        return newBytes;
     }
 }

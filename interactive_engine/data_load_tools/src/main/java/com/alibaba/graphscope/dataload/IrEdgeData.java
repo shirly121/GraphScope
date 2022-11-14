@@ -23,6 +23,7 @@ import com.aliyun.odps.data.Record;
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 public class IrEdgeData implements RecordRWritable {
@@ -36,9 +37,11 @@ public class IrEdgeData implements RecordRWritable {
     public int len;
     public int code;
     private Pointer propBuffer;
+    private ByteBuffer byteBuffer;
 
     public IrEdgeData() {
         this.propBuffer = new Memory(IrDataBuild.PROP_BUFFER_SIZE);
+        this.byteBuffer = ByteBuffer.allocate(1 << 20);
     }
 
     public IrEdgeData toIrEdgeData(FfiEdgeData.ByValue edgeData) {
@@ -115,5 +118,24 @@ public class IrEdgeData implements RecordRWritable {
                 + ", propBuffer="
                 + propBuffer
                 + '}';
+    }
+
+    public byte[] toBytes() {
+        this.byteBuffer.clear();
+        this.byteBuffer.putInt(this.labelId);
+        this.byteBuffer.putLong(this.srcVertexId);
+        this.byteBuffer.putInt(this.srcLabelId);
+        this.byteBuffer.putLong(this.dstVertexId);
+        this.byteBuffer.putInt(this.dstLabelId);
+        this.byteBuffer.putLong(this.len);
+        for (int i = 0; i < this.len; ++i) {
+            this.byteBuffer.put(this.bytes[i]);
+        }
+        this.byteBuffer.flip();
+
+        int newSize = this.byteBuffer.limit();
+        byte[] newBytes = new byte[newSize];
+        System.arraycopy(this.byteBuffer.array(), 0, newBytes, 0, newSize);
+        return newBytes;
     }
 }
