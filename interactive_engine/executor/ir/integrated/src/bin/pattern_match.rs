@@ -51,6 +51,8 @@ pub struct Config {
     workers: u32,
     #[structopt(short = "d", long = "is_distributed")]
     is_distributed: bool,
+    #[structopt(short = "q", long = "submit_query")]
+    submit_query: bool,
 }
 
 lazy_static! {
@@ -71,27 +73,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     conf.reset_servers(pegasus::ServerConf::All);
     pegasus::startup(server_config)?;
     pegasus::wait_servers_ready(&conf.servers());
-    let pattern_meta = read_pattern_meta()?;
-    let pattern = read_pattern()?;
-    let mut catalog = read_catalogue()?;
-    println!("start generating plan...");
-    let plan_generation_start_time = Instant::now();
-    let mut pb_plan = pattern.generate_optimized_match_plan_recursively(
-        &mut catalog,
-        &pattern_meta,
-        config.is_distributed,
-    )?;
-    println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
-    pb_plan_add_count_sink_operator(&mut pb_plan);
-    let plan: LogicalPlan = pb_plan.try_into()?;
-    println!("plan:\n {:?}", plan);
-    let mut job_builder = JobBuilder::default();
-    let mut plan_meta = plan.get_meta().clone().with_partition();
-    plan.add_job_builder(&mut job_builder, &mut plan_meta)
-        .unwrap();
-    let request = job_builder.build()?;
-    println!("start executing query...");
-    submit_query(request, conf)?;
+    if config.submit_query {
+        let pattern_meta = read_pattern_meta()?;
+        let pattern = read_pattern()?;
+        let mut catalog = read_catalogue()?;
+        println!("start generating plan...");
+        let plan_generation_start_time = Instant::now();
+        let mut pb_plan = pattern.generate_optimized_match_plan_recursively(
+            &mut catalog,
+            &pattern_meta,
+            config.is_distributed,
+        )?;
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
+        // pb_plan_add_count_sink_operator(&mut pb_plan);
+        let plan: LogicalPlan = pb_plan.try_into()?;
+        println!("plan:\n {:?}", plan);
+        let mut job_builder = JobBuilder::default();
+        let mut plan_meta = plan.get_meta().clone().with_partition();
+        plan.add_job_builder(&mut job_builder, &mut plan_meta)
+            .unwrap();
+        let request = job_builder.build()?;
+        println!("start executing query...");
+        submit_query(request, conf)?;
+    };
     Ok(())
 }
 
@@ -104,13 +108,16 @@ fn submit_query(job_req: JobRequest, conf: JobConf) -> Result<(), Box<dyn Error>
     let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
     let query_execution_start_time = Instant::now();
     run_opt(conf, sink, move |worker| service.assemble(&job, worker))?;
+    let mut count = 0;
     while let Some(result) = results.next() {
         if let Ok(record_code) = result {
-            if let Some(record) = parse_result(record_code) {
-                println!("{:?}", record);
-            }
+            count += 1;
+            // if let Some(record) = parse_result(record_code) {
+            //     println!("{:?}", record);
+            // }
         }
     }
+    println!("{}", count);
     println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     Ok(())
 }
