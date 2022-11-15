@@ -47,7 +47,7 @@ public class IrWriteGraphReducer extends ReducerBase {
 
     @Override
     public void setup(TaskContext context) throws IOException {
-        this.partitions = Integer.valueOf(context.getJobConf().get(IrDataBuild.GRAPH_REDUCER_NUM));
+        this.partitions = Integer.valueOf(context.getJobConf().get(IrDataBuild.WRITE_REDUCER_NUM));
         this.taskId = context.getTaskID().getInstId();
         this.graphLoader = LIB.initGraphLoader(this.localRootDir, taskId);
 

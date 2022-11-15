@@ -20,4 +20,8 @@ public class PartitionUtils {
     public static long getVertexPartition(long vertexId, long partitions) {
         return vertexId % partitions;
     }
+
+    public static long getVertexPartition(long vertexId, long partitions, long reducerNum) {
+        return (vertexId % reducerNum) % partitions;
+    }
 }

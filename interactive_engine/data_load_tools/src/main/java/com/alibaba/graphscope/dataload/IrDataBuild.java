@@ -17,10 +17,7 @@
 package com.alibaba.graphscope.dataload;
 
 import com.alibaba.graphscope.dataload.encode.IrDataEncodeMapper;
-import com.alibaba.graphscope.dataload.graph.IrWriteGraphMapper;
-import com.alibaba.graphscope.dataload.graph.IrWriteGraphPartitioner;
-import com.alibaba.graphscope.dataload.graph.IrWriteGraphReducer;
-import com.alibaba.graphscope.dataload.graph.IrWriteRawReducer;
+import com.alibaba.graphscope.dataload.graph.*;
 import com.alibaba.maxgraph.dataload.databuild.OfflineBuildOdps;
 import com.aliyun.odps.data.TableInfo;
 import com.aliyun.odps.mapred.JobClient;
@@ -52,11 +49,15 @@ public class IrDataBuild {
     public static final String ENCODE_OUTPUT_TABLE_NUM = "encode.output.table.num";
     public static final String SKIP_HEADER = "skip.header";
 
-    public static final String GRAPH_REDUCER_NUM = "write.graph.reducer.num";
+    public static final String WRITE_REDUCER_NUM = "write.reducer.num";
+
+    public static final String WRITE_PARTITION_NUM = "write.partition.num";
 
     public static final String ENCODE_VERTEX_MAGIC = "_encode_vertex_";
     public static final String ENCODE_EDGE_MAGIC = "_encode_edge_";
     public static final int PROP_BUFFER_SIZE = 2048;
+
+    public static final String WRITE_RAW_BUF_SIZE_MB = "write.raw.buf.size.mb";
 
     public static void main(String[] args) throws Exception {
         File file = new File(args[0]);
@@ -71,7 +72,7 @@ public class IrDataBuild {
 
         String tableNum = properties.getProperty(ENCODE_OUTPUT_TABLE_NUM, "1");
         String separator = properties.getProperty(SEPARATOR, "|");
-        int reducerNum = Integer.valueOf(properties.getProperty(GRAPH_REDUCER_NUM, "1"));
+        int reducerNum = Integer.valueOf(properties.getProperty(WRITE_REDUCER_NUM, "1"));
         String skipHeader = properties.getProperty(SKIP_HEADER, "true");
         String graphOssPath = encodePrefix + "/" + reducerNum;
 
@@ -80,6 +81,9 @@ public class IrDataBuild {
         String accessId = properties.getProperty(OfflineBuildOdps.OSS_ACCESS_ID);
         String accessKey = properties.getProperty(OfflineBuildOdps.OSS_ACCESS_KEY);
         String bucketName = properties.getProperty(OfflineBuildOdps.OSS_BUCKET_NAME);
+
+        int bufSize = Integer.valueOf(properties.getProperty(WRITE_RAW_BUF_SIZE_MB, "64"));
+        int partitionNum = Integer.valueOf(properties.getProperty(WRITE_PARTITION_NUM, "1"));
 
         JobConf job = new JobConf();
         if (mode.equals("ENCODE")) {
@@ -104,7 +108,7 @@ public class IrDataBuild {
             job.setNumReduceTasks(reducerNum);
             job.setReducerClass(IrWriteGraphReducer.class);
             job.setPartitionerClass(IrWriteGraphPartitioner.class);
-            job.set(GRAPH_REDUCER_NUM, String.valueOf(reducerNum));
+            job.set(WRITE_REDUCER_NUM, String.valueOf(reducerNum));
             job.set(WRITE_GRAPH_OSS_PATH, graphOssPath);
             job.set(OfflineBuildOdps.OSS_ENDPOINT, endpoint);
             job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);
@@ -120,16 +124,18 @@ public class IrDataBuild {
             loadGraphInputTable(job, properties);
         } else if (mode.equals("WRITE_RAW")) {
             job.setSplitSize(splitSize);
-            job.setMapperClass(IrWriteGraphMapper.class);
+            job.setMapperClass(IrWriteRawMapper.class);
             job.setNumReduceTasks(reducerNum);
             job.setReducerClass(IrWriteRawReducer.class);
             job.setPartitionerClass(IrWriteGraphPartitioner.class);
-            job.set(GRAPH_REDUCER_NUM, String.valueOf(reducerNum));
+            job.set(WRITE_PARTITION_NUM, String.valueOf(partitionNum));
+            job.set(WRITE_REDUCER_NUM, String.valueOf(reducerNum));
             job.set(WRITE_GRAPH_OSS_PATH, graphOssPath);
             job.set(OfflineBuildOdps.OSS_ENDPOINT, endpoint);
             job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);
             job.set(OfflineBuildOdps.OSS_ACCESS_KEY, accessKey);
             job.set(OfflineBuildOdps.OSS_BUCKET_NAME, bucketName);
+            job.set(WRITE_RAW_BUF_SIZE_MB, String.valueOf(bufSize));
             job.setMapOutputKeySchema(
                     SchemaUtils.fromString(
                             "id:bigint,type:bigint")); // globalId for partition, typeId (vertex or

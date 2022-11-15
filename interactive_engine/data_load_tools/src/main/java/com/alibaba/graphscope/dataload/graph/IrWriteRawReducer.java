@@ -44,12 +44,13 @@ public class IrWriteRawReducer extends ReducerBase {
         makePathIfNotExists(vertexFullPath);
         makePathIfNotExists(edgeFullPath);
 
+        int bufSize = Integer.valueOf(context.getJobConf().get(IrDataBuild.WRITE_RAW_BUF_SIZE_MB));
         this.vertexOutput =
                 new BufferedOutputStream(
-                        new FileOutputStream(vertexFullPath, true), 64 * 1024 * 1024);
+                        new FileOutputStream(vertexFullPath, true), bufSize * 1024 * 1024);
         this.edgeOutput =
                 new BufferedOutputStream(
-                        new FileOutputStream(edgeFullPath, true), 64 * 1024 * 1024);
+                        new FileOutputStream(edgeFullPath, true), bufSize * 1024 * 1024);
         this.vertexData = new IrVertexData();
         this.edgeData = new IrEdgeData();
     }
@@ -95,14 +96,12 @@ public class IrWriteRawReducer extends ReducerBase {
 
     private String getVertexRawPath(int partitionId) throws IOException {
         String dir = "raw_data";
-        String partition = "partition_" + partitionId;
-        return Paths.get(dir, partition, "vertices").toString();
+        return Paths.get(dir, "vertices" + "_" + partitionId).toString();
     }
 
     private String getEdgeRawPath(int partitionId) throws IOException {
         String dir = "raw_data";
-        String partition = "partition_" + partitionId;
-        return Paths.get(dir, partition, "edges").toString();
+        return Paths.get(dir, "edges" + "_" + partitionId).toString();
     }
 
     private void makePathIfNotExists(String filePath) throws IOException {
