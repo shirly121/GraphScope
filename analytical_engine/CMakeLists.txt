@@ -46,14 +46,20 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif ()
 
-find_program(ccache_EXECUTABLE ccache)
-if (ccache_EXECUTABLE)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${ccache_EXECUTABLE})
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${ccache_EXECUTABLE})
-    add_custom_target(ccache-stats COMMAND ${ccache_EXECUTABLE} --show-stats)
-else ()
-    add_custom_target(ccache-stats COMMAND echo "ccache not found.")
-endif (ccache_EXECUTABLE)
+if(NOT (CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache") AND NOT (CMAKE_C_COMPILER_LAUNCHER MATCHES "ccache"))
+    find_program(ccache_EXECUTABLE ccache)
+    if(ccache_EXECUTABLE)
+        set(CMAKE_C_COMPILER_LAUNCHER ${ccache_EXECUTABLE})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${ccache_EXECUTABLE})
+        add_custom_target(ccache-stats
+            COMMAND ${ccache_EXECUTABLE} --show-stats
+        )
+    else()
+        add_custom_target(ccache-stats
+            COMMAND echo "ccache not found."
+        )
+    endif(ccache_EXECUTABLE)
+endif()
 
 # enable colored diagnostics
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -190,7 +196,7 @@ endif ()
 find_package(libgrapelite REQUIRED)
 include_directories(${LIBGRAPELITE_INCLUDE_DIRS})
 
-find_package(vineyard 0.8.6 REQUIRED)
+find_package(vineyard 0.9.0 REQUIRED)
 include_directories(${VINEYARD_INCLUDE_DIRS})
 add_compile_options(-DENABLE_SELECTOR)
 
@@ -233,39 +239,36 @@ target_link_libraries(gs_util PRIVATE
         ${Boost_LIBRARIES}
     )
 
+if (ENABLE_JAVA_SDK)
+    target_sources(gs_util PRIVATE "core/java/javasdk.cc")
+    target_compile_definitions(gs_util PUBLIC ENABLE_JAVA_SDK)
+    target_link_libraries(gs_util PRIVATE
+            ${JAVA_JVM_LIBRARY}
+            ${JNI_LIBRARIES}
+        )
+endif()
+
 add_executable(grape_engine
         "core/grape_engine.cc"
         "core/grape_instance.cc"
-        "core/java/javasdk.cc"
         "core/object/dynamic.cc"
         ${CORE_RPC_SRC_FILES}
     )
 target_include_directories(grape_engine PRIVATE proto utils)
+target_link_libraries(grape_engine PRIVATE
+        gs_proto
+        gs_util
+        ${LIBGRAPELITE_LIBRARIES}
+        ${GFLAGS_LIBRARIES}
+        ${CMAKE_DL_LIBS}
+        ${Boost_LIBRARIES}
+        ${VINEYARD_LIBRARIES}
+    )
 
 if (ENABLE_JAVA_SDK)
     target_compile_definitions(grape_engine PUBLIC ENABLE_JAVA_SDK)
-    target_link_libraries(grape_engine PRIVATE
-        gs_proto
-        gs_util
-        ${LIBGRAPELITE_LIBRARIES}
-        ${GFLAGS_LIBRARIES}
-        ${CMAKE_DL_LIBS}
-        ${Boost_LIBRARIES}
-        ${VINEYARD_LIBRARIES}
-        ${JAVA_JVM_LIBRARY}
-        ${JNI_LIBRARIES}
-        )
-else()
-    target_link_libraries(grape_engine PRIVATE
-        gs_proto
-        gs_util
-        ${LIBGRAPELITE_LIBRARIES}
-        ${GFLAGS_LIBRARIES}
-        ${CMAKE_DL_LIBS}
-        ${Boost_LIBRARIES}
-        ${VINEYARD_LIBRARIES}
-        )
 endif()
+
 if (LET_IT_CRASH_ON_EXCEPTION)
     target_compile_definitions(grape_engine PRIVATE LET_IT_CRASH_ON_EXCEPTION)
 endif ()
@@ -420,7 +423,7 @@ if(ENABLE_JAVA_SDK)
     set(GAE_JAVA_GRAPHX_JAR "${GAE_JAVA_DIR}/graphx-on-graphscope/target/graphx-on-graphscope-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
     add_custom_command(
         OUTPUT "${GAE_JAVA_RUNTIME_DIR}/target/native/libgrape-jni.so"
-        COMMAND mvn clean install -DskipTests --quiet
+        COMMAND mvn -Drevision=${GRAPHSCOPE_ANALYTICAL_JAR_VERSION} clean install -DskipTests --quiet
         DEPENDS gs_proto
         WORKING_DIRECTORY ${GAE_JAVA_DIR}
         COMMENT "Building GAE-java..."

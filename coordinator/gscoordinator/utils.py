@@ -278,6 +278,10 @@ def compile_app(
 
     os.chdir(app_dir)
 
+    extra_options = []
+    if types_pb2.CMAKE_EXTRA_OPTIONS in attr:
+        extra_options = attr[types_pb2.CMAKE_EXTRA_OPTIONS].s.decode("utf-8").split(" ")
+
     module_name = ""
     # Output directory for java codegen
     java_codegen_out_dir = ""
@@ -289,6 +293,9 @@ def compile_app(
         f"-DNETWORKX={engine_config['networkx']}",
         f"-DCMAKE_PREFIX_PATH='{GRAPHSCOPE_HOME};{OPAL_PREFIX}'",
     ]
+    cmake_commands.extend(extra_options)
+    if os.environ.get("GRAPHSCOPE_ANALYTICAL_DEBUG", "") == "1":
+        cmake_commands.append("-DCMAKE_BUILD_TYPE=Debug")
     if app_type == "java_pie":
         if not os.path.isfile(GRAPE_PROCESSOR_JAR):
             raise RuntimeError("Grape runtime jar not found")
@@ -380,7 +387,7 @@ def compile_app(
     cmake_process.wait()
 
     make_process = subprocess.Popen(
-        [shutil.which("make"), "-j4"],
+        [shutil.which("make"), "-j4", "VERBOSE=true"],
         env=os.environ.copy(),
         encoding="utf-8",
         errors="replace",
@@ -441,6 +448,8 @@ def compile_graph_frame(
         f"-DENABLE_JAVA_SDK={engine_config['enable_java_sdk']}",
         f"-DCMAKE_PREFIX_PATH='{GRAPHSCOPE_HOME};{OPAL_PREFIX}'",
     ]
+    if os.environ.get("GRAPHSCOPE_ANALYTICAL_DEBUG", "") == "1":
+        cmake_commands.append("-DCMAKE_BUILD_TYPE=Debug")
     logger.info("enable java sdk {}".format(engine_config["enable_java_sdk"]))
     if graph_type == graph_def_pb2.ARROW_PROPERTY:
         cmake_commands += ["-DPROPERTY_GRAPH_FRAME=True"]
@@ -482,7 +491,7 @@ def compile_graph_frame(
     cmake_process.wait()
 
     make_process = subprocess.Popen(
-        [shutil.which("make"), "-j4"],
+        [shutil.which("make"), "-j4", "VERBOSE=true"],
         env=os.environ.copy(),
         encoding="utf-8",
         errors="replace",
