@@ -66,7 +66,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         Configuration::singleton()
     };
+    let mut conf = JobConf::new("GLogue Universal Test");
+    conf.set_workers(config.workers);
+    conf.reset_servers(pegasus::ServerConf::All);
     pegasus::startup(server_config)?;
+    pegasus::wait_servers_ready(&conf.servers());
     let pattern_meta = read_pattern_meta()?;
     let pattern = read_pattern()?;
     let mut catalog = read_catalogue()?;
@@ -86,8 +90,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     plan.add_job_builder(&mut job_builder, &mut plan_meta)
         .unwrap();
     let request = job_builder.build()?;
-    let mut conf = JobConf::new("GLogue Universal Test");
-    conf.set_workers(config.workers);
     println!("start executing query...");
     submit_query(request, conf)?;
     Ok(())
