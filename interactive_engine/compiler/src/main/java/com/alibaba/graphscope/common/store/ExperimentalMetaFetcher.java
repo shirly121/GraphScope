@@ -33,7 +33,8 @@ public class ExperimentalMetaFetcher implements IrMetaFetcher {
     public ExperimentalMetaFetcher(Configs configs) throws IOException {
         String schemaFilePath = GraphConfig.GRAPH_SCHEMA.get(configs);
         String schema = Utils.readStringFromFile(schemaFilePath);
-        this.meta = new IrMeta(schema);
+        String catalogPath = GraphConfig.CATALOG_PATH.get(configs);
+        this.meta = new IrMeta(schema, catalogPath);
     }
 
     @Override

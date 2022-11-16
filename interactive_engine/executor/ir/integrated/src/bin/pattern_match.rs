@@ -33,6 +33,7 @@ use runtime::IRJobAssembly;
 use runtime_integration::{
     read_catalogue, read_pattern, read_pattern_meta, InitializeJobAssembly, QueryExpGraph,
 };
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::path::PathBuf;
@@ -51,8 +52,6 @@ pub struct Config {
     workers: u32,
     #[structopt(short = "d", long = "is_distributed")]
     is_distributed: bool,
-    #[structopt(short = "q", long = "submit_query")]
-    submit_query: bool,
 }
 
 lazy_static! {
@@ -73,29 +72,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     conf.reset_servers(pegasus::ServerConf::All);
     pegasus::startup(server_config)?;
     pegasus::wait_servers_ready(&conf.servers());
-    if config.submit_query {
-        let pattern_meta = read_pattern_meta()?;
-        let pattern = read_pattern()?;
-        let mut catalog = read_catalogue()?;
-        println!("start generating plan...");
-        let plan_generation_start_time = Instant::now();
-        let mut pb_plan = pattern.generate_optimized_match_plan_recursively(
-            &mut catalog,
-            &pattern_meta,
-            config.is_distributed,
-        )?;
-        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
-        // pb_plan_add_count_sink_operator(&mut pb_plan);
-        let plan: LogicalPlan = pb_plan.try_into()?;
-        println!("plan:\n {:?}", plan);
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone().with_partition();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder.build()?;
-        println!("start executing query...");
-        submit_query(request, conf)?;
-    };
+    let pattern_meta = read_pattern_meta()?;
+    let pattern = read_pattern()?;
+    let mut catalog = read_catalogue()?;
+    println!("start generating plan...");
+    let plan_generation_start_time = Instant::now();
+    let mut pb_plan = pattern.generate_optimized_match_plan_recursively(
+        &mut catalog,
+        &pattern_meta,
+        config.is_distributed,
+    )?;
+    println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
+    pb_plan_add_source(&mut pb_plan);
+    pb_plan_add_count_sink_operator(&mut pb_plan);
+    let plan: LogicalPlan = pb_plan.try_into()?;
+    println!("plan:\n {:?}", plan);
+    let mut job_builder = JobBuilder::default();
+    let mut plan_meta = plan.get_meta().clone().with_partition();
+    plan.add_job_builder(&mut job_builder, &mut plan_meta)
+        .unwrap();
+    let request = job_builder.build()?;
+    println!("start executing query...");
+    submit_query(request, conf)?;
     Ok(())
 }
 
@@ -108,16 +106,13 @@ fn submit_query(job_req: JobRequest, conf: JobConf) -> Result<(), Box<dyn Error>
     let job = JobDesc { input: job_req.source, plan: job_req.plan, resource: job_req.resource };
     let query_execution_start_time = Instant::now();
     run_opt(conf, sink, move |worker| service.assemble(&job, worker))?;
-    let mut count = 0;
     while let Some(result) = results.next() {
         if let Ok(record_code) = result {
-            count += 1;
-            // if let Some(record) = parse_result(record_code) {
-            //     println!("{:?}", record);
-            // }
+            if let Some(record) = parse_result(record_code) {
+                println!("{:?}", record);
+            }
         }
     }
-    println!("{}", count);
     println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     Ok(())
 }
@@ -158,9 +153,33 @@ fn initialize_job_assembly() -> IRJobAssembly {
     query_exp_graph.initialize_job_assembly()
 }
 
+fn pb_plan_add_source(pb_plan: &mut pb::LogicalPlan) {
+    for node in pb_plan.nodes.iter_mut() {
+        for node_child in node.children.iter_mut() {
+            *node_child += 1;
+        }
+    }
+    let source = pb::Scan {
+        scan_opt: 0,
+        alias: None,
+        params: Some(pb::QueryParams {
+            tables: vec![],
+            columns: vec![],
+            is_all_columns: false,
+            limit: None,
+            predicate: None,
+            sample_ratio: 1.0,
+            extra: HashMap::new(),
+        }),
+        idx_predicate: None,
+    };
+    pb_plan
+        .nodes
+        .insert(0, pb::logical_plan::Node { opr: Some(source.into()), children: vec![1] })
+}
+
 fn pb_plan_add_count_sink_operator(pb_plan: &mut pb::LogicalPlan) {
     let pb_plan_len = pb_plan.nodes.len();
-    pb_plan.nodes.remove(pb_plan_len - 1);
     let count = pb::GroupBy {
         mappings: vec![],
         functions: vec![pb::group_by::AggFunc {
@@ -171,7 +190,7 @@ fn pb_plan_add_count_sink_operator(pb_plan: &mut pb::LogicalPlan) {
     };
     pb_plan
         .nodes
-        .push(pb::logical_plan::Node { opr: Some(count.into()), children: vec![pb_plan_len as i32] });
+        .push(pb::logical_plan::Node { opr: Some(count.into()), children: vec![(pb_plan_len + 1) as i32] });
     let sink = pb::Sink {
         tags: vec![common_pb::NameOrIdKey { key: Some(0.into()) }],
         sink_target: Some(pb::sink::SinkTarget {

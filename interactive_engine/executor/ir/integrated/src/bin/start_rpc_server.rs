@@ -16,8 +16,11 @@
 use std::path::PathBuf;
 
 use log::info;
-use runtime_integration::{InitializeJobAssembly, QueryExpGraph};
+use runtime_integration::{set_store_meta, InitializeJobAssembly, QueryExpGraph};
 use structopt::StructOpt;
+
+#[global_allocator]
+static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "EchoServer", about = "example of rpc service")]
@@ -35,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_servers = server_config.servers_size();
     let query_exp_graph = QueryExpGraph::new(num_servers);
     let job_assembly = query_exp_graph.initialize_job_assembly();
+    set_store_meta()?;
     info!("try to start rpc server;");
 
     pegasus_server::cluster::standalone::start(rpc_config, server_config, job_assembly).await?;

@@ -184,6 +184,10 @@ public interface IrCoreLibrary extends Library {
 
     FfiResult.ByValue setSchema(String schemaJson);
 
+    FfiResult.ByValue setPatternMeta();
+
+    FfiResult.ByValue setCatalogue(String patternPath);
+
     Pointer initQueryParams();
 
     FfiResult.ByValue addParamsTable(Pointer params, FfiNameOrId.ByValue table);

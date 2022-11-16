@@ -28,7 +28,7 @@ use vec_map::VecMap;
 
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::{ColumnsOpt, PlanMeta, Schema, StoreMeta, TagId, INVALID_META_ID, STORE_META};
-use crate::plan::patmat::{MatchingStrategy, NaiveStrategy};
+use crate::plan::patmat::{ExtendStrategy, MatchingStrategy, NaiveStrategy};
 
 // Note that protobuf only support signed integer, while we actually requires the nodes'
 // id being non-negative
@@ -401,11 +401,17 @@ impl LogicalPlan {
             opr.preprocess(&store_meta, &mut self.meta)?;
         }
         let new_curr_node_rst = match opr.opr.as_ref().unwrap() {
-            Opr::Pattern(pattern) => {
+            Opr::Pattern(pb_pattern) => {
                 if parent_ids.len() == 1 {
-                    let strategy = NaiveStrategy::try_from(pattern.clone())?;
-                    let plan = strategy.build_logical_plan(None)?;
-                    self.append_plan(plan, parent_ids.clone())
+                    if let Ok(plan) = ExtendStrategy::init(pb_pattern, &mut self.meta)
+                        .and_then(|strategy| strategy.build_logical_plan())
+                    {
+                        self.append_plan(plan, parent_ids.clone())
+                    } else {
+                        let strategy = NaiveStrategy::try_from(pb_pattern.clone())?;
+                        let plan = strategy.build_logical_plan()?;
+                        self.append_plan(plan, parent_ids.clone())
+                    }
                 } else {
                     Err(IrError::Unsupported(
                         "only one single parent is supported for the `Pattern` operator".to_string(),

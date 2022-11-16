@@ -283,16 +283,18 @@ impl Pattern {
         let mut next_vertex_id = plan_meta.get_max_tag_id() as PatternId;
         // next edge id assign to the edge picked from the pb pattern
         let mut next_edge_id = 0;
-        // pattern edges picked from the pb pattern
-        let mut pattern_edges = vec![];
         // record the vertices from the pb pattern having tags
         let tag_set = get_all_tags_from_pb_pattern(pb_pattern)?;
         // record the label for each vertex from the pb pattern
-        let mut id_label_map: BTreeMap<PatternId, PatternLabelId> = BTreeMap::new();
+        let mut v_id_label_maps: Vec<BTreeMap<PatternId, PatternLabelId>> = vec![];
+        //
+        let mut edges: Vec<(PatternId, PatternLabelId, PatternId, PatternId)> = vec![];
         // record the vertices from the pb pattern has predicates
         let mut v_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
         // record the edges from the pb pattern has predicates
         let mut e_id_predicate_map: BTreeMap<PatternId, common_pb::Expression> = BTreeMap::new();
+        // record whether it is the first time to assign label
+        let mut is_start = true;
         for sentence in &pb_pattern.sentences {
             if sentence.binders.is_empty() {
                 return Err(IrError::MissingData("pb::Pattern::Sentence::binders".to_string()));
@@ -306,8 +308,6 @@ impl Pattern {
             )?;
             // just use the start tag id as its pattern vertex id
             let start_tag_v_id = start_tag as PatternId;
-            // check whether the start tag label is already determined or not
-            let start_tag_label = id_label_map.get(&start_tag_v_id).cloned();
             // it is allowed that the pb pattern sentence doesn't have an end tag
             let end_tag = if let Some(name_or_id) = sentence.end.clone() {
                 Some(get_tag_from_name_or_id(name_or_id)?)
@@ -316,14 +316,9 @@ impl Pattern {
             };
             // if the end tag exists, just use the end tag id as its pattern vertex id
             let end_tag_v_id = if let Some(tag) = end_tag { Some(tag as PatternId) } else { None };
-            // check the end tag label is already determined or not
-            let end_tag_label = end_tag_v_id.and_then(|v_id| id_label_map.get(&v_id).cloned());
             // record previous pattern edge's destinated vertex's id
             // init as start vertex's id
             let mut pre_dst_vertex_id: PatternId = start_tag_v_id;
-            // record previous pattern edge's destinated vertex's label
-            // init as start vertex's label
-            let mut pre_dst_vertex_label = start_tag_label;
             // find the first edge expand's index and last edge expand's index;
             let last_expand_index = get_sentence_last_expand_index(sentence);
             // iterate over the binders
@@ -334,9 +329,7 @@ impl Pattern {
                     // assign the new pattern edge with a new id
                     let edge_id = assign_id(&mut next_edge_id, None);
                     // get edge direction
-                    let edge_direction = unsafe {
-                        std::mem::transmute::<i32, pb::edge_expand::Direction>(edge_expand.direction)
-                    };
+                    let edge_direction = PatternDirection::try_from(edge_expand.direction)?;
                     // add edge predicate
                     if let Some(expr) = get_edge_expand_predicate(edge_expand) {
                         e_id_predicate_map.insert(edge_id, expr.clone());
@@ -352,39 +345,56 @@ impl Pattern {
                     )?;
                     pre_dst_vertex_id = dst_vertex_id;
                     // assign vertices labels
-                    // check which label candidate can connect to the previous determined partial pattern
-                    let required_src_vertex_label = pre_dst_vertex_label;
-                    let required_dst_vertex_label =
-                        if i == last_expand_index.unwrap() { end_tag_label } else { None };
-                    // check whether we find proper src vertex label and dst vertex label
-                    let (src_vertex_label, dst_vertex_label, direction) = assign_src_dst_vertex_labels(
+                    let src_dst_v_id_label_map = get_src_dst_vertex_id_label_maps(
                         pattern_meta,
                         edge_label,
                         edge_direction,
-                        required_src_vertex_label,
-                        required_dst_vertex_label,
-                    )?;
-                    id_label_map.insert(src_vertex_id, src_vertex_label);
-                    id_label_map.insert(dst_vertex_id, dst_vertex_label);
-                    // generate the new pattern edge and add to the pattern_edges_collection
-                    let new_pattern_edge = PatternEdge::new(
-                        edge_id,
-                        edge_label,
-                        PatternVertex::new(src_vertex_id, src_vertex_label),
-                        PatternVertex::new(dst_vertex_id, dst_vertex_label),
-                    )
-                    .with_direction(direction);
-                    pattern_edges.push(new_pattern_edge);
-                    pre_dst_vertex_label = Some(dst_vertex_label);
+                        src_vertex_id,
+                        dst_vertex_id,
+                    );
+                    v_id_label_maps =
+                        join_id_label_maps(v_id_label_maps, src_dst_v_id_label_map, &mut is_start);
+                    if let PatternDirection::Out = edge_direction {
+                        edges.push((edge_id, edge_label, src_vertex_id, dst_vertex_id));
+                    } else {
+                        edges.push((edge_id, edge_label, dst_vertex_id, src_vertex_id));
+                    }
                 } else if let Some(BinderItem::Select(select)) = binder.item.as_ref() {
                     if let Some(predicate) = select.predicate.as_ref() {
-                        v_id_predicate_map.insert(pre_dst_vertex_id, predicate.clone());
+                        if let Some(v_id_label_map) =
+                            pick_id_label_map_from_predicate(pre_dst_vertex_id, predicate)
+                        {
+                            v_id_label_maps =
+                                join_id_label_maps(v_id_label_maps, vec![v_id_label_map], &mut is_start);
+                        } else {
+                            v_id_predicate_map.insert(pre_dst_vertex_id, predicate.clone());
+                        }
                     }
                 } else {
                     return Err(IrError::MissingData("pb::pattern::binder::Item".to_string()));
                 }
             }
         }
+        if v_id_label_maps.len() == 0 {
+            return Err(IrError::InvalidPattern("The pattern is illegal according to schema".to_string()));
+        } else if v_id_label_maps.len() > 1 {
+            println!("{:?}", v_id_label_maps);
+            return Err(IrError::Unsupported("Fuzzy Pattern".to_string()));
+        }
+        let v_id_label_map = v_id_label_maps.remove(0);
+        let pattern_edges: Vec<PatternEdge> = edges
+            .into_iter()
+            .map(|(e_id, e_label, start_v_id, end_v_id)| {
+                let start_v_label = *v_id_label_map.get(&start_v_id).unwrap();
+                let end_v_label = *v_id_label_map.get(&end_v_id).unwrap();
+                PatternEdge::new(
+                    e_id,
+                    e_label,
+                    PatternVertex::new(start_v_id, start_v_label),
+                    PatternVertex::new(end_v_id, end_v_label),
+                )
+            })
+            .collect();
         plan_meta.set_max_tag_id(next_vertex_id as TagId);
         Pattern::try_from(pattern_edges).and_then(|mut pattern| {
             for tag in tag_set {
@@ -540,68 +550,125 @@ fn assign_expand_dst_vertex_id(
     }
 }
 
-/// Based on the vertex labels candidates and required src/dst vertex label,
-/// assign the src and dst vertex with vertex labels meeting the requirement
-fn assign_src_dst_vertex_labels(
-    pattern_meta: &PatternMeta, edge_label: PatternLabelId, edge_direction: pb::edge_expand::Direction,
-    required_src_label: Option<PatternLabelId>, required_dst_label: Option<PatternLabelId>,
-) -> IrResult<(PatternLabelId, PatternLabelId, PatternDirection)> {
-    // Based on the pattern meta info, find all possible vertex labels candidates:
-    // (src vertex label, dst vertex label) with the given edge label and edge direction
-    // - if the edge direciton is Outgoting:
-    //   we use (start vertex label, end vertex label) as (src vertex label, dst vertex label)
-    // - if the edge direction is Incoming:
-    //   we use (end vertex label, start vertex label) as (src vertex label, dst vertex label)
-    // - if the edge direction is Both:
-    //   we connect the iterators returned by Outgoing and Incoming together as they all can be the candidates
-    let mut vertex_labels_candis: DynIter<(PatternLabelId, PatternLabelId, PatternDirection)> =
-        match edge_direction {
-            pb::edge_expand::Direction::Out => Box::new(
-                pattern_meta
-                    .associated_vlabels_iter_by_elabel(edge_label)
-                    .map(|(start_v_label, end_v_label)| {
-                        (start_v_label, end_v_label, PatternDirection::Out)
-                    }),
-            ),
-            pb::edge_expand::Direction::In => Box::new(
-                pattern_meta
-                    .associated_vlabels_iter_by_elabel(edge_label)
-                    .map(|(start_v_label, end_v_label)| (end_v_label, start_v_label, PatternDirection::In)),
-            ),
-            pb::edge_expand::Direction::Both => Box::new(
-                pattern_meta
-                    .associated_vlabels_iter_by_elabel(edge_label)
-                    .map(|(start_v_label, end_v_label)| (start_v_label, end_v_label, PatternDirection::Out))
-                    .chain(
-                        pattern_meta
-                            .associated_vlabels_iter_by_elabel(edge_label)
-                            .map(|(start_v_label, end_v_label)| {
-                                (end_v_label, start_v_label, PatternDirection::In)
-                            }),
-                    ),
-            ),
-        };
-    // For a chosen candidates:
-    // - if the required src label is some, its src vertex label must match the requirement
-    // - if the required dst label is some, its dst vertex label must match the requirement
-    (if let (Some(src_label), Some(dst_label)) = (required_src_label, required_dst_label) {
-        vertex_labels_candis
-            .filter(|&(src_label_candi, dst_label_candi, _)| {
-                src_label_candi == src_label && dst_label_candi == dst_label
+fn get_src_dst_vertex_id_label_maps(
+    pattern_meta: &PatternMeta, edge_label: PatternLabelId, edge_direction: PatternDirection,
+    src_vertex_id: PatternId, dst_vertex_id: PatternId,
+) -> Vec<BTreeMap<PatternId, PatternLabelId>> {
+    match edge_direction {
+        PatternDirection::Out => pattern_meta
+            .associated_vlabels_iter_by_elabel(edge_label)
+            .map(|(start_v_label, end_v_label)| {
+                BTreeMap::from_iter([(src_vertex_id, start_v_label), (dst_vertex_id, end_v_label)])
             })
-            .next()
-    } else if let Some(src_label) = required_src_label {
-        vertex_labels_candis
-            .filter(|&(src_label_candi, _, _)| src_label_candi == src_label)
-            .next()
-    } else if let Some(dst_label) = required_dst_label {
-        vertex_labels_candis
-            .filter(|&(_, dst_label_candi, _)| dst_label_candi == dst_label)
-            .next()
+            .collect(),
+        PatternDirection::In => pattern_meta
+            .associated_vlabels_iter_by_elabel(edge_label)
+            .map(|(start_v_label, end_v_label)| {
+                BTreeMap::from_iter([(src_vertex_id, end_v_label), (dst_vertex_id, start_v_label)])
+            })
+            .collect(),
+    }
+}
+
+fn pick_id_label_map_from_predicate(
+    pre_dst_vertex_id: PatternId, predicate: &common_pb::Expression,
+) -> Option<BTreeMap<PatternId, PatternLabelId>> {
+    if predicate.operators.len() == 3 {
+        let is_label_select = predicate
+            .operators
+            .get(0)
+            .and_then(|opr| opr.item.as_ref())
+            .and_then(|item| {
+                if let common_pb::expr_opr::Item::Var(var) = item {
+                    var.property.as_ref()
+                } else {
+                    None
+                }
+            })
+            .and_then(|property| property.item.as_ref())
+            .and_then(|item| if let common_pb::property::Item::Label(_) = item { Some(()) } else { None })
+            .is_some();
+        let is_equal = predicate
+            .operators
+            .get(1)
+            .and_then(|opr| opr.item.as_ref())
+            .and_then(|item| if let common_pb::expr_opr::Item::Logical(0) = item { Some(()) } else { None })
+            .is_some();
+        let label_id = predicate
+            .operators
+            .get(2)
+            .and_then(|opr| opr.item.as_ref())
+            .and_then(
+                |item| if let common_pb::expr_opr::Item::Const(value) = item { Some(value) } else { None },
+            )
+            .and_then(|value| {
+                if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+                    Some(label_id)
+                } else {
+                    None
+                }
+            });
+        if !is_label_select || !is_equal {
+            return None;
+        }
+        if let Some(label_id) = label_id {
+            Some(BTreeMap::from_iter([(pre_dst_vertex_id, label_id as PatternLabelId)]))
+        } else {
+            None
+        }
     } else {
-        vertex_labels_candis.next()
-    })
-    .ok_or(IrError::InvalidPattern("Cannot find valid label for some vertices".to_string()))
+        None
+    }
+}
+
+fn join_id_label_maps(
+    mut left_maps: Vec<BTreeMap<PatternId, PatternLabelId>>,
+    mut right_maps: Vec<BTreeMap<PatternId, PatternLabelId>>, is_start: &mut bool,
+) -> Vec<BTreeMap<PatternId, PatternLabelId>> {
+    if left_maps.is_empty() || right_maps.is_empty() {
+        if *is_start {
+            *is_start = false;
+            if left_maps.is_empty() {
+                return right_maps;
+            } else {
+                return left_maps;
+            }
+        } else {
+            return vec![];
+        }
+    }
+    if left_maps.len() > right_maps.len() {
+        (left_maps, right_maps) = (right_maps, left_maps);
+    }
+    let first_left_map = left_maps.get(0).unwrap();
+    let first_right_map = right_maps.get(0).unwrap();
+    let mut join_keys = vec![];
+    for (vertex_id, _) in first_left_map {
+        if first_right_map.contains_key(vertex_id) {
+            join_keys.push(*vertex_id);
+        }
+    }
+    let mut joined_maps = vec![];
+    for left_map in left_maps {
+        let left_join_values: Vec<PatternLabelId> = join_keys
+            .iter()
+            .map(|key| *left_map.get(key).unwrap())
+            .collect();
+        for right_map in right_maps.iter() {
+            let right_join_values: Vec<PatternLabelId> = join_keys
+                .iter()
+                .map(|key| *right_map.get(key).unwrap())
+                .collect();
+            if left_join_values == right_join_values {
+                let mut new_map = left_map.clone();
+                for (key, value) in right_map.iter() {
+                    new_map.insert(*key, *value);
+                }
+                joined_maps.push(new_map);
+            }
+        }
+    }
+    joined_maps
 }
 
 /// Getters of fields of Pattern
@@ -1344,5 +1411,25 @@ impl<'de> Deserialize<'de> for Pattern {
             }
         }
         deserializer.deserialize_bytes(PatternVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, iter::FromIterator};
+
+    use super::*;
+
+    #[test]
+    fn test_join_id_label_maps() {
+        let left_maps = vec![BTreeMap::from_iter([(5, 1), (6, 2)]), BTreeMap::from_iter([(5, 3), (6, 4)])];
+        let right_maps = vec![
+            BTreeMap::from_iter([(6, 1), (7, 1)]),
+            BTreeMap::from_iter([(6, 2), (7, 2)]),
+            BTreeMap::from_iter([(6, 2), (7, 3)]),
+            BTreeMap::from_iter([(6, 4), (7, 4)]),
+        ];
+        let joined_maps = join_id_label_maps(left_maps, right_maps, &mut false);
+        assert_eq!(joined_maps.len(), 3);
     }
 }

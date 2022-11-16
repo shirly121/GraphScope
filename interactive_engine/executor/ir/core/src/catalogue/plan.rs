@@ -19,7 +19,6 @@ use std::convert::{TryFrom, TryInto};
 
 use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
-use ir_common::generated::common as common_pb;
 use petgraph::graph::NodeIndex;
 
 use crate::catalogue::catalog::{Approach, Catalogue, ExtendWeight, PatternWeight};
@@ -27,7 +26,7 @@ use crate::catalogue::extend_step::DefiniteExtendStep;
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::PatternDirection;
-use crate::catalogue::{query_params, PatternId};
+use crate::catalogue::PatternId;
 use crate::error::{IrError, IrResult};
 
 static ALPHA: f64 = 0.5;
@@ -312,9 +311,14 @@ fn build_distributed_match_plan(
 ) -> IrResult<pb::LogicalPlan> {
     let mut match_plan = pb::LogicalPlan::default();
     let mut child_offset = 1;
-    let source = generate_source_operator(origin_pattern, &mut definite_extend_steps)?;
+    let as_opr = generate_add_start_nodes(
+        &mut match_plan,
+        origin_pattern,
+        &mut definite_extend_steps,
+        &mut child_offset,
+    )?;
     // pre_node will have some children, need a subplan
-    let mut pre_node = pb::logical_plan::Node { opr: Some(source.into()), children: vec![] };
+    let mut pre_node = pb::logical_plan::Node { opr: Some(as_opr.into()), children: vec![] };
     for definite_extend_step in definite_extend_steps.into_iter().rev() {
         let edge_expands = definite_extend_step.generate_expand_operators(origin_pattern);
         let edge_expands_num = edge_expands.len();
@@ -367,10 +371,6 @@ fn build_distributed_match_plan(
     }
     pre_node.children.push(child_offset);
     match_plan.nodes.push(pre_node);
-    let sink = generate_sink_operator(origin_pattern);
-    match_plan
-        .nodes
-        .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
     Ok(match_plan)
 }
 
@@ -380,10 +380,15 @@ fn build_stand_alone_match_plan(
 ) -> IrResult<pb::LogicalPlan> {
     let mut match_plan = pb::LogicalPlan::default();
     let mut child_offset = 1;
-    let source = generate_source_operator(origin_pattern, &mut definite_extend_steps)?;
+    let as_opr = generate_add_start_nodes(
+        &mut match_plan,
+        origin_pattern,
+        &mut definite_extend_steps,
+        &mut child_offset,
+    )?;
     match_plan
         .nodes
-        .push(pb::logical_plan::Node { opr: Some(source.into()), children: vec![child_offset] });
+        .push(pb::logical_plan::Node { opr: Some(as_opr.into()), children: vec![child_offset] });
     child_offset += 1;
     for definite_extend_step in definite_extend_steps.into_iter().rev() {
         let mut edge_expands = definite_extend_step.generate_expand_operators(origin_pattern);
@@ -424,10 +429,6 @@ fn build_stand_alone_match_plan(
             child_offset += 1;
         }
     }
-    let sink = generate_sink_operator(origin_pattern);
-    match_plan
-        .nodes
-        .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
     Ok(match_plan)
 }
 
@@ -441,37 +442,30 @@ fn extend_cost_estimate(
         + ((extend_weight.get_intersect_count() as f64) * BETA) as usize
 }
 
-fn generate_source_operator(
-    origin_pattern: &Pattern, definite_extend_steps: &mut Vec<DefiniteExtendStep>,
-) -> IrResult<pb::Scan> {
+fn generate_add_start_nodes(
+    match_plan: &mut pb::LogicalPlan, origin_pattern: &Pattern,
+    definite_extend_steps: &mut Vec<DefiniteExtendStep>, child_offset: &mut i32,
+) -> IrResult<pb::As> {
     let source_extend = definite_extend_steps
         .pop()
         .ok_or(IrError::InvalidPattern("Build logical plan error: from empty extend steps!".to_string()))?;
     let source_vertex_label = source_extend.get_target_vertex_label();
     let source_vertex_id = source_extend.get_target_vertex_id();
-    let source_vertex_predicate = origin_pattern
-        .get_vertex_predicate(source_vertex_id)
-        .cloned();
-    Ok(pb::Scan {
-        scan_opt: 0,
-        alias: Some((source_vertex_id as i32).into()),
-        params: Some(query_params(vec![source_vertex_label.into()], vec![], source_vertex_predicate)),
-        idx_predicate: None,
-    })
-}
-
-fn generate_sink_operator(origin_pattern: &Pattern) -> pb::Sink {
-    pb::Sink {
-        tags: origin_pattern
-            .vertices_with_tag_iter()
-            .map(|vertex| common_pb::NameOrIdKey { key: Some((vertex.get_id() as i32).into()) })
-            .collect(),
-        sink_target: Some(pb::sink::SinkTarget {
-            inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
-                id_name_mappings: vec![],
-            })),
-        }),
+    let label_select = pb::Select {
+        predicate: Some(str_to_expr_pb(format!("@.~label == {}", source_vertex_label)).unwrap()),
+    };
+    match_plan
+        .nodes
+        .push(pb::logical_plan::Node { opr: Some(label_select.into()), children: vec![*child_offset] });
+    *child_offset += 1;
+    if let Some(filter) = source_extend.generate_vertex_filter_operator(origin_pattern) {
+        match_plan
+            .nodes
+            .push(pb::logical_plan::Node { opr: Some(filter.into()), children: vec![*child_offset] });
+        *child_offset += 1;
     }
+    let as_opr = pb::As { alias: Some((source_vertex_id as i32).into()) };
+    Ok(as_opr)
 }
 
 fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta: &PatternMeta) -> usize {

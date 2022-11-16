@@ -293,4 +293,60 @@ mod tests {
         ];
         assert_eq!(to_suffix_expr(case7).unwrap(), expected_case7);
     }
+
+    #[test]
+    fn test_str_to_expr_pb() {
+        use crate::generated::common as common_pb;
+        let label_select = "@.~label == 1".to_string();
+        if let Ok(expr) = str_to_expr_pb(label_select) {
+            println!("{:?}", expr);
+            let is_label_select = expr
+                .operators
+                .get(0)
+                .and_then(|opr| opr.item.as_ref())
+                .and_then(|item| {
+                    if let common_pb::expr_opr::Item::Var(var) = item {
+                        var.property.as_ref()
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|property| property.item.as_ref())
+                .and_then(
+                    |item| if let common_pb::property::Item::Label(_) = item { Some(()) } else { None },
+                )
+                .is_some();
+            let is_equal = expr
+                .operators
+                .get(1)
+                .and_then(|opr| opr.item.as_ref())
+                .and_then(
+                    |item| if let common_pb::expr_opr::Item::Logical(0) = item { Some(()) } else { None },
+                )
+                .is_some();
+            let label_id = expr
+                .operators
+                .get(2)
+                .and_then(|opr| opr.item.as_ref())
+                .and_then(|item| {
+                    if let common_pb::expr_opr::Item::Const(value) = item {
+                        Some(value)
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|value| {
+                    if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+                        Some(label_id)
+                    } else {
+                        None
+                    }
+                });
+            println!("{:?}", is_label_select);
+            println!("{:?}", is_equal);
+            println!("{:?}", label_id);
+        } else {
+            panic!("parse string to expr pb failed!");
+        }
+    }
 }

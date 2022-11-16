@@ -23,6 +23,7 @@ use ir_core::catalogue::pattern_meta::PatternMeta;
 use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
 use ir_core::plan::meta::Schema;
+use ir_core::plan::meta::STORE_META;
 use ir_core::JsonIO;
 use log::info;
 use std::convert::TryFrom;
@@ -30,11 +31,15 @@ use std::error::Error;
 use std::fs::{read_to_string, File};
 use std::path::Path;
 
-pub fn read_pattern_meta() -> Result<PatternMeta, Box<dyn Error>> {
+pub fn read_schema() -> Result<Schema, Box<dyn Error>> {
     let schema_path = std::env::var("SCHEMA_PATH")?;
     let schema_file = File::open(&schema_path)?;
     let schema = Schema::from_json(schema_file)?;
-    Ok(PatternMeta::from(schema))
+    Ok(schema)
+}
+
+pub fn read_pattern_meta() -> Result<PatternMeta, Box<dyn Error>> {
+    Ok(PatternMeta::from(read_schema()?))
 }
 
 pub fn read_catalogue() -> Result<Catalogue, Box<dyn Error>> {
@@ -102,4 +107,15 @@ fn read_pattern_from_path(pattern_path: &str) -> Result<Pattern, Box<dyn Error>>
     }
     let pattern = Pattern::try_from(pattern_edges)?;
     Ok(pattern)
+}
+
+pub fn set_store_meta() -> Result<(), Box<dyn Error>> {
+    let schema = read_schema()?;
+    let pattern_meta = read_pattern_meta()?;
+    let catalog = read_catalogue()?;
+    let mut store_meta = STORE_META.write()?;
+    store_meta.schema = Some(schema);
+    store_meta.pattern_meta = Some(pattern_meta);
+    store_meta.catalogue = Some(catalog);
+    Ok(())
 }

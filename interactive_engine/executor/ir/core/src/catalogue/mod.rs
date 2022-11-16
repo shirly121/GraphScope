@@ -14,11 +14,14 @@
 //! limitations under the License.
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use graph_store::graph_db::Direction;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use serde::{Deserialize, Serialize};
+
+use crate::error::IrError;
 
 pub type PatternId = usize;
 pub type PatternLabelId = ir_common::KeyId;
@@ -53,6 +56,34 @@ impl PatternDirection {
         match self {
             PatternDirection::Out => PatternDirection::In,
             PatternDirection::In => PatternDirection::Out,
+        }
+    }
+}
+
+impl TryFrom<i32> for PatternDirection {
+    type Error = IrError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        if value == 0 {
+            Ok(PatternDirection::Out)
+        } else if value == 1 {
+            Ok(PatternDirection::In)
+        } else {
+            Err(IrError::Unsupported("Pattern for optimization doesn's support both direction".to_string()))
+        }
+    }
+}
+
+impl TryFrom<pb::edge_expand::Direction> for PatternDirection {
+    type Error = IrError;
+
+    fn try_from(dir: pb::edge_expand::Direction) -> Result<Self, Self::Error> {
+        match dir {
+            pb::edge_expand::Direction::Out => Ok(PatternDirection::Out),
+            pb::edge_expand::Direction::In => Ok(PatternDirection::In),
+            pb::edge_expand::Direction::Both => Err(IrError::Unsupported(
+                "Pattern for optimization doesn's support both direction".to_string(),
+            )),
         }
     }
 }
