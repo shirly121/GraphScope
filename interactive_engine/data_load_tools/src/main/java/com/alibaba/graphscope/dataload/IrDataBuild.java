@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -74,6 +75,7 @@ public class IrDataBuild {
         String separator = properties.getProperty(SEPARATOR, "|");
         int reducerNum = Integer.valueOf(properties.getProperty(WRITE_REDUCER_NUM, "1"));
         String skipHeader = properties.getProperty(SKIP_HEADER, "true");
+
         String graphOssPath = encodePrefix + "/" + reducerNum;
 
         // oss config
@@ -130,6 +132,7 @@ public class IrDataBuild {
             job.setPartitionerClass(IrWriteGraphPartitioner.class);
             job.set(WRITE_PARTITION_NUM, String.valueOf(partitionNum));
             job.set(WRITE_REDUCER_NUM, String.valueOf(reducerNum));
+            graphOssPath = Paths.get(encodePrefix, "reducers_" + reducerNum, "partitions_" + partitionNum).toString();
             job.set(WRITE_GRAPH_OSS_PATH, graphOssPath);
             job.set(OfflineBuildOdps.OSS_ENDPOINT, endpoint);
             job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);

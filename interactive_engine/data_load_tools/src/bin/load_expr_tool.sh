@@ -114,7 +114,7 @@ download_partition_raw_data() {
     partition_num=$(sed '/^write.partition.num=/!d;s/.*=//' ${artifacts_dir}/config.ini)
     oss_bucket_name=$(sed '/^oss.bucket.name=/!d;s/.*=//' ${artifacts_dir}/config.ini)
 
-    oss_path_prefix=oss://${oss_bucket_name}/${graph_name}/${reducer_num}
+    oss_path_prefix=oss://${oss_bucket_name}/${graph_name}/reduces_${reducer_num}/partitions_${partition_num}
 
     for i in $(seq 0 $((reducer_num-1)))
     do
