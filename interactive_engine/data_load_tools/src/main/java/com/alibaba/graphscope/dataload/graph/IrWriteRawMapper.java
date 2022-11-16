@@ -4,7 +4,6 @@ import com.alibaba.graphscope.dataload.IrDataBuild;
 import com.alibaba.graphscope.dataload.IrEdgeData;
 import com.alibaba.graphscope.dataload.IrVertexData;
 import com.aliyun.odps.data.Record;
-import com.aliyun.odps.mapred.Mapper;
 import com.aliyun.odps.mapred.MapperBase;
 
 import java.io.IOException;
@@ -15,7 +14,7 @@ public class IrWriteRawMapper extends MapperBase {
     private int reducerNum;
 
     @Override
-    public void setup(Mapper.TaskContext context) throws IOException {
+    public void setup(TaskContext context) throws IOException {
         this.key = context.createMapOutputKeyRecord();
         this.partitions =
                 Integer.valueOf(context.getJobConf().get(IrDataBuild.WRITE_PARTITION_NUM));
@@ -23,7 +22,7 @@ public class IrWriteRawMapper extends MapperBase {
     }
 
     @Override
-    public void map(long recordNum, Record record, Mapper.TaskContext context) throws IOException {
+    public void map(long recordNum, Record record, TaskContext context) throws IOException {
         String tableName = context.getInputTableInfo().getTableName();
         if (tableName.contains(IrDataBuild.ENCODE_VERTEX_MAGIC)) { // vertex
             IrVertexData vertexData = new IrVertexData();
