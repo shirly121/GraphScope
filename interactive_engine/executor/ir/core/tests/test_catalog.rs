@@ -74,31 +74,31 @@ mod test {
     fn test_catalog_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(3, catalog.get_patterns_num());
-        assert_eq!(5, catalog.get_approaches_num());
+        assert_eq!(6, catalog.get_patterns_num());
+        assert_eq!(9, catalog.get_approaches_num());
     }
 
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(5, catalog.get_patterns_num());
-        assert_eq!(7, catalog.get_approaches_num());
+        assert_eq!(8, catalog.get_patterns_num());
+        assert_eq!(12, catalog.get_approaches_num());
     }
 
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case3() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(4, catalog.get_patterns_num());
-        assert_eq!(9, catalog.get_approaches_num());
+        assert_eq!(19, catalog.get_patterns_num());
+        assert_eq!(28, catalog.get_approaches_num());
     }
 
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case4() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
         let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-        assert_eq!(11, catalog.get_patterns_num());
-        assert_eq!(17, catalog.get_approaches_num());
+        assert_eq!(15, catalog.get_patterns_num());
+        assert_eq!(25, catalog.get_approaches_num());
     }
 }

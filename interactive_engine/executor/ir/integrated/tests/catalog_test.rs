@@ -449,27 +449,29 @@ mod test {
 
     #[test]
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case1() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
-        println!("{:?}", pb_plan);
-        initialize();
-        let plan: LogicalPlan = pb_plan.try_into().unwrap();
-        println!("{:?}", plan);
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder.build().unwrap();
-        let mut results = submit_query(request, 2);
-        let mut count = 0;
-        while let Some(result) = results.next() {
-            if let Ok(_) = result {
-                count += 1;
+        if let Ok(_) = std::env::var("DATA_PATH") {
+            let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
+            let pb_plan = ldbc_pattern
+                .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
+                .unwrap();
+            println!("{:?}", pb_plan);
+            initialize();
+            let plan: LogicalPlan = pb_plan.try_into().unwrap();
+            println!("{:?}", plan);
+            let mut job_builder = JobBuilder::default();
+            let mut plan_meta = plan.get_meta().clone();
+            plan.add_job_builder(&mut job_builder, &mut plan_meta)
+                .unwrap();
+            let request = job_builder.build().unwrap();
+            let mut results = submit_query(request, 2);
+            let mut count = 0;
+            while let Some(result) = results.next() {
+                if let Ok(_) = result {
+                    count += 1;
+                }
             }
+            println!("{}", count);
         }
-        println!("{}", count);
     }
 
     #[test]
@@ -545,25 +547,27 @@ mod test {
 
     #[test]
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case2() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
-        initialize();
-        let plan: LogicalPlan = pb_plan.try_into().unwrap();
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder.build().unwrap();
-        let mut results = submit_query(request, 2);
-        let mut count = 0;
-        while let Some(result) = results.next() {
-            if let Ok(_) = result {
-                count += 1;
+        if let Ok(_) = std::env::var("DATA_PATH") {
+            let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
+            let pb_plan = ldbc_pattern
+                .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
+                .unwrap();
+            initialize();
+            let plan: LogicalPlan = pb_plan.try_into().unwrap();
+            let mut job_builder = JobBuilder::default();
+            let mut plan_meta = plan.get_meta().clone();
+            plan.add_job_builder(&mut job_builder, &mut plan_meta)
+                .unwrap();
+            let request = job_builder.build().unwrap();
+            let mut results = submit_query(request, 2);
+            let mut count = 0;
+            while let Some(result) = results.next() {
+                if let Ok(_) = result {
+                    count += 1;
+                }
             }
+            println!("{}", count);
         }
-        println!("{}", count);
     }
 
     #[test]
@@ -612,25 +616,27 @@ mod test {
 
     #[test]
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case3() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
-        initialize();
-        let plan: LogicalPlan = pb_plan.try_into().unwrap();
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder.build().unwrap();
-        let mut results = submit_query(request, 2);
-        let mut count = 0;
-        while let Some(result) = results.next() {
-            if let Ok(_) = result {
-                count += 1;
+        if let Ok(_) = std::env::var("DATA_PATH") {
+            let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
+            let pb_plan = ldbc_pattern
+                .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
+                .unwrap();
+            initialize();
+            let plan: LogicalPlan = pb_plan.try_into().unwrap();
+            let mut job_builder = JobBuilder::default();
+            let mut plan_meta = plan.get_meta().clone();
+            plan.add_job_builder(&mut job_builder, &mut plan_meta)
+                .unwrap();
+            let request = job_builder.build().unwrap();
+            let mut results = submit_query(request, 2);
+            let mut count = 0;
+            while let Some(result) = results.next() {
+                if let Ok(_) = result {
+                    count += 1;
+                }
             }
+            println!("{}", count);
         }
-        println!("{}", count);
     }
 
     #[test]
@@ -679,25 +685,27 @@ mod test {
 
     #[test]
     fn test_generate_simple_matching_plan_for_ldbc_pattern_from_pb_case4() {
-        let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
-        initialize();
-        let plan: LogicalPlan = pb_plan.try_into().unwrap();
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder.build().unwrap();
-        let mut results = submit_query(request, 2);
-        let mut count = 0;
-        while let Some(result) = results.next() {
-            if let Ok(_) = result {
-                count += 1;
+        if let Ok(_) = std::env::var("DATA_PATH") {
+            let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
+            let pb_plan = ldbc_pattern
+                .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
+                .unwrap();
+            initialize();
+            let plan: LogicalPlan = pb_plan.try_into().unwrap();
+            let mut job_builder = JobBuilder::default();
+            let mut plan_meta = plan.get_meta().clone();
+            plan.add_job_builder(&mut job_builder, &mut plan_meta)
+                .unwrap();
+            let request = job_builder.build().unwrap();
+            let mut results = submit_query(request, 2);
+            let mut count = 0;
+            while let Some(result) = results.next() {
+                if let Ok(_) = result {
+                    count += 1;
+                }
             }
+            println!("{}", count);
         }
-        println!("{}", count);
     }
 
     #[test]
@@ -746,24 +754,26 @@ mod test {
 
     #[test]
     fn test_generate_simple_matching_plan_for_ldbc_bi11() {
-        let ldbc_pattern = build_ldbc_bi11().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
-        initialize();
-        let plan: LogicalPlan = pb_plan.try_into().unwrap();
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder.build().unwrap();
-        let mut results = submit_query(request, 2);
-        let mut count = 0;
-        while let Some(result) = results.next() {
-            if let Ok(_) = result {
-                count += 1;
+        if let Ok(_) = std::env::var("DATA_PATH") {
+            let ldbc_pattern = build_ldbc_bi11().unwrap();
+            let pb_plan = ldbc_pattern
+                .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
+                .unwrap();
+            initialize();
+            let plan: LogicalPlan = pb_plan.try_into().unwrap();
+            let mut job_builder = JobBuilder::default();
+            let mut plan_meta = plan.get_meta().clone();
+            plan.add_job_builder(&mut job_builder, &mut plan_meta)
+                .unwrap();
+            let request = job_builder.build().unwrap();
+            let mut results = submit_query(request, 2);
+            let mut count = 0;
+            while let Some(result) = results.next() {
+                if let Ok(_) = result {
+                    count += 1;
+                }
             }
+            println!("{}", count);
         }
-        println!("{}", count);
     }
 }

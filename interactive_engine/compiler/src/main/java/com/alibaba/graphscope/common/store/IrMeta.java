@@ -46,7 +46,9 @@ public class IrMeta {
         return schema;
     }
 
-    public String getCatalogPath() {return catalogPath;}
+    public String getCatalogPath() {
+        return catalogPath;
+    }
 
     public boolean isAcquireSnapshot() {
         return acquireSnapshot;
