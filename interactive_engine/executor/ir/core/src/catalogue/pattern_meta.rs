@@ -21,7 +21,7 @@ use crate::catalogue::{DynIter, PatternDirection, PatternLabelId};
 use crate::plan::meta::KeyType;
 use crate::plan::meta::Schema;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PatternMeta {
     /// Key: vertex label name, Value: vertex labal id
     ///

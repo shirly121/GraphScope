@@ -19,6 +19,9 @@ use log::info;
 use runtime_integration::{InitializeJobAssembly, QueryExpGraph};
 use structopt::StructOpt;
 
+#[global_allocator]
+static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "EchoServer", about = "example of rpc service")]
 struct Config {

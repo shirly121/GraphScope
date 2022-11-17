@@ -6,22 +6,18 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - 'CONTRIBUTORS'
-      - 'LICENSE'
-      - 'NOTICE.txt'
-      - '**.md'
-      - '**.rst'
-      - 'docs/**'
-      - 'demo/**'
-      - 'scripts/**'
-      - 'tutorials/**'
+    paths:
+      - 'analytical_engine/**'
+      - '.github/workflows/gae.yml'
+      - 'coordinator/gscoordinator/template/CMakeLists.template' # to verify whether java app can be successfully built when CMakeLists.template changes.
+      - '!analytical_engine/**.md'
   pull_request:
     branches:
       - main
     paths:
       - 'analytical_engine/**'
       - '.github/workflows/gae.yml'
+      - 'coordinator/gscoordinator/template/CMakeLists.template' # to verify whether java app can be successfully built when CMakeLists.template changes.
       - '!analytical_engine/**.md'
 
 concurrency:
@@ -33,7 +29,7 @@ jobs:
     runs-on: ubuntu-20.04
     if: ${{ github.repository == 'alibaba/GraphScope' }}
     container:
-      image: registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-vineyard:v0.8.6
+      image: registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-vineyard:v0.9.0
       options:
         --shm-size 4096m
     steps:

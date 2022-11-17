@@ -64,7 +64,9 @@ use prost::Message;
 
 use crate::error::IrError;
 use crate::plan::logical::{LogicalPlan, NodeId};
-use crate::plan::meta::{set_schema_from_json, KeyType};
+use crate::plan::meta::{
+    set_catalogue_from_path, set_pattern_meta_from_schema, set_schema_from_json, KeyType,
+};
 use crate::plan::physical::AsPhysical;
 
 #[repr(i32)]
@@ -503,6 +505,26 @@ pub extern "C" fn set_schema(cstr_json: *const c_char) -> FfiResult {
     match result {
         Ok(json) => {
             set_schema_from_json(json.as_bytes());
+
+            FfiResult::success()
+        }
+        Err(e) => e,
+    }
+}
+
+/// Set pattern_meta from defined schema
+#[no_mangle]
+pub extern "C" fn set_pattern_meta() -> FfiResult {
+    set_pattern_meta_from_schema();
+    FfiResult::success()
+}
+
+#[no_mangle]
+pub extern "C" fn set_catalogue(cstr_path: *const c_char) -> FfiResult {
+    let result = cstr_to_string(cstr_path);
+    match result {
+        Ok(path) => {
+            set_catalogue_from_path(path);
 
             FfiResult::success()
         }

@@ -1,99 +1,94 @@
 {
-  "vertex_type_map": {
-    "TICKET": 3,
-    "COACH": 0,
-    "PLAYER": 1,
-    "FAN": 2
-  },
-  "edge_type_map": {
-    "LOVEDBY": 1,
-    "GUIDE": 0,
-    "BUY": 2
-  },
-  "vertex_prop": {
-    "COACH": [
-      [
-        "id",
-        "ID"
-      ],
-      [
-        "name",
-        "String"
-      ],
-      [
-        "age",
-        "Integer"
-      ]
+    "entities": [
+      {
+        "label": {
+          "id": 0,
+          "name": "COACH"
+        },
+        "columns": []
+      },
+      {
+        "label": {
+          "id": 1,
+          "name": "PLAYER"
+        },
+        "columns": []
+      },
+      {
+        "label": {
+          "id": 2,
+          "name": "FAN"
+        },
+        "columns": []
+      },
+      {
+        "label": {
+          "id": 3,
+          "name": "TICKET"
+        },
+        "columns": []
+      }
     ],
-    "PLAYER": [
-      [
-        "id",
-        "ID"
-      ],
-      [
-        "name",
-        "String"
-      ],
-      [
-        "age",
-        "Integer"
-      ]
+    "relations": [
+      {
+        "label": {
+          "id": 0,
+          "name": "GUIDE"
+        },
+        "entity_pairs": [
+          {
+            "src": {
+              "id": 0,
+              "name": "COACH"
+            },
+            "dst": {
+              "id": 1,
+              "name": "PLAYER"
+            }
+          }
+        ],
+        "columns": []
+      },
+      {
+        "label": {
+          "id": 1,
+          "name": "LOVEDBY"
+        },
+        "entity_pairs": [
+          {
+            "src": {
+              "id": 1,
+              "name": "PLAYER"
+            },
+            "dst": {
+              "id": 2,
+              "name": "FAN"
+            }
+          }
+        ],
+        "columns": []
+      },
+      {
+        "label": {
+          "id": 2,
+          "name": "BUY"
+        },
+        "entity_pairs": [
+          {
+            "src": {
+              "id": 2,
+              "name": "FAN"
+            },
+            "dst": {
+              "id": 3,
+              "name": "TICKET"
+            }
+          }
+        ],
+        "columns": []
+      }
     ],
-    "FAN": [
-      [
-        "id",
-        "ID"
-      ],
-      [
-        "name",
-        "String"
-      ],
-      [
-        "age",
-        "Integer"
-      ]
-    ],
-    "TICKET": [
-      [
-        "id",
-        "ID"
-      ],
-      [
-        "name",
-        "String"
-      ]
-    ]
-  },
-  "edge_prop": {
-    "LOVEDBY": [
-      [
-        "start_id",
-        "ID"
-      ],
-      [
-        "end_id",
-        "ID"
-      ]
-    ],
-    "GUIDE": [
-      [
-        "start_id",
-        "ID"
-      ],
-      [
-        "end_id",
-        "ID"
-      ]
-    ],
-    "BUY": [
-      [
-        "start_id",
-        "ID"
-      ],
-      [
-        "end_id",
-        "ID"
-      ]
-    ]
+    "is_table_id": true,
+    "is_column_id": false
   }
-}
+  

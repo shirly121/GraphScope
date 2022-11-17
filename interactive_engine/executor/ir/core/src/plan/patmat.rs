@@ -27,9 +27,8 @@ use ir_common::generated::common as common_pb;
 use ir_common::NameOrId;
 
 use crate::catalogue::pattern::Pattern;
-use crate::catalogue::pattern_meta::PatternMeta;
 use crate::error::{IrError, IrResult};
-use crate::plan::meta::{PlanMeta, StoreMeta};
+use crate::plan::meta::{PlanMeta, CATALOGUE, PATTERN_META};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd)]
 #[repr(i32)]
@@ -41,7 +40,7 @@ pub enum BindingOpt {
 
 /// A trait to abstract how to build a logical plan for `Pattern` operator.
 pub trait MatchingStrategy {
-    fn build_logical_plan(&self, store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan>;
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan>;
 }
 
 pub trait AsBaseSentence: Debug + MatchingStrategy {
@@ -193,7 +192,7 @@ impl TryFrom<pb::pattern::Sentence> for BaseSentence {
 }
 
 impl MatchingStrategy for BaseSentence {
-    fn build_logical_plan(&self, _store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
         let mut plan = pb::LogicalPlan { nodes: vec![], roots: vec![0] };
         let size = self.operators.len();
         if size == 0 {
@@ -505,8 +504,8 @@ impl MergedSentence {
 }
 
 impl MatchingStrategy for MergedSentence {
-    fn build_logical_plan(&self, _store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
-        JoinSentence::try_from(self.clone())?.build_logical_plan(_store_meta)
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
+        JoinSentence::try_from(self.clone())?.build_logical_plan()
     }
 }
 
@@ -630,8 +629,8 @@ fn preprocess_plan(plan: &mut pb::LogicalPlan) -> IrResult<()> {
 }
 
 impl MatchingStrategy for CompoSentence {
-    fn build_logical_plan(&self, _store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
-        let mut plan = self.head.build_logical_plan(_store_meta)?;
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
+        let mut plan = self.head.build_logical_plan()?;
         if let Some(tail) = &self.tail {
             let start_tag = self.get_start_tag();
             let mut last_node = plan.nodes.len() as u32 - 1;
@@ -660,7 +659,7 @@ impl MatchingStrategy for CompoSentence {
                 last_node += 1;
                 plan.nodes.push(project_node);
             }
-            let tail_plan = tail.build_logical_plan(_store_meta)?;
+            let tail_plan = tail.build_logical_plan()?;
             // set the first nodes in tail plan as the children of last node of head plan.
             if let Some(n) = plan.nodes.get_mut(last_node as usize) {
                 n.children.extend(
@@ -816,11 +815,11 @@ fn detect_filters(params_opt: Option<&pb::QueryParams>) -> usize {
 }
 
 impl MatchingStrategy for JoinSentence {
-    fn build_logical_plan(&self, _store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
-        let mut plan = self.left.build_logical_plan(_store_meta)?;
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
+        let mut plan = self.left.build_logical_plan()?;
         let mut right_plan_opt = None;
         if let Some(right) = &self.right {
-            right_plan_opt = Some(right.build_logical_plan(_store_meta)?);
+            right_plan_opt = Some(right.build_logical_plan()?);
         }
         if let Some(mut right_plan) = right_plan_opt {
             // must be preprocessed to only one single root
@@ -1114,7 +1113,7 @@ impl NaiveStrategy {
 }
 
 impl MatchingStrategy for NaiveStrategy {
-    fn build_logical_plan(&self, _store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
         let mut sentences = self
             .clone()
             .do_composition()?
@@ -1146,7 +1145,7 @@ impl MatchingStrategy for NaiveStrategy {
                     break;
                 }
             }
-            first.build_logical_plan(_store_meta)
+            first.build_logical_plan()
         } else {
             Err(IrError::InvalidPattern("empty sentences".to_string()))
         }
@@ -1159,34 +1158,32 @@ pub struct ExtendStrategy {
 
 /// Initializer of a ExtendStrategy
 impl ExtendStrategy {
-    pub fn init(
-        pb_pattern: &pb::Pattern, pattern_meta: &PatternMeta, plan_meta: &mut PlanMeta,
-    ) -> IrResult<Self> {
-        let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta, plan_meta)?;
-        Ok(ExtendStrategy { pattern })
+    pub fn init(pb_pattern: &pb::Pattern, plan_meta: &mut PlanMeta) -> IrResult<Self> {
+        let pattern_meta_guard = PATTERN_META.read()?;
+        if let Some(pattern_meta) = pattern_meta_guard.as_ref() {
+            let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta, plan_meta)?;
+            Ok(ExtendStrategy { pattern })
+        } else {
+            Err(IrError::MissingData("PATTERN_META".to_string()))
+        }
     }
 }
 
 /// Build pattern match Logical Plan for ExtendStrategy
 impl MatchingStrategy for ExtendStrategy {
-    fn build_logical_plan(&self, store_meta: Option<&StoreMeta>) -> IrResult<pb::LogicalPlan> {
-        // if can find catalog, generate optimized logical plan
-        if let Some(store_meta) = store_meta {
-            if let Some(catalog) = store_meta.catalogue.as_ref() {
-                if let Ok(match_plan) = self
-                    .pattern
-                    .generate_optimized_match_plan_greedily(catalog)
-                {
-                    Ok(match_plan)
-                } else {
-                    // generate optimized logical plan fails, use simple plan instead
-                    self.pattern.generate_simple_extend_match_plan()
-                }
+    fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
+        let pattern_meta_guard = PATTERN_META.read()?;
+        if let Some(pattern_meta) = pattern_meta_guard.as_ref() {
+            let mut catalog_guard = CATALOGUE.write()?;
+            if let Some(catalog) = catalog_guard.as_mut() {
+                self.pattern
+                    .generate_optimized_match_plan_recursively(catalog, &pattern_meta, true)
             } else {
-                self.pattern.generate_simple_extend_match_plan()
+                self.pattern
+                    .generate_simple_extend_match_plan(&pattern_meta, true)
             }
         } else {
-            self.pattern.generate_simple_extend_match_plan()
+            Err(IrError::MissingData("PATTERN_META".to_string()))
         }
     }
 }
@@ -1332,7 +1329,7 @@ mod test {
         // case 1.
         let a_out_b = gen_sentence_x_out_y("a", Some("b"), false, false);
         // As(a), Out(), As(b)
-        let plan = a_out_b.build_logical_plan(None).unwrap();
+        let plan = a_out_b.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 3);
         println!("case 1: {:?}", plan.nodes);
 
@@ -1342,14 +1339,14 @@ mod test {
         a_out_c.set_has_as_opr(false);
         let a_out_b_out_c = a_out_b.composite(Rc::new(a_out_c)).unwrap();
         // As(a), Out(), As(b), Project(a), out(), As(c)
-        let plan = a_out_b_out_c.build_logical_plan(None).unwrap();
+        let plan = a_out_b_out_c.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 6);
         println!("case 2: {:?}", plan.nodes);
 
         // case 3. merged case
         let a_out_b = gen_sentence_x_out_y("a", Some("b"), false, false);
         let merged = MergedSentence::new(a_out_b.clone(), a_out_b).unwrap();
-        let plan = merged.build_logical_plan(None).unwrap();
+        let plan = merged.build_logical_plan().unwrap();
         // As(a), Out(), As(b), As(a), out(), As(b), Join
         assert_eq!(plan.nodes.len(), 7);
         println!("case 3: {:?}", plan.nodes);
@@ -1361,7 +1358,7 @@ mod test {
         merged.set_has_as_opr(false);
         let a_out_c = a_out_b.composite(Rc::new(merged)).unwrap();
 
-        let plan = a_out_c.build_logical_plan(None).unwrap();
+        let plan = a_out_c.build_logical_plan().unwrap();
         // As(a), Out(), As(b), Out(), As(c), Out(), As(c), Join
         assert_eq!(plan.nodes.len(), 8);
         println!("case 4: {:?}", plan.nodes);
@@ -1382,7 +1379,7 @@ mod test {
         );
         assert_eq!(join.join_kind, pb::join::JoinKind::Inner);
 
-        let plan = join.build_logical_plan(None).unwrap();
+        let plan = join.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 7);
         assert_eq!(plan.nodes.get(2).unwrap().children, vec![6]);
         assert_eq!(plan.nodes.get(5).unwrap().children, vec![6]);
@@ -1454,7 +1451,7 @@ mod test {
         //   Out() (id = 3), As(c),
         //   Out() (id = 5), As(c),
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 8);
         assert_eq!(plan.nodes.get(2).unwrap().children, vec![3, 5]);
         assert_eq!(plan.nodes.get(4).unwrap().children, vec![7]);
@@ -1488,7 +1485,7 @@ mod test {
         //    As(a), Out(), As(b), Out(), As(c) (id = 4)
         //    As(a), Out(), As(c) (id = 7)
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.get(4).unwrap().children, vec![8]);
         assert_eq!(
             plan.nodes.get(4).unwrap().opr.clone().unwrap(),
@@ -1532,7 +1529,7 @@ mod test {
         //          As(a), Out(), As(d), (opr_id = 9)
         //      )
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         println!("{:#?}", plan.nodes);
 
         assert_eq!(plan.nodes.first().unwrap().opr.clone().unwrap(), pb::As { alias: None }.into());
@@ -1599,7 +1596,7 @@ mod test {
         //          As(a), Out(), As(d), Out(), As(c) (opr_id = 9)
         //      )
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         println!("{:#?}", plan.nodes);
 
         assert_eq!(plan.nodes.get(5).unwrap().children, vec![11]);
@@ -1648,7 +1645,7 @@ mod test {
         //    As(a), Out(), As(b) (id = 2),
         //    As(b), Out(), As(a) (id = 5),
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 7);
         assert_eq!(plan.nodes.get(2).unwrap().children, vec![6]);
         assert_eq!(plan.nodes.get(5).unwrap().children, vec![6]);
@@ -1679,7 +1676,7 @@ mod test {
         //    As(a), Out(), As(b) (id = 2),
         //    As(a), Out(), As(b) (id = 5),
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         println!("{:#?}", plan.nodes);
 
         assert_eq!(plan.nodes.len(), 7);
@@ -1713,7 +1710,7 @@ mod test {
         //    As(a), Out(), As(b), Out(), As(c) (id = 4),
         //    As(c), Out(), As(a) (id = 7),
         // )
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 9);
         assert_eq!(plan.nodes.get(4).unwrap().children, vec![8]);
         assert_eq!(plan.nodes.get(7).unwrap().children, vec![8]);
@@ -1748,7 +1745,7 @@ mod test {
         //      ),
         //      As(a), Out(), As(d) (id = 10)
         //)
-        let plan = strategy.build_logical_plan(None).unwrap();
+        let plan = strategy.build_logical_plan().unwrap();
         assert_eq!(plan.nodes.len(), 12);
         assert_eq!(plan.nodes.first().unwrap().opr.clone().unwrap(), pb::As { alias: None }.into());
 
@@ -1785,7 +1782,7 @@ mod test {
             gen_sentence_x_out_y("d", Some("e"), false, false).into(),
         ]);
 
-        let result = strategy.build_logical_plan(None);
+        let result = strategy.build_logical_plan();
         match result.err().unwrap() {
             IrError::InvalidPattern(_) => {}
             _ => panic!("should produce invalid pattern error"),

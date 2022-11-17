@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
+use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::KeyId;
@@ -593,6 +594,8 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
         expand_opt: 0,
         alias: None,
     };
+    let select_comment =
+        pb::Select { predicate: Some(str_to_expr_pb("@.~label == 2".to_string()).unwrap()) };
     let pattern = pb::Pattern {
         sentences: vec![
             pb::pattern::Sentence {
@@ -625,6 +628,14 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
                     item: Some(pb::pattern::binder::Item::Edge(expand_opr4)),
                 }],
                 end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Select(select_comment)),
+                }],
+                end: None,
                 join_kind: 0,
             },
         ],
@@ -741,6 +752,8 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
         expand_opt: 0,
         alias: None,
     };
+    let select_comment =
+        pb::Select { predicate: Some(str_to_expr_pb("@.~label == 2".to_string()).unwrap()) };
     let pattern = pb::Pattern {
         sentences: vec![
             pb::pattern::Sentence {
@@ -761,14 +774,17 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
             },
             pb::pattern::Sentence {
                 start: Some(TAG_A.into()),
-                binders: vec![
-                    pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr3.clone())),
-                    },
-                    pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr4.clone())),
-                    },
-                ],
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr3.clone())),
+                }],
+                end: Some(TAG_D.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr4.clone())),
+                }],
                 end: Some(TAG_C.into()),
                 join_kind: 0,
             },
@@ -778,6 +794,14 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
                     item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
                 }],
                 end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Select(select_comment)),
+                }],
+                end: None,
                 join_kind: 0,
             },
         ],
@@ -2447,4 +2471,18 @@ pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternI
         ),
     ];
     (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
+}
+
+pub fn build_pattern_rank_ranking_case21() -> Pattern {
+    let vertex0 = PatternVertex::new(0, 1);
+    let vertex1 = PatternVertex::new(1, 2);
+    let vertex3 = PatternVertex::new(3, 0);
+    let vertex4 = PatternVertex::new(4, 1);
+    let vertex5 = PatternVertex::new(5, 2);
+    let edge0 = PatternEdge::new(0, 13, vertex0, vertex1);
+    let edge2 = PatternEdge::new(2, 11, vertex0, vertex3);
+    let edge4 = PatternEdge::new(4, 11, vertex4, vertex3);
+    let edge6 = PatternEdge::new(6, 13, vertex4, vertex5);
+    let edges = vec![edge0, edge2, edge4, edge6];
+    Pattern::try_from(edges).unwrap()
 }

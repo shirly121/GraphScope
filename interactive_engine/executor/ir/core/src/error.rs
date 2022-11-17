@@ -15,6 +15,7 @@
 //!
 
 use std::fmt;
+use std::sync::PoisonError;
 
 use ir_common::error::ParsePbError;
 use ir_common::expr_parse::error::ExprError;
@@ -91,5 +92,12 @@ impl From<EncodeError> for IrError {
 impl From<ExprError> for IrError {
     fn from(err: ExprError) -> Self {
         Self::ParseExprError(err)
+    }
+}
+
+impl<Guard> From<PoisonError<Guard>> for IrError {
+    // Todo: Define error more clearly
+    fn from(_: PoisonError<Guard>) -> Self {
+        IrError::MissingData("Load Meta fails, lock may be hold by other threads".to_string())
     }
 }

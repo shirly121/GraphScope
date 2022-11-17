@@ -270,6 +270,9 @@ message Auxilia {
   QueryParams params = 2;
   // The alias to give if any, which is especially helpful when the entity now refers to the head of the record
   common.NameOrId alias = 3;
+  // The remove_tags refers to the entities that will not be used any longer, and thus can be removed.
+  // Specifically, it will remove tags in the end of auxilia. i.e., remove `tag` where auxilia is applied is also allowed.
+  repeated common.NameOrId remove_tags = 4;
 }
 
 message EdgeExpand {
@@ -451,6 +454,10 @@ message FusedOperator {
   repeated LogicalPlan.Operator oprs = 1;
 }
 
+message ExpandAndIntersect {
+  repeated EdgeExpand edge_expands = 1;
+}
+
 // A logical plan of graph relation algebra forms a DAG, where each node is an operator and the
 // edge indicates the execution flow.
 message LogicalPlan {
@@ -480,6 +487,7 @@ message LogicalPlan {
       PathStart path_start = 33;
       PathEnd path_end = 34;
       Pattern pattern = 35;
+      ExpandAndIntersect expand_intersect = 36;
     }
   }
   message Node {

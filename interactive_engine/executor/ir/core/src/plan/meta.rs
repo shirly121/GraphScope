@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::io;
 use std::ops::Deref;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::RwLock;
 
@@ -27,7 +28,6 @@ use ir_common::NameOrId;
 use ir_common::{KeyId, OneOrMany};
 
 use crate::catalogue::catalog::Catalogue;
-use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::error::{IrError, IrResult};
 use crate::plan::logical::NodeId;
@@ -38,6 +38,8 @@ pub type TagId = u32;
 
 lazy_static! {
     pub static ref STORE_META: RwLock<StoreMeta> = RwLock::new(StoreMeta::default());
+    pub static ref PATTERN_META: RwLock<Option<PatternMeta>> = RwLock::new(None);
+    pub static ref CATALOGUE: RwLock<Option<Catalogue>> = RwLock::new(None);
 }
 
 pub fn set_schema_from_json<R: io::Read>(read: R) {
@@ -55,29 +57,28 @@ pub fn reset_schema() {
 }
 
 pub fn set_catalogue(catalogue: Catalogue) {
-    if let Ok(mut meta) = STORE_META.write() {
-        meta.catalogue = Some(catalogue);
+    if let Ok(mut catalogue_guard) = CATALOGUE.write() {
+        *catalogue_guard = Some(catalogue);
     }
 }
 
-pub fn set_catalogue_from_pattern(pattern: &Pattern) {
-    if let Ok(mut meta) = STORE_META.write() {
-        let catalogue = Catalogue::build_from_pattern(&pattern);
-        meta.catalogue = Some(catalogue);
+pub fn set_catalogue_from_path<P: AsRef<Path>>(catalog_path: P) {
+    if let Ok(catalogue) = Catalogue::import(catalog_path) {
+        set_catalogue(catalogue)
     }
 }
 
 pub fn set_pattern_meta(pattern_meta: PatternMeta) {
-    if let Ok(mut meta) = STORE_META.write() {
-        meta.pattern_meta = Some(pattern_meta);
+    if let Ok(mut pattern_meta_guard) = PATTERN_META.write() {
+        *pattern_meta_guard = Some(pattern_meta)
     }
 }
 
-pub fn set_pattern_meta_from_json<R: io::Read>(read: R) {
-    if let Ok(mut meta) = STORE_META.write() {
-        if let Ok(schema) = Schema::from_json(read) {
-            let pattern_meta = PatternMeta::from(schema);
-            meta.pattern_meta = Some(pattern_meta);
+pub fn set_pattern_meta_from_schema() {
+    if let Ok(meta) = STORE_META.write() {
+        if let Some(schema) = meta.schema.as_ref() {
+            let pattern_meta = PatternMeta::from(schema.clone());
+            set_pattern_meta(pattern_meta);
         }
     }
 }
@@ -85,8 +86,6 @@ pub fn set_pattern_meta_from_json<R: io::Read>(read: R) {
 #[derive(Clone, Debug, Default)]
 pub struct StoreMeta {
     pub schema: Option<Schema>,
-    pub catalogue: Option<Catalogue>,
-    pub pattern_meta: Option<PatternMeta>,
 }
 
 #[derive(Clone, Debug)]

@@ -14,7 +14,9 @@
 //! limitations under the License.
 
 mod assemble;
+mod resources_load;
 pub use assemble::{QueryExpGraph, QueryGrootGraph, QueryVineyard};
+pub use resources_load::*;
 use runtime::IRJobAssembly;
 
 pub trait InitializeJobAssembly {
