@@ -38,6 +38,8 @@ pub type TagId = u32;
 
 lazy_static! {
     pub static ref STORE_META: RwLock<StoreMeta> = RwLock::new(StoreMeta::default());
+    pub static ref PATTERN_META: RwLock<Option<PatternMeta>> = RwLock::new(None);
+    pub static ref CATALOGUE: RwLock<Option<Catalogue>> = RwLock::new(None);
 }
 
 pub fn set_schema_from_json<R: io::Read>(read: R) {
@@ -55,8 +57,8 @@ pub fn reset_schema() {
 }
 
 pub fn set_catalogue(catalogue: Catalogue) {
-    if let Ok(mut meta) = STORE_META.write() {
-        meta.catalogue = Some(catalogue);
+    if let Ok(mut catalogue_guard) = CATALOGUE.write() {
+        *catalogue_guard = Some(catalogue);
     }
 }
 
@@ -66,11 +68,17 @@ pub fn set_catalogue_from_path<P: AsRef<Path>>(catalog_path: P) {
     }
 }
 
+pub fn set_pattern_meta(pattern_meta: PatternMeta) {
+    if let Ok(mut pattern_meta_guard) = PATTERN_META.write() {
+        *pattern_meta_guard = Some(pattern_meta)
+    }
+}
+
 pub fn set_pattern_meta_from_schema() {
-    if let Ok(mut meta) = STORE_META.write() {
+    if let Ok(meta) = STORE_META.write() {
         if let Some(schema) = meta.schema.as_ref() {
             let pattern_meta = PatternMeta::from(schema.clone());
-            meta.pattern_meta = Some(pattern_meta)
+            set_pattern_meta(pattern_meta);
         }
     }
 }
@@ -78,8 +86,6 @@ pub fn set_pattern_meta_from_schema() {
 #[derive(Clone, Debug, Default)]
 pub struct StoreMeta {
     pub schema: Option<Schema>,
-    pub catalogue: Option<Catalogue>,
-    pub pattern_meta: Option<PatternMeta>,
 }
 
 #[derive(Clone, Debug)]

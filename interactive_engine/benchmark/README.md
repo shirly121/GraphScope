@@ -38,8 +38,8 @@ cd target
 tar -xvf gaia-benchmark-0.0.1-SNAPSHOT-dist.tar.gz
 cd gaia-benchmark-0.0.1-SNAPSHOT
 vim config/interactive-benchmark.properties # specify the gremlin endpoint of your server and modify running configurations
-chmod +x ./utils/benchmark.sh 
-./utils/benchmark.sh                      # run the benchmark program
+chmod +x ./scripts/benchmark.sh
+./scripts/benchmark.sh                      # run the benchmark program
 ```
 
 Benchmark reports numbers as following:

@@ -23,7 +23,6 @@ use ir_core::catalogue::pattern_meta::PatternMeta;
 use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
 use ir_core::plan::meta::Schema;
-use ir_core::plan::meta::STORE_META;
 use ir_core::JsonIO;
 use log::info;
 use std::convert::TryFrom;
@@ -107,15 +106,4 @@ fn read_pattern_from_path(pattern_path: &str) -> Result<Pattern, Box<dyn Error>>
     }
     let pattern = Pattern::try_from(pattern_edges)?;
     Ok(pattern)
-}
-
-pub fn set_store_meta() -> Result<(), Box<dyn Error>> {
-    let schema = read_schema()?;
-    let pattern_meta = read_pattern_meta()?;
-    let catalog = read_catalogue()?;
-    let mut store_meta = STORE_META.write()?;
-    store_meta.schema = Some(schema);
-    store_meta.pattern_meta = Some(pattern_meta);
-    store_meta.catalogue = Some(catalog);
-    Ok(())
 }

@@ -1595,8 +1595,6 @@ mod test {
                 vec![("knows".to_string(), 0), ("creates".to_string(), 1)],
                 vec![("id".to_string(), 0), ("name".to_string(), 1), ("age".to_string(), 2)],
             )),
-            catalogue: None,
-            pattern_meta: None,
         };
 
         let mut expression = str_to_expr_pb("@.~label == \"person\"".to_string()).unwrap();
@@ -1752,8 +1750,6 @@ mod test {
                 vec![("knows".to_string(), 0), ("creates".to_string(), 1)],
                 vec![("id".to_string(), 0), ("name".to_string(), 1), ("age".to_string(), 2)],
             )),
-            catalogue: None,
-            pattern_meta: None,
         };
 
         let mut scan = pb::Scan {
@@ -1835,8 +1831,6 @@ mod test {
             schema: Some(
                 Schema::from_json(std::fs::File::open("resource/modern_schema_pk.json").unwrap()).unwrap(),
             ),
-            catalogue: None,
-            pattern_meta: None,
         };
         let mut scan = pb::Scan {
             scan_opt: 0,

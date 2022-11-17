@@ -28,7 +28,7 @@ use ir_common::NameOrId;
 
 use crate::catalogue::pattern::Pattern;
 use crate::error::{IrError, IrResult};
-use crate::plan::meta::{PlanMeta, STORE_META};
+use crate::plan::meta::{PlanMeta, CATALOGUE, PATTERN_META};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd)]
 #[repr(i32)]
@@ -1159,15 +1159,12 @@ pub struct ExtendStrategy {
 /// Initializer of a ExtendStrategy
 impl ExtendStrategy {
     pub fn init(pb_pattern: &pb::Pattern, plan_meta: &mut PlanMeta) -> IrResult<Self> {
-        if let Ok(store_meta) = STORE_META.read() {
-            if let Some(pattern_meta) = store_meta.pattern_meta.as_ref() {
-                let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta, plan_meta)?;
-                Ok(ExtendStrategy { pattern })
-            } else {
-                Err(IrError::MissingData("PATTERN_META".to_string()))
-            }
+        let pattern_meta_guard = PATTERN_META.read()?;
+        if let Some(pattern_meta) = pattern_meta_guard.as_ref() {
+            let pattern = Pattern::from_pb_pattern(pb_pattern, pattern_meta, plan_meta)?;
+            Ok(ExtendStrategy { pattern })
         } else {
-            Err(IrError::MissingData("STORE_META".to_string()))
+            Err(IrError::MissingData("PATTERN_META".to_string()))
         }
     }
 }
@@ -1175,20 +1172,18 @@ impl ExtendStrategy {
 /// Build pattern match Logical Plan for ExtendStrategy
 impl MatchingStrategy for ExtendStrategy {
     fn build_logical_plan(&self) -> IrResult<pb::LogicalPlan> {
-        if let Ok(store_meta) = STORE_META.read() {
-            if let Some(pattern_meta) = store_meta.pattern_meta.as_ref() {
-                if let Some(catalog) = store_meta.catalogue.as_ref() {
-                    self.pattern
-                        .generate_optimized_match_plan_greedily(catalog, pattern_meta, true)
-                } else {
-                    self.pattern
-                        .generate_simple_extend_match_plan(pattern_meta, true)
-                }
+        let pattern_meta_guard = PATTERN_META.read()?;
+        if let Some(pattern_meta) = pattern_meta_guard.as_ref() {
+            let mut catalog_guard = CATALOGUE.write()?;
+            if let Some(catalog) = catalog_guard.as_mut() {
+                self.pattern
+                    .generate_optimized_match_plan_recursively(catalog, &pattern_meta, true)
             } else {
-                Err(IrError::MissingData("PATTERN_META".to_string()))
+                self.pattern
+                    .generate_simple_extend_match_plan(&pattern_meta, true)
             }
         } else {
-            Err(IrError::MissingData("STORE_META".to_string()))
+            Err(IrError::MissingData("PATTERN_META".to_string()))
         }
     }
 }

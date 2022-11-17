@@ -378,7 +378,6 @@ impl Pattern {
         if v_id_label_maps.len() == 0 {
             return Err(IrError::InvalidPattern("The pattern is illegal according to schema".to_string()));
         } else if v_id_label_maps.len() > 1 {
-            println!("{:?}", v_id_label_maps);
             return Err(IrError::Unsupported("Fuzzy Pattern".to_string()));
         }
         let v_id_label_map = v_id_label_maps.remove(0);
@@ -603,6 +602,8 @@ fn pick_id_label_map_from_predicate(
             )
             .and_then(|value| {
                 if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+                    Some(label_id as PatternLabelId)
+                } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
                     Some(label_id)
                 } else {
                     None
@@ -612,7 +613,7 @@ fn pick_id_label_map_from_predicate(
             return None;
         }
         if let Some(label_id) = label_id {
-            Some(BTreeMap::from_iter([(pre_dst_vertex_id, label_id as PatternLabelId)]))
+            Some(BTreeMap::from_iter([(pre_dst_vertex_id, label_id)]))
         } else {
             None
         }
