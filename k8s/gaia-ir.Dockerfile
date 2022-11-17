@@ -29,6 +29,6 @@ RUN apt-get install -y openjdk-11-jdk && \
 RUN cd /opt && \
     git clone https://github.com/shirly121/GraphScope.git && \
     cd /opt/GraphScope/interactive_engine/executor/ir && \
-    git fetch origin ir_catalog_k8s:ir_catalog_k8s && \
+    git fetch origin ir_catalog_dev:ir_catalog_dev && \
     git checkout ir_catalog_k8s && \
     cargo build --release
