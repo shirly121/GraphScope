@@ -19,6 +19,8 @@ ENV LC_ALL en_US.UTF-8
 RUN apt-get install -y cmake=3.18.4-2+deb11u1 && \
     apt-get install -y clang=1:11.0-51+nmu5 && \
     apt-get install -y protobuf-compiler=3.12.4-1 && \
+    apt-get install -y iputils-ping && \
+    apt-get install -y dnsutils && \
     rustup component add rustfmt
 
 # install Java Dependencies
