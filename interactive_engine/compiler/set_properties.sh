@@ -39,6 +39,8 @@ server_num="pegasus.server.num: $SERVERSSIZE"
 
 graph_schema="graph.schema: $GRAPH_SCHEMA"
 
-properties="$worker_num\n$timeout\n$batch_size\n$output_capacity\n$hosts\n$server_num\n$graph_schema"
+catalog_path="catalog_path: $CATALOG_PATH"
+
+properties="$worker_num\n$timeout\n$batch_size\n$output_capacity\n$hosts\n$server_num\n$graph_schema\n$catalog_path"
 
 echo -e $properties > ./conf/ir.compiler.properties
