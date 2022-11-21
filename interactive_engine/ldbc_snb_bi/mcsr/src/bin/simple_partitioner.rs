@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use clap::{App, Arg};
 use env_logger;
-
 // use mcsr::graph_las::GraphLAS;
 use mcsr::graph_partitioner::GraphPartitioner;
 use mcsr::schema::LDBCGraphSchema;
@@ -40,13 +39,25 @@ fn main() {
                 .takes_value(true),
             Arg::with_name("delimiter")
                 .short("t")
-                .long_help("The delimiter of the raw data [comma|semicolon|pipe]. pipe (|) is the default option")
+                .long_help(
+                    "The delimiter of the raw data [comma|semicolon|pipe]. pipe (|) is the default option",
+                )
                 .takes_value(true),
-        ]).get_matches();
+        ])
+        .get_matches();
 
-    let raw_data_dir = matches.value_of("raw_data_dir").unwrap().to_string();
-    let graph_data_dir = matches.value_of("graph_data_dir").unwrap().to_string();
-    let schema_file = matches.value_of("schema_file").unwrap().to_string();
+    let raw_data_dir = matches
+        .value_of("raw_data_dir")
+        .unwrap()
+        .to_string();
+    let graph_data_dir = matches
+        .value_of("graph_data_dir")
+        .unwrap()
+        .to_string();
+    let schema_file = matches
+        .value_of("schema_file")
+        .unwrap()
+        .to_string();
     let world = universe.world();
     let partition_num = world.size() as usize;
     let partition_index = world.rank() as usize;

@@ -1,6 +1,8 @@
-use crate::error::GDBResult;
-use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
 use std::fmt::{Debug, Display, Formatter};
+
+use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
+
+use crate::error::GDBResult;
 
 #[derive(Copy, Clone)]
 pub struct IpAddr {
@@ -12,12 +14,7 @@ pub struct IpAddr {
 
 impl IpAddr {
     pub fn new() -> Self {
-        Self {
-            a: 0_u8,
-            b: 0_u8,
-            c: 0_u8,
-            d: 0_u8,
-        }
+        Self { a: 0_u8, b: 0_u8, c: 0_u8, d: 0_u8 }
     }
 }
 

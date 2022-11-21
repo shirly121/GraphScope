@@ -1,10 +1,10 @@
-use crate::col_table::ColTable;
-use crate::error::GDBResult;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crate::col_table::ColTable;
+use crate::error::GDBResult;
 use crate::graph::{Direction, IndexType};
 use crate::graph_db::{GlobalCsrTrait, LocalEdge, LocalVertex};
 use crate::io::{export, import};
@@ -15,11 +15,7 @@ use crate::types::*;
 use crate::utils::{Iter, LabeledIterator, LabeledRangeIterator, Range};
 use crate::vertex_map::VertexMap;
 
-pub struct SubGraph<
-    'a,
-    G: Send + Sync + IndexType = DefaultId,
-    I: Send + Sync + IndexType = InternalId,
-> {
+pub struct SubGraph<'a, G: Send + Sync + IndexType = DefaultId, I: Send + Sync + IndexType = InternalId> {
     pub csr: &'a MutableCsr<I>,
     pub vm: &'a VertexMap<G, I>,
     pub src_label: LabelId,
@@ -35,21 +31,10 @@ where
     I: Send + Sync + IndexType,
 {
     pub fn new(
-        csr: &'a MutableCsr<I>,
-        vm: &'a VertexMap<G, I>,
-        src_label: LabelId,
-        dst_label: LabelId,
-        e_label: LabelId,
-        vertex_data: &'a ColTable,
+        csr: &'a MutableCsr<I>, vm: &'a VertexMap<G, I>, src_label: LabelId, dst_label: LabelId,
+        e_label: LabelId, vertex_data: &'a ColTable,
     ) -> Self {
-        Self {
-            csr,
-            vm,
-            src_label,
-            dst_label,
-            e_label,
-            vertex_data,
-        }
+        Self { csr, vm, src_label, dst_label, e_label, vertex_data }
     }
 
     pub fn get_src_label(&self) -> LabelId {
@@ -117,21 +102,10 @@ where
     I: Send + Sync + IndexType,
 {
     pub fn new(
-        csr: &'a SingleCsr<I>,
-        vm: &'a VertexMap<G, I>,
-        src_label: LabelId,
-        dst_label: LabelId,
-        e_label: LabelId,
-        vertex_data: &'a ColTable,
+        csr: &'a SingleCsr<I>, vm: &'a VertexMap<G, I>, src_label: LabelId, dst_label: LabelId,
+        e_label: LabelId, vertex_data: &'a ColTable,
     ) -> Self {
-        Self {
-            csr,
-            vm,
-            src_label,
-            dst_label,
-            e_label,
-            vertex_data,
-        }
+        Self { csr, vm, src_label, dst_label, e_label, vertex_data }
     }
 
     pub fn get_src_label(&self) -> LabelId {
@@ -201,33 +175,14 @@ pub struct CsrDB<G: Send + Sync + IndexType = DefaultId, I: Send + Sync + IndexT
 
 pub trait BasicOps<G: IndexType + Sync + Send, I: IndexType + Sync + Send> {
     fn edge_label_to_index(
-        &self,
-        src_label: LabelId,
-        dst_label: LabelId,
-        edge_label: LabelId,
-        dir: Direction,
+        &self, src_label: LabelId, dst_label: LabelId, edge_label: LabelId, dir: Direction,
     ) -> usize;
     fn get_adj_list(
-        &self,
-        src_index: I,
-        src_label: LabelId,
-        dst_label: LabelId,
-        edge_label: LabelId,
-        dir: Direction,
+        &self, src_index: I, src_label: LabelId, dst_label: LabelId, edge_label: LabelId, dir: Direction,
     ) -> Option<NbrIter<I>>;
-    fn index_to_local_vertex(
-        &self,
-        label: LabelId,
-        index: I,
-        with_property: bool,
-    ) -> LocalVertex<G, I>;
+    fn index_to_local_vertex(&self, label: LabelId, index: I, with_property: bool) -> LocalVertex<G, I>;
     fn edge_ref_to_local_edge(
-        &self,
-        src_label: LabelId,
-        src_lid: I,
-        dst_label: LabelId,
-        dst_lid: I,
-        label: LabelId,
+        &self, src_label: LabelId, src_lid: I, dst_label: LabelId, dst_lid: I, label: LabelId,
         dir: Direction,
     ) -> LocalEdge<G, I>;
 }
@@ -268,11 +223,7 @@ where
     I: IndexType + Send + Sync,
 {
     fn edge_label_to_index(
-        &self,
-        src_label: LabelId,
-        dst_label: LabelId,
-        edge_label: LabelId,
-        dir: Direction,
+        &self, src_label: LabelId, dst_label: LabelId, edge_label: LabelId, dir: Direction,
     ) -> usize {
         match dir {
             Direction::Incoming => {
@@ -289,12 +240,7 @@ where
     }
 
     fn get_adj_list(
-        &self,
-        src_index: I,
-        src_label: LabelId,
-        dst_label: LabelId,
-        edge_label: LabelId,
-        dir: Direction,
+        &self, src_index: I, src_label: LabelId, dst_label: LabelId, edge_label: LabelId, dir: Direction,
     ) -> Option<NbrIter<I>> {
         let index = self.edge_label_to_index(src_label, dst_label, edge_label, dir);
         match dir {
@@ -315,12 +261,7 @@ where
         }
     }
 
-    fn index_to_local_vertex(
-        &self,
-        label_id: LabelId,
-        index: I,
-        with_property: bool,
-    ) -> LocalVertex<G, I> {
+    fn index_to_local_vertex(&self, label_id: LabelId, index: I, with_property: bool) -> LocalVertex<G, I> {
         if with_property {
             LocalVertex::with_property(
                 index,
@@ -340,31 +281,16 @@ where
     }
 
     fn edge_ref_to_local_edge(
-        &self,
-        src_label: LabelId,
-        src_lid: I,
-        dst_label: LabelId,
-        dst_lid: I,
-        label: LabelId,
+        &self, src_label: LabelId, src_lid: I, dst_label: LabelId, dst_lid: I, label: LabelId,
         dir: Direction,
     ) -> LocalEdge<G, I> {
         match dir {
-            Direction::Incoming => LocalEdge::new(
-                dst_lid,
-                src_lid,
-                label,
-                dst_label,
-                src_label,
-                &self.vertex_map,
-            ),
-            Direction::Outgoing => LocalEdge::new(
-                src_lid,
-                dst_lid,
-                label,
-                src_label,
-                dst_label,
-                &self.vertex_map,
-            ),
+            Direction::Incoming => {
+                LocalEdge::new(dst_lid, src_lid, label, dst_label, src_label, &self.vertex_map)
+            }
+            Direction::Outgoing => {
+                LocalEdge::new(src_lid, dst_lid, label, src_label, dst_label, &self.vertex_map)
+            }
         }
     }
 }
@@ -375,10 +301,7 @@ where
     I: IndexType + Send + Sync,
 {
     fn _get_adj_lists_vertices(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-        dir: Direction,
+        &self, src_id: G, edge_labels: Option<&Vec<LabelId>>, dir: Direction,
     ) -> (Vec<LabelId>, Vec<NbrIter<I>>) {
         let mut iters = vec![];
         let mut labels = vec![];
@@ -402,13 +325,8 @@ where
             } else {
                 for dst_label in 0..self.vertex_label_num {
                     for edge_label in edge_labels.unwrap() {
-                        let iter = self.get_adj_list(
-                            index.1,
-                            index.0,
-                            dst_label as LabelId,
-                            *edge_label,
-                            dir,
-                        );
+                        let iter =
+                            self.get_adj_list(index.1, index.0, dst_label as LabelId, *edge_label, dir);
                         if iter.is_some() {
                             iters.push(iter.unwrap());
                             labels.push(dst_label as LabelId);
@@ -421,11 +339,7 @@ where
     }
 
     fn _get_adj_lists_edges(
-        &self,
-        src_label: LabelId,
-        src_lid: I,
-        edge_labels: Option<&Vec<LabelId>>,
-        dir: Direction,
+        &self, src_label: LabelId, src_lid: I, edge_labels: Option<&Vec<LabelId>>, dir: Direction,
     ) -> (Vec<(LabelId, LabelId)>, Vec<NbrIter<I>>) {
         let mut iters = vec![];
         let mut labels = vec![];
@@ -448,13 +362,8 @@ where
         } else {
             for dst_label in 0..self.vertex_label_num {
                 for edge_label in edge_labels.unwrap() {
-                    let iter = self.get_adj_list(
-                        src_lid,
-                        src_label,
-                        dst_label as LabelId,
-                        *edge_label,
-                        dir,
-                    );
+                    let iter =
+                        self.get_adj_list(src_lid, src_label, dst_label as LabelId, *edge_label, dir);
                     if iter.is_some() {
                         iters.push(iter.unwrap());
                         labels.push((dst_label as LabelId, *edge_label));
@@ -477,8 +386,7 @@ where
             for src_label_i in 0..self.vertex_label_num {
                 let src_label_name = self.graph_schema.vertex_label_names()[src_label_i].clone();
                 for dst_label_i in 0..self.vertex_label_num {
-                    let dst_label_name =
-                        self.graph_schema.vertex_label_names()[dst_label_i].clone();
+                    let dst_label_name = self.graph_schema.vertex_label_names()[dst_label_i].clone();
                     let index: usize = src_label_i * self.vertex_label_num * self.edge_label_num
                         + dst_label_i * self.edge_label_num
                         + e_label_i;
@@ -554,7 +462,9 @@ where
 
     pub fn import(dir: &str, partition: usize) -> GDBResult<Self> {
         let root_dir = PathBuf::from_str(dir).unwrap();
-        let schema_path = root_dir.join(DIR_GRAPH_SCHEMA).join(FILE_SCHEMA);
+        let schema_path = root_dir
+            .join(DIR_GRAPH_SCHEMA)
+            .join(FILE_SCHEMA);
         let graph_schema = LDBCGraphSchema::from_json_file(schema_path)?;
         let partition_dir = root_dir
             .join(DIR_BINARY_DATA)
@@ -585,10 +495,8 @@ where
                         + dst_label_i * edge_label_num
                         + e_label_i;
 
-                    let ie_path = &partition_dir.join(format!(
-                        "ie_{}_{}_{}",
-                        src_label_name, edge_label_name, dst_label_name
-                    ));
+                    let ie_path = &partition_dir
+                        .join(format!("ie_{}_{}_{}", src_label_name, edge_label_name, dst_label_name));
                     if Path::exists(ie_path) {
                         info!("importing {}", ie_path.as_os_str().to_str().unwrap());
                         if is_single_ie_csr(
@@ -602,10 +510,8 @@ where
                         }
                     }
 
-                    let oe_path = &partition_dir.join(format!(
-                        "oe_{}_{}_{}",
-                        src_label_name, edge_label_name, dst_label_name
-                    ));
+                    let oe_path = &partition_dir
+                        .join(format!("oe_{}_{}_{}", src_label_name, edge_label_name, dst_label_name));
                     if Path::exists(oe_path) {
                         info!("importing {}", oe_path.as_os_str().to_str().unwrap());
                         if is_single_oe_csr(
@@ -627,9 +533,8 @@ where
         for i in 0..vertex_label_num {
             let v_label_name = graph_schema.vertex_label_names()[i].clone();
             info!("importing vertex property: {}", v_label_name);
-            vertex_prop_table.push(
-                ColTable::import(&partition_dir.join(format!("vp_{}", v_label_name))).unwrap(),
-            );
+            vertex_prop_table
+                .push(ColTable::import(&partition_dir.join(format!("vp_{}", v_label_name))).unwrap());
         }
         info!("finished import vertex properties");
 
@@ -667,15 +572,12 @@ where
             for src_label_i in 0..self.vertex_label_num {
                 let src_label_name = self.graph_schema.vertex_label_names()[src_label_i].clone();
                 for dst_label_i in 0..self.vertex_label_num {
-                    let dst_label_name =
-                        self.graph_schema.vertex_label_names()[dst_label_i].clone();
+                    let dst_label_name = self.graph_schema.vertex_label_names()[dst_label_i].clone();
                     let index: usize = src_label_i * self.vertex_label_num * self.edge_label_num
                         + dst_label_i * self.edge_label_num
                         + e_label_i;
-                    let ie_path = &partition_dir.join(format!(
-                        "ie_{}_{}_{}",
-                        src_label_name, edge_label_name, dst_label_name
-                    ));
+                    let ie_path = &partition_dir
+                        .join(format!("ie_{}_{}_{}", src_label_name, edge_label_name, dst_label_name));
                     let ie_path_str = ie_path.to_str().unwrap().to_string();
                     if is_single_ie_csr(
                         src_label_i as LabelId,
@@ -693,10 +595,8 @@ where
                             ie_csr.serialize(&ie_path_str);
                         }
                     }
-                    let oe_path = &partition_dir.join(format!(
-                        "oe_{}_{}_{}",
-                        src_label_name, edge_label_name, dst_label_name
-                    ));
+                    let oe_path = &partition_dir
+                        .join(format!("oe_{}_{}_{}", src_label_name, edge_label_name, dst_label_name));
                     let oe_path_str = oe_path.to_str().unwrap().to_string();
                     if is_single_oe_csr(
                         src_label_i as LabelId,
@@ -732,7 +632,9 @@ where
 
     pub fn deserialize(dir: &str, partition: usize) -> GDBResult<Self> {
         let root_dir = PathBuf::from_str(dir).unwrap();
-        let schema_path = root_dir.join(DIR_GRAPH_SCHEMA).join(FILE_SCHEMA);
+        let schema_path = root_dir
+            .join(DIR_GRAPH_SCHEMA)
+            .join(FILE_SCHEMA);
         let graph_schema = LDBCGraphSchema::from_json_file(schema_path)?;
         let partition_dir = root_dir
             .join(DIR_BINARY_DATA)
@@ -763,10 +665,8 @@ where
                         + dst_label_i * edge_label_num
                         + e_label_i;
 
-                    let ie_path = &partition_dir.join(format!(
-                        "ie_{}_{}_{}",
-                        src_label_name, edge_label_name, dst_label_name
-                    ));
+                    let ie_path = &partition_dir
+                        .join(format!("ie_{}_{}_{}", src_label_name, edge_label_name, dst_label_name));
                     if Path::exists(ie_path) {
                         info!("importing {}", ie_path.as_os_str().to_str().unwrap());
                         let path_str = ie_path.to_str().unwrap().to_string();
@@ -781,10 +681,8 @@ where
                         }
                     }
 
-                    let oe_path = &partition_dir.join(format!(
-                        "oe_{}_{}_{}",
-                        src_label_name, edge_label_name, dst_label_name
-                    ));
+                    let oe_path = &partition_dir
+                        .join(format!("oe_{}_{}_{}", src_label_name, edge_label_name, dst_label_name));
                     if Path::exists(oe_path) {
                         info!("importing {}", oe_path.as_os_str().to_str().unwrap());
                         let path_str = oe_path.to_str().unwrap().to_string();
@@ -837,11 +735,7 @@ where
     }
 
     pub fn get_sub_graph(
-        &self,
-        src_label: LabelId,
-        edge_label: LabelId,
-        dst_label: LabelId,
-        dir: Direction,
+        &self, src_label: LabelId, edge_label: LabelId, dst_label: LabelId, dir: Direction,
     ) -> SubGraph<'_, G, I> {
         let index = self.edge_label_to_index(src_label, dst_label, edge_label, dir);
         match dir {
@@ -865,11 +759,7 @@ where
     }
 
     pub fn get_single_sub_graph(
-        &self,
-        src_label: LabelId,
-        edge_label: LabelId,
-        dst_label: LabelId,
-        dir: Direction,
+        &self, src_label: LabelId, edge_label: LabelId, dst_label: LabelId, dir: Direction,
     ) -> SingleSubGraph<'_, G, I> {
         let index = self.edge_label_to_index(src_label, dst_label, edge_label, dir);
         match dir {
@@ -911,10 +801,7 @@ where
     I: IndexType + Send + Sync,
 {
     fn get_adj_vertices(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-        dir: Direction,
+        &self, src_id: G, edge_labels: Option<&Vec<LabelId>>, dir: Direction,
     ) -> Iter<LocalVertex<G, I>> {
         let (labels, iters) = self._get_adj_lists_vertices(src_id, edge_labels, dir);
         if labels.is_empty() {
@@ -928,20 +815,13 @@ where
     }
 
     fn get_adj_edges(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-        dir: Direction,
+        &self, src_id: G, edge_labels: Option<&Vec<LabelId>>, dir: Direction,
     ) -> Iter<LocalEdge<G, I>> {
         if let Some(src_lid) = self.vertex_map.get_internal_id(src_id) {
             let (labels, iters) = self._get_adj_lists_edges(src_lid.0, src_lid.1, edge_labels, dir);
-            Iter::from_iter(LabeledIterator::new(labels, iters).map(
-                move |((dst_label, edge_label), e)| {
-                    self.edge_ref_to_local_edge(
-                        src_lid.0, src_lid.1, dst_label, e.neighbor, edge_label, dir,
-                    )
-                },
-            ))
+            Iter::from_iter(LabeledIterator::new(labels, iters).map(move |((dst_label, edge_label), e)| {
+                self.edge_ref_to_local_edge(src_lid.0, src_lid.1, dst_label, e.neighbor, edge_label, dir)
+            }))
         } else {
             Iter::from_iter(vec![].into_iter())
         }
@@ -961,8 +841,7 @@ where
             let mut got_labels = vec![];
             for v in 0..self.vertex_label_num {
                 iters.push(
-                    Range::new(I::new(0), I::new(self.vertex_map.vertex_num(v as LabelId)))
-                        .into_iter(),
+                    Range::new(I::new(0), I::new(self.vertex_map.vertex_num(v as LabelId))).into_iter(),
                 );
                 got_labels.push(v as LabelId);
             }
@@ -982,9 +861,7 @@ where
             let mut iters = vec![];
             let mut got_labels = vec![];
             for v in labels.unwrap() {
-                iters.push(
-                    Range::new(I::new(0), I::new(self.vertex_map.vertex_num(*v))).into_iter(),
-                );
+                iters.push(Range::new(I::new(0), I::new(self.vertex_map.vertex_num(*v))).into_iter());
                 got_labels.push(*v);
             }
             Iter::from_iter(
@@ -1043,24 +920,15 @@ where
                             *edge_label,
                             Direction::Outgoing,
                         );
-                        if is_single_oe_csr(src_label as LabelId, dst_label as LabelId, *edge_label)
-                        {
+                        if is_single_oe_csr(src_label as LabelId, dst_label as LabelId, *edge_label) {
                             if self.single_oe[index].edge_num() != 0 {
                                 iters.push(Iter::from_iter(self.single_oe[index].get_all_edges()));
-                                got_labels.push((
-                                    src_label as LabelId,
-                                    dst_label as LabelId,
-                                    *edge_label,
-                                ));
+                                got_labels.push((src_label as LabelId, dst_label as LabelId, *edge_label));
                             }
                         } else {
                             if self.oe[index].edge_num() != 0 {
                                 iters.push(Iter::from_iter(self.oe[index].get_all_edges()));
-                                got_labels.push((
-                                    src_label as LabelId,
-                                    dst_label as LabelId,
-                                    *edge_label,
-                                ));
+                                got_labels.push((src_label as LabelId, dst_label as LabelId, *edge_label));
                             }
                         }
                     }

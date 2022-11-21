@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::col_table::ColTable;
 use crate::columns::RefItem;
-
 use crate::graph::{Direction, IndexType};
 use crate::schema::Schema;
 use crate::types::*;
@@ -27,29 +26,14 @@ pub struct LocalVertex<'a, G: IndexType + Sync + Send, I: IndexType + Sync + Sen
 
 impl<'a, G: IndexType + Sync + Send, I: IndexType + Sync + Send> LocalVertex<'a, G, I> {
     pub fn new(index: I, label: LabelId, id_list: &'a Vec<G>, corner_id_list: &'a Vec<G>) -> Self {
-        LocalVertex {
-            index,
-            label,
-            id_list,
-            table: None,
-            corner_id_list,
-        }
+        LocalVertex { index, label, id_list, table: None, corner_id_list }
     }
 
     pub fn with_property(
-        index: I,
-        label: LabelId,
-        id_list: &'a Vec<G>,
-        corner_id_list: &'a Vec<G>,
+        index: I, label: LabelId, id_list: &'a Vec<G>, corner_id_list: &'a Vec<G>,
         table: Option<&'a ColTable>,
     ) -> Self {
-        LocalVertex {
-            index,
-            label,
-            id_list,
-            table,
-            corner_id_list,
-        }
+        LocalVertex { index, label, id_list, table, corner_id_list }
     }
 
     pub fn get_id(&self) -> G {
@@ -99,21 +83,10 @@ pub struct LocalEdge<'a, G: IndexType + Sync + Send, I: IndexType + Sync + Send>
 
 impl<'a, G: IndexType + Sync + Send, I: IndexType + Sync + Send> LocalEdge<'a, G, I> {
     pub fn new(
-        start: I,
-        end: I,
-        label: LabelId,
-        src_label: LabelId,
-        dst_label: LabelId,
+        start: I, end: I, label: LabelId, src_label: LabelId, dst_label: LabelId,
         vertex_map: &'a VertexMap<G, I>,
     ) -> Self {
-        LocalEdge {
-            start,
-            end,
-            label,
-            src_label,
-            dst_label,
-            vertex_map,
-        }
+        LocalEdge { start, end, label, src_label, dst_label, vertex_map }
     }
 
     pub fn get_src_id(&self) -> G {
@@ -153,10 +126,7 @@ pub trait GlobalCsrTrait<G: IndexType + Sync + Send, I: IndexType + Sync + Send>
     ///  * An iterator of vertices, if query successfully
     ///  * An empty iterator, if the given vertex does not present or it contains no edge.
     fn get_adj_vertices(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-        dir: Direction,
+        &self, src_id: G, edge_labels: Option<&Vec<LabelId>>, dir: Direction,
     ) -> Iter<LocalVertex<G, I>>;
 
     /// Get all the edges regarding with the labels `edge_labels` and direction `dir`
@@ -166,36 +136,21 @@ pub trait GlobalCsrTrait<G: IndexType + Sync + Send, I: IndexType + Sync + Send>
     /// * An iterator of edges, if query successfully
     /// * An empty iterator, if the given vertex does not present or it contains no edge.
     fn get_adj_edges(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-        dir: Direction,
+        &self, src_id: G, edge_labels: Option<&Vec<LabelId>>, dir: Direction,
     ) -> Iter<LocalEdge<G, I>>;
 
     /// A wrapper of `Self::get_adj_vertices()` for outgoing direction.
-    fn get_out_vertices(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-    ) -> Iter<LocalVertex<G, I>> {
+    fn get_out_vertices(&self, src_id: G, edge_labels: Option<&Vec<LabelId>>) -> Iter<LocalVertex<G, I>> {
         self.get_adj_vertices(src_id, edge_labels, Direction::Outgoing)
     }
 
     /// A wrapper of `Self::get_adj_vertices()` for incoming direction.
-    fn get_in_vertices(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-    ) -> Iter<LocalVertex<G, I>> {
+    fn get_in_vertices(&self, src_id: G, edge_labels: Option<&Vec<LabelId>>) -> Iter<LocalVertex<G, I>> {
         self.get_adj_vertices(src_id, edge_labels, Direction::Incoming)
     }
 
     /// Concatenate `get_out_vertices()` and `get_in_vertices()`
-    fn get_both_vertices(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-    ) -> Iter<LocalVertex<G, I>> {
+    fn get_both_vertices(&self, src_id: G, edge_labels: Option<&Vec<LabelId>>) -> Iter<LocalVertex<G, I>> {
         Iter::from_iter(
             self.get_out_vertices(src_id, edge_labels)
                 .chain(self.get_in_vertices(src_id, edge_labels)),
@@ -203,11 +158,7 @@ pub trait GlobalCsrTrait<G: IndexType + Sync + Send, I: IndexType + Sync + Send>
     }
 
     /// A wrapper of `Self::get_adj_edges()` for outgoing direction.
-    fn get_out_edges(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-    ) -> Iter<LocalEdge<G, I>> {
+    fn get_out_edges(&self, src_id: G, edge_labels: Option<&Vec<LabelId>>) -> Iter<LocalEdge<G, I>> {
         self.get_adj_edges(src_id, edge_labels, Direction::Outgoing)
     }
 
@@ -217,11 +168,7 @@ pub trait GlobalCsrTrait<G: IndexType + Sync + Send, I: IndexType + Sync + Send>
     }
 
     /// A wrapper of `Self::get_adj_edges()` for both directions.
-    fn get_both_edges(
-        &self,
-        src_id: G,
-        edge_labels: Option<&Vec<LabelId>>,
-    ) -> Iter<LocalEdge<G, I>> {
+    fn get_both_edges(&self, src_id: G, edge_labels: Option<&Vec<LabelId>>) -> Iter<LocalEdge<G, I>> {
         Iter::from_iter(
             self.get_out_edges(src_id, edge_labels)
                 .chain(self.get_in_edges(src_id, edge_labels)),

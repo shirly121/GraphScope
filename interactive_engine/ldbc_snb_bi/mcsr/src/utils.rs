@@ -6,9 +6,7 @@ pub struct Iter<'a, T> {
 
 impl<'a, T> Iter<'a, T> {
     pub fn from_iter<I: Iterator<Item = T> + 'a + Send>(iter: I) -> Self {
-        Iter {
-            inner: Box::new(iter),
-        }
+        Iter { inner: Box::new(iter) }
     }
 }
 
@@ -63,10 +61,7 @@ impl<I: IndexType> Range<I> {
     }
 
     pub fn into_iter(self) -> RangeIterator<I> {
-        RangeIterator {
-            cur: self.begin.clone(),
-            end: self.end.clone(),
-        }
+        RangeIterator { cur: self.begin.clone(), end: self.end.clone() }
     }
 }
 
@@ -112,11 +107,7 @@ pub struct LabeledIterator<L: Copy + Send, I: Iterator + Send> {
 
 impl<L: Copy + Send, I: Iterator + Send> LabeledIterator<L, I> {
     pub fn new(labels: Vec<L>, iterators: Vec<I>) -> Self {
-        Self {
-            labels,
-            iterators,
-            cur: 0,
-        }
+        Self { labels, iterators, cur: 0 }
     }
 }
 
@@ -147,11 +138,7 @@ pub struct LabeledRangeIterator<L: Copy + Send, I: Copy + Send + IndexType> {
 
 impl<L: Copy + Send, I: Copy + Send + IndexType> LabeledRangeIterator<L, I> {
     pub fn new(labels: Vec<L>, iterators: Vec<RangeIterator<I>>) -> Self {
-        Self {
-            labels,
-            iterators,
-            cur: 0,
-        }
+        Self { labels, iterators, cur: 0 }
     }
 }
 
@@ -177,8 +164,7 @@ impl<L: Copy + Send, I: Copy + Send + IndexType> Iterator for LabeledRangeIterat
             if self.cur == self.labels.len() {
                 return None;
             }
-            let cur_remaining =
-                self.iterators[self.cur].end.index() - self.iterators[self.cur].cur.index();
+            let cur_remaining = self.iterators[self.cur].end.index() - self.iterators[self.cur].cur.index();
             let cur_cur = self.iterators[self.cur].cur.index();
             if cur_remaining >= remaining {
                 self.iterators[self.cur].cur = I::new(cur_cur + remaining);

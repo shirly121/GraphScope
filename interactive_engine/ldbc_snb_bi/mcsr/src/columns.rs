@@ -1,13 +1,4 @@
-use crate::browser::Browser;
-use crate::date::Date;
-use crate::date_time::DateTime;
-use crate::ip_addr::IpAddr;
-use crate::types::DefaultId;
 use core::slice;
-use dyn_type::object::RawType;
-use dyn_type::CastError;
-use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
-use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -15,6 +6,17 @@ use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::mem;
+
+use dyn_type::object::RawType;
+use dyn_type::CastError;
+use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
+use serde::{Deserialize, Serialize};
+
+use crate::browser::Browser;
+use crate::date::Date;
+use crate::date_time::DateTime;
+use crate::ip_addr::IpAddr;
+use crate::types::DefaultId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum DataType {
@@ -902,16 +904,14 @@ pub struct LCStringColumn {
 
 impl LCStringColumn {
     pub fn new() -> Self {
-        Self {
-            data: Vec::new(),
-            table: HashMap::new(),
-            list: Vec::new(),
-        }
+        Self { data: Vec::new(), table: HashMap::new(), list: Vec::new() }
     }
 
     pub fn serialize(&self, f: &mut File) {
         let mut table_bytes = Vec::new();
-        table_bytes.write_u64(self.list.len() as u64).unwrap();
+        table_bytes
+            .write_u64(self.list.len() as u64)
+            .unwrap();
         for v in self.list.iter() {
             v.write_to(&mut table_bytes).unwrap();
         }
@@ -973,11 +973,7 @@ impl LCStringColumn {
 
 impl Debug for LCStringColumn {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "LCStringColumn: {:?},{:?},{:?}",
-            self.data, self.table, self.list
-        )
+        write!(f, "LCStringColumn: {:?},{:?},{:?}", self.data, self.table, self.list)
     }
 }
 
@@ -1223,10 +1219,7 @@ impl Encode for DateTimeColumn {
 impl Decode for DateTimeColumn {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let vec = Vec::<DateTime>::read_from(reader)?;
-        info!(
-            "datetime column: {}",
-            vec.capacity() * mem::size_of::<DateTime>()
-        );
+        info!("datetime column: {}", vec.capacity() * mem::size_of::<DateTime>());
         Ok(Self { data: vec })
     }
 }
@@ -1237,7 +1230,9 @@ impl Column for DateTimeColumn {
     }
 
     fn get(&self, index: usize) -> Option<RefItem> {
-        self.data.get(index).map(|x| RefItem::DateTime(x))
+        self.data
+            .get(index)
+            .map(|x| RefItem::DateTime(x))
     }
 
     fn set(&mut self, index: usize, val: Item) {
@@ -1295,15 +1290,8 @@ impl IpAddrColumn {
 
     pub fn deserialize(&mut self, f: &mut File) {
         let row_num = f.read_u64().unwrap() as usize;
-        self.data.resize(
-            row_num,
-            IpAddr {
-                a: 0,
-                b: 0,
-                c: 0,
-                d: 0,
-            },
-        );
+        self.data
+            .resize(row_num, IpAddr { a: 0, b: 0, c: 0, d: 0 });
         unsafe {
             let data_slice = slice::from_raw_parts_mut(
                 self.data.as_mut_ptr() as *mut u8,
@@ -1351,10 +1339,7 @@ impl Encode for IpAddrColumn {
 impl Decode for IpAddrColumn {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let vec = Vec::<IpAddr>::read_from(reader)?;
-        info!(
-            "ipaddr column: {}",
-            vec.capacity() * mem::size_of::<IpAddr>()
-        );
+        info!("ipaddr column: {}", vec.capacity() * mem::size_of::<IpAddr>());
         Ok(Self { data: vec })
     }
 }
@@ -1462,10 +1447,7 @@ impl Encode for BrowserColumn {
 impl Decode for BrowserColumn {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let vec = Vec::<Browser>::read_from(reader)?;
-        info!(
-            "browser column: {}",
-            vec.capacity() * mem::size_of::<Browser>()
-        );
+        info!("browser column: {}", vec.capacity() * mem::size_of::<Browser>());
         Ok(Self { data: vec })
     }
 }
@@ -1476,7 +1458,9 @@ impl Column for BrowserColumn {
     }
 
     fn get(&self, index: usize) -> Option<RefItem> {
-        self.data.get(index).map(|x| RefItem::Browser(x))
+        self.data
+            .get(index)
+            .map(|x| RefItem::Browser(x))
     }
 
     fn set(&mut self, index: usize, val: Item) {

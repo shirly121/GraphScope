@@ -71,9 +71,5 @@ fn main() {
     println!("{}", ret);
 
     let a = 1285022511268_u64;
-    println!(
-        "{}, {}",
-        a,
-        get_millis(parse_datetime(a.to_string().as_str()))
-    );
+    println!("{}, {}", a, get_millis(parse_datetime(a.to_string().as_str())));
 }

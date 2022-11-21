@@ -1,3 +1,7 @@
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
 use clap::{App, Arg};
 use log::info;
 use mcsr::col_table::ColTable;
@@ -8,9 +12,6 @@ use mcsr::{
     scsr::SingleCsr,
     types::{DefaultId, InternalId, LabelId, NAME, VERSION},
 };
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
 
 fn main() {
     env_logger::init();
@@ -39,9 +40,19 @@ fn main() {
         ])
         .get_matches();
 
-    let graph_data_path = matches.value_of("graph_data_path").unwrap().to_string();
-    let output_path = matches.value_of("output_path").unwrap().to_string();
-    let t = matches.value_of("type").unwrap().parse::<i32>().unwrap();
+    let graph_data_path = matches
+        .value_of("graph_data_path")
+        .unwrap()
+        .to_string();
+    let output_path = matches
+        .value_of("output_path")
+        .unwrap()
+        .to_string();
+    let t = matches
+        .value_of("type")
+        .unwrap()
+        .parse::<i32>()
+        .unwrap();
 
     if t == 0 {
         // scsr

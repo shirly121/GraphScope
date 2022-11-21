@@ -1,7 +1,8 @@
+use std::fmt::{Debug, Display, Formatter};
+
 use chrono::DateTime as CDateTime;
 use chrono::{Datelike, Duration, FixedOffset, SecondsFormat, TimeZone, Timelike, Utc};
 use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
-use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Copy)]
 pub struct DateTime {
@@ -14,16 +15,8 @@ impl DateTime {
     }
 
     pub fn new(
-        year: i32,
-        month: u32,
-        day: u32,
-        hour: u32,
-        minute: u32,
-        second: u32,
-        millisecond: u32,
-        tz_flag: bool,
-        tz_hour: u32,
-        tz_minute: u32,
+        year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32, millisecond: u32,
+        tz_flag: bool, tz_hour: u32, tz_minute: u32,
     ) -> Self {
         let mut ret = if tz_flag { 1_u64 } else { 0_u64 };
         ret = (ret << 5) | tz_hour as u64;
@@ -101,12 +94,7 @@ impl DateTime {
         utc_str.parse::<CDateTime<Utc>>().unwrap()
     }
 
-    pub fn from_chrono_date_utc(
-        dt: CDateTime<Utc>,
-        tz_flag: bool,
-        tz_hour: u32,
-        tz_minute: u32,
-    ) -> Self {
+    pub fn from_chrono_date_utc(dt: CDateTime<Utc>, tz_flag: bool, tz_hour: u32, tz_minute: u32) -> Self {
         Self::new(
             dt.year(),
             dt.month(),
@@ -154,9 +142,15 @@ impl Display for DateTime {
             let dt = self.to_chrono_date_utc();
             let offset = (self.tz_hour() * 3600 + self.tz_minute() * 60) as i32;
             let dt2 = if self.tz_flag() {
-                FixedOffset::east(offset).timestamp_millis(dt.timestamp_millis())
+                FixedOffset::east_opt(offset)
+                    .expect("FixedOffset::east out of bounds")
+                    .timestamp_millis_opt(dt.timestamp_millis())
+                    .unwrap()
             } else {
-                FixedOffset::west(offset).timestamp_millis(dt.timestamp_millis())
+                FixedOffset::west_opt(offset)
+                    .expect("FixedOffset::west out of bounds")
+                    .timestamp_millis_opt(dt.timestamp_millis())
+                    .unwrap()
             };
             write!(f, "{}", dt2.to_rfc3339_opts(SecondsFormat::Millis, false))
         }

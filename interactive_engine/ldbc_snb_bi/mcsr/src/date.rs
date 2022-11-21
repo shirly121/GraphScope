@@ -1,7 +1,9 @@
-use crate::error::GDBResult;
+use std::fmt::{Debug, Display, Formatter};
+
 use chrono::{Datelike, Duration, NaiveDate};
 use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
-use std::fmt::{Debug, Display, Formatter};
+
+use crate::error::GDBResult;
 
 #[derive(Copy, Clone)]
 pub struct Date {
@@ -46,7 +48,8 @@ impl Date {
     }
 
     pub fn add_days(&self, days: u32) -> Self {
-        let din = NaiveDate::from_ymd(self.year(), self.month(), self.day());
+        let din = NaiveDate::from_ymd_opt(self.year(), self.month(), self.day())
+            .expect("invalid or out-of-range date");
         let duration = Duration::days(days as i64);
         let dout = din + duration;
         Self::new(dout.year(), dout.month(), dout.day())
@@ -55,13 +58,7 @@ impl Date {
 
 impl Display for Date {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:04}-{:02}-{:02}",
-            self.year(),
-            self.month(),
-            self.day()
-        )
+        write!(f, "{:04}-{:02}-{:02}", self.year(), self.month(), self.day())
     }
 }
 

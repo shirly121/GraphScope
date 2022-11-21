@@ -29,17 +29,26 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
             stream
                 .flat_map(move |_source| {
                     let mut tag_id_list = vec![];
-                    let tagclass_vertices = super::graph::GRAPH.get_all_vertices(Some(&vec![tagclass_label]));
+                    let tagclass_vertices =
+                        super::graph::GRAPH.get_all_vertices(Some(&vec![tagclass_label]));
                     let tagclass_count = tagclass_vertices.count();
                     let partial_count = tagclass_count / workers as usize + 1;
                     for vertex in super::graph::GRAPH
                         .get_all_vertices(Some(&vec![tagclass_label]))
                         .skip((worker_id % workers) as usize * partial_count)
-                        .take(partial_count) {
-                        let tagclass_name = vertex.get_property("name").unwrap().as_str().unwrap().into_owned();
+                        .take(partial_count)
+                    {
+                        let tagclass_name = vertex
+                            .get_property("name")
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .into_owned();
                         if tagclass_name == tag_class {
                             let tagclass_internal_id = vertex.get_id();
-                            for tag_vertex in super::graph::GRAPH.get_in_vertices(tagclass_internal_id, Some(&vec![hastype_label])) {
+                            for tag_vertex in super::graph::GRAPH
+                                .get_in_vertices(tagclass_internal_id, Some(&vec![hastype_label]))
+                            {
                                 let tag_internal_id = tag_vertex.get_id() as u64;
                                 tag_id_list.push(tag_internal_id);
                             }
@@ -53,7 +62,9 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                 .flat_map(move |tag_internal_id| {
                     let mut message_id_list = vec![];
                     message_id_list.push((0, tag_internal_id));
-                    for vertex in super::graph::GRAPH.get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label])) {
+                    for vertex in super::graph::GRAPH
+                        .get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label]))
+                    {
                         if vertex.get_label()[0] == forum_label {
                             continue;
                         }
@@ -71,7 +82,9 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                                 collect.insert(tag_internal_id, (0, 0));
                             }
                         } else {
-                            let message_vertex = super::graph::GRAPH.get_vertex(message_internal_id as DefaultId).unwrap();
+                            let message_vertex = super::graph::GRAPH
+                                .get_vertex(message_internal_id as DefaultId)
+                                .unwrap();
                             let create_date = message_vertex
                                 .get_property("creationDate")
                                 .unwrap()
@@ -95,9 +108,7 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                         Ok(collect)
                     }
                 })?
-                .unfold(|map| {
-                    Ok(map.into_iter())
-                })?
+                .unfold(|map| Ok(map.into_iter()))?
                 .fold(HashMap::<u64, (i32, i32)>::new(), || {
                     |mut collect, (tag_internal_id, (count1, count2))| {
                         if let Some(data) = collect.get_mut(&tag_internal_id) {
@@ -110,19 +121,30 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                     }
                 })?
                 .unfold(|map| {
-                    Ok(map.into_iter().map(|(tag_internal_id, (count1, count2))| (tag_internal_id, count1, count2, (count1 - count2).abs())))
+                    Ok(map
+                        .into_iter()
+                        .map(|(tag_internal_id, (count1, count2))| {
+                            (tag_internal_id, count1, count2, (count1 - count2).abs())
+                        }))
                 })?
                 .repartition(move |(id, _, _, _)| {
                     Ok(super::graph::get_partition(id, workers as usize, pegasus::get_servers_len()))
                 })
                 .map(|(tag_internal_id, count1, count2, diff)| {
-                    let tag_vertex = super::graph::GRAPH.get_vertex(tag_internal_id as DefaultId).unwrap();
-                    let tag_name = tag_vertex.get_property("name").unwrap().as_str().unwrap().into_owned();
+                    let tag_vertex = super::graph::GRAPH
+                        .get_vertex(tag_internal_id as DefaultId)
+                        .unwrap();
+                    let tag_name = tag_vertex
+                        .get_property("name")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .into_owned();
                     Ok((tag_name, count1, count2, diff))
                 })?
                 .sort_limit_by(100, |x, y| x.3.cmp(&y.3).reverse().then(x.0.cmp(&y.0)))?
                 .sink_into(output)
         }
     })
-        .expect("submit bi2 job failure")
+    .expect("submit bi2 job failure")
 }

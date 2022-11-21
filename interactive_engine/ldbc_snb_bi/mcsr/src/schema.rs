@@ -32,15 +32,11 @@ pub trait Schema {
     fn get_edge_header(&self, edge_type_id: LabelId) -> Option<&[(String, DataType)]>;
 
     /// Get the schema for the certain type of vertex if any.
-    fn get_vertex_schema(
-        &self,
-        vertex_type_id: LabelId,
-    ) -> Option<&HashMap<String, (DataType, usize)>>;
+    fn get_vertex_schema(&self, vertex_type_id: LabelId) -> Option<&HashMap<String, (DataType, usize)>>;
 
     /// Get the schema for the certain
     /// type of edge if any.
-    fn get_edge_schema(&self, edge_type_id: LabelId)
-        -> Option<&HashMap<String, (DataType, usize)>>;
+    fn get_edge_schema(&self, edge_type_id: LabelId) -> Option<&HashMap<String, (DataType, usize)>>;
 
     /// Get a certain vertex type's id if any
     fn get_vertex_label_id(&self, vertex_type: &str) -> Option<LabelId>;
@@ -119,8 +115,8 @@ impl LDBCGraphSchema {
 
     pub fn from_json_file<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let file = File::open(path)?;
-        let schema_json = serde_json::from_reader::<File, LDBCGraphSchemaJson>(file)
-            .map_err(std::io::Error::from)?;
+        let schema_json =
+            serde_json::from_reader::<File, LDBCGraphSchemaJson>(file).map_err(std::io::Error::from)?;
         Ok(LDBCGraphSchema::from(&schema_json))
     }
 
@@ -135,21 +131,12 @@ impl LDBCGraphSchema {
     /// while giving the `full_edge_type` that is "<src_vertex_label>_<edge_label>_<dst_vertex_label>"
     pub fn get_edge_label_tuple(&self, full_edge_type: &str) -> Option<EdgeLabelTuple> {
         let mut parts = full_edge_type.split("_");
-        let src_label_id = if let Some(src_label) = parts.next() {
-            self.get_vertex_label_id(src_label)
-        } else {
-            None
-        };
-        let edge_label_id = if let Some(edge_label) = parts.next() {
-            self.get_edge_label_id(edge_label)
-        } else {
-            None
-        };
-        let dst_label_id = if let Some(dst_label) = parts.next() {
-            self.get_vertex_label_id(dst_label)
-        } else {
-            None
-        };
+        let src_label_id =
+            if let Some(src_label) = parts.next() { self.get_vertex_label_id(src_label) } else { None };
+        let edge_label_id =
+            if let Some(edge_label) = parts.next() { self.get_edge_label_id(edge_label) } else { None };
+        let dst_label_id =
+            if let Some(dst_label) = parts.next() { self.get_vertex_label_id(dst_label) } else { None };
 
         if src_label_id.is_some() && edge_label_id.is_some() && dst_label_id.is_some() {
             Some(EdgeLabelTuple {
@@ -164,8 +151,7 @@ impl LDBCGraphSchema {
 }
 
 fn is_map_eq<K: PartialEq + Ord + Debug + Hash, V: PartialEq + Ord + Debug>(
-    map1: &HashMap<K, V>,
-    map2: &HashMap<K, V>,
+    map1: &HashMap<K, V>, map2: &HashMap<K, V>,
 ) -> bool {
     map1.iter().sorted().eq(map2.iter().sorted())
 }
@@ -241,7 +227,9 @@ impl<'a> From<&'a LDBCGraphSchemaJson> for LDBCGraphSchema {
             let vertex_map = vertex_prop_meta
                 .entry(label_id)
                 .or_insert_with(HashMap::new);
-            let vertex_vec = vertex_prop_vec.entry(label_id).or_insert_with(Vec::new);
+            let vertex_vec = vertex_prop_vec
+                .entry(label_id)
+                .or_insert_with(Vec::new);
 
             for (index, (name, dt)) in value.iter().enumerate() {
                 vertex_map.insert(name.clone(), (dt.clone(), index));
@@ -251,8 +239,12 @@ impl<'a> From<&'a LDBCGraphSchemaJson> for LDBCGraphSchema {
 
         for (key, value) in &schema_json.edge_prop {
             let label_id = edge_type_to_id[key];
-            let edge_map = edge_prop_meta.entry(label_id).or_insert_with(HashMap::new);
-            let edge_vec = edge_prop_vec.entry(label_id).or_insert_with(Vec::new);
+            let edge_map = edge_prop_meta
+                .entry(label_id)
+                .or_insert_with(HashMap::new);
+            let edge_vec = edge_prop_vec
+                .entry(label_id)
+                .or_insert_with(Vec::new);
 
             for (index, (name, dt)) in value.iter().enumerate() {
                 edge_map.insert(name.clone(), (dt.clone(), index));
@@ -310,12 +302,7 @@ impl<'a> From<&'a LDBCGraphSchema> for LDBCGraphSchemaJson {
             edge_prop.insert(edge_type_map_rev[key].clone(), value.clone());
         }
 
-        Self {
-            vertex_type_map,
-            edge_type_map,
-            vertex_prop,
-            edge_prop,
-        }
+        Self { vertex_type_map, edge_type_map, vertex_prop, edge_prop }
     }
 }
 
@@ -331,17 +318,11 @@ impl Schema for LDBCGraphSchema {
             .map(|vec| vec.as_slice())
     }
 
-    fn get_vertex_schema(
-        &self,
-        vertex_type_id: LabelId,
-    ) -> Option<&HashMap<String, (DataType, usize)>> {
+    fn get_vertex_schema(&self, vertex_type_id: LabelId) -> Option<&HashMap<String, (DataType, usize)>> {
         self.vertex_prop_meta.get(&vertex_type_id)
     }
 
-    fn get_edge_schema(
-        &self,
-        edge_type_id: LabelId,
-    ) -> Option<&HashMap<String, (DataType, usize)>> {
+    fn get_edge_schema(&self, edge_type_id: LabelId) -> Option<&HashMap<String, (DataType, usize)>> {
         self.edge_prop_meta.get(&edge_type_id)
     }
 

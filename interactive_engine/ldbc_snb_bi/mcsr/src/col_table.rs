@@ -1,19 +1,21 @@
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
+
+use csv::StringRecord;
+use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
+use serde::de::Error as DeError;
+use serde::ser::Error as SerError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 use crate::browser::parse_browser;
 use crate::columns::*;
 use crate::date::parse_date;
 use crate::date_time::parse_datetime;
 use crate::error::GDBResult;
 use crate::ip_addr::parse_ip_addr;
-use csv::StringRecord;
-use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
-use serde::de::Error as DeError;
-use serde::ser::Error as SerError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::fs::File;
-use std::io::{Read, Write};
-use std::path::Path;
 
 #[derive(Debug)]
 pub struct ColTable {
@@ -171,11 +173,7 @@ impl Decode for ColTable {
             }
         }
 
-        Ok(Self {
-            columns,
-            header,
-            row_num,
-        })
+        Ok(Self { columns, header, row_num })
     }
 }
 
@@ -227,11 +225,7 @@ impl ColTable {
                 }
             }
         }
-        Self {
-            columns,
-            header,
-            row_num: 0,
-        }
+        Self { columns, header, row_num: 0 }
     }
 
     pub fn col_num(&self) -> usize {
@@ -245,11 +239,7 @@ impl ColTable {
     pub fn push(&mut self, row: Vec<Item>) {
         let col_num = self.columns.len();
         if row.len() < col_num {
-            println!(
-                "schema not match when push, row_len = {}, col num = {}",
-                row.len(),
-                col_num
-            );
+            println!("schema not match when push, row_len = {}, col num = {}", row.len(), col_num);
             return;
         }
         for i in 0..col_num {
@@ -261,15 +251,9 @@ impl ColTable {
     pub fn insert(&mut self, index: usize, row: Vec<Item>) {
         let col_num = self.columns.len();
         if index < self.row_num {
-            println!(
-                "insert to overwrite a record, index = {}, row_num = {}",
-                index, self.row_num
-            );
+            println!("insert to overwrite a record, index = {}, row_num = {}", index, self.row_num);
         } else if index > self.row_num {
-            println!(
-                "insert will append nulls, index = {}, row_num = {}",
-                index, self.row_num
-            );
+            println!("insert will append nulls, index = {}, row_num = {}", index, self.row_num);
         }
         if self.row_num <= index {
             let null_num = index - self.row_num;
@@ -329,7 +313,9 @@ impl ColTable {
         let mut f = File::create(path).unwrap();
         f.write_u64(self.row_num as u64).unwrap();
         let mut header_bytes = Vec::new();
-        header_bytes.write_u64(self.header.len() as u64).unwrap();
+        header_bytes
+            .write_u64(self.header.len() as u64)
+            .unwrap();
         for pair in self.header.iter() {
             pair.0.write_to(&mut header_bytes).unwrap();
             header_bytes.write_u64(*pair.1 as u64).unwrap();
@@ -356,7 +342,11 @@ impl ColTable {
                 }
                 DataType::String => {
                     f.write_u8(4).unwrap();
-                    let string_array = &col.as_any().downcast_ref::<StringColumn>().unwrap().data;
+                    let string_array = &col
+                        .as_any()
+                        .downcast_ref::<StringColumn>()
+                        .unwrap()
+                        .data;
                     let mut string_column_bytes = Vec::new();
                     string_column_bytes
                         .write_u64(string_array.len() as u64)
@@ -364,7 +354,8 @@ impl ColTable {
                     for str in string_array.iter() {
                         str.write_to(&mut string_column_bytes).unwrap();
                     }
-                    f.write_u64(string_column_bytes.len() as u64).unwrap();
+                    f.write_u64(string_column_bytes.len() as u64)
+                        .unwrap();
                     f.write(&string_column_bytes).unwrap();
                 }
                 DataType::LCString => {
@@ -635,9 +626,7 @@ impl<'de> Deserialize<'de> for ColTable {
 unsafe impl Sync for ColTable {}
 
 pub fn parse_properties_beta(
-    record: &StringRecord,
-    header: &[(String, DataType)],
-    selected: &[bool],
+    record: &StringRecord, header: &[(String, DataType)], selected: &[bool],
 ) -> GDBResult<Vec<Item>> {
     let mut properties = Vec::new();
     for (index, val) in record.iter().enumerate() {
@@ -687,8 +676,7 @@ pub fn parse_properties_beta(
 }
 
 pub fn parse_properties<'a, Iter: Clone + Iterator<Item = &'a str>>(
-    mut record_iter: Iter,
-    _header: Option<&[(String, DataType)]>,
+    mut record_iter: Iter, _header: Option<&[(String, DataType)]>,
 ) -> GDBResult<Vec<Item>> {
     let mut properties = Vec::new();
     if _header.is_none() {

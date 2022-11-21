@@ -1,6 +1,8 @@
-use crate::error::GDBResult;
-use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
 use std::fmt::{Debug, Display, Formatter};
+
+use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
+
+use crate::error::GDBResult;
 
 #[derive(Copy, Clone)]
 pub enum Browser {

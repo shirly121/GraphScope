@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::{thread, time};
+
 use clap::{App, Arg};
 use log::info;
 use mcsr::date::Date;
@@ -7,28 +15,25 @@ use mcsr::graph_db_impl::{is_single_ie_csr, is_single_oe_csr, CsrDB, SingleSubGr
 use mcsr::ldbc_parser::LDBCVertexParser;
 use mcsr::schema::{LDBCGraphSchema, Schema};
 use mcsr::types::{DefaultId, InternalId, LabelId, NAME, VERSION};
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::{thread, time};
 
 fn output_vertices<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: &CsrDB<G, I>,
-    output_dir: &String,
-    files: &mut HashMap<LabelId, File>,
+    graph: &CsrDB<G, I>, output_dir: &String, files: &mut HashMap<LabelId, File>,
 ) {
     let vertex_label_names = graph.graph_schema.vertex_label_names();
     let output_dir_path = PathBuf::from_str(output_dir.as_str()).unwrap();
     for n in vertex_label_names.iter() {
-        if let Some(v_label) = graph.graph_schema.get_vertex_label_id(n.as_str()) {
+        if let Some(v_label) = graph
+            .graph_schema
+            .get_vertex_label_id(n.as_str())
+        {
             println!("outputing vertex-{}", n);
-            let header = graph.graph_schema.get_vertex_header(v_label).unwrap();
+            let header = graph
+                .graph_schema
+                .get_vertex_header(v_label)
+                .unwrap();
             if !files.contains_key(&v_label) {
                 let file = File::create(output_dir_path.join(n.as_str())).unwrap();
                 files.insert(v_label.clone(), file);
@@ -43,7 +48,9 @@ fn output_vertices<
                     write!(
                         file,
                         "|\"{}\"",
-                        v.get_property(c.0.as_str()).unwrap().to_string()
+                        v.get_property(c.0.as_str())
+                            .unwrap()
+                            .to_string()
                     )
                     .unwrap();
                 }
@@ -57,9 +64,7 @@ fn output_edges<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: &CsrDB<G, I>,
-    output_dir: &String,
-    files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
+    graph: &CsrDB<G, I>, output_dir: &String, files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     let output_dir_path = PathBuf::from_str(output_dir.as_str()).unwrap();
     for e in graph.get_all_edges(None) {
@@ -72,16 +77,11 @@ fn output_edges<
         let e_label = e.get_label();
         let label_tuple = (src_label, e_label, dst_label);
         if !files.contains_key(&label_tuple) {
-            let src_label_name =
-                graph.graph_schema.vertex_label_names()[src_label as usize].clone();
-            let dst_label_name =
-                graph.graph_schema.vertex_label_names()[dst_label as usize].clone();
+            let src_label_name = graph.graph_schema.vertex_label_names()[src_label as usize].clone();
+            let dst_label_name = graph.graph_schema.vertex_label_names()[dst_label as usize].clone();
             let edge_label_name = graph.graph_schema.edge_label_names()[e_label as usize].clone();
-            let filename = src_label_name.clone()
-                + "_"
-                + &*edge_label_name.clone()
-                + "_"
-                + &*dst_label_name.clone();
+            let filename =
+                src_label_name.clone() + "_" + &*edge_label_name.clone() + "_" + &*dst_label_name.clone();
             let file = File::create(output_dir_path.join(filename.as_str())).unwrap();
             files.insert(label_tuple.clone(), file);
         }
@@ -94,9 +94,7 @@ fn output_graph<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: SubGraph<'_, G, I>,
-    schema: Arc<LDBCGraphSchema>,
-    output_dir: &String,
+    graph: SubGraph<'_, G, I>, schema: Arc<LDBCGraphSchema>, output_dir: &String,
     files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     if graph.get_edge_num() == 0 {
@@ -107,20 +105,14 @@ fn output_graph<
     let src_label = graph.get_src_label();
     let dst_label = graph.get_dst_label();
     let edge_label = graph.get_edge_label();
-    println!(
-        "outputing graph: {}, {}, {}",
-        src_label, edge_label, dst_label
-    );
+    println!("outputing graph: {}, {}, {}", src_label, edge_label, dst_label);
     let label_tuple = (src_label, edge_label, dst_label);
     if !files.contains_key(&label_tuple) {
         let src_label_name = schema.vertex_label_names()[src_label as usize].clone();
         let dst_label_name = schema.vertex_label_names()[dst_label as usize].clone();
         let edge_label_name = schema.edge_label_names()[edge_label as usize].clone();
-        let filename = src_label_name.clone()
-            + "_"
-            + &*edge_label_name.clone()
-            + "_"
-            + &*dst_label_name.clone();
+        let filename =
+            src_label_name.clone() + "_" + &*edge_label_name.clone() + "_" + &*dst_label_name.clone();
         let file = File::create(output_dir_path.join(filename.as_str())).unwrap();
         files.insert(label_tuple.clone(), file);
     }
@@ -143,9 +135,7 @@ fn output_knows_graph<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: SubGraph<'_, G, I>,
-    schema: Arc<LDBCGraphSchema>,
-    output_dir: &String,
+    graph: SubGraph<'_, G, I>, schema: Arc<LDBCGraphSchema>, output_dir: &String,
     files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     if graph.get_edge_num() == 0 {
@@ -156,20 +146,14 @@ fn output_knows_graph<
     let src_label = graph.get_src_label();
     let dst_label = graph.get_dst_label();
     let edge_label = graph.get_edge_label();
-    println!(
-        "outputing graph: {}, {}, {}",
-        src_label, edge_label, dst_label
-    );
+    println!("outputing graph: {}, {}, {}", src_label, edge_label, dst_label);
     let label_tuple = (src_label, edge_label, dst_label);
     if !files.contains_key(&label_tuple) {
         let src_label_name = schema.vertex_label_names()[src_label as usize].clone();
         let dst_label_name = schema.vertex_label_names()[dst_label as usize].clone();
         let edge_label_name = schema.edge_label_names()[edge_label as usize].clone();
-        let filename = src_label_name.clone()
-            + "_"
-            + &*edge_label_name.clone()
-            + "_"
-            + &*dst_label_name.clone();
+        let filename =
+            src_label_name.clone() + "_" + &*edge_label_name.clone() + "_" + &*dst_label_name.clone();
         let file = File::create(output_dir_path.join(filename.as_str())).unwrap();
         files.insert(label_tuple.clone(), file);
     }
@@ -183,14 +167,7 @@ fn output_knows_graph<
                 let dst = graph.get_dst_global_id(e.neighbor).unwrap();
                 let date = Date::from_u32(e.neighbor.hi().index() as u32);
                 let dst_oid = LDBCVertexParser::<G>::get_original_id(dst);
-                writeln!(
-                    file,
-                    "\"{}\"|\"{}\"|\"{}\"",
-                    src_oid.index(),
-                    dst_oid.index(),
-                    date
-                )
-                .unwrap();
+                writeln!(file, "\"{}\"|\"{}\"|\"{}\"", src_oid.index(), dst_oid.index(), date).unwrap();
             }
         }
     }
@@ -200,9 +177,7 @@ fn output_graph_in<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: SubGraph<'_, G, I>,
-    schema: Arc<LDBCGraphSchema>,
-    output_dir: &String,
+    graph: SubGraph<'_, G, I>, schema: Arc<LDBCGraphSchema>, output_dir: &String,
     files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     if graph.get_edge_num() == 0 {
@@ -218,11 +193,8 @@ fn output_graph_in<
         let src_label_name = schema.vertex_label_names()[src_label as usize].clone();
         let dst_label_name = schema.vertex_label_names()[dst_label as usize].clone();
         let edge_label_name = schema.edge_label_names()[edge_label as usize].clone();
-        let filename = dst_label_name.clone()
-            + "_"
-            + &*edge_label_name.clone()
-            + "_"
-            + &*src_label_name.clone();
+        let filename =
+            dst_label_name.clone() + "_" + &*edge_label_name.clone() + "_" + &*src_label_name.clone();
         let file = File::create(output_dir_path.join(filename.as_str())).unwrap();
         files.insert(label_tuple.clone(), file);
     }
@@ -245,9 +217,7 @@ fn output_single_graph<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: SingleSubGraph<'_, G, I>,
-    schema: Arc<LDBCGraphSchema>,
-    output_dir: &String,
+    graph: SingleSubGraph<'_, G, I>, schema: Arc<LDBCGraphSchema>, output_dir: &String,
     files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     if graph.get_edge_num() == 0 {
@@ -258,20 +228,14 @@ fn output_single_graph<
     let src_label = graph.get_src_label();
     let dst_label = graph.get_dst_label();
     let edge_label = graph.get_edge_label();
-    println!(
-        "outputing single graph: {}, {}, {}",
-        src_label, edge_label, dst_label
-    );
+    println!("outputing single graph: {}, {}, {}", src_label, edge_label, dst_label);
     let label_tuple = (src_label, edge_label, dst_label);
     if !files.contains_key(&label_tuple) {
         let src_label_name = schema.vertex_label_names()[src_label as usize].clone();
         let dst_label_name = schema.vertex_label_names()[dst_label as usize].clone();
         let edge_label_name = schema.edge_label_names()[edge_label as usize].clone();
-        let filename = src_label_name.clone()
-            + "_"
-            + &*edge_label_name.clone()
-            + "_"
-            + &*dst_label_name.clone();
+        let filename =
+            src_label_name.clone() + "_" + &*edge_label_name.clone() + "_" + &*dst_label_name.clone();
         let file = File::create(output_dir_path.join(filename.as_str())).unwrap();
         files.insert(label_tuple.clone(), file);
     }
@@ -292,9 +256,7 @@ fn output_single_graph_in<
     G: IndexType + std::marker::Sync + std::marker::Send,
     I: IndexType + std::marker::Sync + std::marker::Send,
 >(
-    graph: SingleSubGraph<'_, G, I>,
-    schema: Arc<LDBCGraphSchema>,
-    output_dir: &String,
+    graph: SingleSubGraph<'_, G, I>, schema: Arc<LDBCGraphSchema>, output_dir: &String,
     files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     if graph.get_edge_num() == 0 {
@@ -310,11 +272,8 @@ fn output_single_graph_in<
         let src_label_name = schema.vertex_label_names()[src_label as usize].clone();
         let dst_label_name = schema.vertex_label_names()[dst_label as usize].clone();
         let edge_label_name = schema.edge_label_names()[edge_label as usize].clone();
-        let filename = dst_label_name.clone()
-            + "_"
-            + &*edge_label_name.clone()
-            + "_"
-            + &*src_label_name.clone();
+        let filename =
+            dst_label_name.clone() + "_" + &*edge_label_name.clone() + "_" + &*src_label_name.clone();
         let file = File::create(output_dir_path.join(filename.as_str())).unwrap();
         files.insert(label_tuple.clone(), file);
     }
@@ -332,9 +291,7 @@ fn output_single_graph_in<
 }
 
 fn output_outgoing_edges(
-    graph: &CsrDB,
-    output_dir: &String,
-    files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
+    graph: &CsrDB, output_dir: &String, files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     let v_label_num = graph.vertex_label_num as LabelId;
     let e_label_num = graph.edge_label_num as LabelId;
@@ -387,9 +344,7 @@ fn output_outgoing_edges(
 }
 
 fn output_incoming_edges(
-    graph: &CsrDB,
-    output_dir: &String,
-    files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
+    graph: &CsrDB, output_dir: &String, files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
 ) {
     let v_label_num = graph.vertex_label_num as LabelId;
     let e_label_num = graph.edge_label_num as LabelId;
@@ -428,12 +383,8 @@ fn output_incoming_edges(
 }
 
 fn traverse_partition(
-    graph_data_dir: &String,
-    output_dir: &String,
-    partition: usize,
-    v_files: &mut HashMap<LabelId, File>,
-    e_files: &mut HashMap<(LabelId, LabelId, LabelId), File>,
-    t: i32,
+    graph_data_dir: &String, output_dir: &String, partition: usize, v_files: &mut HashMap<LabelId, File>,
+    e_files: &mut HashMap<(LabelId, LabelId, LabelId), File>, t: i32,
 ) {
     info!("start import graph");
     let graph = CsrDB::<DefaultId, InternalId>::import(graph_data_dir.as_str(), partition).unwrap();
@@ -495,20 +446,27 @@ fn main() {
         ])
         .get_matches();
 
-    let graph_data_dir = matches.value_of("graph_data_dir").unwrap().to_string();
-    let output_dir = matches.value_of("output_dir").unwrap().to_string();
+    let graph_data_dir = matches
+        .value_of("graph_data_dir")
+        .unwrap()
+        .to_string();
+    let output_dir = matches
+        .value_of("output_dir")
+        .unwrap()
+        .to_string();
 
-    let partition_id = matches.value_of("index").unwrap().parse::<usize>().unwrap();
-    let t = matches.value_of("type").unwrap().parse::<i32>().unwrap();
+    let partition_id = matches
+        .value_of("index")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap();
+    let t = matches
+        .value_of("type")
+        .unwrap()
+        .parse::<i32>()
+        .unwrap();
 
     let mut v_files = HashMap::<LabelId, File>::new();
     let mut e_files = HashMap::<(LabelId, LabelId, LabelId), File>::new();
-    traverse_partition(
-        &graph_data_dir,
-        &output_dir,
-        partition_id,
-        &mut v_files,
-        &mut e_files,
-        t,
-    );
+    traverse_partition(&graph_data_dir, &output_dir, partition_id, &mut v_files, &mut e_files, t);
 }

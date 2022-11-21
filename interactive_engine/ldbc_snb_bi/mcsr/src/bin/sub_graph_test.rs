@@ -1,3 +1,8 @@
+use std::fs::File;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+
 use chrono::{TimeZone, Utc};
 use clap::{App, Arg};
 use mcsr::columns::DataType;
@@ -6,10 +11,6 @@ use mcsr::graph_db_impl::CsrDB;
 use mcsr::ldbc_parser::LDBCVertexParser;
 use mcsr::schema::Schema;
 use mcsr::types::{DefaultId, InternalId, DIR_BINARY_DATA, NAME, VERSION};
-use std::fs::File;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 fn get_partition_num(graph_data_dir: &String) -> usize {
     let root_dir = PathBuf::from_str(graph_data_dir.as_str()).unwrap();
@@ -50,15 +51,27 @@ fn get_millis(t: u64) -> u64 {
 fn traverse_partition(graph_data_dir: &String, output_dir: &String, partition: usize) {
     let graph = CsrDB::<DefaultId, InternalId>::import(graph_data_dir.as_str(), partition).unwrap();
 
-    let src_label = graph.graph_schema.get_vertex_label_id("PERSON").unwrap();
-    let dst_label = graph.graph_schema.get_vertex_label_id("COMMENT").unwrap();
-    let edge_label = graph.graph_schema.get_edge_label_id("LIKES").unwrap();
+    let src_label = graph
+        .graph_schema
+        .get_vertex_label_id("PERSON")
+        .unwrap();
+    let dst_label = graph
+        .graph_schema
+        .get_vertex_label_id("COMMENT")
+        .unwrap();
+    let edge_label = graph
+        .graph_schema
+        .get_edge_label_id("LIKES")
+        .unwrap();
     let sub_graph = graph.get_sub_graph(src_label, edge_label, dst_label, Direction::Outgoing);
 
     let vnum = sub_graph.get_vertex_num();
     let output_dir_path = PathBuf::from_str(output_dir.as_str()).unwrap();
     let mut vfile = File::create(output_dir_path.join("PERSON")).unwrap();
-    let header = graph.graph_schema.get_vertex_header(src_label).unwrap();
+    let header = graph
+        .graph_schema
+        .get_vertex_header(src_label)
+        .unwrap();
     let col_num = header.len();
     for i in 0..vnum {
         let id = sub_graph.get_src_global_id(i).unwrap();
@@ -111,8 +124,14 @@ fn main() {
         ])
         .get_matches();
 
-    let graph_data_dir = matches.value_of("graph_data_dir").unwrap().to_string();
-    let output_dir = matches.value_of("output_dir").unwrap().to_string();
+    let graph_data_dir = matches
+        .value_of("graph_data_dir")
+        .unwrap()
+        .to_string();
+    let output_dir = matches
+        .value_of("output_dir")
+        .unwrap()
+        .to_string();
 
     let partition_num = get_partition_num(&graph_data_dir);
 

@@ -158,11 +158,10 @@ pub fn date_to_timestamp(date: u64) -> u64 {
         let date_min = date / 100000 % 100;
         let date_sec = date / 1000 % 100;
         let date_dt = DateTime::<Utc>::from_utc(
-            chrono::NaiveDate::from_ymd(date_year as i32, date_month as u32, date_day as u32).and_hms(
-                date_hour as u32,
-                date_min as u32,
-                date_sec as u32,
-            ),
+            chrono::NaiveDate::from_ymd_opt(date_year as i32, date_month as u32, date_day as u32)
+                .expect("invalid or out-of-range date")
+                .and_hms_opt(date_hour as u32, date_min as u32, date_sec as u32)
+                .expect("invalid time"),
             Utc,
         );
         (date_dt.timestamp() * 1000) as u64
@@ -174,11 +173,10 @@ pub fn date_to_timestamp(date: u64) -> u64 {
         let date_min = 0;
         let date_sec = 0;
         let date_dt = DateTime::<Utc>::from_utc(
-            chrono::NaiveDate::from_ymd(date_year as i32, date_month as u32, date_day as u32).and_hms(
-                date_hour as u32,
-                date_min as u32,
-                date_sec as u32,
-            ),
+            chrono::NaiveDate::from_ymd_opt(date_year as i32, date_month as u32, date_day as u32)
+                .expect("invalid or out-of-range date")
+                .and_hms_opt(date_hour as u32, date_min as u32, date_sec as u32)
+                .expect("invalid time"),
             Utc,
         );
         (date_dt.timestamp() * 1000) as u64

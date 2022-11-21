@@ -1,12 +1,14 @@
-use crate::graph::IndexType;
-use crate::mcsr::{Nbr, NbrIter};
 use core::slice;
+use std::fs::File;
+use std::io::{Read, Write};
+
 use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
 use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fs::File;
-use std::io::{Read, Write};
+
+use crate::graph::IndexType;
+use crate::mcsr::{Nbr, NbrIter};
 
 pub struct SingleCsrEdgeIter<'a, I: IndexType> {
     cur_vertex: usize,
@@ -39,11 +41,7 @@ pub struct SingleCsr<I> {
 
 impl<I: IndexType> SingleCsr<I> {
     pub fn new() -> Self {
-        SingleCsr {
-            nbr_list: vec![],
-            nbr_exist: vec![],
-            edge_num: 0_usize,
-        }
+        SingleCsr { nbr_list: vec![], nbr_exist: vec![], edge_num: 0_usize }
     }
 
     pub fn vertex_num(&self) -> I {
@@ -58,12 +56,8 @@ impl<I: IndexType> SingleCsr<I> {
         if vnum == self.vertex_num() {
             return;
         }
-        self.nbr_list.resize(
-            vnum.index(),
-            Nbr {
-                neighbor: I::new(0_usize),
-            },
-        );
+        self.nbr_list
+            .resize(vnum.index(), Nbr { neighbor: I::new(0_usize) });
         self.nbr_exist.resize(vnum.index(), false);
     }
 
@@ -81,9 +75,7 @@ impl<I: IndexType> SingleCsr<I> {
             if !self.nbr_exist[src.index()] {
                 Some(NbrIter::new_empty())
             } else {
-                Some(NbrIter::new_single(unsafe {
-                    self.nbr_list.as_ptr().add(src.index())
-                }))
+                Some(NbrIter::new_single(unsafe { self.nbr_list.as_ptr().add(src.index()) }))
             }
         } else {
             None
@@ -104,11 +96,7 @@ impl<I: IndexType> SingleCsr<I> {
     }
 
     pub fn get_all_edges(&self) -> SingleCsrEdgeIter<'_, I> {
-        SingleCsrEdgeIter {
-            cur_vertex: 0,
-            exist_list: &self.nbr_exist,
-            nbr_list: &self.nbr_list,
-        }
+        SingleCsrEdgeIter { cur_vertex: 0, exist_list: &self.nbr_exist, nbr_list: &self.nbr_list }
     }
 
     pub fn desc(&self) {
@@ -120,10 +108,7 @@ impl<I: IndexType> SingleCsr<I> {
             }
         }
 
-        println!(
-            "vertex-num = {}, edge_num = {}, empty_nbr_num = {}",
-            num, self.edge_num, empty_num
-        );
+        println!("vertex-num = {}, edge_num = {}, empty_nbr_num = {}", num, self.edge_num, empty_num);
     }
 
     pub fn serialize(&self, path: &String) {
@@ -136,8 +121,7 @@ impl<I: IndexType> SingleCsr<I> {
         let nbr_exist_size = vnum * std::mem::size_of::<bool>();
 
         unsafe {
-            let nbr_list_slice =
-                slice::from_raw_parts(self.nbr_list.as_ptr() as *const u8, nbr_list_size);
+            let nbr_list_slice = slice::from_raw_parts(self.nbr_list.as_ptr() as *const u8, nbr_list_size);
             f.write_all(nbr_list_slice).unwrap();
 
             let nbr_exist_slice =
@@ -153,12 +137,8 @@ impl<I: IndexType> SingleCsr<I> {
         let vnum = f.read_u64().unwrap() as usize;
         self.edge_num = f.read_u64().unwrap() as usize;
 
-        self.nbr_list.resize(
-            vnum,
-            Nbr {
-                neighbor: I::new(0_usize),
-            },
-        );
+        self.nbr_list
+            .resize(vnum, Nbr { neighbor: I::new(0_usize) });
         self.nbr_exist.resize(vnum, false);
 
         let nbr_list_size = vnum * std::mem::size_of::<Nbr<I>>();
@@ -248,8 +228,8 @@ impl<I: IndexType> Decode for SingleCsr<I> {
 
 impl<I: IndexType> Serialize for SingleCsr<I> {
     fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-        where
-            S: Serializer,
+    where
+        S: Serializer,
     {
         let mut bytes = Vec::new();
         if self.write_to(&mut bytes).is_ok() {
@@ -262,12 +242,12 @@ impl<I: IndexType> Serialize for SingleCsr<I> {
 }
 
 impl<'de, I> Deserialize<'de> for SingleCsr<I>
-    where
-        I: IndexType,
+where
+    I: IndexType,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
-        where
-            D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
     {
         let vec = Vec::<u8>::deserialize(deserializer)?;
         let mut bytes = vec.as_slice();

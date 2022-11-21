@@ -1,9 +1,4 @@
-use crate::graph::IndexType;
 use core::slice;
-use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
-use serde::de::Error as DeError;
-use serde::ser::Error as SerError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::alloc::Layout;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -11,15 +6,20 @@ use std::marker::PhantomData;
 use std::slice::Iter;
 use std::{alloc, ptr};
 
+use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
+use serde::de::Error as DeError;
+use serde::ser::Error as SerError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::graph::IndexType;
+
 pub struct Nbr<I> {
     pub neighbor: I,
 }
 
 impl<I: IndexType> Clone for Nbr<I> {
     fn clone(&self) -> Self {
-        Nbr {
-            neighbor: I::new(self.neighbor.index()),
-        }
+        Nbr { neighbor: I::new(self.neighbor.index()) }
     }
 }
 
@@ -31,11 +31,7 @@ pub struct NbrIter<'a, I> {
 
 impl<'a, I: IndexType> NbrIter<'a, I> {
     pub fn new_empty() -> Self {
-        Self {
-            begin: ptr::null(),
-            end: ptr::null(),
-            _marker: PhantomData,
-        }
+        Self { begin: ptr::null(), end: ptr::null(), _marker: PhantomData }
     }
 
     #[inline]
@@ -44,21 +40,13 @@ impl<'a, I: IndexType> NbrIter<'a, I> {
     }
 
     pub fn new_single(begin: *const Nbr<I>) -> Self {
-        Self {
-            begin,
-            end: unsafe { begin.add(1) },
-            _marker: PhantomData,
-        }
+        Self { begin, end: unsafe { begin.add(1) }, _marker: PhantomData }
     }
 
     pub fn slice(self, from: usize, to: usize) -> Self {
         let begin = unsafe { self.begin.offset(from as isize) };
         let end = unsafe { self.begin.offset(to as isize) };
-        Self {
-            begin,
-            end,
-            _marker: PhantomData,
-        }
+        Self { begin, end, _marker: PhantomData }
     }
 }
 
@@ -95,11 +83,7 @@ pub struct AdjList<I> {
 
 impl<I: IndexType> AdjList<I> {
     pub fn new() -> Self {
-        AdjList {
-            ptr: ptr::null_mut(),
-            deg: 0,
-            cap: 0,
-        }
+        AdjList { ptr: ptr::null_mut(), deg: 0, cap: 0 }
     }
 
     pub fn set(&mut self, ptr: *mut Nbr<I>, degree: i64, capacity: i64) {
@@ -147,11 +131,7 @@ impl<I: IndexType> AdjList<I> {
 
 impl<I> Clone for AdjList<I> {
     fn clone(&self) -> Self {
-        AdjList {
-            ptr: self.ptr,
-            deg: self.deg,
-            cap: self.cap,
-        }
+        AdjList { ptr: self.ptr, deg: self.deg, cap: self.cap }
     }
 }
 
@@ -177,17 +157,9 @@ impl<'a, I: IndexType> MutableCsrEdgeIter<'a, I> {
     pub fn new(adj_list: &'a Vec<AdjList<I>>, cur_vertex: usize) -> Self {
         let mut adj_list_iter = adj_list.iter();
         if let Some(adj_list) = adj_list_iter.next() {
-            Self {
-                cur_vertex,
-                adj_list_iter,
-                nbr_iter: adj_list.iter(),
-            }
+            Self { cur_vertex, adj_list_iter, nbr_iter: adj_list.iter() }
         } else {
-            Self {
-                cur_vertex,
-                adj_list_iter,
-                nbr_iter: NbrIter::<'a, I>::new_empty(),
-            }
+            Self { cur_vertex, adj_list_iter, nbr_iter: NbrIter::<'a, I>::new_empty() }
         }
     }
 }
@@ -214,13 +186,7 @@ impl<'a, I: IndexType> Iterator for MutableCsrEdgeIter<'a, I> {
 
 impl<I: IndexType> MutableCsr<I> {
     pub fn new() -> Self {
-        MutableCsr {
-            buffers: vec![],
-            adj_lists: vec![],
-            prev: vec![],
-            next: vec![],
-            edge_num: 0_usize,
-        }
+        MutableCsr { buffers: vec![], adj_lists: vec![], prev: vec![], next: vec![], edge_num: 0_usize }
     }
 
     pub fn vertex_num(&self) -> I {
@@ -235,9 +201,12 @@ impl<I: IndexType> MutableCsr<I> {
         if vnum == self.vertex_num() {
             return;
         }
-        self.adj_lists.resize(vnum.index(), AdjList::<I>::new());
-        self.prev.resize(vnum.index(), <I as IndexType>::max());
-        self.next.resize(vnum.index(), <I as IndexType>::max());
+        self.adj_lists
+            .resize(vnum.index(), AdjList::<I>::new());
+        self.prev
+            .resize(vnum.index(), <I as IndexType>::max());
+        self.next
+            .resize(vnum.index(), <I as IndexType>::max());
     }
 
     pub fn reserve_edges_dense(&mut self, degree_to_add: &Vec<i64>) {
@@ -349,10 +318,8 @@ impl<I: IndexType> MutableCsr<I> {
         f.write_u64(self.edge_num as u64).unwrap();
 
         unsafe {
-            let degree_vec_slice = slice::from_raw_parts(
-                degree_vec.as_ptr() as *const u8,
-                vnum * std::mem::size_of::<i64>(),
-            );
+            let degree_vec_slice =
+                slice::from_raw_parts(degree_vec.as_ptr() as *const u8, vnum * std::mem::size_of::<i64>());
             f.write_all(degree_vec_slice).unwrap();
 
             let capacity_vec_slice = slice::from_raw_parts(
@@ -362,10 +329,8 @@ impl<I: IndexType> MutableCsr<I> {
             f.write_all(capacity_vec_slice).unwrap();
 
             assert_eq!(total_capacity, self.buffers[0].1);
-            let buffer_slice = slice::from_raw_parts(
-                self.buffers[0].0,
-                self.buffers[0].1 * std::mem::size_of::<Nbr<I>>(),
-            );
+            let buffer_slice =
+                slice::from_raw_parts(self.buffers[0].0, self.buffers[0].1 * std::mem::size_of::<Nbr<I>>());
             f.write_all(buffer_slice).unwrap();
         }
 
@@ -396,9 +361,8 @@ impl<I: IndexType> MutableCsr<I> {
             f.read_exact(capacity_vec_slice).unwrap();
 
             let buf = alloc::alloc(buf_layout);
-            let buf_slice =
-                slice::from_raw_parts_mut(buf, total_capacity * std::mem::size_of::<Nbr<I>>());
-            f.read_exact(buf_slice);
+            let buf_slice = slice::from_raw_parts_mut(buf, total_capacity * std::mem::size_of::<Nbr<I>>());
+            f.read_exact(buf_slice).ok();
 
             self.buffers.push((buf, total_capacity));
         }
