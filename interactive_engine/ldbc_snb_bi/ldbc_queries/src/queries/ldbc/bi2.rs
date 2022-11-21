@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use crate::queries::graph::*;
 use graph_store::prelude::*;
 use pegasus::api::{Fold, Map, Sink, SortLimitBy};
 use pegasus::result::ResultStream;
 use pegasus::JobConf;
+
+use crate::queries::graph::*;
 
 pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(String, i32, i32, i32)> {
     let workers = conf.workers;

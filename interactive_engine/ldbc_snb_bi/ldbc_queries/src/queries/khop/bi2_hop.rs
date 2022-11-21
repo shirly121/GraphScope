@@ -1,8 +1,9 @@
-use crate::queries::graph::*;
 use graph_store::prelude::*;
 use pegasus::api::{Count, Map, Sink};
 use pegasus::result::ResultStream;
 use pegasus::JobConf;
+
+use crate::queries::graph::*;
 
 /// this is the handwritten version of partial bi2, with only two-hops expxansion by tag_class -- tag -- message
 /// specifically, to avoid too many results, we add count() in the end

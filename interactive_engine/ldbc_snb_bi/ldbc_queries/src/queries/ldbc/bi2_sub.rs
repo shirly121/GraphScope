@@ -1,4 +1,3 @@
-use crate::queries::graph::*;
 use graph_store::common::LabelId;
 use mcsr::{
     columns::{DateTimeColumn, StringColumn},
@@ -7,6 +6,8 @@ use mcsr::{
 use pegasus::api::{Fold, Map, Sink, SortLimitBy};
 use pegasus::result::ResultStream;
 use pegasus::JobConf;
+
+use crate::queries::graph::*;
 
 fn get_tag_list(tagclass: String) -> (Vec<usize>, Vec<String>) {
     let tagclass_num = CSR.get_vertices_num(6 as LabelId);

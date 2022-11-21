@@ -368,6 +368,14 @@ pub fn to_empty_vertex(v: LocalVertex<'static, DefaultId>) -> Vertex {
     Vertex::new(id, Some(label), DynDetails::default())
 }
 
+// for benchmark_gie test
+#[inline]
+pub fn to_empty_vertex_with_label0(v: LocalVertex<'static, DefaultId>) -> Vertex {
+    let id = v.get_id() as ID;
+    let label = encode_runtime_label(v.get_label()[0]);
+    Vertex::new(id, Some(label), DynDetails::default())
+}
+
 #[inline]
 pub fn to_runtime_edge(
     e: LocalEdge<'static, DefaultId, InternalId>, prop_keys: Option<Vec<NameOrId>>,

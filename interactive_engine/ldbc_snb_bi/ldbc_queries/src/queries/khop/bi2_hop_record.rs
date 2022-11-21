@@ -1,13 +1,14 @@
-use crate::queries::graph::*;
 use dyn_type::Object;
 use graph_proxy::apis::{Details, GraphElement};
-use graph_proxy::{to_empty_vertex, to_runtime_vertex};
+use graph_proxy::{to_empty_vertex, to_empty_vertex_with_label0, to_runtime_vertex};
 use graph_store::prelude::*;
 use itertools::__std_iter::Iterator;
 use pegasus::api::{Count, Map, Sink};
 use pegasus::result::ResultStream;
 use pegasus::JobConf;
 use runtime::process::record::Record;
+
+use crate::queries::graph::*;
 
 /// this is the handwritten + record version of partial bi2, with only two-hops expxansion by tag_class -- tag -- message;
 pub fn bi2_hop_record(conf: JobConf, date: String, tag_class: String) -> ResultStream<u64> {
@@ -89,11 +90,11 @@ pub fn bi2_hop_record(conf: JobConf, date: String, tag_class: String) -> ResultS
 
                     let vertices = GRAPH
                         .get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label]))
-                        .map(|v| to_empty_vertex(v))
+                        .map(|v| to_empty_vertex_with_label0(v))
                         .filter(|runtime_vertex| {
                             let label_obj: Object = runtime_vertex.label().unwrap().into();
                             let forum_label_obj: Object = (forum_label as i32).into();
-                            label_obj == forum_label_obj
+                            label_obj != forum_label_obj
                         });
 
                     for vertex in vertices {

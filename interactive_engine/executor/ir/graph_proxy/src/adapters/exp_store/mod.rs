@@ -21,5 +21,6 @@ pub use read_graph::create_exp_store;
 
 // for gie benchmark test
 pub use read_graph::{
-    to_empty_vertex, to_runtime_edge, to_runtime_vertex, LazyEdgeDetails, LazyVertexDetails,
+    to_empty_vertex, to_empty_vertex_with_label0, to_runtime_edge, to_runtime_vertex, LazyEdgeDetails,
+    LazyVertexDetails,
 };

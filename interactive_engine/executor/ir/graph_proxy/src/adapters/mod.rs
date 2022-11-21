@@ -23,5 +23,6 @@ pub use vineyard_store::VineyardGraphWriter;
 
 // for gie benchmark test
 pub use exp_store::{
-    to_empty_vertex, to_runtime_edge, to_runtime_vertex, LazyEdgeDetails, LazyVertexDetails,
+    to_empty_vertex, to_empty_vertex_with_label0, to_runtime_edge, to_runtime_vertex, LazyEdgeDetails,
+    LazyVertexDetails,
 };
