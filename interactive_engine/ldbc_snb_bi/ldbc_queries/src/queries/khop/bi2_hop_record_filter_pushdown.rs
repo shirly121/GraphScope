@@ -1,6 +1,5 @@
-use dyn_type::Object;
-use graph_proxy::apis::{Details, GraphElement};
-use graph_proxy::{to_empty_vertex, to_empty_vertex_with_label0, to_runtime_vertex};
+use graph_proxy::apis::GraphElement;
+use graph_proxy::to_empty_vertex;
 use graph_store::prelude::*;
 use itertools::__std_iter::Iterator;
 use pegasus::api::{Count, Map, Sink};
@@ -11,7 +10,7 @@ use runtime::process::record::Record;
 use crate::queries::graph::*;
 
 /// this is the handwritten + record version of partial bi2, with only two-hops expxansion by tag_class -- tag -- message;
-pub fn bi2_hop_record(conf: JobConf, date: String, tag_class: String) -> ResultStream<u64> {
+pub fn bi2_hop_record_filter_pushdown(conf: JobConf, date: String, tag_class: String) -> ResultStream<u64> {
     let workers = conf.workers;
     let start_date = parse_datetime(&date).unwrap();
     let duration = 100 * 24 * 3600 * 1000;
@@ -42,17 +41,16 @@ pub fn bi2_hop_record(conf: JobConf, date: String, tag_class: String) -> ResultS
                         .get_all_vertices(Some(&vec![tagclass_label]))
                         .skip((worker_id % workers) as usize * partial_count)
                         .take(partial_count)
-                        .map(|v| to_runtime_vertex(v, None))
-                        .filter(|v| {
-                            let property = v
-                                .details()
+                        .filter(|store_vertex| {
+                            store_vertex
+                                .get_property("name")
                                 .unwrap()
-                                .get_property(&"name".into())
+                                .as_str()
                                 .unwrap()
-                                .try_to_owned()
-                                .unwrap();
-                            property == Object::from(tag_class.clone())
+                                .into_owned()
+                                == tag_class
                         })
+                        .map(|v| to_empty_vertex(v))
                         .map(|v| Record::new(v, None));
                     for tag_record in tag_records {
                         let vertex = tag_record
@@ -89,12 +87,8 @@ pub fn bi2_hop_record(conf: JobConf, date: String, tag_class: String) -> ResultS
 
                     let vertices = GRAPH
                         .get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label]))
-                        .map(|v| to_empty_vertex_with_label0(v))
-                        .filter(|runtime_vertex| {
-                            let label_obj: Object = runtime_vertex.label().unwrap().into();
-                            let forum_label_obj: Object = (forum_label as i32).into();
-                            label_obj != forum_label_obj
-                        });
+                        .filter(|store_vertex| store_vertex.get_label()[0] != forum_label)
+                        .map(|v| to_empty_vertex(v));
 
                     for vertex in vertices {
                         let mut new_tag_message_record = tag_record.clone();

@@ -155,6 +155,18 @@ fn main() {
                 }
                 ()
             }
+            "bi2_hop_record_filter_pushdown" => {
+                println!("Start run query \"BI 2 HOP FilterPD\"");
+                let mut result = queries::bi2_hop_record_filter_pushdown(
+                    conf,
+                    split[1].to_string(),
+                    split[2].to_string(),
+                );
+                if config.print_result {
+                    println!("BI 2 HOP record filter pd count {:?}", result.next());
+                }
+                ()
+            }
 
             _ => println!("Unknown query"),
         }

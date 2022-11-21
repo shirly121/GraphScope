@@ -53,7 +53,6 @@ pub fn bi2_hop_record_evalopt(conf: JobConf, date: String, tag_class: String) ->
                         })
                         .map(|v| Record::new(v, None));
                     for tag_record in tag_records {
-                        let tag_record: Record = tag_record;
                         let vertex = tag_record
                             .get(None)
                             .unwrap()
