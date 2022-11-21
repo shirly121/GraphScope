@@ -13,6 +13,7 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
     let second_window = first_window + duration;
     let first_window = super::graph::parse_datetime(&first_window.to_string()).unwrap() / 1000000000;
     let second_window = super::graph::parse_datetime(&second_window.to_string()).unwrap() / 1000000000;
+    println!("three data is {} {} {}", start_date, first_window, second_window);
 
     let schema = &super::graph::GRAPH.graph_schema;
     let tagclass_label = schema.get_vertex_label_id("TAGCLASS").unwrap();
@@ -51,6 +52,7 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                 })
                 .flat_map(move |tag_internal_id| {
                     let mut message_id_list = vec![];
+                    message_id_list.push((0, tag_internal_id));
                     for vertex in super::graph::GRAPH.get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label])) {
                         if vertex.get_label()[0] == forum_label {
                             continue;
@@ -64,24 +66,30 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                 })
                 .fold_partition(HashMap::<u64, (i32, i32)>::new(), move || {
                     move |mut collect, (message_internal_id, tag_internal_id)| {
-                        let message_vertex = super::graph::GRAPH.get_vertex(message_internal_id as DefaultId).unwrap();
-                        let create_date = message_vertex
-                            .get_property("creationDate")
-                            .unwrap()
-                            .as_u64()
-                            .unwrap()
-                            / 1000000000;
-                        if create_date >= start_date && create_date < first_window {
-                            if let Some(data) = collect.get_mut(&tag_internal_id) {
-                                data.0 += 1;
-                            } else {
-                                collect.insert(tag_internal_id, (1, 0));
+                        if message_internal_id == 0 {
+                            if let None = collect.get_mut(&tag_internal_id) {
+                                collect.insert(tag_internal_id, (0, 0));
                             }
-                        } else if create_date >= first_window && create_date < second_window {
-                            if let Some(data) = collect.get_mut(&tag_internal_id) {
-                                data.1 += 1;
-                            } else {
-                                collect.insert(tag_internal_id, (0, 1));
+                        } else {
+                            let message_vertex = super::graph::GRAPH.get_vertex(message_internal_id as DefaultId).unwrap();
+                            let create_date = message_vertex
+                                .get_property("creationDate")
+                                .unwrap()
+                                .as_u64()
+                                .unwrap()
+                                / 1000000000;
+                            if create_date >= start_date && create_date < first_window {
+                                if let Some(data) = collect.get_mut(&tag_internal_id) {
+                                    data.0 += 1;
+                                } else {
+                                    collect.insert(tag_internal_id, (1, 0));
+                                }
+                            } else if create_date >= first_window && create_date < second_window {
+                                if let Some(data) = collect.get_mut(&tag_internal_id) {
+                                    data.1 += 1;
+                                } else {
+                                    collect.insert(tag_internal_id, (0, 1));
+                                }
                             }
                         }
                         Ok(collect)
