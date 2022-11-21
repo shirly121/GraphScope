@@ -8,8 +8,11 @@ use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
 use graph_store::prelude::*;
 use mcsr::graph_db_impl::{CsrDB, SingleSubGraph, SubGraph};
 use pegasus::configure_with_default;
+use runtime::process::record::{Entry, Record};
 
 use self::chrono::Datelike;
+use graph_proxy::apis::GraphElement;
+use std::sync::Arc;
 
 lazy_static! {
     pub static ref GRAPH: LargeGraphDB<DefaultId, InternalId> = _init_graph();
@@ -193,6 +196,16 @@ pub fn get_partition(id: &u64, workers: usize, num_servers: usize) -> u64 {
     // 3. `magic_num % workers` then picks up one of the workers in the machine R
     // to do the computation.
     ((id_usize - magic_num * num_servers) * workers + magic_num % workers) as u64
+}
+
+pub(crate) fn get_entry_partition(entry: &Arc<Entry>, workers: usize, num_servers: usize) -> u64 {
+    let v = entry.as_graph_vertex().unwrap();
+    get_partition(&v.id(), workers as usize, num_servers)
+}
+
+pub(crate) fn get_record_curr_partition(r: &Record, workers: usize, num_servers: usize) -> u64 {
+    let entry = r.get(None).unwrap();
+    get_entry_partition(entry, workers, num_servers)
 }
 
 pub fn get_2d_partition(id_hi: u64, id_low: u64, workers: usize, num_servers: usize) -> u64 {

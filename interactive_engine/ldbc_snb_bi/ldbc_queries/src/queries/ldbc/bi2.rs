@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::queries::graph::*;
 use graph_store::prelude::*;
 use pegasus::api::{Fold, Map, Sink, SortLimitBy};
 use pegasus::result::ResultStream;
@@ -7,15 +8,15 @@ use pegasus::JobConf;
 
 pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(String, i32, i32, i32)> {
     let workers = conf.workers;
-    let start_date = super::graph::parse_datetime(&date).unwrap();
+    let start_date = parse_datetime(&date).unwrap();
     let duration = 100 * 24 * 3600 * 1000;
-    let first_window = super::graph::date_to_timestamp(start_date) + duration;
+    let first_window = date_to_timestamp(start_date) + duration;
     let second_window = first_window + duration;
-    let first_window = super::graph::parse_datetime(&first_window.to_string()).unwrap() / 1000000000;
-    let second_window = super::graph::parse_datetime(&second_window.to_string()).unwrap() / 1000000000;
+    let first_window = parse_datetime(&first_window.to_string()).unwrap() / 1000000000;
+    let second_window = parse_datetime(&second_window.to_string()).unwrap() / 1000000000;
     println!("three data is {} {} {}", start_date, first_window, second_window);
 
-    let schema = &super::graph::GRAPH.graph_schema;
+    let schema = &GRAPH.graph_schema;
     let tagclass_label = schema.get_vertex_label_id("TAGCLASS").unwrap();
     let forum_label = schema.get_vertex_label_id("FORUM").unwrap();
     let hastype_label = schema.get_edge_label_id("HASTYPE").unwrap();
@@ -29,11 +30,10 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
             stream
                 .flat_map(move |_source| {
                     let mut tag_id_list = vec![];
-                    let tagclass_vertices =
-                        super::graph::GRAPH.get_all_vertices(Some(&vec![tagclass_label]));
+                    let tagclass_vertices = GRAPH.get_all_vertices(Some(&vec![tagclass_label]));
                     let tagclass_count = tagclass_vertices.count();
                     let partial_count = tagclass_count / workers as usize + 1;
-                    for vertex in super::graph::GRAPH
+                    for vertex in GRAPH
                         .get_all_vertices(Some(&vec![tagclass_label]))
                         .skip((worker_id % workers) as usize * partial_count)
                         .take(partial_count)
@@ -46,8 +46,8 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                             .into_owned();
                         if tagclass_name == tag_class {
                             let tagclass_internal_id = vertex.get_id();
-                            for tag_vertex in super::graph::GRAPH
-                                .get_in_vertices(tagclass_internal_id, Some(&vec![hastype_label]))
+                            for tag_vertex in
+                                GRAPH.get_in_vertices(tagclass_internal_id, Some(&vec![hastype_label]))
                             {
                                 let tag_internal_id = tag_vertex.get_id() as u64;
                                 tag_id_list.push(tag_internal_id);
@@ -56,14 +56,13 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                     }
                     Ok(tag_id_list.into_iter())
                 })?
-                .repartition(move |id| {
-                    Ok(super::graph::get_partition(id, workers as usize, pegasus::get_servers_len()))
-                })
+                .repartition(move |id| Ok(get_partition(id, workers as usize, pegasus::get_servers_len())))
                 .flat_map(move |tag_internal_id| {
                     let mut message_id_list = vec![];
+                    // TODO: is this for count when 0 message?
                     message_id_list.push((0, tag_internal_id));
-                    for vertex in super::graph::GRAPH
-                        .get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label]))
+                    for vertex in
+                        GRAPH.get_in_vertices(tag_internal_id as DefaultId, Some(&vec![hastag_label]))
                     {
                         if vertex.get_label()[0] == forum_label {
                             continue;
@@ -73,7 +72,7 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                     Ok(message_id_list.into_iter())
                 })?
                 .repartition(move |(id, _)| {
-                    Ok(super::graph::get_partition(id, workers as usize, pegasus::get_servers_len()))
+                    Ok(get_partition(id, workers as usize, pegasus::get_servers_len()))
                 })
                 .fold_partition(HashMap::<u64, (i32, i32)>::new(), move || {
                     move |mut collect, (message_internal_id, tag_internal_id)| {
@@ -82,7 +81,7 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                                 collect.insert(tag_internal_id, (0, 0));
                             }
                         } else {
-                            let message_vertex = super::graph::GRAPH
+                            let message_vertex = GRAPH
                                 .get_vertex(message_internal_id as DefaultId)
                                 .unwrap();
                             let create_date = message_vertex
@@ -128,10 +127,10 @@ pub fn bi2(conf: JobConf, date: String, tag_class: String) -> ResultStream<(Stri
                         }))
                 })?
                 .repartition(move |(id, _, _, _)| {
-                    Ok(super::graph::get_partition(id, workers as usize, pegasus::get_servers_len()))
+                    Ok(get_partition(id, workers as usize, pegasus::get_servers_len()))
                 })
                 .map(|(tag_internal_id, count1, count2, diff)| {
-                    let tag_vertex = super::graph::GRAPH
+                    let tag_vertex = GRAPH
                         .get_vertex(tag_internal_id as DefaultId)
                         .unwrap();
                     let tag_name = tag_vertex

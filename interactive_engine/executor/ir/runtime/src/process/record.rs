@@ -103,6 +103,16 @@ impl Record {
         self.append_arc_entry(Arc::new(entry.into()), alias)
     }
 
+    // this is a test for alias necessary opt: move current into columns with head_alias, and append new entry as current
+    pub fn append_with_head_alias<E: Into<Entry>>(&mut self, entry: E, head_alias: Option<KeyId>) {
+        if let Some(alias) = head_alias {
+            if let Some(curr) = self.curr.take() {
+                self.columns.insert(alias as usize, curr);
+            }
+        }
+        self.curr = Some(Arc::new(entry.into()));
+    }
+
     pub fn append_arc_entry(&mut self, entry: Arc<Entry>, alias: Option<KeyId>) {
         self.curr = Some(entry.clone());
         if let Some(alias) = alias {

@@ -25,6 +25,7 @@ use ir_common::NameOrId;
 use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
 use pegasus_common::downcast::*;
 use pegasus_common::impl_as_any;
+use std::borrow::Cow;
 
 /// The three types of property to get
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -109,6 +110,13 @@ impl<'a> PropertyValue<'a> {
         match self {
             PropertyValue::Borrowed(borrowed_obj) => borrowed_obj.try_to_owned(),
             PropertyValue::Owned(obj) => Some(obj.clone()),
+        }
+    }
+
+    pub fn as_str(&self) -> Option<Cow<'_, str>> {
+        match self {
+            PropertyValue::Borrowed(borrowed_obj) => borrowed_obj.as_str().ok(),
+            PropertyValue::Owned(obj) => obj.as_str().ok(),
         }
     }
 }

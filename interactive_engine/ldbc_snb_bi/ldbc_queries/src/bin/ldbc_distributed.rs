@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use graph_store::prelude::*;
+use itertools::__std_iter::Iterator;
 use mcsr::graph_db::GlobalCsrTrait;
 use pegasus::{Configuration, JobConf, ServerConf};
 use pegasus_benchmark::queries;
@@ -34,10 +35,10 @@ fn main() {
 
     pegasus_common::logs::init_log();
 
-    if !crate::queries::ldbc::graph::DATA_PATH.is_empty() {
-        crate::queries::ldbc::graph::GRAPH.get_current_partition();
+    if !crate::queries::graph::DATA_PATH.is_empty() {
+        crate::queries::graph::GRAPH.get_current_partition();
     } else {
-        crate::queries::ldbc::graph::CSR.get_current_partition();
+        crate::queries::graph::CSR.get_current_partition();
     }
 
     let server_conf = if let Some(ref servers) = config.servers {
@@ -114,6 +115,47 @@ fn main() {
                 }
                 ()
             }
+
+            // as a two-hop case, we compare the versions of bi2_hop, bi2_hop_record, bi2_hop_record_aliasopt, and bi2_hop_record_evalopt, where
+            // bi2_hop is the basic handwritten version;
+            // bi2_hop_record =  bi2_hop + record;
+            // bi2_hop_record_aliasopt = bi2_hop_record + alias_when_necessray_opt;
+            // bi2_hop_record_evalopt = bi2_hop_record + simple_prop_eval_opt;
+            "bi2_hop" => {
+                println!("Start run query \"BI 2 HOP\"");
+                let mut result = queries::bi2_hop(conf, split[1].to_string(), split[2].to_string());
+                if config.print_result {
+                    println!("BI 2 HOP count {:?}", result.next());
+                }
+                ()
+            }
+            "bi2_hop_record" => {
+                println!("Start run query \"BI 2 HOP Record\"");
+                let mut result = queries::bi2_hop_record(conf, split[1].to_string(), split[2].to_string());
+                if config.print_result {
+                    println!("BI 2 HOP count {:?}", result.next());
+                }
+                ()
+            }
+            "bi2_hop_record_aliasopt" => {
+                println!("Start run query \"BI 2 HOP RecordAliasOpt\"");
+                let mut result =
+                    queries::bi2_hop_record_aliasopt(conf, split[1].to_string(), split[2].to_string());
+                if config.print_result {
+                    println!("BI 2 HOP count {:?}", result.next());
+                }
+                ()
+            }
+            "bi2_hop_record_evalopt" => {
+                println!("Start run query \"BI 2 HOP EvalOpt\"");
+                let mut result =
+                    queries::bi2_hop_record_evalopt(conf, split[1].to_string(), split[2].to_string());
+                if config.print_result {
+                    println!("BI 2 HOP count {:?}", result.next());
+                }
+                ()
+            }
+
             _ => println!("Unknown query"),
         }
         index += 1;

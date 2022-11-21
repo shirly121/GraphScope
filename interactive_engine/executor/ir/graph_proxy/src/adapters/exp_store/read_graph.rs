@@ -353,7 +353,7 @@ pub fn create_exp_store() {
 }
 
 #[inline]
-fn to_runtime_vertex(v: LocalVertex<'static, DefaultId>, prop_keys: Option<Vec<NameOrId>>) -> Vertex {
+pub fn to_runtime_vertex(v: LocalVertex<'static, DefaultId>, prop_keys: Option<Vec<NameOrId>>) -> Vertex {
     // For vertices, we query properties via vid
     let id = v.get_id() as ID;
     let label = encode_runtime_v_label(&v);
@@ -362,14 +362,16 @@ fn to_runtime_vertex(v: LocalVertex<'static, DefaultId>, prop_keys: Option<Vec<N
 }
 
 #[inline]
-fn to_empty_vertex(v: LocalVertex<'static, DefaultId>) -> Vertex {
+pub fn to_empty_vertex(v: LocalVertex<'static, DefaultId>) -> Vertex {
     let id = v.get_id() as ID;
     let label = encode_runtime_v_label(&v);
     Vertex::new(id, Some(label), DynDetails::default())
 }
 
 #[inline]
-fn to_runtime_edge(e: LocalEdge<'static, DefaultId, InternalId>, prop_keys: Option<Vec<NameOrId>>) -> Edge {
+pub fn to_runtime_edge(
+    e: LocalEdge<'static, DefaultId, InternalId>, prop_keys: Option<Vec<NameOrId>>,
+) -> Edge {
     let id = encode_runtime_e_id(&e);
     let label = encode_runtime_e_label(&e);
     let src_id = e.get_src_id();
@@ -398,7 +400,7 @@ fn to_runtime_edge(e: LocalEdge<'static, DefaultId, InternalId>, prop_keys: Opti
 /// LazyVertexDetails is used for local property fetching optimization.
 /// That is, the required properties will not be materialized until LazyVertexDetails need to be shuffled.
 #[allow(dead_code)]
-struct LazyVertexDetails {
+pub struct LazyVertexDetails {
     // prop_keys specify the properties we would save for later queries after shuffle,
     // excluding the ones used only when local property fetching.
     // Specifically, Some(vec![]) indicates we need all properties
@@ -510,7 +512,7 @@ impl Drop for LazyVertexDetails {
 /// LazyEdgeDetails is used for local property fetching optimization.
 /// That is, the required properties will not be materialized until LazyEdgeDetails need to be shuffled.
 #[allow(dead_code)]
-struct LazyEdgeDetails {
+pub struct LazyEdgeDetails {
     // prop_keys specify the properties we would save for later queries after shuffle,
     // excluding the ones used only when local property fetching.
     // Specifically, Some(vec![]) indicates we need all properties

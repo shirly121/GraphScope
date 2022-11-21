@@ -23,6 +23,12 @@ pub use adapters::{
 };
 pub use errors::{GraphProxyError, GraphProxyResult};
 
+// for gie benchmark test
+pub use adapters::{
+    to_empty_vertex, to_runtime_edge, to_runtime_vertex, LazyEdgeDetails, LazyVertexDetails,
+};
+pub use utils::expr::eval_pred::PEvaluator;
+
 mod adapters;
 pub mod apis;
 mod errors;

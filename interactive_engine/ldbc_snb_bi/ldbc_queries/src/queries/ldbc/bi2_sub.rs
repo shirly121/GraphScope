@@ -1,3 +1,4 @@
+use crate::queries::graph::*;
 use graph_store::common::LabelId;
 use mcsr::{
     columns::{DateTimeColumn, StringColumn},
@@ -8,15 +9,15 @@ use pegasus::result::ResultStream;
 use pegasus::JobConf;
 
 fn get_tag_list(tagclass: String) -> (Vec<usize>, Vec<String>) {
-    let tagclass_num = super::graph::CSR.get_vertices_num(6 as LabelId);
-    let tagclass_name_col = &super::graph::CSR.vertex_prop_table[6_usize]
+    let tagclass_num = CSR.get_vertices_num(6 as LabelId);
+    let tagclass_name_col = &CSR.vertex_prop_table[6_usize]
         .get_column_by_name("name")
         .as_any()
         .downcast_ref::<StringColumn>()
         .unwrap()
         .data;
     let mut tagclass_id = usize::MAX;
-    let tag_name_col = &super::graph::CSR.vertex_prop_table[7_usize]
+    let tag_name_col = &CSR.vertex_prop_table[7_usize]
         .get_column_by_name("name")
         .as_any()
         .downcast_ref::<StringColumn>()
@@ -35,7 +36,7 @@ fn get_tag_list(tagclass: String) -> (Vec<usize>, Vec<String>) {
 
     let mut tag_list = vec![];
     let mut tag_name_list = vec![];
-    if let Some(edges) = super::graph::TAG_HASTYPE_TAGCLASS_IN.get_adj_list(tagclass_id) {
+    if let Some(edges) = TAG_HASTYPE_TAGCLASS_IN.get_adj_list(tagclass_id) {
         for e in edges {
             tag_list.push(e.neighbor);
             tag_name_list.push(tag_name_col[e.neighbor].clone());
@@ -54,13 +55,13 @@ pub fn bi2_sub(conf: JobConf, date: String, tag_class: String) -> ResultStream<(
     let second_window = first_window.add_days(100);
     let second_window_ts = second_window.to_u32();
 
-    let comment_createdate_col = &super::graph::CSR.vertex_prop_table[2_usize]
+    let comment_createdate_col = &CSR.vertex_prop_table[2_usize]
         .get_column_by_name("creationDate")
         .as_any()
         .downcast_ref::<DateTimeColumn>()
         .unwrap()
         .data;
-    let post_createdate_col = &super::graph::CSR.vertex_prop_table[3_usize]
+    let post_createdate_col = &CSR.vertex_prop_table[3_usize]
         .get_column_by_name("creationDate")
         .as_any()
         .downcast_ref::<DateTimeColumn>()
@@ -87,7 +88,7 @@ pub fn bi2_sub(conf: JobConf, date: String, tag_class: String) -> ResultStream<(
                         let tag_id = tag_list[cur_tag_index as usize];
                         let mut count_window_1 = 0_i32;
                         let mut count_window_2 = 0_i32;
-                        if let Some(edges) = super::graph::COMMENT_HASTAG_TAG_IN.get_adj_list(tag_id) {
+                        if let Some(edges) = COMMENT_HASTAG_TAG_IN.get_adj_list(tag_id) {
                             for e in edges {
                                 let ts = comment_createdate_col[e.neighbor].date_to_u32();
                                 if ts < first_window_ts && ts >= start_date_ts {
@@ -97,7 +98,7 @@ pub fn bi2_sub(conf: JobConf, date: String, tag_class: String) -> ResultStream<(
                                 }
                             }
                         }
-                        if let Some(edges) = super::graph::POST_HASTAG_TAG_IN.get_adj_list(tag_id) {
+                        if let Some(edges) = POST_HASTAG_TAG_IN.get_adj_list(tag_id) {
                             for e in edges {
                                 let ts = post_createdate_col[e.neighbor].date_to_u32();
                                 if ts < first_window_ts && ts >= start_date_ts {

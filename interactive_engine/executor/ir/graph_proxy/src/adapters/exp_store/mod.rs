@@ -18,3 +18,8 @@ mod read_graph;
 
 pub use partitioner::SimplePartition;
 pub use read_graph::create_exp_store;
+
+// for gie benchmark test
+pub use read_graph::{
+    to_empty_vertex, to_runtime_edge, to_runtime_vertex, LazyEdgeDetails, LazyVertexDetails,
+};
