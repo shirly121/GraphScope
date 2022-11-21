@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use graph_store::prelude::*;
-use itertools::Itertools;
 use mcsr::graph_db::GlobalCsrTrait;
 use pegasus::{Configuration, JobConf, ServerConf};
 use pegasus_benchmark::queries;
@@ -67,6 +66,30 @@ fn main() {
         conf.reset_servers(ServerConf::All);
         // conf.plan_print = true;
         match split[0] {
+            "bi2" => {
+                println!("Start run query \"BI 2\"");
+                let result = queries::bi2(conf, split[1].to_string(), split[2].to_string());
+                if config.print_result {
+                    let input = vec![split[1].to_string(), split[2].to_string()];
+                    let mut result_list = vec![];
+                    for x in result {
+                        let (tag, count1, count2, diff) = x.unwrap();
+                        result_list.push(vec![
+                            tag,
+                            count1.to_string(),
+                            count2.to_string(),
+                            diff.to_string(),
+                        ])
+                    }
+                    let query_result = Result {
+                        query_type: split[0].to_string(),
+                        query_input: input,
+                        query_result: result_list,
+                    };
+                    println!("{:?}", query_result);
+                }
+                ()
+            }
             "bi2_sub" => {
                 println!("Start run query \"BI SUB 2\"");
                 let result = queries::bi2_sub(conf, split[1].to_string(), split[2].to_string());

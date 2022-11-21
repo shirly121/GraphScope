@@ -51,9 +51,9 @@ pub struct IndexData<G: Send + Sync + IndexType, I: Send + Sync + IndexType> {
 }
 
 impl<G, I> IndexData<G, I>
-where
-    G: Send + Sync + IndexType,
-    I: Send + Sync + IndexType,
+    where
+        G: Send + Sync + IndexType,
+        I: Send + Sync + IndexType,
 {
     /// Add a vertex of given global_id, label_id, and internal_id.
     ///
@@ -130,7 +130,7 @@ where
 pub struct LargeGraphDB<
     G: Send + Sync + IndexType = DefaultId,
     I: Send + Sync + IndexType = InternalId,
-    T: Send + Sync + LabeledTopology<I = I> = CsrTopo<I>,
+    T: Send + Sync + LabeledTopology<I=I> = CsrTopo<I>,
     N: PropertyTableTrait = PropertyTable,
     E: PropertyTableTrait = SingleValueTable,
 > {
@@ -139,7 +139,7 @@ pub struct LargeGraphDB<
     /// The graph structure, the label will be encoded as `LabelId`
     pub(crate) topology: T,
     /// The schema of the vertex/edge property table
-    pub(crate) graph_schema: Arc<LDBCGraphSchema>,
+    pub graph_schema: Arc<LDBCGraphSchema>,
     /// Table from internal vertexs' indices to their properties
     pub(crate) vertex_prop_table: N,
     /// Table from internal edges' indices to their properties
@@ -149,12 +149,12 @@ pub struct LargeGraphDB<
 }
 
 impl<G, I, T, N, E> LargeGraphDB<G, I, T, N, E>
-where
-    G: Eq + IndexType + Send + Sync,
-    I: IndexType + Send + Sync,
-    T: LabeledTopology<I = I> + Send + Sync,
-    N: PropertyTableTrait + Sync,
-    E: PropertyTableTrait + Sync,
+    where
+        G: Eq + IndexType + Send + Sync,
+        I: IndexType + Send + Sync,
+        T: LabeledTopology<I=I> + Send + Sync,
+        N: PropertyTableTrait + Sync,
+        E: PropertyTableTrait + Sync,
 {
     // Below are some private helper functions
     fn index_to_local_vertex(&self, index: NodeIndex<I>, with_property: bool) -> Option<LocalVertex<G>> {
@@ -434,12 +434,12 @@ trait PrivatePropertyTrait<I> {
 }
 
 impl<G, I, T, N, E> PrivatePropertyTrait<I> for LargeGraphDB<G, I, T, N, E>
-where
-    G: IndexType + Send + Sync,
-    I: IndexType + Send + Sync,
-    T: LabeledTopology<I = I> + Send + Sync,
-    N: PropertyTableTrait,
-    E: PropertyTableTrait,
+    where
+        G: IndexType + Send + Sync,
+        I: IndexType + Send + Sync,
+        T: LabeledTopology<I=I> + Send + Sync,
+        N: PropertyTableTrait,
+        E: PropertyTableTrait,
 {
     fn get_all_vertex_property(&self, internal_id: &NodeIndex<I>) -> Option<RowRef> {
         self.vertex_prop_table
@@ -454,12 +454,12 @@ where
 }
 
 impl<G, I, T, N, E> GlobalStoreTrait<G, I> for LargeGraphDB<G, I, T, N, E>
-where
-    G: Eq + IndexType + Send + Sync,
-    I: IndexType + Send + Sync,
-    T: LabeledTopology<I = I> + Send + Sync,
-    N: PropertyTableTrait + Sync,
-    E: PropertyTableTrait + Sync,
+    where
+        G: Eq + IndexType + Send + Sync,
+        I: IndexType + Send + Sync,
+        T: LabeledTopology<I=I> + Send + Sync,
+        N: PropertyTableTrait + Sync,
+        E: PropertyTableTrait + Sync,
 {
     fn get_adj_vertices(
         &self, src_id: G, _edge_labels: Option<&Vec<LabelId>>, dir: Direction,
@@ -580,7 +580,7 @@ where
 pub struct MutableGraphDB<
     G: Send + Sync + IndexType = DefaultId,
     I: Send + Sync + IndexType = InternalId,
-    T: Send + Sync + MutLabeledTopology<I = I> = MutTopo<I>,
+    T: Send + Sync + MutLabeledTopology<I=I> = MutTopo<I>,
     N: PropertyTableTrait = PropertyTable,
     E: PropertyTableTrait = SingleValueTable,
 > {
@@ -603,12 +603,12 @@ pub struct MutableGraphDB<
 
 /// for graph construction
 impl<G, I, T, N, E> MutableGraphDB<G, I, T, N, E>
-where
-    G: Eq + IndexType + Send + Sync,
-    I: IndexType + Send + Sync,
-    T: MutLabeledTopology<I = I> + Send + Sync,
-    N: PropertyTableTrait + Sync,
-    E: PropertyTableTrait + Sync,
+    where
+        G: Eq + IndexType + Send + Sync,
+        I: IndexType + Send + Sync,
+        T: MutLabeledTopology<I=I> + Send + Sync,
+        N: PropertyTableTrait + Sync,
+        E: PropertyTableTrait + Sync,
 {
     /// A private function that adds a vertex into the graph database.
     ///
@@ -715,8 +715,8 @@ where
     }
 
     pub fn into_graph(self, schema: LDBCGraphSchema) -> LargeGraphDB<G, I, T::T, N, E>
-    where
-        T::T: Send + Sync,
+        where
+            T::T: Send + Sync,
     {
         LargeGraphDB {
             partition: self.partition,
@@ -730,17 +730,17 @@ where
 }
 
 impl<G, I, T, N, E> MutableGraphDB<G, I, T, N, E>
-where
-    G: IndexType + Serialize + DeserializeOwned + Send + Sync,
-    I: IndexType + Serialize + DeserializeOwned + Send + Sync,
-    T: MutLabeledTopology<I = I> + Clone + Send + Sync,
-    N: PropertyTableTrait + Send + Sync,
-    E: PropertyTableTrait + Send + Sync,
+    where
+        G: IndexType + Serialize + DeserializeOwned + Send + Sync,
+        I: IndexType + Serialize + DeserializeOwned + Send + Sync,
+        T: MutLabeledTopology<I=I> + Clone + Send + Sync,
+        N: PropertyTableTrait + Send + Sync,
+        E: PropertyTableTrait + Send + Sync,
 {
     /// Export this object to bin files
     pub fn export(&self) -> GDBResult<()>
-    where
-        T::T: Serialize,
+        where
+            T::T: Serialize,
     {
         info!("Partition {:?} writing binary file...", self.partition);
         let partition_dir = self
@@ -761,12 +761,12 @@ where
 }
 
 impl<G, I, T, N, E> GlobalStoreUpdate<G, I> for MutableGraphDB<G, I, T, N, E>
-where
-    G: IndexType + Send + Sync,
-    I: IndexType + Send + Sync,
-    T: MutLabeledTopology<I = I> + Send + Sync,
-    N: PropertyTableTrait + Sync,
-    E: PropertyTableTrait + Sync,
+    where
+        G: IndexType + Send + Sync,
+        I: IndexType + Send + Sync,
+        T: MutLabeledTopology<I=I> + Send + Sync,
+        N: PropertyTableTrait + Sync,
+        E: PropertyTableTrait + Sync,
 {
     fn add_vertex(&mut self, global_id: G, label: Label) -> bool {
         self.add_vertex_internal(global_id, label).0
@@ -806,7 +806,7 @@ where
         }
     }
 
-    fn add_vertex_batches<Iter: Iterator<Item = (G, Label, Row)>>(
+    fn add_vertex_batches<Iter: Iterator<Item=(G, Label, Row)>>(
         &mut self, iter: Iter,
     ) -> GDBResult<usize> {
         let mut properties: Vec<(usize, Row)> = Vec::new();
@@ -826,7 +826,7 @@ where
         Ok(count)
     }
 
-    fn add_edge_batches<Iter: Iterator<Item = (G, G, LabelId, Row)>>(
+    fn add_edge_batches<Iter: Iterator<Item=(G, G, LabelId, Row)>>(
         &mut self, iter: Iter,
     ) -> GDBResult<usize> {
         let mut properties: Vec<(usize, Row)> = Vec::new();
@@ -851,7 +851,6 @@ where
 
 #[cfg(test)]
 mod test {
-
     use std::path::Path;
 
     use super::*;
@@ -1126,7 +1125,7 @@ mod test {
                 (PIDS[3], Some(object![20100804033836982_u64])),
                 (PIDS[6], Some(object![20100202163844119_u64])),
                 (PIDS[7], Some(object![20100331220757321_u64])),
-                (PIDS[8], Some(object![20100724111548162_u64]))
+                (PIDS[8], Some(object![20100724111548162_u64])),
             ],
             out_edge_neighbor
         );
@@ -1171,7 +1170,7 @@ mod test {
                 (PIDS[1], PIDS[3]),
                 (PIDS[1], PIDS[6]),
                 (PIDS[1], PIDS[7]),
-                (PIDS[1], PIDS[8])
+                (PIDS[1], PIDS[8]),
             ],
             all_knows_edges
         );

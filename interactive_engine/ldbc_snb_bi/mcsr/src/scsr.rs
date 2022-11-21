@@ -6,8 +6,7 @@ use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
-use std::mem::size_of;
+use std::io::{Read, Write};
 
 pub struct SingleCsrEdgeIter<'a, I: IndexType> {
     cur_vertex: usize,
@@ -246,10 +245,11 @@ impl<I: IndexType> Decode for SingleCsr<I> {
         Ok(ret)
     }
 }
+
 impl<I: IndexType> Serialize for SingleCsr<I> {
     fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where
-        S: Serializer,
+        where
+            S: Serializer,
     {
         let mut bytes = Vec::new();
         if self.write_to(&mut bytes).is_ok() {
@@ -262,12 +262,12 @@ impl<I: IndexType> Serialize for SingleCsr<I> {
 }
 
 impl<'de, I> Deserialize<'de> for SingleCsr<I>
-where
-    I: IndexType,
+    where
+        I: IndexType,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
-    where
-        D: Deserializer<'de>,
+        where
+            D: Deserializer<'de>,
     {
         let vec = Vec::<u8>::deserialize(deserializer)?;
         let mut bytes = vec.as_slice();
