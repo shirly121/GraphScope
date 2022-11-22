@@ -129,6 +129,14 @@ fn main() {
                 }
                 ()
             }
+            "bi2_sub_hop" => {
+                println!("Start run query \"BI 2 SUB HOP\"");
+                let mut result = queries::bi2_sub_hop(conf, split[1].to_string(), split[2].to_string());
+                if config.print_result {
+                    println!("BI 2 SUB HOP count {:?}", result.next());
+                }
+                ()
+            }
             "bi2_hop_record" => {
                 println!("Start run query \"BI 2 HOP Record\"");
                 let mut result = queries::bi2_hop_record(conf, split[1].to_string(), split[2].to_string());
