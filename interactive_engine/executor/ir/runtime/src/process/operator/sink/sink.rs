@@ -63,6 +63,10 @@ impl RecordSinkEncoder {
 
     fn element_to_pb(&self, e: &Entry) -> result_pb::Element {
         let inner = match e {
+            Entry::OID(id) => {
+                let vertex_pb = result_pb::Vertex { id: *id as i64, label: None, properties: vec![] };
+                Some(result_pb::element::Inner::Vertex(vertex_pb))
+            }
             Entry::V(v) => {
                 let vertex_pb = self.vertex_to_pb(v);
                 Some(result_pb::element::Inner::Vertex(vertex_pb))

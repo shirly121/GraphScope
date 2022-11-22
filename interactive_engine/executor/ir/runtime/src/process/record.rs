@@ -20,7 +20,9 @@ use std::ops::Add;
 use std::sync::Arc;
 
 use dyn_type::{BorrowObject, Object};
-use graph_proxy::apis::{Edge, Element, GraphElement, GraphPath, Vertex, VertexOrEdge};
+use graph_proxy::apis::{
+    read_id, write_id, Edge, Element, GraphElement, GraphPath, Vertex, VertexOrEdge, ID,
+};
 use graph_proxy::utils::expr::eval::Context;
 use ir_common::error::ParsePbError;
 use ir_common::generated::results as result_pb;
@@ -31,6 +33,7 @@ use vec_map::VecMap;
 
 #[derive(Debug, Clone, Hash, PartialEq, PartialOrd)]
 pub enum Entry {
+    OID(ID),
     V(Vertex),
     E(Edge),
     P(GraphPath),
@@ -39,6 +42,14 @@ pub enum Entry {
 }
 
 impl Entry {
+    pub fn as_id(&self) -> Option<ID> {
+        match self {
+            Entry::OID(id) => Some(*id),
+            Entry::V(v) => Some(v.id()),
+            _ => None,
+        }
+    }
+
     pub fn as_graph_vertex(&self) -> Option<&Vertex> {
         match self {
             Entry::V(v) => Some(v),
@@ -170,6 +181,12 @@ impl Record {
     }
 }
 
+impl Into<Entry> for ID {
+    fn into(self) -> Entry {
+        Entry::OID(self)
+    }
+}
+
 impl Into<Entry> for Vertex {
     fn into(self) -> Entry {
         Entry::V(self)
@@ -226,6 +243,7 @@ impl Context<Entry> for Record {
 impl Element for Entry {
     fn as_graph_element(&self) -> Option<&dyn GraphElement> {
         match self {
+            Entry::OID(_) => None,
             Entry::V(v) => v.as_graph_element(),
             Entry::E(e) => e.as_graph_element(),
             Entry::P(p) => p.as_graph_element(),
@@ -236,6 +254,7 @@ impl Element for Entry {
 
     fn len(&self) -> usize {
         match self {
+            Entry::OID(_) => 1,
             Entry::V(v) => v.len(),
             Entry::E(e) => e.len(),
             Entry::P(p) => p.len(),
@@ -246,6 +265,7 @@ impl Element for Entry {
 
     fn as_borrow_object(&self) -> BorrowObject {
         match self {
+            Entry::OID(oid) => BorrowObject::from(*oid),
             Entry::V(v) => v.as_borrow_object(),
             Entry::E(e) => e.as_borrow_object(),
             Entry::P(p) => p.as_borrow_object(),
@@ -367,6 +387,10 @@ impl Encode for Entry {
                 writer.write_u8(4)?;
                 collection.write_to(writer)?
             }
+            Entry::OID(id) => {
+                writer.write_u8(5)?;
+                write_id(writer, *id)?;
+            }
         }
         Ok(())
     }
@@ -395,6 +419,10 @@ impl Decode for Entry {
             4 => {
                 let collection = <Vec<Entry>>::read_from(reader)?;
                 Ok(Entry::Collection(collection))
+            }
+            5 => {
+                let id = read_id(reader)?;
+                Ok(Entry::OID(id))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "unreachable")),
         }
