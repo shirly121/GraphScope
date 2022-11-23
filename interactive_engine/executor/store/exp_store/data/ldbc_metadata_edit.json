@@ -60,42 +60,42 @@
         "src_vertex_type": "ORGANISATION",
         "dst_vertex_type": "PLACE"
       },
-      "PERSON_hasInterest_TAG_0_0.csv": {
+      "PERSON_HASINTEREST_TAG_0_0.csv": {
         "etype": "HASINTEREST",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "TAG"
       },
-      "PERSON_ISLOCATEDIN_PLACE_0_0": {
+      "PERSON_ISLOCATEDIN_PLACE_0_0.csv": {
         "etype": "ISLOCATEDIN",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "PLACE"
       },
-      "PERSON_knows_PERSON_0_0.csv": {
+      "PERSON_KNOWS_PERSON_0_0.csv": {
         "etype": "KNOWS",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "PERSON"
       },
-      "PERSON_likes_COMMENT_0_0.csv": {
+      "PERSON_LIKES_COMMENT_0_0.csv": {
         "etype": "LIKES",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "COMMENT"
       },
-      "PERSON_likes_POST_0_0.csv": {
+      "PERSON_LIKES_POST_0_0.csv": {
         "etype": "LIKES",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "POST"
       },
-      "PERSON_studyAt_ORGANISATION_0_0.csv": {
+      "PERSON_STUDYAT_ORGANISATION_0_0.csv": {
         "etype": "STUDYAT",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "ORGANISATION"
       },
-      "PERSON_workAt_ORGANISATION_0_0.csv": {
+      "PERSON_WORKAT_ORGANISATION_0_0.csv": {
         "etype": "WORKAT",
         "src_vertex_type": "PERSON",
         "dst_vertex_type": "ORGANISATION"
       },
-      "PLACE_isPartOf_PLACE_0_0.csv": {
+      "PLACE_ISPARTOF_PLACE_0_0.csv": {
         "etype": "ISPARTOF",
         "src_vertex_type": "PLACE",
         "dst_vertex_type": "PLACE"
@@ -115,7 +115,7 @@
         "src_vertex_type": "POST",
         "dst_vertex_type": "PLACE"
       },
-      "TAG_hasType_TAGCLASS_0_0.csv": {
+      "TAG_HASTYPE_TAGCLASS_0_0.csv": {
         "etype": "HASTYPE",
         "src_vertex_type": "TAG",
         "dst_vertex_type": "TAGCLASS"
