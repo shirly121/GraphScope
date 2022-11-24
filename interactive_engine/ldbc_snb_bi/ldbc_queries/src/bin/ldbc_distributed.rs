@@ -185,6 +185,52 @@ fn main() {
                 ()
             }
 
+            // khop...
+            "khop" => {
+                println!("Start run query \"khop\"");
+                let mut result = queries::khop(conf);
+                if config.print_result {
+                    println!("khop count {:?}", result.next());
+                }
+                ()
+            }
+
+            "khop_record" => {
+                println!("Start run query \"khop_record\"");
+                let mut result = queries::khop_record(conf);
+                if config.print_result {
+                    println!("khop_record count {:?}", result.next());
+                }
+                ()
+            }
+
+            "khop_record_aliasopt" => {
+                println!("Start run query \"khop_record_aliasopt\"");
+                let mut result = queries::khop_record_aliasopt(conf);
+                if config.print_result {
+                    println!("khop_record_aliasopt count {:?}", result.next());
+                }
+                ()
+            }
+
+            "khop_record_precache" => {
+                println!("Start run query \"khop_record_precache\"");
+                let mut result = queries::khop_record_precache(conf);
+                if config.print_result {
+                    println!("khop_record_precache count {:?}", result.next());
+                }
+                ()
+            }
+
+            "khop_record_recordopt" => {
+                println!("Start run query \"khop_record_recordopt\"");
+                let mut result = queries::khop_record_recordopt(conf);
+                if config.print_result {
+                    println!("khop_record_recordopt count {:?}", result.next());
+                }
+                ()
+            }
+
             _ => println!("Unknown query"),
         }
         index += 1;
