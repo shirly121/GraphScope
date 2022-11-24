@@ -15,10 +15,10 @@
 //!
 
 use ahash::{HashMap, HashMapExt};
-use indexmap::map::IndexMap;
 use itertools::Itertools;
 use petgraph::graph::IndexType;
 use petgraph::prelude::{DiGraph, Direction, EdgeIndex, NodeIndex};
+use std::collections::BTreeMap;
 
 use crate::common::{Label, LabelId, INVALID_LABEL_ID};
 use crate::graph_db::labeled_topo::{LabeledTopology, MutLabeledTopology};
@@ -86,12 +86,15 @@ struct RangeByLabel<K: IndexType, V: IndexType> {
     /// K -> the key refers to label
     /// (V, V) -> the first element refers to the starting index in the sparse row,
     ///        -> the second element refers to the size of the elements regarding the given `K`
-    inner: IndexMap<K, (V, V)>,
+    inner: BTreeMap<K, (V, V)>,
 }
 
 impl<K: IndexType, V: IndexType> RangeByLabel<K, V> {
     pub fn get_index(&self) -> Option<usize> {
-        self.inner.first().map(|(_, r)| r.0.index())
+        self.inner
+            .iter()
+            .next()
+            .map(|(_, r)| r.0.index())
     }
 
     pub fn get_range(&self, label: K) -> Option<(usize, usize)> {
