@@ -317,7 +317,16 @@ impl<I: IndexType> From<MutTopo<I>> for CsrTopo<I> {
         let edges = mut_topo.edges.drain(..).collect();
         let csr = mut_topo.adj_edges.into();
 
-        Self { nodes, edges, csr }
+        let mut edges = Vec::new();
+        for edge in raw_edges {
+            edges.push(EdgeTuple::new(edge.source(), edge.target(), edge.weight));
+        }
+
+        CsrTopo {
+            nodes,
+            edges,
+            csr: BiDirEdges { incoming: mut_in_edges.into(), outgoing: mut_out_edges.into() },
+        }
     }
 }
 
