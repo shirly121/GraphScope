@@ -7,7 +7,7 @@ use graph_store::graph_db::{GlobalStoreUpdate, MutableGraphDB};
 use graph_store::ldbc::get_graph_files;
 use graph_store::parser::EdgeMeta;
 use graph_store::prelude::{DefaultId, GraphDBConfig, Row, NAME, VERSION};
-use pegasus_common::codec::Decode;
+// use pegasus_common::codec::Decode;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
@@ -100,7 +100,8 @@ fn write_vertices<R: Read>(graph: &mut MutableGraphDB, mut rdr: BufReader<R>) ->
             let prop_len = rdr.read_i64::<BigEndian>().unwrap() as usize;
             let mut prop_buff: Vec<u8> = vec![0; prop_len];
             rdr.read_exact(prop_buff.as_mut()).unwrap();
-            let prop = Row::read_from(&mut prop_buff.as_slice()).unwrap();
+            // let prop = Row::read_from(&mut prop_buff.as_slice()).unwrap();
+            let prop = Row::default();
             container.push((id as DefaultId, [primary_label as LabelId, secondary_label as LabelId], prop));
             vertex_count += 1;
         } else {
@@ -129,7 +130,7 @@ fn write_edges<R: Read>(
             let prop_len = rdr.read_i64::<BigEndian>().unwrap() as usize;
             let mut prop_buff: Vec<u8> = vec![0; prop_len];
             rdr.read_exact(prop_buff.as_mut()).unwrap();
-            let prop = Row::read_from(&mut prop_buff.as_slice()).unwrap();
+            let prop = Row::default();
 
             container.push((
                 EdgeMeta {
@@ -176,6 +177,6 @@ fn write_edges<R: Read>(
         }
     }
 
-    //  assert_eq!(edge_count, count);
+    assert_eq!(edge_count, count);
     edge_count
 }
