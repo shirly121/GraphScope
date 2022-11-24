@@ -782,7 +782,7 @@ fn visit_dirs(
 
 /// To recursively visit the directory from `raw_data_dir` to obtain all files
 /// that record vertex/edge data.
-fn get_graph_files(
+pub fn get_graph_files(
     raw_data_dir: PathBuf, work_id: usize, peers: usize,
 ) -> GDBResult<BTreeMap<String, PathBuf>> {
     let mut files = BTreeMap::new();

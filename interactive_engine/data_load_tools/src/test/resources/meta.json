@@ -1,129 +1,12 @@
 {
   "vertex_table_to_type": {
-    "comment_0_0.csv": "COMMENT",
-    "forum_0_0.csv": "FORUM",
-    "organisation_0_0.csv": "ORGANISATION",
-    "person_0_0.csv": "PERSON",
-    "place_0_0.csv": "PLACE",
-    "post_0_0.csv": "POST",
-    "tag_0_0.csv": "TAG",
-    "tagclass_0_0.csv": "TAGCLASS"
+    "person_1": "PERSON"
   },
   "edge_table_to_type": {
-    "comment_hasCreator_person_0_0.csv": {
-      "etype": "HASCREATOR",
-      "src_vertex_type": "COMMENT",
-      "dst_vertex_type": "PERSON"
-    },
-    "comment_hasTag_tag_0_0.csv": {
-      "etype": "HASTAG",
-      "src_vertex_type": "COMMENT",
-      "dst_vertex_type": "TAG"
-    },
-    "comment_isLocatedIn_place_0_0.csv": {
-      "etype": "ISLOCATEDIN",
-      "src_vertex_type": "COMMENT",
-      "dst_vertex_type": "PLACE"
-    },
-    "comment_replyOf_comment_0_0.csv": {
-      "etype": "REPLYOF",
-      "src_vertex_type": "COMMENT",
-      "dst_vertex_type": "COMMENT"
-    },
-    "comment_replyOf_post_0_0.csv": {
-      "etype": "REPLYOF",
-      "src_vertex_type": "COMMENT",
-      "dst_vertex_type": "POST"
-    },
-    "forum_containerOf_post_0_0.csv": {
-      "etype": "CONTAINEROF",
-      "src_vertex_type": "FORUM",
-      "dst_vertex_type": "POST"
-    },
-    "forum_hasMember_person_0_0.csv": {
-      "etype": "HASMEMBER",
-      "src_vertex_type": "FORUM",
-      "dst_vertex_type": "PERSON"
-    },
-    "forum_hasModerator_person_0_0.csv": {
-      "etype": "HASMODERATOR",
-      "src_vertex_type": "FORUM",
-      "dst_vertex_type": "PERSON"
-    },
-    "forum_hasTag_tag_0_0.csv": {
-      "etype": "HASTAG",
-      "src_vertex_type": "FORUM",
-      "dst_vertex_type": "TAG"
-    },
-    "organisation_isLocatedIn_place_0_0.csv": {
-      "etype": "ISLOCATEDIN",
-      "src_vertex_type": "ORGANISATION",
-      "dst_vertex_type": "PLACE"
-    },
-    "person_hasInterest_tag_0_0.csv": {
-      "etype": "HASINTEREST",
-      "src_vertex_type": "PERSON",
-      "dst_vertex_type": "TAG"
-    },
-    "person_isLocatedIn_place_0_0.csv": {
-      "etype": "ISLOCATEDIN",
-      "src_vertex_type": "PERSON",
-      "dst_vertex_type": "PLACE"
-    },
-    "person_knows_person_0_0.csv": {
+    "knows_1": {
       "etype": "KNOWS",
       "src_vertex_type": "PERSON",
       "dst_vertex_type": "PERSON"
-    },
-    "person_likes_comment_0_0.csv": {
-      "etype": "LIKES",
-      "src_vertex_type": "PERSON",
-      "dst_vertex_type": "COMMENT"
-    },
-    "person_likes_post_0_0.csv": {
-      "etype": "LIKES",
-      "src_vertex_type": "PERSON",
-      "dst_vertex_type": "POST"
-    },
-    "person_studyAt_organisation_0_0.csv": {
-      "etype": "STUDYAT",
-      "src_vertex_type": "PERSON",
-      "dst_vertex_type": "ORGANISATION"
-    },
-    "person_workAt_organisation_0_0.csv": {
-      "etype": "WORKAT",
-      "src_vertex_type": "PERSON",
-      "dst_vertex_type": "ORGANISATION"
-    },
-    "place_isPartOf_place_0_0.csv": {
-      "etype": "ISPARTOF",
-      "src_vertex_type": "PLACE",
-      "dst_vertex_type": "PLACE"
-    },
-    "post_hasCreator_person_0_0.csv": {
-      "etype": "HASCREATOR",
-      "src_vertex_type": "POST",
-      "dst_vertex_type": "PERSON"
-    },
-    "post_hasTag_tag_0_0.csv": {
-      "etype": "HASTAG",
-      "src_vertex_type": "POST",
-      "dst_vertex_type": "TAG"
-    },
-    "post_isLocatedIn_place_0_0.csv": {
-      "etype": "ISLOCATEDIN",
-      "src_vertex_type": "POST",
-      "dst_vertex_type": "PLACE"
-    },
-    "tag_hasType_tagclass_0_0.csv": {
-      "etype": "HASTYPE",
-      "src_vertex_type": "TAG",
-      "dst_vertex_type": "TAGCLASS"
-    },
-    "tagclass_isSubClassOf_tagclass_0_0.csv": {
-      "etype": "ISSUBCLASSOF",
-      "src_vertex_type": "TAGCLASS",
-      "dst_vertex_type": "TAGCLASS"
     }
   },
   "vertex_type_to_id": {
@@ -159,8 +42,15 @@
     "HASCREATOR": 0
   },
   "vertex_type_hierarchy": {
-    "ORGANISATION": ["UNIVERSITY", "COMPANY"],
-    "PLACE": ["CONTINENT", "COUNTRY", "CITY"]
+    "ORGANISATION": [
+      "UNIVERSITY",
+      "COMPANY"
+    ],
+    "PLACE": [
+      "CONTINENT",
+      "COUNTRY",
+      "CITY"
+    ]
   },
   "column_name_to_id": {},
   "vertex_columns": {
@@ -237,6 +127,11 @@
     ],
     "PERSON": [
       [
+        "creationDate",
+        "Date",
+        false
+      ],
+      [
         "id",
         "ID",
         true
@@ -262,17 +157,22 @@
         false
       ],
       [
-        "creationDate",
-        "Date",
-        false
-      ],
-      [
         "locationIP",
         "String",
         false
       ],
       [
         "browserUsed",
+        "String",
+        false
+      ],
+      [
+        "zone",
+        "String",
+        false
+      ],
+      [
+        "email",
         "String",
         false
       ]
@@ -504,6 +404,11 @@
     ],
     "KNOWS": [
       [
+        "creationDate",
+        "Date",
+        false
+      ],
+      [
         "start_id",
         "ID",
         true
@@ -512,11 +417,6 @@
         "end_id",
         "ID",
         true
-      ],
-      [
-        "creationDate",
-        "Date",
-        false
       ]
     ],
     "LIKES": [
