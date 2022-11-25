@@ -11,7 +11,7 @@ use graph_store::ldbc::get_graph_files;
 use graph_store::parser::EdgeMeta;
 use graph_store::prelude::{DefaultId, GraphDBConfig, InternalId, MutTopo, Row, NAME, VERSION};
 use graph_store::table::{PropertyTable, SingleValueTable};
-// use pegasus_common::codec::Decode;
+use pegasus_common::codec::Decode;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
@@ -118,6 +118,7 @@ fn main() {
                 }
             }
             let mut graph = graph_builder.lock().unwrap();
+            println!("thread{} start to write graphs", thread_id);
             for (vertex_container, vertices_num) in vertex_containers {
                 write_vertices(&mut graph.borrow_mut(), vertex_container, vertices_num);
             }
@@ -130,6 +131,7 @@ fn main() {
                     partition_num,
                 );
             }
+            println!("thread{} finishes", thread_id);
         });
         thread_handles.push(thread_handle)
     }
@@ -157,8 +159,7 @@ fn read_vertices<R: Read>(mut rdr: BufReader<R>) -> (Vec<(usize, [u8; 2], Row)>,
             let prop_len = rdr.read_i64::<BigEndian>().unwrap() as usize;
             let mut prop_buff: Vec<u8> = vec![0; prop_len];
             rdr.read_exact(prop_buff.as_mut()).unwrap();
-            // let prop = Row::read_from(&mut prop_buff.as_slice()).unwrap();
-            let prop = Row::default();
+            let prop = Row::read_from(&mut prop_buff.as_slice()).unwrap();
             container.push((id as DefaultId, [primary_label as LabelId, secondary_label as LabelId], prop));
             vertex_count += 1;
         } else {
