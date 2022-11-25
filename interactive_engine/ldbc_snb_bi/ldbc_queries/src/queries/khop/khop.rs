@@ -28,7 +28,8 @@ pub fn khop(conf: JobConf) -> ResultStream<u64> {
             let all_persons = GRAPH
                 .get_all_vertices(Some(&vec![person_label]))
                 .map(|v| v.get_id() as u64);
-            let source = if worker_id == (workers - 1) {
+            let last_worker_of_current_server = workers * (pegasus::get_current_worker().server_id + 1) - 1;
+            let source = if worker_id == last_worker_of_current_server {
                 all_persons
                     .skip((worker_id % workers) as usize * partial_count)
                     .take(last_partial_count)

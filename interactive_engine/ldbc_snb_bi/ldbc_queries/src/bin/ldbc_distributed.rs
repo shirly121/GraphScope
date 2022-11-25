@@ -89,7 +89,6 @@ fn main() {
                     };
                     println!("{:?}", query_result);
                 }
-                ()
             }
             "bi2_sub" => {
                 println!("Start run query \"BI SUB 2\"");
@@ -113,7 +112,6 @@ fn main() {
                     };
                     println!("{:?}", query_result);
                 }
-                ()
             }
 
             // as a two-hop case, we compare the versions of bi2_hop, bi2_hop_record, bi2_hop_record_aliasopt, and bi2_hop_record_evalopt, where
@@ -125,25 +123,28 @@ fn main() {
                 println!("Start run query \"BI 2 HOP\"");
                 let mut result = queries::bi2_hop(conf, split[1].to_string(), split[2].to_string());
                 if config.print_result {
-                    println!("BI 2 HOP count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("BI 2 HOP count {:?}", res);
+                    }
                 }
-                ()
             }
             "bi2_sub_hop" => {
                 println!("Start run query \"BI 2 SUB HOP\"");
                 let mut result = queries::bi2_sub_hop(conf, split[1].to_string(), split[2].to_string());
                 if config.print_result {
-                    println!("BI 2 SUB HOP count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("BI 2 SUB HOP count {:?}", res);
+                    }
                 }
-                ()
             }
             "bi2_hop_record" => {
                 println!("Start run query \"BI 2 HOP Record\"");
                 let mut result = queries::bi2_hop_record(conf, split[1].to_string(), split[2].to_string());
                 if config.print_result {
-                    println!("BI 2 HOP record count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("BI 2 HOP record count {:?}", res);
+                    }
                 }
-                ()
             }
             "bi2_hop_record_aliasopt" => {
                 println!("Start run query \"BI 2 HOP RecordAliasOpt\"");
@@ -152,16 +153,16 @@ fn main() {
                 if config.print_result {
                     println!("BI 2 HOP record aliasopt count {:?}", result.next());
                 }
-                ()
             }
             "bi2_hop_record_evalopt" => {
                 println!("Start run query \"BI 2 HOP EvalOpt\"");
                 let mut result =
                     queries::bi2_hop_record_evalopt(conf, split[1].to_string(), split[2].to_string());
                 if config.print_result {
-                    println!("BI 2 HOP recound evalopt count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("BI 2 HOP record evalopt count {:?}", res);
+                    }
                 }
-                ()
             }
             "bi2_hop_record_filter_pushdown" => {
                 println!("Start run query \"BI 2 HOP FilterPD\"");
@@ -171,18 +172,20 @@ fn main() {
                     split[2].to_string(),
                 );
                 if config.print_result {
-                    println!("BI 2 HOP record filter pd count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("BI 2 HOP record filter pd count {:?}", res);
+                    }
                 }
-                ()
             }
             "bi2_hop_record_recordopt" => {
                 println!("Start run query \"BI 2 HOP RecordOpt\"");
                 let mut result =
                     queries::bi2_hop_record_recordopt(conf, split[1].to_string(), split[2].to_string());
                 if config.print_result {
-                    println!("BI 2 HOP record record opt count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("BI 2 HOP record record opt count {:?}", res);
+                    }
                 }
-                ()
             }
 
             // khop...
@@ -190,45 +193,50 @@ fn main() {
                 println!("Start run query \"khop\"");
                 let mut result = queries::khop(conf);
                 if config.print_result {
-                    println!("khop count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("khop {:?}", res);
+                    }
                 }
-                ()
             }
 
             "khop_record" => {
                 println!("Start run query \"khop_record\"");
                 let mut result = queries::khop_record(conf);
                 if config.print_result {
-                    println!("khop_record count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("khop_record {:?}", res);
+                    }
                 }
-                ()
             }
 
             "khop_record_aliasopt" => {
                 println!("Start run query \"khop_record_aliasopt\"");
                 let mut result = queries::khop_record_aliasopt(conf);
                 if config.print_result {
-                    println!("khop_record_aliasopt count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("khop_record_aliasopt {:?}", res);
+                    }
                 }
-                ()
             }
 
             "khop_record_precache" => {
                 println!("Start run query \"khop_record_precache\"");
                 let mut result = queries::khop_record_precache(conf);
                 if config.print_result {
-                    println!("khop_record_precache count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("khop_record_precache {:?}", res);
+                    }
                 }
-                ()
             }
 
             "khop_record_recordopt" => {
                 println!("Start run query \"khop_record_recordopt\"");
                 let mut result = queries::khop_record_recordopt(conf);
                 if config.print_result {
-                    println!("khop_record_recordopt count {:?}", result.next());
+                    while let Some(res) = result.next() {
+                        println!("khop_record_recordopt {:?}", res);
+                    }
                 }
-                ()
             }
 
             _ => println!("Unknown query"),
