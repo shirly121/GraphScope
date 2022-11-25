@@ -56,6 +56,8 @@ def bind_app(graph, app_assets):
     inputs = [graph.op, app_assets.op]
     config = {}
     config[types_pb2.APP_ALGO] = utils.s_to_attr(app_assets.algo)
+    if hasattr(graph, "_vertex_map"):
+        config[types_pb2.VERTEX_MAP_TYPE] = utils.i_to_attr(graph._vertex_map)
     if app_assets.cmake_extra_options is not None:
         config[types_pb2.CMAKE_EXTRA_OPTIONS] = utils.s_to_attr(
             app_assets.cmake_extra_options
@@ -194,6 +196,7 @@ def add_labels_to_graph(graph, loader_op):
         types_pb2.DIRECTED: utils.b_to_attr(graph._directed),
         types_pb2.OID_TYPE: utils.s_to_attr(graph._oid_type),
         types_pb2.GENERATE_EID: utils.b_to_attr(graph._generate_eid),
+        types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(graph._vertex_map),
         types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
         types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
     }
@@ -426,6 +429,7 @@ def project_arrow_property_graph(graph, vertex_collections, edge_collections):
     check_argument(graph.graph_type == graph_def_pb2.ARROW_PROPERTY)
     config = {
         types_pb2.GRAPH_TYPE: utils.graph_type_to_attr(graph.graph_type),
+        types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(graph._vertex_map),
     }
     config.update(
         {
@@ -466,6 +470,8 @@ def project_to_simple(
         types_pb2.V_PROP_KEY: utils.s_to_attr(v_prop),
         types_pb2.E_PROP_KEY: utils.s_to_attr(e_prop),
     }
+    if hasattr(graph, "_vertex_map"):
+        config[types_pb2.VERTEX_MAP_TYPE] = utils.i_to_attr(graph._vertex_map)
     op = Operation(
         graph.session_id,
         types_pb2.PROJECT_TO_SIMPLE,
@@ -949,102 +955,6 @@ def graph_to_dataframe(graph, selector=None, vertex_range=None):
     return op
 
 
-def create_interactive_query(graph, engine_params):
-    """Create a interactive engine that query on the :code:`graph`
-
-    Args:
-        graph (:class:`graphscope.framework.graph.GraphDAGNode`):
-            Source property graph.
-        engine_params (dict, optional):
-            Configuration to startup the interactive engine. See detail in:
-            `interactive_engine/deploy/docker/dockerfile/executor.vineyard.properties`
-
-    Returns:
-        An op to create a interactive engine based on a graph.
-    """
-    config = {}
-    if engine_params is not None:
-        config[types_pb2.GIE_GREMLIN_ENGINE_PARAMS] = utils.s_to_attr(
-            json.dumps(engine_params)
-        )
-    op = Operation(
-        graph.session_id,
-        types_pb2.CREATE_INTERACTIVE_QUERY,
-        config=config,
-        inputs=[graph.op],
-        output_types=types_pb2.INTERACTIVE_QUERY,
-    )
-    return op
-
-
-def create_learning_instance(graph, nodes=None, edges=None, gen_labels=None):
-    """Create an engine for graph learning.
-
-    Args:
-        graph (:class:`graphscope.framework.graph.GraphDAGNode`):
-            Source property graph.
-        nodes (list): The node types that will be used for gnn training.
-        edges (list): The edge types that will be used for gnn training.
-        gen_labels (list): Extra node and edge labels on original graph for gnn training.
-
-    Returns:
-        An op to create a learning engine based on a graph.
-    """
-    config = {}
-    # pickle None is expected
-    config[types_pb2.NODES] = utils.bytes_to_attr(pickle.dumps(nodes))
-    config[types_pb2.EDGES] = utils.bytes_to_attr(pickle.dumps(edges))
-    config[types_pb2.GLE_GEN_LABELS] = utils.bytes_to_attr(pickle.dumps(gen_labels))
-    op = Operation(
-        graph.session_id,
-        types_pb2.CREATE_LEARNING_INSTANCE,
-        config=config,
-        inputs=[graph.op],
-        output_types=types_pb2.LEARNING_GRAPH,
-    )
-    return op
-
-
-def close_interactive_query(interactive_query):
-    """Close the interactive instance.
-
-    Args:
-        interactive_query (:class:`graphscope.interactive.query.InteractiveQueryDAGNode`):
-            The GIE instance holds the graph that gremlin query on.
-    Returns:
-        An op to close the instance.
-    """
-    config = {}
-    op = Operation(
-        interactive_query.session_id,
-        types_pb2.CLOSE_INTERACTIVE_QUERY,
-        config=config,
-        inputs=[interactive_query.op],
-        output_types=types_pb2.NULL_OUTPUT,
-    )
-    return op
-
-
-def close_learning_instance(learning_instance):
-    """Close the learning instance.
-
-    Args:
-        learning_instance (:class:`graphscope.learning.graph.GraphDAGNode`):
-            The learning instance.
-    Returns:
-        An op to close the instance.
-    """
-    config = {}
-    op = Operation(
-        learning_instance.session_id,
-        types_pb2.CLOSE_LEARNING_INSTANCE,
-        config=config,
-        inputs=[learning_instance.op],
-        output_types=types_pb2.NULL_OUTPUT,
-    )
-    return op
-
-
 def gremlin_query(interactive_query, query, request_options=None):
     """Execute a gremlin query.
 
@@ -1063,6 +973,7 @@ def gremlin_query(interactive_query, query, request_options=None):
     """
     config = {}
     config[types_pb2.GIE_GREMLIN_QUERY_MESSAGE] = utils.s_to_attr(query)
+    config[types_pb2.VINEYARD_ID] = utils.i_to_attr(interactive_query.object_id)
     if request_options:
         config[types_pb2.GIE_GREMLIN_REQUEST_OPTIONS] = utils.s_to_attr(
             json.dumps(request_options)
@@ -1071,7 +982,6 @@ def gremlin_query(interactive_query, query, request_options=None):
         interactive_query.session_id,
         types_pb2.GREMLIN_QUERY,
         config=config,
-        inputs=[interactive_query.op],
         output_types=types_pb2.GREMLIN_RESULTS,
     )
     return op
@@ -1100,6 +1010,7 @@ def gremlin_to_subgraph(
     config = {}
     config[types_pb2.GIE_GREMLIN_QUERY_MESSAGE] = utils.s_to_attr(gremlin_script)
     config[types_pb2.OID_TYPE] = utils.s_to_attr(oid_type)
+    config[types_pb2.VINEYARD_ID] = utils.i_to_attr(interactive_query.object_id)
     if request_options:
         config[types_pb2.GIE_GREMLIN_REQUEST_OPTIONS] = utils.s_to_attr(
             json.dumps(request_options)
@@ -1108,7 +1019,6 @@ def gremlin_to_subgraph(
         interactive_query.session_id,
         types_pb2.SUBGRAPH,
         config=config,
-        inputs=[interactive_query.op],
         output_types=types_pb2.GRAPH,
     )
     return op

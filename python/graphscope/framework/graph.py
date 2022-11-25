@@ -19,7 +19,6 @@
 import hashlib
 import json
 import logging
-import threading
 import warnings
 from abc import ABCMeta
 from abc import abstractmethod
@@ -33,7 +32,6 @@ try:
 except ImportError:
     vineyard = None
 
-from graphscope.config import GSConfig as gs_config
 from graphscope.framework import dag_utils
 from graphscope.framework import utils
 from graphscope.framework.dag import DAGNode
@@ -185,6 +183,7 @@ class GraphInterface(metaclass=ABCMeta):
         config[types_pb2.OID_TYPE] = utils.s_to_attr(self._oid_type)
         config[types_pb2.VID_TYPE] = utils.s_to_attr("uint64_t")
         config[types_pb2.IS_FROM_VINEYARD_ID] = utils.b_to_attr(False)
+        config[types_pb2.VERTEX_MAP_TYPE] = utils.i_to_attr(self._vertex_map)
         return dag_utils.create_graph(
             self.session_id, graph_def_pb2.ARROW_PROPERTY, inputs=None, attrs=config
         )
@@ -226,6 +225,7 @@ class GraphDAGNode(DAGNode, GraphInterface):
         oid_type="int64",
         directed=True,
         generate_eid=True,
+        vertex_map="global",
     ):
         """Construct a :class:`GraphDAGNode` object.
 
@@ -242,6 +242,9 @@ class GraphDAGNode(DAGNode, GraphInterface):
             oid_type: (str, optional): Type of vertex original id. Defaults to "int64".
             directed: (bool, optional): Directed graph or not. Defaults to True.
             generate_eid: (bool, optional): Generate id for each edge when setted True. Defaults to True.
+            vertex_map (str, optional): Indicate use global vertex map or local vertex map. Can be "global" or "local".
+                Defaults to global.
+
         """
 
         super().__init__()
@@ -253,6 +256,8 @@ class GraphDAGNode(DAGNode, GraphInterface):
         self._directed = directed
         self._generate_eid = generate_eid
         self._graph_type = graph_def_pb2.ARROW_PROPERTY
+        self._vertex_map = utils.vertex_map_type_to_enum(vertex_map)
+
         # list of pair <parent_op_key, VertexLabel/EdgeLabel>
         self._unsealed_vertices_and_edges = list()
         # check for newly added vertices and edges.
@@ -306,16 +311,17 @@ class GraphDAGNode(DAGNode, GraphInterface):
         op = dag_utils.project_to_simple(self, str(v_prop), str(e_prop))
         # construct dag node
         graph_dag_node = GraphDAGNode(
-            self._session, op, self._oid_type, self._directed, self._generate_eid
+            self._session,
+            op,
+            self._oid_type,
+            self._directed,
+            self._generate_eid,
+            self._vertex_map,
         )
         graph_dag_node._base_graph = self
         return graph_dag_node
 
     def _resolve_op(self, incoming_data):
-        # Don't import the :code:`NXGraph` in top-level statements to improve the
-        # performance of :code:`import graphscope`.
-        from graphscope import nx
-
         if incoming_data is None:
             # create dag node of empty graph
             self._op = self._construct_op_of_empty_graph()
@@ -323,21 +329,26 @@ class GraphDAGNode(DAGNode, GraphInterface):
             self._op = incoming_data
             if self._op.type == types_pb2.PROJECT_TO_SIMPLE:
                 self._graph_type = graph_def_pb2.ARROW_PROJECTED
-        elif isinstance(incoming_data, nx.classes.graph._GraphBase):
-            self._op = self._from_nx_graph(incoming_data)
         elif isinstance(incoming_data, Graph):
             self._op = dag_utils.copy_graph(incoming_data)
             self._graph_type = incoming_data.graph_type
         elif isinstance(incoming_data, GraphDAGNode):
             if incoming_data.session_id != self.session_id:
-                raise RuntimeError("{0} not in the same session.".formar(incoming_data))
+                raise RuntimeError(f"{incoming_data} not in the same session.")
             raise NotImplementedError
         elif vineyard is not None and isinstance(
             incoming_data, (vineyard.Object, vineyard.ObjectID, vineyard.ObjectName)
         ):
             self._op = self._from_vineyard(incoming_data)
         else:
-            raise RuntimeError("Not supported incoming data.")
+            # Don't import the :code:`NXGraph` in top-level statements to improve the
+            # performance of :code:`import graphscope`.
+            from graphscope import nx
+
+            if isinstance(incoming_data, nx.classes.graph._GraphBase):
+                self._op = self._from_nx_graph(incoming_data)
+            else:
+                raise RuntimeError("Not supported incoming data.")
 
     def to_numpy(self, selector, vertex_range=None):
         """Select some elements of the graph and output to numpy.
@@ -431,7 +442,12 @@ class GraphDAGNode(DAGNode, GraphInterface):
         op = dag_utils.add_labels_to_graph(self, loader_op)
         # construct dag node
         graph_dag_node = GraphDAGNode(
-            self._session, op, self._oid_type, self._directed, self._generate_eid
+            self._session,
+            op,
+            self._oid_type,
+            self._directed,
+            self._generate_eid,
+            self._vertex_map,
         )
         graph_dag_node._v_labels = v_labels
         graph_dag_node._e_labels = self._e_labels
@@ -580,7 +596,12 @@ class GraphDAGNode(DAGNode, GraphInterface):
         op = dag_utils.add_labels_to_graph(parent, loader_op)
         # construct dag node
         graph_dag_node = GraphDAGNode(
-            self._session, op, self._oid_type, self._directed, self._generate_eid
+            self._session,
+            op,
+            self._oid_type,
+            self._directed,
+            self._generate_eid,
+            self._vertex_map,
         )
         graph_dag_node._v_labels = v_labels
         graph_dag_node._e_labels = e_labels
@@ -618,7 +639,7 @@ class GraphDAGNode(DAGNode, GraphInterface):
             results._check_selector(value)
         selector = json.dumps(selector)
         op = dag_utils.add_column(self, results, selector)
-        graph_dag_node = GraphDAGNode(self._session, op)
+        graph_dag_node = GraphDAGNode(self._session, op, vertex_map=self._vertex_map)
         graph_dag_node._base_graph = self
         return graph_dag_node
 
@@ -664,7 +685,12 @@ class GraphDAGNode(DAGNode, GraphInterface):
         )
         # construct dag node
         graph_dag_node = GraphDAGNode(
-            self._session, op, self._oid_type, self._directed, self._generate_eid
+            self._session,
+            op,
+            self._oid_type,
+            self._directed,
+            self._generate_eid,
+            self._vertex_map,
         )
         graph_dag_node._base_graph = self
         return graph_dag_node
@@ -711,29 +737,7 @@ class Graph(GraphInterface):
         self._schema = GraphSchema()
         self._detached = False
 
-        self._interactive_instance_launching_thread = None
-        self._interactive_instance_list = []
-        self._learning_instance_list = []
-
-    def _close_interactive_instances(self):
-        # Close related interactive instances when graph unloaded.
-        # Since the graph is gone, quering via interactive client is meaningless.
-        for instance in self._interactive_instance_list:
-            instance.close()
-        self._interactive_instance_list.clear()
-
-    def _close_learning_instances(self):
-        for instance in self._learning_instance_list:
-            instance.close()
-        self._learning_instance_list.clear()
-
-    def _launch_interactive_instance_impl(self):
-        try:
-            self._session.gremlin(self)
-        except:  # noqa: E722
-            # Record error msg in `InteractiveQuery` when launching failed.
-            # Unexpect and suppress all exceptions here.
-            pass
+        self._vertex_map = graph_node._vertex_map
 
     def update_from_graph_def(self, graph_def):
         if graph_def.graph_type == graph_def_pb2.ARROW_FLATTENED:
@@ -760,12 +764,6 @@ class Graph(GraphInterface):
         self._e_relationships = self._schema.edge_relationships
         # init saved_signature (must be after init schema)
         self._saved_signature = self.signature
-        # create gremlin server pod asynchronously
-        if self._session.eager() and gs_config.initializing_interactive_engine:
-            self._interactive_instance_launching_thread = threading.Thread(
-                target=self._launch_interactive_instance_impl, args=()
-            )
-            self._interactive_instance_launching_thread.start()
 
     def __getattr__(self, name):
         if hasattr(self._graph_node, name):
@@ -816,10 +814,14 @@ class Graph(GraphInterface):
         vid_type = utils.data_type_to_cpp(self._schema._vid_type)
         vdata_type = utils.data_type_to_cpp(self._schema.vdata_type)
         edata_type = utils.data_type_to_cpp(self._schema.edata_type)
+        vertex_map_type = utils.vertex_map_type_to_cpp(self._vertex_map)
+        vertex_map_type = f"{vertex_map_type}<{oid_type},{vid_type}>"
         if self._graph_type == graph_def_pb2.ARROW_PROPERTY:
-            template = f"vineyard::ArrowFragment<{oid_type},{vid_type}>"
+            template = (
+                f"vineyard::ArrowFragment<{oid_type},{vid_type},{vertex_map_type}>"
+            )
         elif self._graph_type == graph_def_pb2.ARROW_PROJECTED:
-            template = f"gs::ArrowProjectedFragment<{oid_type},{vid_type},{vdata_type},{edata_type}>"
+            template = f"gs::ArrowProjectedFragment<{oid_type},{vid_type},{vdata_type},{edata_type},{vertex_map_type}>"
         elif self._graph_type == graph_def_pb2.ARROW_FLATTENED:
             template = f"ArrowFlattenedFragmen<{oid_type},{vid_type},{vdata_type},{edata_type}>"
         elif self._graph_type == graph_def_pb2.DYNAMIC_PROJECTED:
@@ -876,30 +878,9 @@ class Graph(GraphInterface):
 
     def _unload(self):
         """Unload this graph from graphscope engine."""
+        rlt = None
         if self._session.info["status"] != "active" or self._key is None:
             return
-
-        # close interactive instances first
-        try:
-            if (
-                self._interactive_instance_launching_thread is not None
-                and self._interactive_instance_launching_thread.is_alive()
-            ):
-                # join raises a RuntimeError if an attempt is made to join the current thread.
-                # this exception occurs when a object collected by gc mechanism contains a running thread.
-                if (
-                    threading.current_thread()
-                    != self._interactive_instance_launching_thread
-                ):
-                    self._interactive_instance_launching_thread.join()
-            self._close_interactive_instances()
-        except Exception as e:
-            logger.error("Failed to close interactive instances: %s" % e)
-        try:
-            self._close_learning_instances()
-        except Exception as e:
-            logger.error("Failed to close learning instances: %s" % e)
-        rlt = None
         if not self._detached:
             rlt = self._session._wrapper(self._graph_node._unload())
         self._key = None
@@ -983,22 +964,6 @@ class Graph(GraphInterface):
         check_argument(
             self.signature == self._saved_signature, "Graph has been modified!"
         )
-
-    def _attach_interactive_instance(self, instance):
-        """Store the instance when a new interactive instance is started.
-
-        Args:
-            instance: interactive instance
-        """
-        self._interactive_instance_list.append(instance)
-
-    def _attach_learning_instance(self, instance):
-        """Store the instance when a new learning instance is created.
-
-        Args:
-            instance: learning instance
-        """
-        self._learning_instance_list.append(instance)
 
     def save_to(self, path, **kwargs):
         """Serialize graph to a location.

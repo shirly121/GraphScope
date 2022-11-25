@@ -110,8 +110,15 @@ endif ()
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 
 include(GNUInstallDirs)
+# reference: https://gitlab.kitware.com/cmake/community/-/wikis/doc/cmake/RPATH-handling#always-full-rpath
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib:${CMAKE_INSTALL_PREFIX}/lib64")
+if(APPLE)
+    # the LC_RPATH on Mac seems doesn't support multiple path (seperated with ':seperated with `:`)
+    # fortunately, we just need to take care `lib` on Mac.
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+else()
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib:${CMAKE_INSTALL_PREFIX}/lib64:${CMAKE_INSTALL_PREFIX}/lib/x86_64-linux-gnu")
+endif()
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 find_package(Threads REQUIRED)
@@ -181,13 +188,6 @@ if (GLOG_FOUND)
 endif ()
 
 
-include("cmake/FindArrow.cmake")
-if (ARROW_FOUND)
-    include_directories("${ARROW_INCLUDE_DIR}")
-else ()
-    message(FATAL_ERROR "arrow not found")
-endif ()
-
 include("cmake/FindLibUnwind.cmake")
 if (${LIBUNWIND_FOUND})
     add_definitions(-DWITH_LIBUNWIND)
@@ -195,10 +195,6 @@ endif ()
 
 find_package(libgrapelite REQUIRED)
 include_directories(${LIBGRAPELITE_INCLUDE_DIRS})
-
-find_package(vineyard 0.9.0 REQUIRED)
-include_directories(${VINEYARD_INCLUDE_DIRS})
-add_compile_options(-DENABLE_SELECTOR)
 
 find_package(Protobuf REQUIRED)
 include_directories(${Protobuf_INCLUDE_DIRS})
@@ -210,8 +206,41 @@ if (ENABLE_JAVA_SDK)
     include_directories(SYSTEM ${JAVA_INCLUDE_PATH2})
 endif()
 
-include("cmake/FindGRPC.cmake")
-include_directories(${GRPC_INCLUDE_DIR})
+find_package(gRPC QUIET)
+if(gRPC_FOUND)
+    set(GRPC_LIBRARIES gRPC::gpr gRPC::grpc gRPC::grpc++)
+    get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
+    get_target_property(GRPC_INCLUDE_DIR gRPC::grpc INTERFACE_INCLUDE_DIRECTORIES)
+else()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindGRPC.cmake)
+    set(GRPC_LIBRARIES ${GPR_LIBRARY} ${GRPC_LIBRARY} ${GRPC_GRPC++_LIBRARY})
+endif()
+
+# Make sure FindArrow is behind FindGRPC to address the "'c-ares::cares_shared' target already exists" error.
+find_package(Arrow QUIET)
+if(Arrow_FOUND)
+    set(ARROW_INCLUDE_DIR)
+    if (TARGET arrow_shared)
+        set(ARROW_SHARED_LIB arrow_shared)
+    endif()
+    if (TARGET arrow_static)
+        set(ARROW_STATIC_LIB arrow_static)
+    endif()
+else()
+    include("cmake/FindArrow.cmake")
+    if(NOT ARROW_FOUND)
+        message(FATAL_ERROR "apache-arrow is required, please install it and retry")
+    endif()
+endif()
+
+# find vineyard after arrow to avoid duplicate target names
+find_package(vineyard 0.10.2 REQUIRED)
+include_directories(${VINEYARD_INCLUDE_DIRS})
+add_compile_options(-DENABLE_SELECTOR)
+
+if(Arrow_FOUND AND Arrow_VERSION VERSION_GREATER 9.0.1)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
 
 # Generate proto
 execute_process(COMMAND python3 python/graphscope/proto/proto_generator.py "${PROJECT_SOURCE_DIR}" --cpp
@@ -224,11 +253,9 @@ file(GLOB CORE_RPC_SRC_FILES "core/server/*.cc")
 add_library(gs_proto SHARED ${PROTO_CPP_FILES})
 set_source_files_properties(${PROTO_CPP_FILES} PROPERTIES COMPILE_FLAGS -Wno-array-bounds)
 target_include_directories(gs_proto PRIVATE "${PROJECT_SOURCE_DIR}/proto")
-target_link_libraries(gs_proto
+target_link_libraries(gs_proto PUBLIC
         ${Protobuf_LIBRARIES}
-        ${GRPC_LIBRARY}
-        ${GRPC_GRPC++_LIBRARY}
-        ${GRPC_GRPC++_REFLECTION_LIBRARY}
+        ${GRPC_LIBRARIES}
     )
 
 add_library(gs_util SHARED "core/flags.cc" "core/launcher.cc")
@@ -310,7 +337,7 @@ if (BUILD_TESTS)
         target_include_directories(property_graph_java_app_benchmarks PRIVATE core utils apps)
         target_compile_definitions(property_graph_java_app_benchmarks PUBLIC ENABLE_JAVA_SDK)
         target_link_libraries(property_graph_java_app_benchmarks gs_proto ${JNI_LIBRARIES} ${Boost_LIBRARIES} ${CMAKE_DL_LIBS}  ${VINEYARD_LIBRARIES})
-        
+
         # giraph runner
         add_executable(giraph_runner test/giraph_runner.cc core/java/javasdk.cc)
         target_include_directories(giraph_runner PRIVATE core utils apps)
@@ -318,20 +345,24 @@ if (BUILD_TESTS)
         target_link_libraries(giraph_runner ${CMAKE_DL_LIBS} gs_proto ${VINEYARD_LIBRARIES} ${Boost_LIBRARIES} ${GFLAGS_LIBRARIES}  ${JNI_LIBRARIES})
 
         # graphx related test
-        add_executable(graphx_test test/graphx_test.cc)
-        target_include_directories(graphx_test PRIVATE core utils apps)
-        target_compile_definitions(graphx_test PUBLIC ENABLE_JAVA_SDK)
-        target_link_libraries(graphx_test ${CMAKE_DL_LIBS} ${VINEYARD_LIBRARIES} ${Boost_LIBRARIES} ${GLOG_LIBRARIES})
-
         add_executable(projected_fragment_mapper_test test/projected_fragment_mapper_test.cc)
         target_include_directories(projected_fragment_mapper_test PRIVATE core utils apps)
         target_link_libraries(projected_fragment_mapper_test ${CMAKE_DL_LIBS} ${VINEYARD_LIBRARIES} ${Boost_LIBRARIES} ${GLOG_LIBRARIES} ${GFLAGS_LIBRARIES})
+
+        add_executable(graphx_loader_test test/graphx_loader_test.cc)
+        target_include_directories(graphx_loader_test PRIVATE core utils apps)
+        target_compile_definitions(graphx_loader_test PUBLIC ENABLE_JAVA_SDK)
+        target_link_libraries(graphx_loader_test ${CMAKE_DL_LIBS} ${VINEYARD_LIBRARIES} ${Boost_LIBRARIES} ${GLOG_LIBRARIES} ${GFLAGS_LIBRARIES})
+
+        add_executable(run_java_string_app test/run_java_string_app.cc core/java/javasdk.cc)
+        target_include_directories(run_java_string_app PRIVATE core utils apps)
+        target_compile_definitions(run_java_string_app PUBLIC ENABLE_JAVA_SDK)
+        target_link_libraries(run_java_string_app ${CMAKE_DL_LIBS} ${VINEYARD_LIBRARIES} ${Boost_LIBRARIES} ${GLOG_LIBRARIES} ${GFLAGS_LIBRARIES} ${JNI_LIBRARIES})
 
         if (${LIBUNWIND_FOUND})
             target_link_libraries(run_java_app ${LIBUNWIND_LIBRARIES})
             target_link_libraries(property_graph_java_app_benchmarks ${LIBUNWIND_LIBRARIES})
             target_link_libraries(giraph_runner ${LIBUNWIND_LIBRARIES})
-            target_link_libraries(graphx_test ${LIBUNWIND_LIBRARIES})
             target_link_libraries(projected_fragment_mapper_test ${LIBUNWIND_LIBRARIES})
         endif ()
     endif()
@@ -351,6 +382,7 @@ if (BUILD_TESTS)
     endmacro()
 
     add_vineyard_app(run_vy_app SRCS test/run_vy_app.cc)
+    add_vineyard_app(run_vy_app_local_vm SRCS test/run_vy_app_local_vm.cc)
 
     add_vineyard_app(run_load_from_stream SRCS test/run_load_from_stream.cc)
 
@@ -410,7 +442,7 @@ add_custom_target(gsa_clformat
     COMMENT "Running clang-format, using clang-format-8 from https://github.com/muttleyxd/clang-tools-static-binaries/releases"
     VERBATIM)
 
-# Install GAE Java SDK
+#Install GAE Java SDK
 if(ENABLE_JAVA_SDK)
     set(GAE_JAVA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/java/")
     set(GAE_JAVA_RUNTIME_DIR "${GAE_JAVA_DIR}/grape-runtime/")
@@ -420,10 +452,10 @@ if(ENABLE_JAVA_SDK)
         "${GRAPHSCOPE_ANALYTICAL_VERSION}"
     )
     set(GAE_JAVA_RUNTIME_JAR "${GAE_JAVA_RUNTIME_DIR}/target/grape-runtime-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
-    set(GAE_JAVA_GRAPHX_JAR "${GAE_JAVA_DIR}/graphx-on-graphscope/target/graphx-on-graphscope-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
+    set(GAE_JAVA_GRAPHX_JAR "${GAE_JAVA_DIR}/grape-graphx/target/grape-graphx-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
     add_custom_command(
         OUTPUT "${GAE_JAVA_RUNTIME_DIR}/target/native/libgrape-jni.so"
-        COMMAND mvn clean install -DskipTests --quiet
+        COMMAND mvn -Drevision=${GRAPHSCOPE_ANALYTICAL_JAR_VERSION} clean install -DskipTests --quiet
         DEPENDS gs_proto
         WORKING_DIRECTORY ${GAE_JAVA_DIR}
         COMMENT "Building GAE-java..."
@@ -437,7 +469,8 @@ if(ENABLE_JAVA_SDK)
     install(FILES "${GAE_JAVA_RUNTIME_JAR}" DESTINATION lib)
     install(FILES "${GAE_JAVA_GRAPHX_JAR}" DESTINATION lib)
     install(FILES "${GAE_JAVA_DIR}/grape_jvm_opts" DESTINATION conf)
-endif()
+    install(FILES "${GAE_JAVA_DIR}/run_graphx.sh" DESTINATION bin)
+ endif()
 
 # Install binaries
 macro(install_gsa_binary target)
@@ -486,7 +519,8 @@ endmacro()
 install_gsa_binary(grape_engine)
 install_gsa_binary(gs_proto)
 install_gsa_binary(gs_util)
-if(ENABLE_JAVA_SDK)
+
+if (ENABLE_JAVA_SDK)
     install_gsa_binary(graphx_runner)
 endif()
 

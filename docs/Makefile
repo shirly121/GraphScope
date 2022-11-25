@@ -38,12 +38,8 @@ clean:
 
 	@echo "Building Java doc to $(BUILDDIR)/${TAG}/$@/reference/gae_java"
 
-	cd ${WORKING_DIR}/../analytical_engine/java/grape-jdk && \
-	if [ -d "${M2_REPO}/com/alibaba/fastffi" ]; then \
-		mvn javadoc::javadoc -Djavadoc.output.directory=${WORKING_DIR}/$(BUILDDIR)/${TAG}/$@/reference -Djavadoc.output.destDir=gae_java --quiet; \
-	else \
-		echo "Can not generate javadoc without fastffi"; \
-	fi
+	cd ${WORKING_DIR}/../analytical_engine/java && \
+	mvn -P javadoc javadoc:aggregate -Dmaven.antrun.skip=true -DskipTests -Djavadoc.output.directory=${WORKING_DIR}/$(BUILDDIR)/${TAG}/$@/reference -Djavadoc.output.destDir=gae_java --quiet \
 
 doxygen:
 	@mkdir -p _build

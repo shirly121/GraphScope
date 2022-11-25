@@ -16,21 +16,16 @@
 
 package com.alibaba.graphscope.utils.array;
 
-import com.alibaba.graphscope.ds.TypedArray;
+import com.alibaba.graphscope.ds.PrimitiveTypedArray;
 import com.alibaba.graphscope.utils.array.impl.DoubleArray;
 import com.alibaba.graphscope.utils.array.impl.IntArray;
 import com.alibaba.graphscope.utils.array.impl.LongArray;
 import com.alibaba.graphscope.utils.array.impl.ObjectArray;
 import com.alibaba.graphscope.utils.array.impl.TypedBackendPrimitiveArray;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.Serializable;
 
 public interface PrimitiveArray<T> extends Serializable {
-
-    Logger logger = LoggerFactory.getLogger(PrimitiveArray.class.getName());
 
     T get(int index);
 
@@ -58,7 +53,8 @@ public interface PrimitiveArray<T> extends Serializable {
         }
     }
 
-    static <TT> PrimitiveArray<TT> createImmutable(TypedArray<TT> arrray, Class<? extends TT> clz) {
+    static <TT> PrimitiveArray<TT> createImmutable(
+            PrimitiveTypedArray<TT> arrray, Class<? extends TT> clz) {
         return new TypedBackendPrimitiveArray<>(arrray);
     }
 }

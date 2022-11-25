@@ -17,6 +17,7 @@
 package com.alibaba.graphscope.utils;
 
 public class CppClassName {
+
     public static final String VINEYARD_CLIENT = "vineyard::Client";
     public static final String ARROW_FRAGMENT = "gs::ArrowFragmentDefault";
     public static final String ARROW_FRAGMENT_GROUP = "vineyard::ArrowFragmentGroup";
@@ -42,6 +43,7 @@ public class CppClassName {
 
     public static final String DOUBLE_MSG = "gs::DoubleMsg";
     public static final String LONG_MSG = "gs::LongMsg";
+    public static final String INT_MSG = "gs::PrimitiveMessage<int32_t>";
     public static final String GS_PRIMITIVE_MESSAGE = "gs::PrimitiveMessage";
     public static final String STRING_MSG = "gs::StringMsg";
     public static final String GRAPE_ADJ_LIST = "grape::AdjList";
@@ -63,10 +65,15 @@ public class CppClassName {
     public static final String GS_PARALLEL_PROPERTY_MESSAGE_MANAGER =
             "gs::ParallelPropertyMessageManager";
     public static final String GRAPE_COMMUNICATOR = "grape::Communicator";
-    public static final String ARROW_PROJECTED_FRAGMENT = "gs::ArrowProjectedFragment";
-    public static final String ARROW_PROJECTED_FRAGMENT_MAPPER = "gs::ArrowProjectedFragmentMapper";
-    public static final String GRAPHX_FRAGMENT = "gs::GraphXFragment";
-    public static final String GRAPHX_FRAGMENT_BUILDER = "gs::GraphXFragmentBuilder";
+
+    public static final String CPP_ARROW_PROJECTED_FRAGMENT = "gs::ArrowProjectedFragment";
+
+    public static final String CPP_ARROW_PROJECTED_FRAGMENT_MAPPER =
+            "gs::ArrowProjectedFragmentMapper";
+
+    public static final String CPP_ARROW_PROJECTED_FRAGMENT_GETTER =
+            "gs::ArrowProjectedFragmentGetter";
+
     public static final String PROJECTED_ADJ_LIST =
             "gs::arrow_projected_fragment_impl::AdjListDefault";
     public static final String PROJECTED_NBR = "gs::arrow_projected_fragment_impl::NbrDefault";
@@ -81,29 +88,13 @@ public class CppClassName {
     public static final String GS_ARROW_PROJECTED_FRAGMENT_IMPL_STRING_TYPED_ARRAY =
             "gs::arrow_projected_fragment_impl::TypedArray<std::string>";
 
-    public static final String GS_EDGE_PARTITION = "gs::EdgePartition";
-    public static final String GS_GRAPHX_CSR = "gs::GraphXCSR";
-    public static final String GS_GRAPHX_CSR_MAPPER = "gs::GraphXCSRMapper";
-    public static final String GS_GRAPHX_LOCAL_VERTEX_MAP = "gs::LocalVertexMap";
-    public static final String GS_GRAPHX_GRAPHX_VERTEX_MAP = "gs::GraphXVertexMap";
-    public static final String GS_GRAPHX_GRAPHX_VERTEX_MAP_GETTER = "gs::GraphXVertexMapGetter";
-    public static final String GS_BASIC_GRAPHX_CSR_BUILDER = "gs::BasicGraphXCSRBuilder";
-    public static final String GS_VERTEX_DATA = "gs::VertexData";
-    public static final String GS_VERTEX_DATA_GETTER = "gs::VertexDataGetter";
-    public static final String GS_EDGE_DATA = "gs::EdgeData";
-    public static final String GS_STRING_VERTEX_DATA = "gs::VertexData";
-    public static final String GS_STRING_EDGE_DATA = "gs::EdgeData";
-    public static final String GS_STRING_EDGE_DATA_BUILDER = "gs::EdgeDataBuilder";
-    public static final String GS_VERTEX_DATA_BUILDER = "gs::VertexDataBuilder";
-    public static final String GS_EDGE_DATA_BUILDER = "gs::EdgeDataBuilder";
-    public static final String GS_STRING_VERTEX_DATA_BUILDER = "gs::VertexDataBuilder";
+    public static final String GS_GRAPHX_RAW_DATA = "gs::GraphXRawData";
+    public static final String GS_GRAPHX_RAW_DATA_BUILDER = "gs::GraphXRawDataBuilder";
     public static final String GS_DEFAULT_IMMUTABLE_CSR = "gs::DefaultImmutableCSR";
     public static final String GS_ARROW_ARRAY_BUILDER = "gs::ArrowArrayBuilder";
+    public static final String GS_ARROW_STRING_ARRAY_BUILDER = "gs::ArrowArrayBuilder<std::string>";
     public static final String GS_ARROW_ARRAY = "gs::ArrowArray";
-    public static final String GS_GRAPHX_LOCAL_VERTEX_MAP_BUILDER =
-            "gs::BasicLocalVertexMapBuilder";
-    public static final String GS_ARROW_PROJECTED_FRAGMENT_GETTER =
-            "gs::ArrowProjectedFragmentGetter";
+    public static final String GS_ARROW_STRING_ARRAY = "gs::ArrowArray<std::string>";
 
     public static final String ARROW_STATUS = "arrow::Status";
     public static final String VINEYARD_STATUS = "vineyard::Status";
@@ -111,4 +102,6 @@ public class CppClassName {
 
     public static final String ARROW_FRAGMENT_GROUP_GETTER = "gs::ArrowFragmentGroupGetter";
     public static final String VINEYARD_JSON = "vineyard::json";
+
+    public static final String CXX_STD_STRING = "com.alibaba.fastffi.impl.CXXStdString";
 }

@@ -51,7 +51,7 @@ jobs:
       gie-function-test: ${{ steps.filter.outputs.gie-function-test }}
     steps:
     # For push it's necessary to checkout the code
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     # For pull requests it's not necessary to checkout the code
     - uses: dorny/paths-filter@v2
       id: filter
@@ -78,6 +78,9 @@ jobs:
             - 'interactive_engine/**'
             - 'python/graphscope/interactive/**'
             - '.github/workflows/ci.yml'
+          gie-k8s-failover-test:
+            - 'interactive_engine/**'
+            - 'charts/ir-standalone/**'
 
     - name: Cpp Format and Lint Check
       run: |
@@ -85,10 +88,12 @@ jobs:
         sudo curl -L https://github.com/muttleyxd/clang-tools-static-binaries/releases/download/master-22538c65/clang-format-8_linux-amd64 --output /usr/bin/clang-format
         sudo chmod +x /usr/bin/clang-format
 
-        # run format
+        # collect the source files
         cd analytical_engine/
-        find ./apps ./benchmarks ./core ./frame ./misc ./test  -name "*.h" | xargs clang-format -i --style=file
-        find ./apps ./benchmarks ./core ./frame ./misc ./test  -name "*.cc" | xargs clang-format -i --style=file
+        files=$(find ./apps ./benchmarks ./core ./frame ./misc ./test \( -name "*.h" -o -name "*.cc" \))
+
+        # run format
+        clang-format -i --style=file $(echo $files)
 
         # validate format
         function prepend() { while read line; do echo "${1}${line}"; done; }
@@ -114,6 +119,22 @@ jobs:
             exit -1
         fi
 
+        # validate cpplint
+        function ec() { [[ "$1" == "-h" ]] && { shift && eval $* > /dev/null 2>&1; ec=$?; echo $ec; } || eval $*; ec=$?; }
+
+        # run cpplint
+        ec ./misc/cpplint.py $(echo $files)
+        if [[ "$ec" != "0" ]]; then
+            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            echo "| cpplint failures found! Run: "
+            echo "|"
+            echo "|    make gsa_cpplint"
+            echo "|"
+            echo "| to fix this error."
+            echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+            exit -1
+        fi
+
     - name: Python Format and Lint Check
       run: |
         echo "Checking formatting for $GITHUB_REPOSITORY"
@@ -129,7 +150,7 @@ jobs:
         python3 -m flake8 .
 
     - name: Setup Java11
-      uses: actions/setup-java@v2
+      uses: actions/setup-java@v3
       with:
          distribution: 'zulu'
          java-version: '11'
@@ -174,7 +195,7 @@ jobs:
     needs: [changes]
     if: ${{ github.repository == 'alibaba/GraphScope' }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: true
 
@@ -202,22 +223,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
 
-    - name: Install latest libgrape-lite and vineyard
-      if: false
+    - name: Install latest vineyard
+      if: false 
       run: |
         source ~/.bashrc
-
-        git clone --single-branch --depth=1 https://github.com/alibaba/libgrape-lite.git /tmp/libgrape-lite
-        pushd /tmp/libgrape-lite
-        mkdir -p build && cd build
-        cmake .. -DCMAKE_INSTALL_PREFIX=/opt/vineyard
-        make -j$(nproc)
-        sudo make install
-        popd
-        rm -fr /tmp/libgrape-lite
-
-        git clone --single-branch --depth=1 https://github.com/v6d-io/v6d.git /tmp/v6d
-        pushd /tmp/v6d
+        git clone -b v0.10.2 --single-branch --depth=1 https://github.com/v6d-io/v6d.git /tmp/v6d
+        cd /tmp/v6d
         git submodule update --init
         mkdir -p build && cd build
         cmake .. -DCMAKE_INSTALL_PREFIX=/opt/vineyard \
@@ -226,9 +237,6 @@ jobs:
                  -DBUILD_VINEYARD_TESTS=OFF
         make -j$(nproc)
         sudo make install
-        popd
-
-        rm -fr /tmp/v6d
 
         # copy to /usr/local, keep the same logic as gsvineyard.Dockerfile
         sudo cp -r /opt/vineyard/* /usr/local/
@@ -255,7 +263,7 @@ jobs:
         tar -zcf graphscope.tar.gz coordinator/dist/
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: wheel-${{ github.sha }}
         path: |
@@ -268,9 +276,9 @@ jobs:
     if: ${{ github.repository == 'alibaba/GraphScope' }}
     needs: [build-wheels]
     steps:
-      - uses: actions/checkout@v2.3.2
+      - uses: actions/checkout@v3
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           path: artifacts
 
@@ -311,7 +319,7 @@ jobs:
 
       - name: Upload GIE log
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: gie-log
           path: ~/.local/log/graphscope
@@ -328,10 +336,10 @@ jobs:
         deployment: ["standalone", "distributed"]
 
     steps:
-    - uses: actions/checkout@v2.3.2
+    - uses: actions/checkout@v3
       if: ${{ needs.changes.outputs.gae-python == 'true' }}
 
-    - uses: actions/download-artifact@v2
+    - uses: actions/download-artifact@v3
       if: ${{ needs.changes.outputs.gae-python == 'true' }}
       with:
         path: artifacts
@@ -377,7 +385,7 @@ jobs:
 
     - name: Upload Coverage
       if: ${{ needs.changes.outputs.gae-python == 'true' || github.ref == 'refs/heads/main' }}
-      uses: codecov/codecov-action@v2
+      uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml
         fail_ci_if_error: false
@@ -393,7 +401,7 @@ jobs:
       matrix:
         deployment: ["standalone", "distributed"]
     steps:
-    - uses: actions/checkout@v2.3.2
+    - uses: actions/checkout@v3
       if: ${{ needs.changes.outputs.networkx == 'true' }}
 
     - uses: dorny/paths-filter@v2
@@ -414,7 +422,7 @@ jobs:
             - 'python/graphscope/nx/convert_matrix.py'
             - 'python/graphscope/nx/tests/convert/**'
 
-    - uses: actions/download-artifact@v2
+    - uses: actions/download-artifact@v3
       if: ${{ needs.changes.outputs.networkx == 'true' }}
       with:
         path: artifacts
@@ -479,7 +487,7 @@ jobs:
       matrix:
         deployment: ["standalone", "distributed"]
     steps:
-    - uses: actions/checkout@v2.3.2
+    - uses: actions/checkout@v3
       if: ${{ needs.changes.outputs.networkx == 'true' }}
 
     - uses: dorny/paths-filter@v2
@@ -499,7 +507,7 @@ jobs:
           io:
             - 'python/graphscope/nx/readwrite/**'
 
-    - uses: actions/download-artifact@v2
+    - uses: actions/download-artifact@v3
       if: ${{ needs.changes.outputs.networkx == 'true' }}
       with:
         path: artifacts
@@ -564,7 +572,7 @@ jobs:
     needs: [build-wheels, changes]
     if: ${{ needs.changes.outputs.gie-function-test == 'true' && github.repository == 'alibaba/GraphScope' }}
     steps:
-      - uses: actions/checkout@v2.3.2
+      - uses: actions/checkout@v3
 
       - uses: actions/cache@v3
         with:
@@ -580,7 +588,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           path: artifacts
 
@@ -626,7 +634,7 @@ jobs:
     if: ${{ github.repository == 'alibaba/GraphScope' }}
     needs: [build-wheels]
     steps:
-      - uses: actions/checkout@v2.3.2
+      - uses: actions/checkout@v3
 
       - uses: actions/cache@v3
         with:
@@ -635,7 +643,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           path: artifacts
 
@@ -650,7 +658,6 @@ jobs:
           tar -zxf ./wheel-${{ github.sha }}/client.tar.gz
           tar -zxf ./wheel-${{ github.sha }}/graphscope.tar.gz
 
-          # build graphscope image
           cd ${GITHUB_WORKSPACE}
           make graphscope-image
           docker tag graphscope/graphscope:${SHORT_SHA} ${{ env.GS_IMAGE }}:${SHORT_SHA}
@@ -703,7 +710,7 @@ jobs:
         if: false
 
       - name: Upload Coverage
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v3
         with:
           file: ./python/coverage.xml
           fail_ci_if_error: true
@@ -719,7 +726,6 @@ jobs:
           helm test graphscope --timeout 5m0s
 
       - name: HDFS test
-        if: false  # temporary disable the hdfs tests
         env:
           JAVA_HOME: /usr/lib/jvm/default-java
           GS_TEST_DIR: ${{ github.workspace }}/gstest
@@ -737,11 +743,123 @@ jobs:
           hadoop fs -chmod 777 /ldbc_sample
           hadoop fs -put ${GS_TEST_DIR}/ldbc_sample/person_0_0.csv /ldbc_sample/person_0_0.csv
           hadoop fs -put ${GS_TEST_DIR}/ldbc_sample/person_knows_person_0_0.csv /ldbc_sample/person_knows_person_0_0.csv
+
+          # validate hadoop
+          hadoop fs -ls /ldbc_sample
+
+          # prepare CI environments
           export HDFS_TEST_DIR=hdfs:///ldbc_sample
           export HDFS_HOST=$(hostname -I | awk '{print $1}')
 
           # run test
           cd ${GITHUB_WORKSPACE}/python
-          python3 -m pytest -s ./graphscope/tests/kubernetes/test_demo_script.py -k test_demo_on_hdfs
+          python3 -m pytest -s -vvv ./graphscope/tests/kubernetes/test_demo_script.py -k test_demo_on_hdfs
           # Check the result file have successfully written to the given location
           # hdfs dfs -test -e /ldbc_sample/res.csv_0 && hdfs dfs -test -e /ldbc_sample/res.csv_1
+
+  build-gie-experimental:
+    # Require the user id of the self-hosted is 1001, which may need to be
+    # configured manually when a new self-hosted runner is added.
+    runs-on: [self-hosted, manylinux2014]
+    if: ${{ github.repository == 'alibaba/GraphScope' }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cache/sccache
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build GIE Experimental Artifacts
+        run: |
+          source ~/.bashrc
+          export RPC_TARGET=start_rpc_server_k8s
+          cd interactive_engine/compiler && make build rpc.target=${RPC_TARGET}
+          cd ${GITHUB_WORKSPACE}
+          tar -czf artifacts.tar.gz interactive_engine/compiler/target/libs \
+            interactive_engine/compiler/target/compiler-1.0-SNAPSHOT.jar \
+            interactive_engine/compiler/conf \
+            interactive_engine/compiler/set_properties.sh \
+            interactive_engine/executor/ir/target/release/libir_core.so \
+            interactive_engine/executor/ir/target/release/${RPC_TARGET}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: gie-experimental
+          path: |
+            artifacts.tar.gz
+          retention-days: 5
+
+  gie-k8s-failover-test:
+    needs: [build-gie-experimental]
+    runs-on: [self-hosted, ubuntu2004]
+    if: ${{ github.repository == 'alibaba/GraphScope' }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: gie-experimental
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: artifacts
+
+      - name: Add envs to GITHUB_ENV
+        run: |
+          short_sha=$(git rev-parse --short HEAD)
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+
+      - name: Prepare Docker Image
+        run: |
+          docker build \
+              -t registry.cn-hongkong.aliyuncs.com/graphscope/interactive-experimental:${SHORT_SHA} \
+              -f .github/workflows/docker/interactive-experimental-local-artifacts.Dockerfile .
+
+      - name: Prepare Cluster and Data
+        env:
+          GS_TEST_DIR: ${{ github.workspace }}/gstest
+          STORE_DATA_PATH: /tmp/data
+          GIE_IMAGE: registry.cn-hongkong.aliyuncs.com/graphscope/interactive-experimental
+        run: |
+          # prepare graph data
+          git clone -b master --single-branch --depth=1 https://github.com/7br/gstest.git ${GS_TEST_DIR}
+          mkdir -p ${STORE_DATA_PATH}
+          cp -r ${GS_TEST_DIR}/modern_graph_exp_bin/* ${STORE_DATA_PATH}
+
+          # prepare minikube cluster
+          minikube start --base-image='registry-vpc.cn-hongkong.aliyuncs.com/graphscope/kicbase:v0.0.30' \
+          --cpus='12' --memory='32000mb' --disk-size='40000mb' \
+          --mount=true --mount-string="${STORE_DATA_PATH}:${STORE_DATA_PATH}"
+          minikube image load ${GIE_IMAGE}:${SHORT_SHA}
+
+          # install python gremlin client
+          pip install gremlinpython
+
+      - name: Run K8S Failover Test
+        run: |
+          cd ${GITHUB_WORKSPACE}/charts
+          # create local persistent volume which contains graph data for test
+          kubectl apply -f ./ir-standalone/tools/pvc.yaml
+          # create gie instance (compiler & executor & exp storage)
+          helm install test ./ir-standalone \
+              --set image.repository=graphscope/interactive-experimental \
+              --set image.tag=${SHORT_SHA} --set storageType=Experimental \
+              --set schemaConfig=expr_modern_schema.json \
+              --set store.replicaCount=2 \
+              --set frontend.service.type=NodePort
+          # run failover test
+          cd ${GITHUB_WORKSPACE}/interactive_engine/compiler && ./ir_k8s_failover_ci.sh default test-graphscope-store 2 1

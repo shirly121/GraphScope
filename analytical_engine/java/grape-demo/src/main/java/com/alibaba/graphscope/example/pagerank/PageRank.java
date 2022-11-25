@@ -63,7 +63,7 @@ public class PageRank extends Communicator
                         ctx.pagerank.set(vertex, base / edgeNum);
                         DoubleMsg msg = FFITypeFactoryhelper.newDoubleMsg(base / edgeNum);
                         parallelMessageManager.sendMsgThroughOEdges(
-                                fragment, vertex, msg, finalTid, 2.0);
+                                fragment, vertex, msg, finalTid);
                     }
                 };
         forEachVertex(innerVertices, ctx.thread_num, ctx.executor, calc);
@@ -77,7 +77,7 @@ public class PageRank extends Communicator
         DoubleMsg localSumMsg = FFITypeFactoryhelper.newDoubleMsg(base * ctx.danglingVNum);
         sum(localSumMsg, msgDanglingSum);
         ctx.danglingSum = msgDanglingSum.getData();
-        parallelMessageManager.ForceContinue();
+        parallelMessageManager.forceContinue();
     }
 
     @Override
@@ -113,7 +113,7 @@ public class PageRank extends Communicator
                     });
             Supplier<DoubleMsg> msgSupplier = () -> DoubleMsg.factory.create();
             parallelMessageManager.parallelProcess(
-                    fragment, ctx.thread_num, ctx.executor, msgSupplier, consumer, 2L);
+                    fragment, ctx.thread_num, ctx.executor, msgSupplier, consumer);
         } // finish receive data
 
         BiConsumer<Vertex<Long>, Integer> calc =
@@ -131,7 +131,7 @@ public class PageRank extends Communicator
                         DoubleMsg msg =
                                 FFITypeFactoryhelper.newDoubleMsg(ctx.nextResult.get(vertex));
                         parallelMessageManager.sendMsgThroughOEdges(
-                                fragment, vertex, msg, finalTid, 2.0);
+                                fragment, vertex, msg, finalTid);
                     }
                 });
         forEachVertex(innerVertices, ctx.thread_num, ctx.executor, calc);
@@ -152,6 +152,6 @@ public class PageRank extends Communicator
         sum(localSumMsg, msgDanglingSum);
         ctx.danglingSum = msgDanglingSum.getData();
         ctx.sumDoubleTime += System.nanoTime() - time0;
-        parallelMessageManager.ForceContinue();
+        parallelMessageManager.forceContinue();
     }
 }
