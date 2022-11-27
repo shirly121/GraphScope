@@ -266,13 +266,16 @@ impl LogicalPlan {
         Self { nodes, max_node_id: node_id + 1, meta }
     }
 
-    pub fn num_nodes(&self) -> usize {
-        self.nodes.len()
-    }
-
     /// Get a node reference from the logical plan
     pub fn get_node(&self, id: NodeId) -> Option<NodeType> {
         self.nodes.get(id as usize).cloned()
+    }
+
+    /// Get a operator reference from the logical plan
+    pub fn get_opr(&self, id: NodeId) -> Option<pb::logical_plan::Operator> {
+        self.nodes
+            .get(id as usize)
+            .map(|node| node.borrow().opr.clone())
     }
 
     /// Get first node in the logical plan
@@ -283,7 +286,7 @@ impl LogicalPlan {
             .map(|tuple| tuple.1.clone())
     }
 
-    /// Get first node in the logical plan
+    /// Get last node in the logical plan
     pub fn get_last_node(&self) -> Option<NodeType> {
         self.nodes
             .iter()
@@ -292,8 +295,20 @@ impl LogicalPlan {
             .map(|tuple| tuple.1.clone())
     }
 
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
     pub fn get_meta(&self) -> &PlanMeta {
         &self.meta
+    }
+
+    pub fn get_max_node_id(&self) -> NodeId {
+        self.max_node_id
     }
 
     /// Append a new node into the logical plan, with specified `parent_ids`
@@ -457,21 +472,6 @@ impl LogicalPlan {
             }
         }
         node
-    }
-
-    pub fn len(&self) -> usize {
-        self.nodes.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
-    }
-
-    pub fn root(&self) -> Option<NodeType> {
-        self.nodes
-            .iter()
-            .next()
-            .map(|(_, node)| node.clone())
     }
 
     /// Append branch plans to a certain node which has **no** children in this logical plan.

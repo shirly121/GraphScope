@@ -1,5 +1,6 @@
-ARG BASE_VERSION=v0.9.0
-FROM registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-vineyard:$BASE_VERSION as builder
+ARG REGISTRY=registry.cn-hongkong.aliyuncs.com
+ARG BASE_VERSION=v0.10.2
+FROM $REGISTRY/graphscope/graphscope-dev:$BASE_VERSION as builder
 
 ARG CI=false
 ENV CI=$CI
@@ -14,29 +15,32 @@ USER graphscope
 
 RUN sudo chown -R $(id -u):$(id -g) /home/graphscope/gs /home/graphscope/.m2 && \
     cd /home/graphscope/gs && \
-    if [ "${CI}" == "true" ]; then \
-        mv artifacts/groot.tar.gz ./groot.tar.gz; \
-    else \
-        echo "install cppkafka" \
-        && sudo yum update -y && sudo yum install -y librdkafka-devel \
-        && git clone -b 0.4.0 --single-branch --depth=1 https://github.com/mfontanini/cppkafka.git /tmp/cppkafka \
-        && cd /tmp/cppkafka && git submodule update --init \
-        && cmake . && make -j && sudo make install \
-        && echo "build with profile: $profile" \
-        && source ~/.cargo/env \
-        && cd /home/graphscope/gs/interactive_engine \
-        && mvn clean package -P groot,groot-assembly -DskipTests --quiet -Drust.compile.mode="$profile" \
-        && mv /home/graphscope/gs/interactive_engine/assembly/target/groot.tar.gz /home/graphscope/gs/groot.tar.gz; \
-    fi
+    echo "install cppkafka" \
+    && sudo yum update -y && sudo yum install -y librdkafka-devel \
+    && git clone -b 0.4.0 --single-branch --depth=1 https://github.com/mfontanini/cppkafka.git /tmp/cppkafka \
+    && cd /tmp/cppkafka && git submodule update --init \
+    && cmake . && make -j && sudo make install \
+    && echo "build with profile: $profile" \
+    && source ~/.cargo/env \
+    && cd /home/graphscope/gs/interactive_engine \
+    && mvn clean package -P groot,groot-assembly -DskipTests --quiet -Drust.compile.mode="$profile" \
+    && mv /home/graphscope/gs/interactive_engine/assembly/target/groot.tar.gz /home/graphscope/gs/groot.tar.gz
 
-FROM registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-runtime:latest
+FROM centos:7.9.2009
 
-COPY --from=builder /opt/vineyard/ /usr/local/
+RUN yum install -y sudo java-1.8.0-openjdk bind-utils \
+    && yum clean all \
+    && rm -rf /var/cache/yum
 
 COPY ./k8s/ready_probe.sh /tmp/ready_probe.sh
+
 COPY --from=builder /home/graphscope/gs/groot.tar.gz /tmp/groot.tar.gz
-RUN sudo tar -zxf /tmp/groot.tar.gz -C /usr/local
-RUN rm /tmp/groot.tar.gz
+RUN tar -zxf /tmp/groot.tar.gz -C /usr/local && rm /tmp/groot.tar.gz
+
+RUN useradd -m graphscope -u 1001 \
+    && echo 'graphscope ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+USER graphscope
+WORKDIR /home/graphscope
 
 # init log directory
 RUN sudo mkdir /var/log/graphscope \

@@ -473,6 +473,18 @@ impl From<pb::Scan> for pb::logical_plan::Operator {
     }
 }
 
+impl From<pb::logical_plan::Operator> for Option<pb::Scan> {
+    fn from(opr: pb::logical_plan::Operator) -> Self {
+        if let Some(opr) = opr.opr {
+            match opr {
+                Opr::Scan(scan) => return Some(scan),
+                _ => (),
+            }
+        }
+        None
+    }
+}
+
 impl From<pb::Limit> for pb::logical_plan::Operator {
     fn from(opr: pb::Limit) -> Self {
         pb::logical_plan::Operator { opr: Some(pb::logical_plan::operator::Opr::Limit(opr)) }
@@ -618,6 +630,46 @@ impl pb::logical_plan::operator::Opr {
             Opr::ExpandIntersect(_) => "ExpandAndIntersect",
         };
         name.to_string()
+    }
+}
+
+impl pb::logical_plan::Operator {
+    pub fn is_whole_graph(&self) -> bool {
+        if let Some(opr) = &self.opr {
+            match opr {
+                Opr::Scan(scan) => {
+                    scan.idx_predicate.is_none()
+                        && scan.alias.is_none()
+                        && scan
+                            .params
+                            .as_ref()
+                            .map(|params| !params.is_queryable())
+                            .unwrap_or(true)
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+}
+
+impl pb::QueryParams {
+    fn is_queryable(&self) -> bool {
+        !(self.tables.is_empty()
+            && self.predicate.is_none()
+            && self.limit.is_none()
+            && self.sample_ratio == 1.0)
+    }
+}
+
+impl pb::edge_expand::Direction {
+    pub fn reverse(&self) -> pb::edge_expand::Direction {
+        match self {
+            pb::edge_expand::Direction::Out => pb::edge_expand::Direction::In,
+            pb::edge_expand::Direction::In => pb::edge_expand::Direction::Out,
+            pb::edge_expand::Direction::Both => pb::edge_expand::Direction::Both,
+        }
     }
 }
 

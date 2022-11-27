@@ -15,14 +15,6 @@ See [*helm repo*](https://helm.sh/docs/helm/helm_repo/) for command documentatio
 
 ## Install Chart
 
-GraphScope rely on some permissions to delete resources.
-
-```shell
-# example for `default` ServiceAccount with `default` namespace
-$ wget https://raw.githubusercontent.com/alibaba/GraphScope/main/charts/role_and_binding.yaml
-$ kubectl create -f ./role_and_binding.yaml
-```
-
 ```shell
 # Helm 3
 $ helm install [RELEASE_NAME] graphscope/graphscope
@@ -44,8 +36,8 @@ Note that it may take a few minutes for pulling image at first time, you can wat
 $ helm test [RELEASE_NAME]
 
 # Default, with kubernetes `NodePort` service type, you can get service endpoint by:
-$ export NODE_IP=$(kubectl --namespace [NAMESPACE] get pod -o jsonpath="{.status.hostIP}" [GRAPHSCOPE-FULLNAME]-coordinator)
-$ export NODE_PORT=$(kubectl --namespace [NAMESPACE] get services -o jsonpath="{.spec.ports[0].nodePort}" [GRAPHSCOPE-FULLNAME]-coordinator-service)
+$ export NODE_IP=$(kubectl --namespace [NAMESPACE] get pod -o jsonpath="{.status.hostIP}" coordinator-[GRAPHSCOPE-FULLNAME])
+$ export NODE_PORT=$(kubectl --namespace [NAMESPACE] get services -o jsonpath="{.spec.ports[0].nodePort}" coordinator-service-[GRAPHSCOPE-FULLNAME])
 $ echo "GraphScope service listen on ${NODE_IP}:${NODE_PORT}"
 ```
 

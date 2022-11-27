@@ -19,6 +19,7 @@ pub use crate::plan::ffi::*;
 
 pub mod catalogue;
 pub mod error;
+pub mod glogue;
 pub mod plan;
 
 #[macro_use]

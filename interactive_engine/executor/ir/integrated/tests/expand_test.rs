@@ -43,8 +43,15 @@ mod test {
     // g.V()
     fn source_gen(alias: Option<common_pb::NameOrId>) -> Box<dyn Iterator<Item = Record> + Send> {
         create_exp_store();
-        let scan_opr_pb = pb::Scan { scan_opt: 0, alias, params: None, idx_predicate: None };
-        source_gen_with_scan_opr(scan_opr_pb)
+        let source_opr_pb = pb::Scan { scan_opt: 0, alias, params: None, idx_predicate: None };
+        let source = SourceOperator::new(
+            pb::logical_plan::operator::Opr::Scan(source_opr_pb),
+            1,
+            1,
+            Arc::new(SimplePartition { num_servers: 1 }),
+        )
+        .unwrap();
+        source.gen_source(0).unwrap()
     }
 
     fn source_gen_with_scan_opr(scan_opr_pb: pb::Scan) -> Box<dyn Iterator<Item = Record> + Send> {
@@ -751,7 +758,7 @@ mod test {
             if let Entry::Intersection(intersection) = record.get(Some(TAG_C)).unwrap().borrow() {
                 let mut result_collection: Vec<usize> = intersection
                     .clone()
-                    .into_iter()
+                    .iter()
                     .map(|r| r.id() as usize)
                     .collect();
                 result_collection.sort();
@@ -824,7 +831,7 @@ mod test {
             if let Entry::Intersection(intersection) = record.get(Some(TAG_C)).unwrap().borrow() {
                 let mut result_collection: Vec<DefaultId> = intersection
                     .clone()
-                    .into_iter()
+                    .iter()
                     .map(|r| r.id() as DefaultId)
                     .collect();
                 result_collection.sort();

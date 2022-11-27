@@ -16,18 +16,18 @@
 
 package com.alibaba.graphscope.annotation;
 
-import static com.alibaba.graphscope.annotation.Utils.addCXXTemplate;
-import static com.alibaba.graphscope.annotation.Utils.addDoubleCXXTemplate;
+import static com.alibaba.graphscope.annotation.Utils.addColumn;
 import static com.alibaba.graphscope.annotation.Utils.addIntCXXTemplate;
 import static com.alibaba.graphscope.annotation.Utils.addLongCXXTemplate;
+import static com.alibaba.graphscope.annotation.Utils.addSharedPtr;
 import static com.alibaba.graphscope.annotation.Utils.addSignedIntCXXTemplate;
 import static com.alibaba.graphscope.annotation.Utils.addSignedLongCXXTemplate;
+import static com.alibaba.graphscope.annotation.Utils.getMessageTypes;
+import static com.alibaba.graphscope.annotation.Utils.java2Cpp;
+import static com.alibaba.graphscope.annotation.Utils.makeParameterizedType;
+import static com.alibaba.graphscope.annotation.Utils.vertexDataContextAddTemplate;
 import static com.alibaba.graphscope.utils.CppClassName.ARROW_FRAGMENT;
-import static com.alibaba.graphscope.utils.CppClassName.ARROW_PROJECTED_FRAGMENT;
-import static com.alibaba.graphscope.utils.CppClassName.DOUBLE_COLUMN;
-import static com.alibaba.graphscope.utils.CppClassName.GS_VERTEX_ARRAY;
-import static com.alibaba.graphscope.utils.CppClassName.INT_COLUMN;
-import static com.alibaba.graphscope.utils.CppClassName.LONG_COLUMN;
+import static com.alibaba.graphscope.utils.CppClassName.CPP_ARROW_PROJECTED_FRAGMENT;
 
 import com.alibaba.fastffi.CXXHead;
 import com.alibaba.fastffi.CXXReference;
@@ -47,34 +47,17 @@ import com.alibaba.fastffi.FFIType;
 import com.alibaba.fastffi.FFITypeAlias;
 import com.alibaba.fastffi.FFIVector;
 import com.alibaba.fastffi.annotation.AnnotationProcessorUtils;
-import com.alibaba.graphscope.column.DoubleColumn;
-import com.alibaba.graphscope.column.IntColumn;
-import com.alibaba.graphscope.column.LongColumn;
 import com.alibaba.graphscope.context.ffi.FFILabeledVertexDataContext;
 import com.alibaba.graphscope.context.ffi.FFILabeledVertexPropertyContext;
-import com.alibaba.graphscope.context.ffi.FFIVertexDataContext;
 import com.alibaba.graphscope.context.ffi.FFIVertexPropertyContext;
-import com.alibaba.graphscope.ds.GSVertexArray;
-import com.alibaba.graphscope.ds.GrapeAdjList;
-import com.alibaba.graphscope.ds.GrapeNbr;
-import com.alibaba.graphscope.ds.ProjectedAdjList;
-import com.alibaba.graphscope.ds.ProjectedNbr;
 import com.alibaba.graphscope.ds.PropertyAdjList;
 import com.alibaba.graphscope.ds.PropertyNbr;
-import com.alibaba.graphscope.ds.PropertyNbrUnit;
 import com.alibaba.graphscope.ds.PropertyRawAdjList;
-import com.alibaba.graphscope.ds.TypedArray;
-import com.alibaba.graphscope.ds.Vertex;
-import com.alibaba.graphscope.ds.VertexArray;
-import com.alibaba.graphscope.ds.VertexRange;
+import com.alibaba.graphscope.ds.StringView;
 import com.alibaba.graphscope.fragment.ArrowFragment;
 import com.alibaba.graphscope.fragment.ArrowProjectedFragment;
 import com.alibaba.graphscope.fragment.ImmutableEdgecutFragment;
-import com.alibaba.graphscope.parallel.DefaultMessageManager;
 import com.alibaba.graphscope.parallel.PropertyMessageManager;
-import com.alibaba.graphscope.parallel.message.DoubleMsg;
-import com.alibaba.graphscope.stdcxx.StdSharedPtr;
-import com.alibaba.graphscope.stdcxx.StdVector;
 import com.alibaba.graphscope.utils.CppClassName;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.JavaFile;
@@ -151,7 +134,7 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
     private String javaArrowFragmentTemplateName = ArrowFragment.class.getName();
     private String foreignArrowFragmentTemplateName = ARROW_FRAGMENT;
     private String JavaArrowProjectedTemplateName = ArrowProjectedFragment.class.getName();
-    private String foreignArrowProjectedTempalteName = ARROW_PROJECTED_FRAGMENT;
+    private String foreignArrowProjectedTempalteName = CPP_ARROW_PROJECTED_FRAGMENT;
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
@@ -167,27 +150,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
             }
         }
         return false;
-    }
-
-    public List<String> getMessageTypes() {
-        List<String> messageTypes = new ArrayList<>();
-        String messageTypeString = System.getProperty("grape.messageTypes");
-        if (messageTypeString != null && !messageTypeString.isEmpty()) {
-            Arrays.asList(parseMessageTypes(messageTypeString)).forEach(p -> messageTypes.add(p));
-        }
-        return messageTypes;
-    }
-
-    /**
-     * Use : to separate types
-     *
-     * @param messageTypes
-     * @return
-     */
-    private String[] parseMessageTypes(String messageTypes) {
-        String[] results =
-                Arrays.stream(messageTypes.split(",")).map(m -> m.trim()).toArray(String[]::new);
-        return results;
     }
 
     /**
@@ -318,10 +280,14 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
     private void addGrapeWrapper(TypeSpec.Builder classBuilder) {
         DeclaredType edataType = getEdataType();
         String javaEdataType = getTypeName(edataType);
+        DeclaredType vidType = getVidType();
+        String javaVidType = getTypeName(vidType);
         DeclaredType oidType = getOidType();
         String javaOidType = getTypeName(oidType);
         DeclaredType vdataType = getVdataType();
         String javaVdataType = getTypeName(vdataType);
+        String javaVertexDataType = getGraphTypeMemberForeign("vertexDataType");
+        String vertexDataType = java2Cpp(javaVertexDataType, true);
         String foreignVidType = getGraphTypeMemberForeign("cppVidType");
         String foreignOidType = getGraphTypeMemberForeign("cppOidType");
         String foreignVdataType = getGraphTypeMemberForeign("cppVdataType");
@@ -358,21 +324,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
 
         AnnotationSpec.Builder ffiGenBatchBuilder = AnnotationSpec.builder(FFIGenBatch.class);
 
-        addTypedArray(ffiGenBatchBuilder);
-        addVertexGen(ffiGenBatchBuilder);
-        addVertexRange(ffiGenBatchBuilder);
-        addGSVertexRange(ffiGenBatchBuilder);
-        addNbr(ffiGenBatchBuilder);
-        addAdjList(ffiGenBatchBuilder);
-        // projected fragment also needed
-        addPropertyNbrUnit(ffiGenBatchBuilder);
-
-        addMessageTypes(ffiGenBatchBuilder);
-
-        addGSVertexArray(ffiGenBatchBuilder);
-        addVertexArray(ffiGenBatchBuilder);
-        addStdVector(ffiGenBatchBuilder);
-
         if (foreignFragType.equals("vineyard::ArrowFragment")) {
             logger.info("Codegen for arrowFragment");
             {
@@ -399,138 +350,25 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
             }
         } else if (foreignFragType.equals("gs::ArrowProjectedFragment")) {
             logger.info("Codegen for arrowProjectedFragment");
-
-            addProjectedNbr(ffiGenBatchBuilder);
-            addProjectedAdjList(ffiGenBatchBuilder);
-            // generate for ArrowProjectedFragment
-            addArrowProjectedFragment(
-                    ffiGenBatchBuilder,
-                    foreignOidType,
-                    "uint64_t",
-                    foreignVdataType,
-                    foreignEdataType,
-                    javaOidType,
-                    Long.class.getName(),
-                    javaVdataType,
-                    javaEdataType);
-
-            addDefaultMessageManager(
-                    ffiGenBatchBuilder,
-                    foreignArrowProjectFragNameConcat,
-                    javaArrowProjectFragNameConcat);
-
-            // add for all columns, long column, int column, double column.
-            addColumn(
-                    ffiGenBatchBuilder,
-                    foreignArrowProjectFragNameConcat,
-                    javaArrowProjectFragNameConcat);
-            addSharedPtr(
-                    ffiGenBatchBuilder,
-                    foreignArrowProjectFragNameConcat,
-                    javaArrowProjectFragNameConcat);
-
-            addVertexDataContext(
-                    ffiGenBatchBuilder,
-                    foreignArrowProjectFragNameConcat,
-                    javaArrowProjectFragNameConcat);
-            addVertexPropertyContext(
-                    ffiGenBatchBuilder,
-                    foreignArrowProjectFragNameConcat,
-                    javaArrowProjectFragNameConcat);
+            ArrowProjectedGenerator generator =
+                    new ArrowProjectedGenerator(
+                            ffiGenBatchBuilder,
+                            foreignOidType,
+                            foreignVidType,
+                            foreignVdataType,
+                            foreignEdataType,
+                            javaOidType,
+                            javaVidType,
+                            javaVdataType,
+                            javaEdataType,
+                            vertexDataType,
+                            javaVertexDataType);
+            generator.generate();
 
         } else {
             logger.error("Unrecoginizable");
         }
         classBuilder.addAnnotation(ffiGenBatchBuilder.build());
-    }
-
-    private void addVertexGen(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", Vertex.class.getName());
-        addIntCXXTemplate(ffiGenVertex);
-        addLongCXXTemplate(ffiGenVertex);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addTypedArray(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenTypedArray = AnnotationSpec.builder(FFIGen.class);
-        ffiGenTypedArray.addMember("type", "$S", TypedArray.class.getName());
-        addSignedIntCXXTemplate(ffiGenTypedArray);
-        addSignedLongCXXTemplate(ffiGenTypedArray);
-        addDoubleCXXTemplate(ffiGenTypedArray);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenTypedArray.build());
-    }
-
-    private void addVertexRange(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", VertexRange.class.getName());
-        addIntCXXTemplate(ffiGenVertex);
-        addLongCXXTemplate(ffiGenVertex);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addGSVertexRange(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", GSVertexArray.class.getName());
-        addIntCXXTemplate(ffiGenVertex);
-        addLongCXXTemplate(ffiGenVertex);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addNbr(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", GrapeNbr.class.getName());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint32_t")
-                        .addMember("cxx", "$S", "double")
-                        .addMember("java", "$S", "Integer")
-                        .addMember("java", "$S", "Double")
-                        .build());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint64_t")
-                        .addMember("cxx", "$S", "double")
-                        .addMember("java", "$S", "Long")
-                        .addMember("java", "$S", "Double")
-                        .build());
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addAdjList(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", GrapeAdjList.class.getName());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint32_t")
-                        .addMember("cxx", "$S", "double")
-                        .addMember("java", "$S", "Integer")
-                        .addMember("java", "$S", "Double")
-                        .build());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint64_t")
-                        .addMember("cxx", "$S", "double")
-                        .addMember("java", "$S", "Long")
-                        .addMember("java", "$S", "Double")
-                        .build());
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addPropertyNbrUnit(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", PropertyNbrUnit.class.getName());
-        addIntCXXTemplate(ffiGenVertex);
-        addLongCXXTemplate(ffiGenVertex);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
     }
 
     private void addPropertyRawAdjList(AnnotationSpec.Builder ffiGenBatchBuilder) {
@@ -567,63 +405,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
                         .addMember("java", "$S", "Long")
                         .build());
         ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addProjectedNbr(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", ProjectedNbr.class.getName());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint64_t")
-                        .addMember("cxx", "$S", "double")
-                        .addMember("java", "$S", "Long")
-                        .addMember("java", "$S", "Double")
-                        .build());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint64_t")
-                        .addMember("cxx", "$S", "int64_t")
-                        .addMember("java", "$S", "Long")
-                        .addMember("java", "$S", "Long")
-                        .build());
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addProjectedAdjList(AnnotationSpec.Builder ffiGenBatchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", ProjectedAdjList.class.getName());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint64_t")
-                        .addMember("cxx", "$S", "double")
-                        .addMember("java", "$S", "Long")
-                        .addMember("java", "$S", "Double")
-                        .build());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", "uint64_t")
-                        .addMember("cxx", "$S", "int64_t")
-                        .addMember("java", "$S", "Long")
-                        .addMember("java", "$S", "Long")
-                        .build());
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addMessageTypes(AnnotationSpec.Builder batchBuilder) {
-        AnnotationSpec.Builder doubleMsgBuilder = AnnotationSpec.builder(FFIGen.class);
-        doubleMsgBuilder.addMember("type", "$S", DoubleMsg.class.getName());
-        batchBuilder.addMember("value", "$L", doubleMsgBuilder.build());
-        AnnotationSpec.Builder longMsgBuilder = AnnotationSpec.builder(FFIGen.class);
-        longMsgBuilder.addMember("type", "$S", DoubleMsg.class.getName());
-        batchBuilder.addMember("value", "$L", longMsgBuilder.build());
     }
 
     private void addArrowFragment(AnnotationSpec.Builder batchBuilder) {
@@ -663,136 +444,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         ffiGenBatchBuilder.addMember("value", "$L", arrowProjectedFragmentBuilder.build());
     }
 
-    private void addGSVertexArray(AnnotationSpec.Builder batchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", GSVertexArray.class.getName());
-        addLongCXXTemplate(ffiGenVertex);
-        addSignedLongCXXTemplate(ffiGenVertex);
-        addIntCXXTemplate(ffiGenVertex);
-        addSignedIntCXXTemplate(ffiGenVertex);
-        addDoubleCXXTemplate(ffiGenVertex);
-        batchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addVertexArray(AnnotationSpec.Builder batchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", VertexArray.class.getName());
-        addCXXTemplate(ffiGenVertex, "uint64_t", "double", "Long", "Double");
-        addCXXTemplate(ffiGenVertex, "uint64_t", "int64_t", "Long", "Long");
-        addCXXTemplate(ffiGenVertex, "uint64_t", "int32_t", "Long", "Integer");
-        batchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addStdVector(AnnotationSpec.Builder batchBuilder) {
-        AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertex.addMember("type", "$S", StdVector.class.getName());
-        addSignedLongCXXTemplate(ffiGenVertex);
-        addSignedIntCXXTemplate(ffiGenVertex);
-        // add support for complex gs vertex array
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", makeParameterizedType(GS_VERTEX_ARRAY, "double"))
-                        .addMember(
-                                "java",
-                                "$S",
-                                makeParameterizedType(GSVertexArray.class.getName(), "Double"))
-                        .build());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", makeParameterizedType(GS_VERTEX_ARRAY, "int64_t"))
-                        .addMember(
-                                "java",
-                                "$S",
-                                makeParameterizedType(GSVertexArray.class.getName(), "Long"))
-                        .build());
-        ffiGenVertex.addMember(
-                "templates",
-                "$L",
-                AnnotationSpec.builder(CXXTemplate.class)
-                        .addMember("cxx", "$S", makeParameterizedType(GS_VERTEX_ARRAY, "int32_t"))
-                        .addMember(
-                                "java",
-                                "$S",
-                                makeParameterizedType(GSVertexArray.class.getName(), "Integer"))
-                        .build());
-
-        batchBuilder.addMember("value", "$L", ffiGenVertex.build());
-    }
-
-    private void addColumn(
-            AnnotationSpec.Builder batchBuilder, String foreignFragName, String javaFragName) {
-        for (String columnName :
-                new String[] {
-                    DoubleColumn.class.getName(),
-                    LongColumn.class.getName(),
-                    IntColumn.class.getName()
-                }) {
-            AnnotationSpec.Builder ffiGenVertex = AnnotationSpec.builder(FFIGen.class);
-            ffiGenVertex.addMember("type", "$S", columnName);
-            ffiGenVertex.addMember(
-                    "templates",
-                    "$L",
-                    AnnotationSpec.builder(CXXTemplate.class)
-                            .addMember("cxx", "$S", foreignFragName)
-                            .addMember("java", "$S", javaFragName)
-                            .build());
-            batchBuilder.addMember("value", "$L", ffiGenVertex.build());
-        }
-    }
-
-    private void addSharedPtr(
-            AnnotationSpec.Builder batchBuilder, String foreignFragName, String javaFragName) {
-        {
-            AnnotationSpec.Builder ffiGenSharedPtr = AnnotationSpec.builder(FFIGen.class);
-            ffiGenSharedPtr.addMember("type", "$S", StdSharedPtr.class.getName());
-            for (String[] columnTypePair :
-                    new String[][] {
-                        {DOUBLE_COLUMN, DoubleColumn.class.getName()},
-                        {INT_COLUMN, IntColumn.class.getName()},
-                        {LONG_COLUMN, LongColumn.class.getName()}
-                    }) {
-                ffiGenSharedPtr.addMember(
-                        "templates",
-                        "$L",
-                        AnnotationSpec.builder(CXXTemplate.class)
-                                .addMember(
-                                        "cxx",
-                                        "$S",
-                                        makeParameterizedType(columnTypePair[0], foreignFragName))
-                                .addMember(
-                                        "java",
-                                        "$S",
-                                        makeParameterizedType(columnTypePair[1], javaFragName))
-                                .build());
-            }
-            batchBuilder.addMember("value", "$L", ffiGenSharedPtr.build());
-        }
-    }
-
-    private void addDefaultMessageManager(
-            AnnotationSpec.Builder ffiGenBatchBuilder,
-            String foreignFragName,
-            String javaFragName) {
-        AnnotationSpec.Builder ffiGenBuilderdefault = AnnotationSpec.builder(FFIGen.class);
-        ffiGenBuilderdefault.addMember("type", "$S", DefaultMessageManager.class.getName());
-        defaultMessageManagerAddMessages(ffiGenBuilderdefault, foreignFragName, javaFragName);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenBuilderdefault.build());
-    }
-
-    private void addVertexDataContext(
-            AnnotationSpec.Builder ffiGenBatchBuilder,
-            String foreignFragName,
-            String javaFragName) {
-        AnnotationSpec.Builder ffiGenVertexDataContext = AnnotationSpec.builder(FFIGen.class);
-        ffiGenVertexDataContext.addMember("type", "$S", FFIVertexDataContext.class.getName());
-        vertexDataContextAddTemplate(ffiGenVertexDataContext, foreignFragName, javaFragName);
-        ffiGenBatchBuilder.addMember("value", "$L", ffiGenVertexDataContext.build());
-    }
-
     private void addVertexPropertyContext(
             AnnotationSpec.Builder ffiGenBatchBuilder,
             String foreignFragName,
@@ -828,118 +479,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         vertexPropertyContextAddTemplate(
                 ffiGenLabeledVertexPropertyContext, foreignFragName, javaFragName);
         ffiGenBatchBuilder.addMember("value", "$L", ffiGenLabeledVertexPropertyContext.build());
-    }
-
-    private void defaultMessageManagerAddMessages(
-            AnnotationSpec.Builder defaultMessagerBuilder,
-            String foreignArrowProjectedTempalteNameConcat,
-            String javaArrowProjectedTemplateNameConcat) {
-        List<String> messageTypes = getMessageTypes();
-        logger.info(
-                "In DefaultMessageManager, received message types are: "
-                        + String.join(",", messageTypes));
-        if (messageTypes.isEmpty()) {
-            return;
-        }
-        {
-            // sendMsgThroughIEdges
-            AnnotationSpec.Builder sendIEdgesBuilder =
-                    AnnotationSpec.builder(FFIFunGen.class)
-                            .addMember("name", "$S", "sendMsgThroughIEdgesArrowProjected")
-                            .addMember("returnType", "$S", "void")
-                            .addMember("parameterTypes", "$S", "FRAG_T")
-                            .addMember("parameterTypes", "$S", "MSG_T");
-            for (String messageType : messageTypes) {
-                String[] types = parseMessageType(messageType);
-                AnnotationSpec.Builder templateBuilder =
-                        AnnotationSpec.builder(CXXTemplate.class)
-                                .addMember("cxx", "$S", foreignArrowProjectedTempalteNameConcat)
-                                .addMember("cxx", "$S", types[0])
-                                .addMember("java", "$S", javaArrowProjectedTemplateNameConcat)
-                                .addMember("java", "$S", types[1]);
-                sendIEdgesBuilder.addMember("templates", "$L", templateBuilder.build());
-            }
-            defaultMessagerBuilder.addMember("functionTemplates", "$L", sendIEdgesBuilder.build());
-        }
-        {
-            // sendMsgThroughOEdges
-            AnnotationSpec.Builder sendOEdgesBuilder =
-                    AnnotationSpec.builder(FFIFunGen.class)
-                            .addMember("name", "$S", "sendMsgThroughOEdgesArrowProjected")
-                            .addMember("returnType", "$S", "void")
-                            .addMember("parameterTypes", "$S", "FRAG_T")
-                            .addMember("parameterTypes", "$S", "MSG_T");
-            for (String messageType : messageTypes) {
-                String[] types = parseMessageType(messageType);
-                AnnotationSpec.Builder templateBuilder =
-                        AnnotationSpec.builder(CXXTemplate.class)
-                                .addMember("cxx", "$S", foreignArrowProjectedTempalteNameConcat)
-                                .addMember("cxx", "$S", types[0])
-                                .addMember("java", "$S", javaArrowProjectedTemplateNameConcat)
-                                .addMember("java", "$S", types[1]);
-                sendOEdgesBuilder.addMember("templates", "$L", templateBuilder.build());
-            }
-            defaultMessagerBuilder.addMember("functionTemplates", "$L", sendOEdgesBuilder.build());
-        }
-        {
-            // sendMsgThroughEdges
-            AnnotationSpec.Builder sendEdgesBuilder =
-                    AnnotationSpec.builder(FFIFunGen.class)
-                            .addMember("name", "$S", "sendMsgThroughEdgesArrowProjected")
-                            .addMember("returnType", "$S", "void")
-                            .addMember("parameterTypes", "$S", "FRAG_T")
-                            .addMember("parameterTypes", "$S", "MSG_T");
-            for (String messageType : messageTypes) {
-                String[] types = parseMessageType(messageType);
-                AnnotationSpec.Builder templateBuilder =
-                        AnnotationSpec.builder(CXXTemplate.class)
-                                .addMember("cxx", "$S", foreignArrowProjectedTempalteNameConcat)
-                                .addMember("cxx", "$S", types[0])
-                                .addMember("java", "$S", javaArrowProjectedTemplateNameConcat)
-                                .addMember("java", "$S", types[1]);
-                sendEdgesBuilder.addMember("templates", "$L", templateBuilder.build());
-            }
-            defaultMessagerBuilder.addMember("functionTemplates", "$L", sendEdgesBuilder.build());
-        }
-        {
-            // syncStateOnOuterVertex
-            AnnotationSpec.Builder sendEdgesBuilder =
-                    AnnotationSpec.builder(FFIFunGen.class)
-                            .addMember("name", "$S", "syncStateOnOuterVertexArrowProjected")
-                            .addMember("returnType", "$S", "void")
-                            .addMember("parameterTypes", "$S", "MSG_T");
-            for (String messageType : messageTypes) {
-                String[] types = parseMessageType(messageType);
-                AnnotationSpec.Builder templateBuilder =
-                        AnnotationSpec.builder(CXXTemplate.class)
-                                .addMember("cxx", "$S", foreignArrowProjectedTempalteNameConcat)
-                                .addMember("cxx", "$S", types[0])
-                                .addMember("java", "$S", javaArrowProjectedTemplateNameConcat)
-                                .addMember("java", "$S", types[1]);
-                sendEdgesBuilder.addMember("templates", "$L", templateBuilder.build());
-            }
-            defaultMessagerBuilder.addMember("functionTemplates", "$L", sendEdgesBuilder.build());
-        }
-        {
-            // getMessage
-            AnnotationSpec.Builder sendEdgesBuilder =
-                    AnnotationSpec.builder(FFIFunGen.class)
-                            .addMember("name", "$S", "getMessageArrowProjected")
-                            .addMember("returnType", "$S", "boolean")
-                            .addMember("parameterTypes", "$S", "FRAG_T")
-                            .addMember("parameterTypes", "$S", "MSG_T");
-            for (String messageType : messageTypes) {
-                String[] types = parseMessageType(messageType);
-                AnnotationSpec.Builder templateBuilder =
-                        AnnotationSpec.builder(CXXTemplate.class)
-                                .addMember("cxx", "$S", foreignArrowProjectedTempalteNameConcat)
-                                .addMember("cxx", "$S", types[0])
-                                .addMember("java", "$S", javaArrowProjectedTemplateNameConcat)
-                                .addMember("java", "$S", types[1]);
-                sendEdgesBuilder.addMember("templates", "$L", templateBuilder.build());
-            }
-            defaultMessagerBuilder.addMember("functionTemplates", "$L", sendEdgesBuilder.build());
-        }
     }
 
     private void propertyMMAddMessages(AnnotationSpec.Builder propertyMMBuilder) {
@@ -1091,28 +630,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         }
     }
 
-    private void vertexDataContextAddTemplate(
-            AnnotationSpec.Builder vertexDataContextBuilder,
-            String foreignFragName,
-            String javaFragName) {
-        for (String[] dataType :
-                new String[][] {
-                    {"int64_t", Long.class.getName()},
-                    {"int32_t", Integer.class.getName()},
-                    {"double", Double.class.getName()}
-                }) {
-            vertexDataContextBuilder.addMember(
-                    "templates",
-                    "$L",
-                    AnnotationSpec.builder(CXXTemplate.class)
-                            .addMember("cxx", "$S", foreignFragName)
-                            .addMember("cxx", "$S", dataType[0])
-                            .addMember("java", "$S", javaFragName)
-                            .addMember("java", "$S", dataType[1])
-                            .build());
-        }
-    }
-
     private void vertexPropertyContextAddTemplate(
             AnnotationSpec.Builder vertexPropertyContextBuilder,
             String foreignFragName,
@@ -1124,13 +641,6 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
                         .addMember("cxx", "$S", foreignFragName)
                         .addMember("java", "$S", javaFragName)
                         .build());
-    }
-
-    private String makeParameterizedType(String base, String... types) {
-        if (types.length == 0) {
-            return base;
-        }
-        return base + "<" + String.join(",", types) + ">";
     }
 
     private void generateGrapeWrapper() {
@@ -1192,9 +702,21 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         }
 
         addGraphTypeWrapper(classBuilder, "vidType", getVidType());
-        addGraphTypeWrapper(classBuilder, "edataType", getEdataType());
-        addGraphTypeWrapper(classBuilder, "oidType", getOidType());
-        addGraphTypeWrapper(classBuilder, "vdataType", getVdataType());
+        if (isSameType(getEdataType(), StringView.class)) {
+            logger.info("Skip generating vector<> for StringView");
+        } else {
+            addGraphTypeWrapper(classBuilder, "edataType", getEdataType());
+        }
+        if (isSameType(getOidType(), StringView.class)) {
+            logger.info("Skip generating vector<> for StringView");
+        } else {
+            addGraphTypeWrapper(classBuilder, "oidType", getOidType());
+        }
+        if (isSameType(getVdataType(), StringView.class)) {
+            logger.info("Skip generating vector<> for StringView");
+        } else {
+            addGraphTypeWrapper(classBuilder, "vdataType", getVdataType());
+        }
 
         String packageName = packageElement.getQualifiedName().toString();
         writeTypeSpec(packageName, classBuilder.build());
@@ -1370,6 +892,10 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         return (DeclaredType) getTypeMirror(getGraphTypeMember("edataType"));
     }
 
+    private DeclaredType getVertexDataType() {
+        return (DeclaredType) getTypeMirror(getGraphTypeMember("vertexDataType"));
+    }
+
     private Set<String> getGraphTypeHeaders() {
         Set<String> headers = new HashSet<>();
         Arrays.asList(getOidType(), getVidType(), getVdataType(), getEdataType())
@@ -1407,6 +933,7 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         writer.append("namespace grape {\n");
         writer.format("using OID_T = %s;\n", getForeignTypeName(getOidType()));
         writer.format("using VID_T = %s;\n", getVidForeignTypeName(getVidType()));
+        // std::string <-> StringView
         writer.format("using VDATA_T = %s;\n", getForeignTypeName(getVdataType()));
         writer.format("using EDATA_T = %s;\n", getForeignTypeName(getEdataType()));
         writer.append("\n\n");
@@ -1521,7 +1048,8 @@ public class GraphScopeAnnotationProcessor extends javax.annotation.processing.A
         if (typeMirror instanceof ArrayType) {
             throw new IllegalStateException("No array is supported: " + typeMirror);
         }
-        if (isSameType(typeMirror, FFIByteString.class)) {
+        if (isSameType(typeMirror, FFIByteString.class)
+                || isSameType(typeMirror, StringView.class)) {
             return name ? "std::string" : "<string>";
         }
         if (!name) {

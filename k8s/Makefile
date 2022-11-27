@@ -2,12 +2,7 @@ MKFILE_PATH 			:= $(abspath $(lastword $(MAKEFILE_LIST)))
 WORKING_DIR 			:= $(dir $(MKFILE_PATH))
 SHORT_SHA   			:= $(shell git rev-parse --short HEAD)
 
-ifeq ("$(DOCKER_ORG)","")
-$(warning WARNING: No docker user found, using graphscope)
-DOCKER_ORG       		= graphscope
-endif
-
-.PHONY: submodule gsruntime gsvineyard graphscope push clean
+.PHONY: submodule graphscope push clean
 
 ifeq ($(REGISTRY),)
     REGISTRY := registry.cn-hongkong.aliyuncs.com
@@ -30,7 +25,7 @@ else
 endif
 
 VERSION ?= latest
-VINEYARD_VERSION ?= v0.9.0
+VINEYARD_VERSION ?= v0.10.2
 PROFILE ?= release
 CI ?= false
 
@@ -40,29 +35,12 @@ BUILD_PROGRESS  	= auto
 submodule:
 	cd ../ && git submodule update --init
 
-gsruntime-image:
-	docker build --progress=$(BUILD_PROGRESS) \
-				 -t ${REGISTRY}/$(DOCKER_ORG)/graphscope-runtime:${VERSION} \
-				 --network=host \
-				 -f $(WORKING_DIR)/manylinux2014.Dockerfile .
-
-gsvineyard-image:
-	docker build --progress=$(BUILD_PROGRESS) \
-				 -t ${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VERSION} \
-				 -f $(WORKING_DIR)/gsvineyard.Dockerfile .
-
 graphscope-image: submodule
 	docker build --progress=$(BUILD_PROGRESS) \
 				 --build-arg CI=${CI} \
 				 -t graphscope/graphscope:${SHORT_SHA} \
 				 --network=host \
 				 -f $(WORKING_DIR)/graphscope.Dockerfile ..
-
-graphscope-dev-image: submodule
-	docker build --progress=$(BUILD_PROGRESS) \
-				 -t graphscope/graphscope:${SHORT_SHA} \
-				 --network=host \
-				 -f $(WORKING_DIR)/graphscope-dev.Dockerfile ..
 
 jupyter-image:
 	docker build --progress=$(BUILD_PROGRESS) \
@@ -79,17 +57,15 @@ dataset-image:
 				 -f $(WORKING_DIR)/dataset.Dockerfile ..
 
 graphscope-store-image:
-	docker pull ${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VINEYARD_VERSION}
 	docker build --progress=$(BUILD_PROGRESS) \
                  --build-arg profile=${PROFILE} \
-				 --build-arg CI=${CI} \
                  -t graphscope/graphscope-store:${SHORT_SHA} \
                  --network=host \
                  -f $(WORKING_DIR)/graphscope-store.Dockerfile ..
 
 graphscope-jupyter-manylinux2014-py3:
 	docker run --rm -it -v $(WORKING_DIR)/..:/work \
-		   ${REGISTRY}/$(DOCKER_ORG)/graphscope-runtime:${VERSION} \
+		   ${REGISTRY}/graphscope/graphscope-dev:${VERSION} \
 		   bash -c 'pip3 install graphscope-client -U && \
 					cd /work/python/jupyter/graphscope && \
 					python3 setup.py bdist_wheel'
@@ -107,28 +83,30 @@ graphscope-darwin-py3:
 		mkdir -p build && cd build && \
 		cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local && \
 		sudo make install -j`nproc` && \
-		sudo rm -fr /opt/vineyard/lib
-	sudo rm -fr /tmp/v6d /tmp/libgrape-lite
+		sudo rm -rf /opt/vineyard/lib
+	sudo rm -rf /tmp/v6d /tmp/libgrape-lite
 	# build graphscope
 	cd $(WORKING_DIR)/../ && \
 		python3 -m pip install --upgrade setuptools && \
-		make install && \
+		make && \
+		sudo make install && \
 		python3 $(WORKING_DIR)/precompile.py
 	# build and delocate wheel
 	cd $(WORKING_DIR)/../coordinator && \
 		export WITH_EXTRA_DATA=ON && \
-		rm -fr build dist/*.whl || true && \
+		rm -rf build dist/*.whl || true && \
 		sudo strip -s $(WORKING_DIR)/../analytical_engine/exported_symbols_osx.lds /opt/graphscope/bin/grape_engine || true && \
 		sudo strip /opt/graphscope/bin/gaia_executor && \
 		export DYLD_LIBRARY_PATH=/usr/local/lib:$$DYLD_LIBRARY_PATH && \
+		install_name_tool -add_rpath /usr/local/lib /opt/graphscope/bin/gaia_executor && \
 		package_name=gs-include python3 setup.py bdist_wheel --plat=macosx_10_9_x86_64 && \
-		rm -fr build && \
+		rm -rf build && \
 		package_name=gs-apps python3 setup.py bdist_wheel --plat=macosx_10_9_x86_64 && \
-		rm -fr build && \
+		rm -rf build && \
 		package_name=gs-engine python3 setup.py bdist_wheel --plat=macosx_10_9_x86_64 && \
-		rm -fr build && \
+		rm -rf build && \
 		package_name=gs-coordinator python3 setup.py bdist_wheel --plat=macosx_10_9_x86_64 && \
-		rm -fr build && \
+		rm -rf build && \
 		package_name=graphscope python3 setup.py bdist_wheel --plat=macosx_10_9_x86_64 && \
 		pip3 install delocate && \
 		for wheel in `ls dist/*.whl`; do \
@@ -138,23 +116,24 @@ graphscope-darwin-py3:
 
 graphscope-manylinux2014-py3-nodocker:
 	cd $(WORKING_DIR)/../ && \
-	make install && \
+	make && \
+	sudo make install && \
 	python3 $(WORKING_DIR)/precompile.py && \
 	export WITH_EXTRA_DATA=ON && \
 	cd $(WORKING_DIR)/../coordinator && \
-	rm -fr build dist/*.whl && \
+	rm -rf build dist/*.whl && \
 	sudo strip /opt/graphscope/bin/grape_engine && \
 	sudo strip /opt/graphscope/bin/gaia_executor && \
 	sudo strip /opt/graphscope/lib/*.so && \
 	strip /tmp/gs/builtin/*/*.so && \
 	package_name=gs-include python3 setup.py bdist_wheel && \
-	rm -fr build && \
+	rm -rf build && \
 	package_name=gs-apps python3 setup.py bdist_wheel && \
-	rm -fr build && \
+	rm -rf build && \
 	package_name=gs-engine python3 setup.py bdist_wheel && \
-	rm -fr build && \
+	rm -rf build && \
 	package_name=gs-coordinator python3 setup.py bdist_wheel && \
-	rm -fr build && \
+	rm -rf build && \
 	package_name=graphscope python3 setup.py bdist_wheel && \
 	cd dist && \
 	for wheel in `ls ./*.whl`; do \
@@ -162,9 +141,9 @@ graphscope-manylinux2014-py3-nodocker:
 	done
 
 graphscope-manylinux2014-py3:
-	docker pull ${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VINEYARD_VERSION}
+	docker pull ${REGISTRY}/graphscope/graphscope-dev:${VINEYARD_VERSION}
 	docker run --rm -v $(WORKING_DIR)/..:/work \
-		${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VINEYARD_VERSION} \
+		${REGISTRY}/graphscope/graphscope-dev:${VINEYARD_VERSION} \
 		bash -c 'source ~/.bashrc && \
 			cd /work/k8s && \
 			make graphscope-manylinux2014-py3-nodocker'
@@ -202,22 +181,20 @@ graphscope-client-darwin-py3:
 		cd $(WORKING_DIR)/../python && \
 		pip3 install -U pip && \
 		pip3 install "numpy==1.18.5" "pandas<1.5.0" "grpcio<=1.43.0,>=1.40.0" "grpcio-tools<=1.43.0,>=1.40.0" delocate wheel && \
-		rm -fr build dist/*.whl || true && \
+		rm -rf build dist/*.whl || true && \
 		python3 setup.py bdist_wheel --plat=macosx_10_9_x86_64 && \
 		for wheel in `ls dist/*.whl`; do \
 			delocate-wheel -w dist/wheelhouse -v $$wheel && rm $$wheel; \
 		done
 
 graphscope-client-manylinux2014-py3:
-	docker pull ${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VINEYARD_VERSION}
+	docker pull ${REGISTRY}/graphscope/graphscope-dev:${VINEYARD_VERSION}
 	docker run --rm -v $(WORKING_DIR)/..:/work \
-		${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VINEYARD_VERSION} \
+		${REGISTRY}/graphscope/graphscope-dev:${VINEYARD_VERSION} \
 		bash -c 'cd /work/k8s && make graphscope-client-manylinux2014-py3-nodocker'
 
 push:
-	docker push ${REGISTRY}/$(DOCKER_ORG)/graphscope-runtime:${VERSION}
-	docker push ${REGISTRY}/$(DOCKER_ORG)/graphscope-vineyard:${VERSION}
-	docker push ${REGISTRY}/$(DOCKER_ORG)/graphscope:${VERSION}
+	docker push ${REGISTRY}/graphscope/graphscope:${VERSION}
 
 clean:
 	docker ps -qa | xargs $(XARGS_EMPTY_FLAG) docker rm -f

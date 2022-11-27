@@ -57,10 +57,6 @@
       <artifactId>grape-jdk</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.alibaba.graphscope</groupId>
-      <artifactId>grape-annotation</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>
@@ -72,12 +68,23 @@
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-core</artifactId>
     </dependency>
+    <dependency>
+    <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j-impl</artifactId>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessors>
+<!--            not include grape-annotation prossor-->
+            com.alibaba.fastffi.annotation.AnnotationProcessor
+          </annotationProcessors>
+          <showWarnings>true</showWarnings>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -134,5 +141,4 @@
       </plugin>
     </plugins>
   </build>
-
 </project>

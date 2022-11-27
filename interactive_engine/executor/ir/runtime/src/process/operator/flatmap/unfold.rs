@@ -39,11 +39,12 @@ impl FlatMapFunction<Record, Record> for UnfoldOperator {
     fn exec(&self, mut input: Record) -> FnResult<Self::Target> {
         // Consider 'take' the column since the collection won't be used anymore in most cases.
         // e.g., in EdgeExpandIntersection case, we only set alias of the collection to give the hint of intersection.
-        // TODO: This may be an opt for other operators as well, as long as the tag is not in need anymore.
-        // A hint of "erasing the tag" maybe a better way (rather than assuming tag is not needed here).
         let mut entry = input
             .take(self.tag.as_ref())
-            .ok_or(FnExecError::get_tag_error(&format!("tag {:?} in UnfoldOperator", self.tag)))?;
+            .ok_or(FnExecError::get_tag_error(&format!(
+                "get tag {:?} from record in `Unfold` operator, the record is {:?}",
+                self.tag, input
+            )))?;
         // take head in case that head entry is an arc clone of `self.tag`;
         // besides, head will be replaced by the items in collections anyway.
         input.take(None);
