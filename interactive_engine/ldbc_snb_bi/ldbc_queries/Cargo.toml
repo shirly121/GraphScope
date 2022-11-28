@@ -28,6 +28,7 @@ runtime = {path="../../executor/ir/runtime"}
 graph_proxy = {path="../../executor/ir/graph_proxy"}
 ir_common = {path="../../executor/ir/common"}
 dyn_type = {path="../../executor/common/dyn_type"}
+vec_map = "0.8.2"
 
 [build-dependencies]
 tonic-build = { version = "0.5", features = ["default", "compression"] }
