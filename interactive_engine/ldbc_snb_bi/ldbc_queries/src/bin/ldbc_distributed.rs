@@ -199,6 +199,16 @@ fn main() {
                 }
             }
 
+            "khop_sub" => {
+                println!("Start run query \"khop_sub\"");
+                let mut result = queries::khop_sub(conf);
+                if config.print_result {
+                    while let Some(res) = result.next() {
+                        println!("khop_sub {:?}", res);
+                    }
+                }
+            }
+
             "khop_record" => {
                 println!("Start run query \"khop_record\"");
                 let mut result = queries::khop_record(conf);
@@ -235,6 +245,16 @@ fn main() {
                 if config.print_result {
                     while let Some(res) = result.next() {
                         println!("khop_record_recordopt {:?}", res);
+                    }
+                }
+            }
+
+            "khop_record_aliasrecordopt" => {
+                println!("Start run query \"khop_record_aliasrecordopt\"");
+                let mut result = queries::khop_record_aliasrecordopt(conf);
+                if config.print_result {
+                    while let Some(res) = result.next() {
+                        println!("khop_record_aliasrecordopt {:?}", res);
                     }
                 }
             }

@@ -4,121 +4,14 @@ use pegasus::result::ResultStream;
 use pegasus::JobConf;
 
 use crate::queries::graph::*;
-use graph_proxy::apis::{read_id, write_id, Details, GraphElement, ID};
+use crate::queries::khop::khop_record_recordopt::{to_id_only_vertex, SimpleRecord};
+use graph_proxy::apis::{Details, GraphElement};
 use graph_proxy::to_runtime_vertex;
-use ir_common::KeyId;
 use itertools::__std_iter::Iterator;
-use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
-use std::sync::Arc;
-use vec_map::VecMap;
-
-#[derive(Debug, Clone, Default)]
-pub struct SimpleEntry {
-    id: ID,
-}
-
-impl From<ID> for SimpleEntry {
-    fn from(id: u64) -> Self {
-        SimpleEntry { id }
-    }
-}
-
-impl SimpleEntry {
-    pub fn as_id(&self) -> ID {
-        self.id
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SimpleRecord {
-    curr: Arc<SimpleEntry>,
-    columns: VecMap<Arc<SimpleEntry>>,
-}
-
-impl SimpleRecord {
-    pub fn new<E: Into<SimpleEntry>>(entry: E, tag: Option<KeyId>) -> Self {
-        let entry = Arc::new(entry.into());
-        let mut columns = VecMap::new();
-        if let Some(tag) = tag {
-            columns.insert(tag as usize, entry.clone());
-        }
-        SimpleRecord { curr: entry, columns }
-    }
-
-    pub fn get(&self, tag: Option<KeyId>) -> Option<&Arc<SimpleEntry>> {
-        if let Some(tag) = tag {
-            self.columns.get(tag as usize)
-        } else {
-            Some(&self.curr)
-        }
-    }
-
-    /// A handy api to append entry of different types that can be turned into `Entry`
-    pub fn append<E: Into<SimpleEntry>>(&mut self, entry: E, alias: Option<KeyId>) {
-        self.append_arc_entry(Arc::new(entry.into()), alias)
-    }
-
-    pub fn append_arc_entry(&mut self, entry: Arc<SimpleEntry>, alias: Option<KeyId>) {
-        self.curr = entry.clone();
-        if let Some(alias) = alias {
-            self.columns.insert(alias as usize, entry);
-        }
-    }
-
-    // this is a test for alias necessary opt: move current into columns with head_alias, and append new entry as current
-    pub fn append_with_head_alias<E: Into<SimpleEntry>>(&mut self, entry: E, head_alias: Option<KeyId>) {
-        self.columns
-            .insert(head_alias.unwrap() as usize, self.curr.clone());
-        self.curr = Arc::new(entry.into());
-    }
-}
-
-impl Encode for SimpleEntry {
-    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
-        write_id(writer, self.id)
-    }
-}
-
-impl Decode for SimpleEntry {
-    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
-        let id = read_id(reader)?;
-        Ok(SimpleEntry { id })
-    }
-}
-
-impl Encode for SimpleRecord {
-    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
-        self.curr.write_to(writer)?;
-        writer.write_u32(self.columns.len() as u32)?;
-        for (k, v) in self.columns.iter() {
-            (k as KeyId).write_to(writer)?;
-            v.write_to(writer)?;
-        }
-        Ok(())
-    }
-}
-
-impl Decode for SimpleRecord {
-    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
-        let entry = <SimpleEntry>::read_from(reader)?;
-        let size = <u32>::read_from(reader)? as usize;
-        let mut columns = VecMap::with_capacity(size);
-        for _i in 0..size {
-            let k = <KeyId>::read_from(reader)? as usize;
-            let v = <SimpleEntry>::read_from(reader)?;
-            columns.insert(k, Arc::new(v));
-        }
-        Ok(SimpleRecord { curr: Arc::new(entry), columns })
-    }
-}
-
-pub fn to_id_only_vertex(vertex: LocalVertex<DefaultId>) -> u64 {
-    vertex.get_id() as u64
-}
 
 /// g.V().hasLabel("PERSON").in("HASCREATOR").hasLabel("POST").as("a").in("REPLYOF").select("a").values("id").count()
-/// the Record Version. FilterPushDown + ID-only Record
-pub fn khop_record_recordopt(conf: JobConf) -> ResultStream<u64> {
+/// the Record Version. FilterPushDown + ID-only Record + liasOpt
+pub fn khop_record_aliasrecordopt(conf: JobConf) -> ResultStream<u64> {
     let workers = conf.workers;
 
     let schema = &GRAPH.graph_schema;
@@ -163,7 +56,7 @@ pub fn khop_record_recordopt(conf: JobConf) -> ResultStream<u64> {
                         .map(|v| to_id_only_vertex(v))
                         .map(move |post_vertex| {
                             let mut new_record = person_record.clone();
-                            new_record.append(post_vertex, Some(0));
+                            new_record.append(post_vertex, None);
                             new_record
                         });
                     Ok(posts)
@@ -180,7 +73,7 @@ pub fn khop_record_recordopt(conf: JobConf) -> ResultStream<u64> {
                         .map(move |message_vertex| to_id_only_vertex(message_vertex))
                         .map(move |message_vertex| {
                             let mut new_record = post_record.clone();
-                            new_record.append(message_vertex, None);
+                            new_record.append_with_head_alias(message_vertex, Some(0));
                             new_record
                         });
                     Ok(post_messages)
