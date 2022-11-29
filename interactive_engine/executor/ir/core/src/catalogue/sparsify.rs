@@ -16,12 +16,30 @@
 //!
 use graph_store::prelude::{
     DefaultId, GlobalStoreTrait, GlobalStoreUpdate, GraphDBConfig, InternalId, ItemType, LargeGraphDB,
-    MutableGraphDB, Row,
+    MutableGraphDB, Row, INVALID_LABEL_ID,
 };
 use rand::{thread_rng, Rng};
-use std::path::Path;
+use std::fs;
+use serde_json::{Value, Map};
+use std::{path::Path, collections::HashMap};
 
-pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, rate: f64, path: P) {
+pub fn read_sparsify_config(path: &str) -> HashMap<(u8,u8,u8), f64> {
+    println!("{}",path);
+    let config = fs::read_to_string(path).unwrap();
+    let parsed: Value = serde_json::from_str(&config).unwrap();
+    let obj: Map<String, Value> = parsed.as_object().unwrap().clone();
+    let mut sparsify_rate = HashMap::new();
+    for (key, value) in obj {
+        let labels: Vec<&str>=key.split('_').collect();
+        let label1 = labels[0].parse::<u8>().unwrap();
+        let label2 = labels[1].parse::<u8>().unwrap();
+        let label3 = labels[2].parse::<u8>().unwrap();
+        sparsify_rate.insert((label1,label2,label3), value.as_f64().unwrap());
+    }
+    sparsify_rate
+}
+
+pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, sparsify_rate: HashMap<(u8,u8,u8), f64>, path: P) {
     let mut mut_graph: MutableGraphDB<DefaultId, InternalId> =
         GraphDBConfig::default().root_dir(path).new();
     // random edge
@@ -35,6 +53,19 @@ pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, rate: f6
         mut_graph.add_vertex(i, label);
     }
     for j in src_graph.get_all_edges(None) {
+        let src_label = src_graph.get_vertex(j.get_src_id()).unwrap().get_label();
+        let dst_label = src_graph.get_vertex(j.get_dst_id()).unwrap().get_label();
+        let edge_label = j.get_label();
+        let mut src_filter_label= src_label[1];
+        let mut dst_filter_label= dst_label[1];
+        if src_label[1] == INVALID_LABEL_ID {
+            src_filter_label = src_label[0];
+        }
+        if dst_label[1] == INVALID_LABEL_ID {
+            dst_filter_label = dst_label[0];
+        }
+        let relation_key = (src_filter_label,edge_label,dst_filter_label);
+        let rate = sparsify_rate[&relation_key];
         let mut rng = thread_rng();
         let ran = (rng.gen_range(0..100)) as f64 / 100.0;
         if ran <= rate {

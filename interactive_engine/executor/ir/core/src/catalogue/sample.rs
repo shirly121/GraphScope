@@ -38,7 +38,7 @@ type PatternRecord = BTreeMap<PatternId, DefaultId>;
 
 impl Catalogue {
     pub fn estimate_graph(
-        &mut self, graph: Arc<LargeGraphDB<DefaultId, InternalId>>, rate: f64, limit: Option<usize>,
+        &mut self, graph: Arc<LargeGraphDB<DefaultId, InternalId>>, rate: f64, sparsify_rate: HashMap<(u8,u8,u8),f64>, limit: Option<usize>,
     ) {
         let mut relaxed_pattern_indices = BTreeSet::new();
         let mut pattern_counts_map = BTreeMap::new();
@@ -111,7 +111,16 @@ impl Catalogue {
         }
         println!("{:?}", pattern_counts_map);
         for (pattern_index, pattern_count) in pattern_counts_map.iter() {
-            self.set_pattern_count(*pattern_index, *pattern_count)
+            let pattern = self.get_pattern_weight(*pattern_index).unwrap().get_pattern();
+            let mut estimate_result = *pattern_count as f64;
+            for edge in pattern.edges_iter() {
+                let src = edge.get_start_vertex().get_label();
+                let edge_label = edge.get_label();
+                let dst = edge.get_end_vertex().get_label();
+                let keys = (src as u8, edge_label as u8, dst as u8);
+                estimate_result /= sparsify_rate[&keys];
+            }
+            self.set_pattern_count(*pattern_index, estimate_result as usize)
         }
         for (pattern_index, _) in pattern_counts_map.iter() {
             self.set_extend_count_infos(*pattern_index)
