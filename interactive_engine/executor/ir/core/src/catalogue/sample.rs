@@ -118,7 +118,12 @@ impl Catalogue {
                 let edge_label = edge.get_label();
                 let dst = edge.get_end_vertex().get_label();
                 let keys = (src as u8, edge_label as u8, dst as u8);
-                estimate_result /= sparsify_rate[&keys];
+                if !sparsify_rate.contains_key(&keys) {
+                    println!("{:?}",keys);
+                }
+                else {
+                    estimate_result /= sparsify_rate[&keys];
+                }
             }
             self.set_pattern_count(*pattern_index, estimate_result as usize)
         }

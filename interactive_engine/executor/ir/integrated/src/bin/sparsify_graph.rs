@@ -14,7 +14,7 @@
 //! limitations under the License.
 //!
 
-use ir_core::catalogue::sparsify::{create_sparsified_graph, read_sparsify_config};
+use ir_core::catalogue::sparsify::{create_sparsified_graph, read_sparsify_config, get_edge_distribution, dump_edge_info};
 use runtime_integration::read_graph;
 use std::error::Error;
 use structopt::StructOpt;
@@ -37,13 +37,16 @@ pub struct Config {
 fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
     let graph = read_graph()?;
+    let graph2 = read_graph()?;
+    dump_edge_info(get_edge_distribution(graph2),&config.low_order_path);
     let executed_command = "SPARSE_RATE=".to_string()+&config.sample_rate.to_string()+" SPARSE_STATISTIC_PATH="+&config.low_order_path+" SPARSE_RATE_PATH="+&config.sparsify_rate_path+" python3 Sparsify.py";
     let mut generating_sparsify_rate = Command::new("sh");
     generating_sparsify_rate.arg("-c")
               .arg(executed_command);
-    let hello_1 = generating_sparsify_rate.output().expect("failed to execute process");
-    println!("{:?}",hello_1);
+    let optimization_program = generating_sparsify_rate.output().expect("failed to execute process");
+    println!("{:?}",optimization_program);
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
+    dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
     create_sparsified_graph(graph, sparsify_rate, config.export_path);
     Ok(())
 }
