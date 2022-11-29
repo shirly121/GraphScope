@@ -118,10 +118,8 @@ impl Catalogue {
                 let edge_label = edge.get_label();
                 let dst = edge.get_end_vertex().get_label();
                 let keys = (src as u8, edge_label as u8, dst as u8);
-                if !sparsify_rate.contains_key(&keys) {
-                    println!("{:?}",keys);
-                }
-                else {
+                if sparsify_rate.contains_key(&keys) {
+                    // println!("{:?}",keys);
                     estimate_result /= sparsify_rate[&keys];
                 }
             }

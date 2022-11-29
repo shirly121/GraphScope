@@ -41,11 +41,9 @@ pub fn dump_edge_info(edges: HashMap<(u8,u8,u8), f64>, path: &str) {
     }
     let data = serde_json::to_value(&string_table).unwrap();
     serde_json::to_writer(&File::create(path).unwrap(), &data).unwrap();
-    println!("{}",data);
 }
 
 pub fn read_sparsify_config(path: &str) -> HashMap<(u8,u8,u8), f64> {
-    println!("{}",path);
     let config = fs::read_to_string(path).unwrap();
     let parsed: Value = serde_json::from_str(&config).unwrap();
     let obj: Map<String, Value> = parsed.as_object().unwrap().clone();

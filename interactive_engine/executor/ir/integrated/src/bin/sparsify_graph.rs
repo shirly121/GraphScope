@@ -44,7 +44,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     generating_sparsify_rate.arg("-c")
               .arg(executed_command);
     let optimization_program = generating_sparsify_rate.output().expect("failed to execute process");
-    println!("{:?}",optimization_program);
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
     dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
     create_sparsified_graph(graph, sparsify_rate, config.export_path);
