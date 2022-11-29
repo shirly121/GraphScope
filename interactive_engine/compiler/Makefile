@@ -16,6 +16,8 @@ graph.schema:=
 
 rpc.target:=start_rpc_server
 
+target.revision:=0.0.1-SNAPSHOT
+
 ifeq ($(UNAME_S),Darwin)
     ifeq ($(UNAME_M),arm64)
         OSFLAG += -Dos.detected.classifier=osx-x86_64
@@ -23,10 +25,9 @@ ifeq ($(UNAME_S),Darwin)
 endif
 
 build:
-	cd $(CUR_DIR)/../executor/engine/pegasus/clients/java/client && \
-		mvn clean install -DskipTests --quiet $(OSFLAG) && \
-		cd $(CUR_DIR)/../executor/ir/integrated && cargo build --release --bin $(rpc.target) && \
-		cd $(CUR_DIR) && mvn clean package -DskipTests --quiet $(OSFLAG)
+	cd $(CUR_DIR)/.. && \
+		mvn clean install -DskipTests -Drevision=${target.revision} -Pexperimental --quiet $(OSFLAG) && \
+		cd $(CUR_DIR)/../executor/ir/integrated && cargo build --release --bin $(rpc.target)
 
 clean:
 	cd $(CUR_DIR)/../executor/engine/pegasus/clients/java/client && mvn clean && \
@@ -45,14 +46,14 @@ gremlin_test:
 
 submit:
 	cd $(CUR_DIR) && $(java) \
-	  -cp ".:./target/libs/*:./target/compiler-1.0-SNAPSHOT.jar" \
+	  -cp ".:./target/libs/*:./target/compiler-0.0.1-SNAPSHOT.jar" \
 	  -Djna.library.path=../executor/ir/target/release \
 	  com.alibaba.graphscope.common.SubmitPlanServiceMain \
 	  $(OPT)
 
 run:
 	cd $(CUR_DIR) && $(java) \
-	  -cp ".:./target/libs/*:./target/compiler-1.0-SNAPSHOT.jar" \
+	  -cp ".:./target/libs/*:./target/compiler-0.0.1-SNAPSHOT.jar" \
 	  -Djna.library.path=../executor/ir/target/release \
 	  -Dgraph.schema=${graph.schema} \
 	  -Dpegasus.hosts=${pegasus.hosts} \
