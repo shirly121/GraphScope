@@ -22,8 +22,6 @@ use ir_common::expr_parse::error::ExprError;
 use ir_common::NameOrId;
 use prost::EncodeError;
 
-use crate::glogue::error::IrPatternError;
-
 /// Record any error while transforming ir to a pegasus physical plan
 #[derive(Debug, Clone)]
 pub enum IrError {
@@ -35,7 +33,6 @@ pub enum IrError {
     ParsePbError(ParsePbError),
     ParseExprError(ExprError),
     InvalidPattern(String),
-    InvalidExtendPattern(IrPatternError),
 
     // Physical Errors
     PbEncodeError(EncodeError),
@@ -67,9 +64,6 @@ impl fmt::Display for IrError {
             IrError::ParsePbError(err) => write!(f, "parse pb error: {:?}", err),
             IrError::ParseExprError(err) => write!(f, "parse expression error: {:?}", err),
             IrError::InvalidPattern(s) => write!(f, "invalid pattern: {:?}", s),
-            IrError::InvalidExtendPattern(err) => {
-                write!(f, "invalid pattern with ExtendStrategy: {:?}", err)
-            }
             IrError::PbEncodeError(err) => write!(f, "encoding protobuf error: {:?}", err),
             IrError::MissingData(s) => write!(f, "missing required data: {:?}", s),
             IrError::InvalidRange(lo, up) => {
