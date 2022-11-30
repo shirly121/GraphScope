@@ -29,7 +29,7 @@ use crate::catalogue::catalog::Catalogue;
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::plan::get_definite_extend_steps_recursively;
+use crate::catalogue::plan::get_definite_extend_steps;
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
 use crate::plan::meta::Schema;
 use crate::JsonIO;
@@ -134,8 +134,7 @@ impl Catalogue {
                 .unwrap()
                 .get_pattern()
                 .clone();
-            let (extend_steps, _) =
-                get_definite_extend_steps_recursively(self, start_pattern_index, pattern.clone());
+            let (extend_steps, _) = get_definite_extend_steps(pattern.clone(), self);
             let mut pattern_records = get_src_records(graph, extend_steps, limit);
             let pattern_count = pattern_records.len();
             relaxed_pattern_indices.insert(start_pattern_index);
@@ -293,8 +292,9 @@ pub fn get_src_records(
 ) -> Vec<PatternRecord> {
     let mut extend_steps = extend_steps.into_iter();
     let first_extend_step = extend_steps.next().unwrap();
-    let src_vertex_label = first_extend_step.get_target_vertex_label();
-    let src_pattern_vertex_id = first_extend_step.get_target_vertex_id();
+    let src_vertex = first_extend_step.get_target_vertex();
+    let src_vertex_label = src_vertex.get_label();
+    let src_pattern_vertex_id = src_vertex.get_id();
     let mut pattern_records: DynIter<PatternRecord> = Box::new(
         graph
             .get_all_vertices(Some(&vec![src_vertex_label as LabelId]))
@@ -305,14 +305,15 @@ pub fn get_src_records(
             pattern_records = Box::new(pattern_records.take(upper_bound));
         }
         pattern_records = Box::new(pattern_records.flat_map(move |pattern_record| {
-            let target_vertex_label = extend_step.get_target_vertex_label();
+            let target_vertex = extend_step.get_target_vertex();
+            let target_vertex_label = target_vertex.get_label();
             let mut intersect_vertices = BTreeSet::new();
             for (i, extend_edge) in extend_step.iter().enumerate() {
                 let adjacent_vertices =
                     get_adj_vertices_set(graph, &pattern_record, extend_edge, target_vertex_label);
                 intersect_vertices = intersect_sets(intersect_vertices, adjacent_vertices, i == 0);
             }
-            let target_pattern_vertex_id = extend_step.get_target_vertex_id();
+            let target_pattern_vertex_id = target_vertex.get_id();
             intersect_vertices
                 .into_iter()
                 .map(move |adj_graph_vertex_id| {

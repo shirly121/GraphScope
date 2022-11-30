@@ -24,7 +24,9 @@ use serde::{Deserialize, Serialize};
 use vec_map::VecMap;
 
 use crate::catalogue::canonical_label::CanonicalLabelManager;
-use crate::catalogue::extend_step::{get_subsets, limit_repeated_element_num, ExtendEdge, ExtendStep};
+use crate::catalogue::extend_step::{
+    get_subsets, limit_repeated_element_num, DefiniteExtendEdge, ExtendEdge, ExtendStep,
+};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
@@ -1283,6 +1285,33 @@ impl Pattern {
         Ok(new_pattern)
     }
 
+    pub fn extend_definitely(
+        &self, extend_edge: &DefiniteExtendEdge, target_vetex: PatternVertex,
+    ) -> Option<Pattern> {
+        let pattern_edge = if let PatternDirection::Out = extend_edge.get_direction() {
+            PatternEdge::new(
+                extend_edge.get_edge_id(),
+                extend_edge.get_edge_label(),
+                extend_edge.get_src_vertex(),
+                target_vetex,
+            )
+        } else {
+            PatternEdge::new(
+                extend_edge.get_edge_id(),
+                extend_edge.get_edge_label(),
+                target_vetex,
+                extend_edge.get_src_vertex(),
+            )
+        };
+        let mut new_pattern = self.clone();
+        if let Ok(_) = new_pattern.add_edge(&pattern_edge) {
+            new_pattern.canonical_labeling();
+            Some(new_pattern)
+        } else {
+            None
+        }
+    }
+
     /// Locate a vertex(id) from the pattern based on the given extend step and target pattern code
     pub fn locate_vertex(
         &self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>,
@@ -1389,7 +1418,7 @@ impl Pattern {
                 .unwrap()
                 .out_adjacencies
                 .retain(|adj| adj.get_edge_id() != edge_id);
-            if self.get_vertex_degree(start_vertex) == 0 {
+            if self.get_vertex_degree(start_vertex) == 0 && self.get_vertices_num() > 1 {
                 self.remove_vertex_internal(start_vertex)
             }
             // update end vertex's info
@@ -1398,7 +1427,7 @@ impl Pattern {
                 .unwrap()
                 .in_adjacencies
                 .retain(|adj| adj.get_edge_id() != edge_id);
-            if self.get_vertex_degree(end_vertex) == 0 {
+            if self.get_vertex_degree(end_vertex) == 0 && self.get_vertices_num() > 1 {
                 self.remove_vertex_internal(end_vertex)
             }
             if self.is_connected() {

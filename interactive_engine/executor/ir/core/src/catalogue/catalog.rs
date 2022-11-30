@@ -254,6 +254,8 @@ pub struct Catalogue {
     /// Those patterns with size 1 are the entries of catalogue
     /// - Stores entries with their NodeIndex and PatternLabelId
     entries: Vec<NodeIndex>,
+    ///
+    pattern_count_map: HashMap<Vec<u8>, usize>,
 }
 
 impl Catalogue {
@@ -641,6 +643,50 @@ impl Catalogue {
                     extend_weight_mut.set_intersect_count(min_intersect_count);
                     extend_weight_mut.set_extend_step(extend_step_with_min_count.unwrap());
                 }
+            }
+        }
+    }
+
+    pub fn estimate_pattern_count(&mut self, pattern: &Pattern) -> usize {
+        let pattern_code = pattern.encode_to();
+        if let Some(pattern_index) = self.get_pattern_index(&pattern_code) {
+            self.get_pattern_weight(pattern_index)
+                .unwrap()
+                .get_count()
+        } else if let Some(&patten_count) = self.pattern_count_map.get(&pattern_code) {
+            patten_count
+        } else {
+            let mut sub_pattern_0 = None;
+            let mut sub_pattern_1 = None;
+            let mut intersect_pattern = None;
+            let edges: Vec<PatternEdge> = pattern.edges_iter().cloned().collect();
+            'outer: for i in 0..edges.len() {
+                for j in (i + 1)..edges.len() {
+                    let edge_0 = edges.get(i).unwrap().get_id();
+                    let edge_1 = edges.get(j).unwrap().get_id();
+                    if let (Some(pattern_0), Some(pattern_1)) =
+                        (pattern.clone().remove_edge(edge_0), pattern.clone().remove_edge(edge_1))
+                    {
+                        if let Some(inter_pattern) = pattern_0.clone().remove_edge(edge_1) {
+                            sub_pattern_0 = Some(pattern_0);
+                            sub_pattern_1 = Some(pattern_1);
+                            intersect_pattern = Some(inter_pattern);
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+            if sub_pattern_0.is_some() && sub_pattern_1.is_some() && intersect_pattern.is_some() {
+                let sub_pattern_0_count = self.estimate_pattern_count(&sub_pattern_0.unwrap());
+                let sub_pattern_1_count = self.estimate_pattern_count(&sub_pattern_1.unwrap());
+                let intersect_pattern_count = self.estimate_pattern_count(&intersect_pattern.unwrap());
+                let pattern_count = sub_pattern_0_count * sub_pattern_1_count / intersect_pattern_count;
+                self.pattern_count_map
+                    .insert(pattern_code, pattern_count);
+                pattern_count
+            } else {
+                //ToDo: such pattern's count info must be stored in catalog
+                0
             }
         }
     }

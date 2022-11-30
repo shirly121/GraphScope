@@ -13,6 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::iter::Iterator;
@@ -149,8 +150,7 @@ impl DefiniteExtendEdge {
 /// Given a DefiniteExtendStep, we can uniquely find which part of the pattern to extend
 #[derive(Debug, Clone)]
 pub struct DefiniteExtendStep {
-    target_vertex_id: PatternId,
-    target_vertex_label: PatternLabelId,
+    target_vertex: PatternVertex,
     extend_edges: Vec<DefiniteExtendEdge>,
 }
 
@@ -161,14 +161,8 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
 
     fn try_from(pattern: Pattern) -> IrResult<Self> {
         if pattern.get_vertices_num() == 1 {
-            let target_vertex = pattern.vertices_iter().last().unwrap();
-            let target_v_id = target_vertex.get_id();
-            let target_v_label = target_vertex.get_label();
-            Ok(DefiniteExtendStep {
-                target_vertex_id: target_v_id,
-                target_vertex_label: target_v_label,
-                extend_edges: vec![],
-            })
+            let target_vertex = pattern.vertices_iter().last().unwrap().clone();
+            Ok(DefiniteExtendStep { target_vertex, extend_edges: vec![] })
         } else {
             Err(IrError::Unsupported(
                 "Can only convert pattern with one vertex to Definite Extend Step".to_string(),
@@ -180,8 +174,7 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
 impl DefiniteExtendStep {
     /// Given a target pattern with a vertex id, pick all its neiboring edges and vertices to generate a definite extend step
     pub fn from_target_pattern(target_pattern: &Pattern, target_vertex_id: PatternId) -> Option<Self> {
-        if let Some(target_vertex) = target_pattern.get_vertex(target_vertex_id) {
-            let target_vertex_label = target_vertex.get_label();
+        if let Some(&target_vertex) = target_pattern.get_vertex(target_vertex_id) {
             let mut extend_edges = vec![];
             for adjacency in target_pattern.adjacencies_iter(target_vertex_id) {
                 let edge_id = adjacency.get_edge_id();
@@ -203,7 +196,7 @@ impl DefiniteExtendStep {
                     ));
                 }
             }
-            Some(DefiniteExtendStep { target_vertex_id, target_vertex_label, extend_edges })
+            Some(DefiniteExtendStep { target_vertex, extend_edges })
         } else {
             None
         }
@@ -250,28 +243,29 @@ impl DefiniteExtendStep {
                 return None;
             }
         }
-        Some(DefiniteExtendStep {
-            target_vertex_id: vertex_id_to_assign,
-            target_vertex_label: extend_step.get_target_vertex_label(),
-            extend_edges: definite_extend_edges,
-        })
+        let target_vertex = PatternVertex::new(vertex_id_to_assign, extend_step.get_target_vertex_label());
+        Some(DefiniteExtendStep { target_vertex, extend_edges: definite_extend_edges })
     }
 }
 
 /// Methods of accessing some fields of DefiniteExtendStep
 impl DefiniteExtendStep {
     #[inline]
-    pub fn get_target_vertex_id(&self) -> PatternId {
-        self.target_vertex_id
+    pub fn get_target_vertex(&self) -> PatternVertex {
+        self.target_vertex
     }
 
     #[inline]
-    pub fn get_target_vertex_label(&self) -> PatternLabelId {
-        self.target_vertex_label
+    pub fn get_extend_edges_num(&self) -> usize {
+        self.extend_edges.len()
     }
 
     pub fn iter(&self) -> DynIter<&DefiniteExtendEdge> {
         Box::new(self.extend_edges.iter())
+    }
+
+    pub fn sort_by<F: FnMut(&DefiniteExtendEdge, &DefiniteExtendEdge) -> Ordering>(&mut self, compare: F) {
+        self.extend_edges.sort_by(compare)
     }
 }
 
@@ -279,7 +273,7 @@ impl DefiniteExtendStep {
     /// Use the DefiniteExtendStep to generate corresponding edge expand operator
     pub fn generate_expand_operators(&self, origin_pattern: &Pattern) -> Vec<pb::EdgeExpand> {
         let mut expand_operators = vec![];
-        let target_v_id = self.get_target_vertex_id();
+        let target_v_id = self.get_target_vertex().get_id();
         for extend_edge in self.extend_edges.iter() {
             // pick edge's property and predicate from origin pattern
             let edge_id = extend_edge.edge_id;
@@ -305,13 +299,13 @@ impl DefiniteExtendStep {
     /// Generate the intersect operator for DefiniteExtendStep;s target vertex
     /// It needs its parent EdgeExpand Operator's node ids
     pub fn generate_intersect_operator(&self, parents: Vec<i32>) -> pb::Intersect {
-        pb::Intersect { parents, key: Some((self.target_vertex_id as i32).into()) }
+        pb::Intersect { parents, key: Some((self.get_target_vertex().get_id() as i32).into()) }
     }
 
     /// Generate the filter operator for DefiniteExtendStep;s target vertex
     pub fn generate_vertex_filter_operator(&self, origin_pattern: &Pattern) -> Option<pb::Select> {
         // pick target vertex's property and predicate info from origin pattern
-        let target_v_id = self.target_vertex_id;
+        let target_v_id = self.get_target_vertex().get_id();
         if let Some(target_v_predicate) = origin_pattern.get_vertex_predicate(target_v_id) {
             Some(pb::Select { predicate: Some(target_v_predicate.clone()) })
         } else {
