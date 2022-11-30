@@ -32,6 +32,8 @@ pub struct Config {
     low_order_path: String,
     #[structopt(short = "s", long = "sparsify_rate_path", default_value = "sparsify_rate.json")]
     sparsify_rate_path: String,
+    #[structopt(short = "t", long = "optimizer_tools", default_value = "Sparsify.py")]
+    optimizer_tools: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -39,11 +41,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let graph = read_graph()?;
     let graph2 = read_graph()?;
     dump_edge_info(get_edge_distribution(graph2),&config.low_order_path);
-    let executed_command = "SPARSE_RATE=".to_string()+&config.sample_rate.to_string()+" SPARSE_STATISTIC_PATH="+&config.low_order_path+" SPARSE_RATE_PATH="+&config.sparsify_rate_path+" python3 Sparsify.py";
+    let executed_command = "SPARSE_RATE=".to_string()+&config.sample_rate.to_string()+" SPARSE_STATISTIC_PATH="+&config.low_order_path+" SPARSE_RATE_PATH="+&config.sparsify_rate_path+" python3 "+config.optimizer_tools.as_str();
     let mut generating_sparsify_rate = Command::new("sh");
     generating_sparsify_rate.arg("-c")
               .arg(executed_command);
     let optimization_program = generating_sparsify_rate.output().expect("failed to execute process");
+    // println!("{:?}",optimization_program);
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
     dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
     create_sparsified_graph(graph, sparsify_rate, config.export_path);
