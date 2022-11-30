@@ -249,6 +249,16 @@ fn main() {
                 }
             }
 
+            "khop_record_recordopt_entry" => {
+                println!("Start run query \"khop_record_recordopt_entry\"");
+                let mut result = queries::khop_record_recordopt_entry(conf);
+                if config.print_result {
+                    while let Some(res) = result.next() {
+                        println!("khop_record_recordopt_entry {:?}", res);
+                    }
+                }
+            }
+
             "khop_record_aliasrecordopt" => {
                 println!("Start run query \"khop_record_aliasrecordopt\"");
                 let mut result = queries::khop_record_aliasrecordopt(conf);

@@ -11,6 +11,7 @@ mod khop_record_aliasopt;
 mod khop_record_aliasrecordopt;
 mod khop_record_precache;
 mod khop_record_recordopt;
+mod khop_record_recordopt_entry;
 mod khop_sub;
 
 pub use bi2_hop::bi2_hop;
@@ -26,4 +27,5 @@ pub use khop_record_aliasopt::khop_record_aliasopt;
 pub use khop_record_aliasrecordopt::khop_record_aliasrecordopt;
 pub use khop_record_precache::khop_record_precache;
 pub use khop_record_recordopt::khop_record_recordopt;
+pub use khop_record_recordopt_entry::khop_record_recordopt_entry;
 pub use khop_sub::khop_sub;
