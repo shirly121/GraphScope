@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
@@ -1078,7 +1078,7 @@ impl Pattern {
     }
 }
 
-/// Methods for Pattern Extension
+/// Methods for Pattern Edit
 impl Pattern {
     /// Get all the vertices(id) with the same vertex label and vertex group
     ///
@@ -1306,8 +1306,10 @@ impl Pattern {
             // if has the same connection info, check whether the pattern after the removing the target vertex
             // has the same code with the target pattern code
             if cand_e_label_dir_set == extend_e_label_dir_set {
-                let mut check_pattern = self.clone();
-                check_pattern.remove_vertex(target_v_cand.get_id());
+                let check_pattern = self
+                    .clone()
+                    .remove_vertex(target_v_cand.get_id())
+                    .unwrap();
                 let check_pattern_code = check_pattern.encode_to();
                 // same code means successfully locate the vertex
                 if check_pattern_code == *target_pattern_code {
@@ -1320,21 +1322,13 @@ impl Pattern {
     }
 
     /// Remove a vertex with all its adjacent edges in the current pattern
-    pub fn remove_vertex(&mut self, vertex_id: PatternId) {
+    pub fn remove_vertex(mut self, vertex_id: PatternId) -> Option<Pattern> {
         if self.get_vertex(vertex_id).is_some() {
             let adjacencies: Vec<Adjacency> = self
                 .adjacencies_iter(vertex_id)
                 .cloned()
                 .collect();
-            // delete target vertex
-            // delete in vertices
-            self.vertices.remove(vertex_id);
-            // delete in vertex tag map
-            if let Some(tag) = self.get_vertex_tag(vertex_id) {
-                self.tag_vertex_map.remove(&tag);
-            }
-            // delete in vertices data
-            self.vertices_data.remove(vertex_id);
+            self.remove_vertex_internal(vertex_id);
             for adjacency in adjacencies {
                 let adjacent_vertex_id = adjacency.get_adj_vertex().get_id();
                 let adjacent_edge_id = adjacency.get_edge_id();
@@ -1362,8 +1356,14 @@ impl Pattern {
                         .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
                 }
             }
-
-            self.canonical_labeling();
+            if self.is_connected() {
+                self.canonical_labeling();
+                Some(self)
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 
@@ -1372,12 +1372,85 @@ impl Pattern {
     /// The code of the new pattern should be the same as the target pattern code
     pub fn de_extend(&self, extend_step: &ExtendStep, target_pattern_code: &Vec<u8>) -> Option<Pattern> {
         if let Some(target_vertex_id) = self.locate_vertex(extend_step, target_pattern_code) {
-            let mut new_pattern = self.clone();
-            new_pattern.remove_vertex(target_vertex_id);
-            Some(new_pattern)
+            self.clone().remove_vertex(target_vertex_id)
         } else {
             None
         }
+    }
+
+    pub fn remove_edge(mut self, edge_id: PatternId) -> Option<Pattern> {
+        if let Some(edge) = self.get_edge(edge_id).cloned() {
+            self.remove_edge_internal(edge_id);
+            let start_vertex = edge.get_start_vertex().get_id();
+            let end_vertex = edge.get_end_vertex().get_id();
+            // update start vertex's info
+            self.vertices_data
+                .get_mut(start_vertex)
+                .unwrap()
+                .out_adjacencies
+                .retain(|adj| adj.get_edge_id() != edge_id);
+            if self.get_vertex_degree(start_vertex) == 0 {
+                self.remove_vertex_internal(start_vertex)
+            }
+            // update end vertex's info
+            self.vertices_data
+                .get_mut(end_vertex)
+                .unwrap()
+                .in_adjacencies
+                .retain(|adj| adj.get_edge_id() != edge_id);
+            if self.get_vertex_degree(end_vertex) == 0 {
+                self.remove_vertex_internal(end_vertex)
+            }
+            if self.is_connected() {
+                self.canonical_labeling();
+                Some(self)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn remove_vertex_internal(&mut self, vertex_id: PatternId) {
+        // delete vertex
+        // delete in vertices
+        self.vertices.remove(vertex_id);
+        // delete in vertex tag map
+        if let Some(tag) = self.get_vertex_tag(vertex_id) {
+            self.tag_vertex_map.remove(&tag);
+        }
+        // delete in vertices data
+        self.vertices_data.remove(vertex_id);
+    }
+
+    fn remove_edge_internal(&mut self, edge_id: PatternId) {
+        // delete edge
+        // delete in edges
+        self.edges.remove(edge_id);
+        // delete in edge tag map
+        if let Some(tag) = self.get_edge_tag(edge_id) {
+            self.tag_edge_map.remove(&tag);
+        }
+        // delete in edges data
+        self.edges_data.remove(edge_id);
+    }
+
+    fn is_connected(&self) -> bool {
+        let mut visted_vertices = HashSet::new();
+        let start_vertex = self.vertices_iter().next().unwrap().get_id();
+        let mut stack = vec![start_vertex];
+        while let Some(src_vertex) = stack.pop() {
+            visted_vertices.insert(src_vertex);
+            for neighbor_vertex in self
+                .adjacencies_iter(src_vertex)
+                .map(|adj| adj.get_adj_vertex().get_id())
+                .filter(|vertex| !visted_vertices.contains(&vertex))
+            {
+                stack.push(neighbor_vertex);
+            }
+        }
+        visted_vertices.len() == self.get_vertices_num()
     }
 }
 

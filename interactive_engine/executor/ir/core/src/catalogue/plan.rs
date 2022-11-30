@@ -50,7 +50,9 @@ impl Pattern {
             let definite_extend_step =
                 DefiniteExtendStep::from_target_pattern(&trace_pattern, select_vertex_id).unwrap();
             definite_extend_steps.push(definite_extend_step);
-            trace_pattern.remove_vertex(select_vertex_id);
+            trace_pattern = trace_pattern
+                .remove_vertex(select_vertex_id)
+                .unwrap();
         }
         definite_extend_steps.push(trace_pattern.try_into()?);
         if is_distributed {
@@ -210,8 +212,7 @@ fn pattern_roll_back(
             )
         })
         .collect();
-    let mut pre_pattern = pattern;
-    pre_pattern.remove_vertex(target_vertex_id);
+    let pre_pattern = pattern.remove_vertex(target_vertex_id).unwrap();
     let definite_extend_step =
         DefiniteExtendStep::from_src_pattern(&pre_pattern, &extend_step, target_vertex_id, edge_id_map)
             .unwrap();
