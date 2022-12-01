@@ -65,14 +65,14 @@ pub fn get_edge_distribution(src_graph: LargeGraphDB) -> HashMap<(u8,u8,u8), f64
         let dst_label = src_graph.get_vertex(j.get_dst_id()).unwrap().get_label();
         let edge_label = j.get_label();
         // As current Pattern only use hyper label, here only use hyper label [0]
-        let mut src_filter_label= src_label[1];
-        let mut dst_filter_label= dst_label[1];
-        if src_label[1] == INVALID_LABEL_ID {
-            src_filter_label = src_label[0];
-        }
-        if dst_label[1] == INVALID_LABEL_ID {
-            dst_filter_label = dst_label[0];
-        }
+        let mut src_filter_label= src_label[0];
+        let mut dst_filter_label= dst_label[0];
+        // if src_label[1] == INVALID_LABEL_ID {
+        //     src_filter_label = src_label[0];
+        // }
+        // if dst_label[1] == INVALID_LABEL_ID {
+        //     dst_filter_label = dst_label[0];
+        // }
         let relation_key = (src_filter_label,edge_label,dst_filter_label);
         *edge_distribution.entry(relation_key).or_insert(0.0)+=1.0;
     }
@@ -97,14 +97,14 @@ pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, sparsify
         
         let dst_label = src_graph.get_vertex(j.get_dst_id()).unwrap().get_label();
         let edge_label = j.get_label();
-        let mut src_filter_label= src_label[1];
-        let mut dst_filter_label= dst_label[1];
-        if src_label[1] == INVALID_LABEL_ID {
-            src_filter_label = src_label[0];
-        }
-        if dst_label[1] == INVALID_LABEL_ID {
-            dst_filter_label = dst_label[0];
-        }
+        let mut src_filter_label= src_label[0];
+        let mut dst_filter_label= dst_label[0];
+        // if src_label[1] == INVALID_LABEL_ID {
+        //     src_filter_label = src_label[0];
+        // }
+        // if dst_label[1] == INVALID_LABEL_ID {
+        //     dst_filter_label = dst_label[0];
+        // }
         let relation_key = (src_filter_label,edge_label,dst_filter_label);
         let rate = sparsify_rate[&relation_key];
         let mut rng = thread_rng();
