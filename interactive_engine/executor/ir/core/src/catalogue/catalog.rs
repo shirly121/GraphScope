@@ -680,7 +680,11 @@ impl Catalogue {
                 let sub_pattern_0_count = self.estimate_pattern_count(&sub_pattern_0.unwrap());
                 let sub_pattern_1_count = self.estimate_pattern_count(&sub_pattern_1.unwrap());
                 let intersect_pattern_count = self.estimate_pattern_count(&intersect_pattern.unwrap());
-                let pattern_count = sub_pattern_0_count * sub_pattern_1_count / intersect_pattern_count;
+                let pattern_count = if intersect_pattern_count == 0 {
+                    sub_pattern_0_count * sub_pattern_1_count
+                } else {
+                    sub_pattern_0_count * sub_pattern_1_count / intersect_pattern_count
+                };
                 self.pattern_count_map
                     .insert(pattern_code, pattern_count);
                 pattern_count
