@@ -19,6 +19,7 @@ mod common;
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
     use std::convert::TryInto;
     use std::fs::File;
     use std::sync::Arc;
@@ -411,7 +412,7 @@ mod test {
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, HashMap::new(), None, 8);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -483,7 +484,7 @@ mod test {
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, HashMap::new(), None, 8);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start executing query...");
             let query_execution_start_time = Instant::now();
@@ -505,7 +506,7 @@ mod test {
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, HashMap::new(), None, 8);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -574,7 +575,7 @@ mod test {
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, HashMap::new(), None, 8);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -643,7 +644,7 @@ mod test {
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, HashMap::new(), None, 8);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();
@@ -712,7 +713,7 @@ mod test {
             println!("start building catalog...");
             let catalog_build_start_time = Instant::now();
             let mut catalog = Catalogue::build_from_pattern(&ldbc_pattern);
-            catalog.estimate_graph(sample_graph, 1.0, None);
+            catalog.estimate_graph(sample_graph, 1.0, HashMap::new(), None, 8);
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start generating plan...");
             let plan_generation_start_time = Instant::now();

@@ -35,6 +35,8 @@ pub struct Config {
     export_path: String,
     #[structopt(short = "s", long = "sparsify_rate_path", default_value = "sparsify_rate.json")]
     sparsify_rate_path: String,
+    #[structopt(short = "t", long = "thread_num", default_value = "1")]
+    thread_num: usize,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -62,7 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
-    catalog.estimate_graph(sample_graph, 1.0, sparsify_rate, None);
+    catalog.estimate_graph(sample_graph, 1.0, sparsify_rate, None, config.thread_num);
     println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
     catalog.export(config.export_path)?;
     Ok(())
