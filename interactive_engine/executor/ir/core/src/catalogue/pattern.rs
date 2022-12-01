@@ -882,6 +882,25 @@ impl Pattern {
     pub fn get_vertex_degree(&self, vertex_id: PatternId) -> usize {
         self.get_vertex_out_degree(vertex_id) + self.get_vertex_in_degree(vertex_id)
     }
+
+    #[inline]
+    pub fn get_vertices_predicate_num(&self) -> usize {
+        self.vertices_iter()
+            .map(|v| if self.get_vertex_predicate(v.get_id()).is_some() { 1 } else { 0 })
+            .sum()
+    }
+
+    #[inline]
+    pub fn get_edges_predicate_num(&self) -> usize {
+        self.edges_iter()
+            .map(|e| if self.get_vertex_predicate(e.get_id()).is_some() { 1 } else { 0 })
+            .sum()
+    }
+
+    #[inline]
+    pub fn get_predicate_num(&self) -> usize {
+        self.get_vertices_predicate_num() + self.get_edges_predicate_num()
+    }
 }
 
 /// Iterators of fields of Pattern

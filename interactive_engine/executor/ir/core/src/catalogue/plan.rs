@@ -146,23 +146,25 @@ pub fn get_definite_extend_steps(
                 sub_patterns_extend_steps.push((sub_pattern, extend_step));
             }
         }
-        let mut extend_steps_with_min_cost = vec![];
+        let mut optimal_extend_steps = vec![];
         let mut min_cost = usize::MAX;
-
+        let mut max_predicate_num = usize::MIN;
         for (sub_pattern, mut extend_step) in sub_patterns_extend_steps {
+            let sub_pattern_predicate_num = sub_pattern.get_predicate_num();
             let sub_pattern_count = catalog.estimate_pattern_count(&sub_pattern);
             let adjacency_count = get_adjacency_count(&sub_pattern, &mut extend_step, catalog);
             let intersect_count = get_intersect_count(&sub_pattern, &extend_step, catalog);
             let (mut extend_steps, pre_cost) = get_definite_extend_steps(sub_pattern, catalog);
             let this_step_cost =
                 extend_cost_estimate(sub_pattern_count, pattern_count, adjacency_count, intersect_count);
-            if pre_cost + this_step_cost < min_cost {
+            if pre_cost + this_step_cost < min_cost && sub_pattern_predicate_num >= max_predicate_num {
                 extend_steps.push(extend_step);
-                extend_steps_with_min_cost = extend_steps;
+                optimal_extend_steps = extend_steps;
                 min_cost = pre_cost + this_step_cost;
+                max_predicate_num = sub_pattern_predicate_num;
             }
         }
-        (extend_steps_with_min_cost, min_cost)
+        (optimal_extend_steps, min_cost)
     }
 }
 
@@ -214,11 +216,13 @@ fn get_definite_extend_steps_in_catalog(
     let pattern_weight = catalog
         .get_pattern_weight(pattern_index)
         .unwrap();
+    let predicate_num = pattern.get_predicate_num();
     if pattern.get_vertices_num() == 1 {
         let src_definite_extend_step = DefiniteExtendStep::try_from(pattern).unwrap();
         let cost = pattern_weight.get_count();
         return (vec![src_definite_extend_step], cost);
-    } else if let Some(best_approach) = pattern_weight.get_best_approach() {
+    } else if pattern_weight.get_best_approach().is_some() && predicate_num == 0 {
+        let best_approach = pattern_weight.get_best_approach().unwrap();
         let (pre_pattern, definite_extend_step, this_step_cost) =
             pattern_roll_back(pattern, pattern_index, best_approach, catalog);
         let pre_pattern_index = best_approach.get_src_pattern_index();
@@ -228,8 +232,9 @@ fn get_definite_extend_steps_in_catalog(
         cost += this_step_cost;
         return (definite_extend_steps, cost);
     } else {
-        let mut definite_extend_steps_with_min_cost = vec![];
+        let mut optimal_extend_steps = vec![];
         let mut min_cost = usize::MAX;
+        let mut max_predicate_num = usize::MIN;
         let approaches: Vec<Approach> = catalog
             .pattern_in_approaches_iter(pattern_index)
             .collect();
@@ -237,19 +242,23 @@ fn get_definite_extend_steps_in_catalog(
         for approach in approaches {
             let (pre_pattern, definite_extend_step, this_step_cost) =
                 pattern_roll_back(pattern.clone(), pattern_index, approach, catalog);
+            let pre_pattern_predicate_num = pre_pattern.get_predicate_num();
             let pre_pattern_index = approach.get_src_pattern_index();
-            let (mut definite_extend_steps, mut cost) =
+            let (mut extend_steps, mut cost) =
                 get_definite_extend_steps_in_catalog(catalog, pre_pattern_index, pre_pattern);
-            definite_extend_steps.push(definite_extend_step);
+            extend_steps.push(definite_extend_step);
             cost += this_step_cost;
-            if cost < min_cost {
-                definite_extend_steps_with_min_cost = definite_extend_steps;
+            if cost < min_cost && pre_pattern_predicate_num >= max_predicate_num {
+                optimal_extend_steps = extend_steps;
                 min_cost = cost;
+                max_predicate_num = pre_pattern_predicate_num;
                 best_approach = approach;
             }
         }
-        catalog.set_pattern_best_approach(pattern_index, best_approach);
-        return (definite_extend_steps_with_min_cost, min_cost);
+        if predicate_num == 0 {
+            catalog.set_pattern_best_approach(pattern_index, best_approach);
+        }
+        return (optimal_extend_steps, min_cost);
     }
 }
 
