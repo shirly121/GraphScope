@@ -15,6 +15,7 @@
 //!
 
 use ir_core::catalogue::catalog::Catalogue;
+use ir_core::catalogue::sparsify::read_sparsify_config;
 use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
 use std::error::Error;
 use std::sync::Arc;
@@ -32,6 +33,8 @@ pub struct Config {
     catalog_depth: usize,
     #[structopt(short = "p", long = "export_path")]
     export_path: String,
+    #[structopt(short = "s", long = "sparsify_rate_path", default_value = "sparsify_rate.json")]
+    sparsify_rate_path: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -58,7 +61,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         _ => unreachable!(),
     };
-    catalog.estimate_graph(sample_graph, 1.0, None);
+    let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
+    catalog.estimate_graph(sample_graph, 1.0, sparsify_rate, None);
     println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
     catalog.export(config.export_path)?;
     Ok(())
