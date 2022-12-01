@@ -19,7 +19,7 @@ use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::generated::results as result_pb;
 use ir_common::KeyId;
-use ir_core::plan::logical::LogicalPlan;
+use ir_core::plan::logical::{match_pb_plan_add_source, LogicalPlan};
 use ir_core::plan::physical::AsPhysical;
 use lazy_static::lazy_static;
 use pegasus::result::{ResultSink, ResultStream};
@@ -33,7 +33,6 @@ use runtime::IRJobAssembly;
 use runtime_integration::{
     read_catalogue, read_pattern, read_pattern_meta, InitializeJobAssembly, QueryExpGraph,
 };
-use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::path::PathBuf;
@@ -83,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         config.is_distributed,
     )?;
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
-    pb_plan_add_source(&mut pb_plan);
+    match_pb_plan_add_source(&mut pb_plan);
     pb_plan_add_count_sink_operator(&mut pb_plan);
     let plan: LogicalPlan = pb_plan.try_into()?;
     println!("plan:\n {:?}", plan);
@@ -151,60 +150,6 @@ fn parse_result(result: Vec<u8>) -> Option<Record> {
 fn initialize_job_assembly() -> IRJobAssembly {
     let query_exp_graph = QueryExpGraph::new(1);
     query_exp_graph.initialize_job_assembly()
-}
-
-fn pb_plan_add_source(pb_plan: &mut pb::LogicalPlan) {
-    if let pb::logical_plan::operator::Opr::Select(first_select) = pb_plan
-        .nodes
-        .get(0)
-        .unwrap()
-        .opr
-        .as_ref()
-        .unwrap()
-        .opr
-        .as_ref()
-        .unwrap()
-        .clone()
-    {
-        let label_id = first_select
-            .predicate
-            .as_ref()
-            .unwrap()
-            .operators
-            .get(2)
-            .and_then(|opr| opr.item.as_ref())
-            .and_then(
-                |item| if let common_pb::expr_opr::Item::Const(value) = item { Some(value) } else { None },
-            )
-            .and_then(|value| {
-                if let Some(common_pb::value::Item::I64(label_id)) = value.item {
-                    Some(label_id as i32)
-                } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
-                    Some(label_id)
-                } else {
-                    None
-                }
-            })
-            .unwrap();
-        let source = pb::Scan {
-            scan_opt: 0,
-            alias: None,
-            params: Some(pb::QueryParams {
-                tables: vec![label_id.into()],
-                columns: vec![],
-                is_all_columns: false,
-                limit: None,
-                predicate: None,
-                sample_ratio: 1.0,
-                extra: HashMap::new(),
-            }),
-            idx_predicate: None,
-        };
-        pb_plan.nodes.remove(0);
-        pb_plan
-            .nodes
-            .insert(0, pb::logical_plan::Node { opr: Some(source.into()), children: vec![1] })
-    }
 }
 
 fn pb_plan_add_count_sink_operator(pb_plan: &mut pb::LogicalPlan) {

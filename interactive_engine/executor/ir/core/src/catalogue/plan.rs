@@ -157,7 +157,10 @@ pub fn get_definite_extend_steps(
             let (mut extend_steps, pre_cost) = get_definite_extend_steps(sub_pattern, catalog);
             let this_step_cost =
                 extend_cost_estimate(sub_pattern_count, pattern_count, adjacency_count, intersect_count);
-            if pre_cost + this_step_cost < min_cost && sub_pattern_predicate_num >= max_predicate_num {
+
+            if sub_pattern_predicate_num > max_predicate_num
+                || (pre_cost + this_step_cost < min_cost && sub_pattern_predicate_num == max_predicate_num)
+            {
                 extend_steps.push(extend_step);
                 optimal_extend_steps = extend_steps;
                 min_cost = pre_cost + this_step_cost;
@@ -248,7 +251,9 @@ fn get_definite_extend_steps_in_catalog(
                 get_definite_extend_steps_in_catalog(catalog, pre_pattern_index, pre_pattern);
             extend_steps.push(definite_extend_step);
             cost += this_step_cost;
-            if cost < min_cost && pre_pattern_predicate_num >= max_predicate_num {
+            if pre_pattern_predicate_num > max_predicate_num
+                || (cost < min_cost && pre_pattern_predicate_num == max_predicate_num)
+            {
                 optimal_extend_steps = extend_steps;
                 min_cost = cost;
                 max_predicate_num = pre_pattern_predicate_num;
