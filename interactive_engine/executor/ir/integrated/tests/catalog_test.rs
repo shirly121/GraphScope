@@ -29,7 +29,7 @@ mod test {
     use ir_core::catalogue::catalog::Catalogue;
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
-    use ir_core::catalogue::plan::get_definite_extend_steps_in_catalog;
+    use ir_core::catalogue::plan::get_definite_extend_steps;
     use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
     use ir_core::error::IrError;
     use ir_core::plan::logical::LogicalPlan;
@@ -487,11 +487,7 @@ mod test {
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start executing query...");
             let query_execution_start_time = Instant::now();
-            let pattern_index = catalog
-                .get_pattern_index(&ldbc_pattern.encode_to())
-                .unwrap();
-            let (extend_steps, _) =
-                get_definite_extend_steps_in_catalog(&mut catalog, pattern_index, ldbc_pattern.clone());
+            let (extend_steps, _) = get_definite_extend_steps(ldbc_pattern.clone(), &mut catalog);
             let results = get_src_records(&graph, extend_steps, None);
             println!("{}", results.len());
             println!(

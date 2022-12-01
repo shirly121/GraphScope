@@ -128,7 +128,7 @@ impl Pattern {
     }
 }
 
-pub(crate) fn get_definite_extend_steps(
+pub fn get_definite_extend_steps(
     pattern: Pattern, catalog: &mut Catalogue,
 ) -> (Vec<DefiniteExtendStep>, usize) {
     let pattern_code = pattern.encode_to();
