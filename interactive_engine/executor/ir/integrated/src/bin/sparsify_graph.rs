@@ -18,6 +18,7 @@ use ir_core::catalogue::sparsify::{
     create_sparsified_graph, dump_edge_info, get_edge_distribution, read_sparsify_config,
 };
 use runtime_integration::read_graph;
+use std::collections::HashMap;
 use std::error::Error;
 use std::process::Command;
 use structopt::StructOpt;
@@ -36,6 +37,8 @@ pub struct Config {
     sparsify_rate_path: String,
     #[structopt(short = "t", long = "optimizer_tools", default_value = "Sparsify.py")]
     optimizer_tools: String,
+    #[structopt(short = "m", long = "rate_mod", default_value = "unique")]
+    is_unique_rate: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -60,7 +63,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         .expect("failed to execute process");
     // println!("{:?}",_optimization_program);
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
+    let mut naive_sparsify_rate = HashMap::new();
+    for (key, value) in sparsify_rate.clone() {
+        naive_sparsify_rate.insert(key, value);
+    }
     dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
-    create_sparsified_graph(graph, sparsify_rate, config.export_path);
+    if config.is_unique_rate == "unique" {
+        create_sparsified_graph(graph, sparsify_rate, config.export_path);
+    } else {
+        dump_edge_info(naive_sparsify_rate.clone(), &config.sparsify_rate_path);
+        create_sparsified_graph(graph, naive_sparsify_rate, config.export_path);
+    }
     Ok(())
 }
