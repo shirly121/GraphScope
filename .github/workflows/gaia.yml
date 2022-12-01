@@ -23,7 +23,7 @@ jobs:
   gaia-test:
     runs-on: [self-hosted, manylinux2014]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: true
 
@@ -96,9 +96,16 @@ jobs:
         source ${HOME}/.bashrc
         cd ${GITHUB_WORKSPACE}/interactive_engine/compiler && ./ir_exprimental_ci.sh
 
+    - name: Ir Integration Pattern Test on Experimental Store
+      run: |
+        source ${HOME}/.bashrc
+        cd ${GITHUB_WORKSPACE}
+        git clone -b master --single-branch --depth=1 https://github.com/7br/gstest.git
+        cd ${GITHUB_WORKSPACE}/interactive_engine/compiler && ./ir_exprimental_pattern_ci.sh
+
     - name: Upload GIE log
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: gie-log
         path: /var/log/graphscope

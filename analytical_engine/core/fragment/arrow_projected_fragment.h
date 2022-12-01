@@ -115,7 +115,7 @@ class TypedArray<grape::EmptyType> {
 template <>
 struct TypedArray<std::string> {
  public:
-  using value_type = arrow::util::string_view;
+  using value_type = vineyard::arrow_string_view;
   TypedArray() : array_(NULL) {}
   explicit TypedArray(std::shared_ptr<arrow::Array> array) {
     if (array == nullptr) {
@@ -363,10 +363,6 @@ class AdjList<VID_T, EID_T, grape::EmptyType> {
 
 }  // namespace arrow_projected_fragment_impl
 
-template <typename OID_T, typename VID_T, typename OLD_VDATA_T,
-          typename NEW_VDATA_T, typename OLD_EDATA_T, typename NEW_EDATA_T>
-class ArrowProjectedFragmentMapper;
-
 /**
  * @brief This class represents the fragment projected from ArrowFragment which
  * contains only one vertex label and edge label. The fragment has no label and
@@ -377,11 +373,13 @@ class ArrowProjectedFragmentMapper;
  * @tparam VDATA_T The type of data attached with the vertex
  * @tparam EDATA_T The type of data attached with the edge
  */
-template <typename OID_T, typename VID_T, typename VDATA_T, typename EDATA_T>
+template <typename OID_T, typename VID_T, typename VDATA_T, typename EDATA_T,
+          typename VERTEX_MAP_T = vineyard::ArrowVertexMap<
+              typename vineyard::InternalType<OID_T>::type, VID_T>>
 class ArrowProjectedFragment
     : public ArrowProjectedFragmentBase,
-      public vineyard::BareRegistered<
-          ArrowProjectedFragment<OID_T, VID_T, VDATA_T, EDATA_T>> {
+      public vineyard::BareRegistered<ArrowProjectedFragment<
+          OID_T, VID_T, VDATA_T, EDATA_T, VERTEX_MAP_T>> {
  public:
   using oid_t = OID_T;
   using vid_t = VID_T;
@@ -400,12 +398,15 @@ class ArrowProjectedFragment
       arrow_projected_fragment_impl::AdjList<vid_t, eid_t, EDATA_T>;
   using const_adj_list_t =
       arrow_projected_fragment_impl::AdjList<vid_t, eid_t, EDATA_T>;
-  using vertex_map_t = ArrowProjectedVertexMap<internal_oid_t, vid_t>;
+  using property_vertex_map_t = VERTEX_MAP_T;
+  using vertex_map_t =
+      ArrowProjectedVertexMap<internal_oid_t, vid_t, property_vertex_map_t>;
   using label_id_t = vineyard::property_graph_types::LABEL_ID_TYPE;
   using prop_id_t = vineyard::property_graph_types::PROP_ID_TYPE;
   using vdata_t = VDATA_T;
   using edata_t = EDATA_T;
-  using property_graph_t = vineyard::ArrowFragment<oid_t, vid_t>;
+  using property_graph_t =
+      vineyard::ArrowFragment<oid_t, vid_t, property_vertex_map_t>;
 
   using vid_array_t = typename vineyard::ConvertToArrowType<vid_t>::ArrayType;
   using eid_array_t = typename vineyard::ConvertToArrowType<eid_t>::ArrayType;
@@ -426,22 +427,27 @@ class ArrowProjectedFragment
 #if VINEYARD_VERSION >= 2007
   static std::unique_ptr<vineyard::Object> Create() __attribute__((used)) {
     return std::static_pointer_cast<vineyard::Object>(
-        std::unique_ptr<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t>>{
-            new ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t>()});
+        std::unique_ptr<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t,
+                                               property_vertex_map_t>>{
+            new ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t,
+                                       property_vertex_map_t>()});
   }
 #endif
 #else
   static std::shared_ptr<vineyard::Object> Create() __attribute__((used)) {
     return std::static_pointer_cast<vineyard::Object>(
-        std::make_shared<
-            ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t>>());
+        std::make_shared<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t,
+                                                property_vertex_map_t>>());
   }
 #endif
 
   ~ArrowProjectedFragment() {}
 
-  static std::shared_ptr<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t>>
-  Project(std::shared_ptr<vineyard::ArrowFragment<oid_t, vid_t>> fragment,
+  static std::shared_ptr<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t,
+                                                property_vertex_map_t>>
+  Project(std::shared_ptr<
+              vineyard::ArrowFragment<oid_t, vid_t, property_vertex_map_t>>
+              fragment,
           const label_id_t& v_label, const prop_id_t& v_prop,
           const label_id_t& e_label, const prop_id_t& e_prop) {
     vineyard::Client& client =
@@ -489,7 +495,8 @@ class ArrowProjectedFragment
     }
 
     meta.SetTypeName(
-        type_name<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t>>());
+        type_name<ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t,
+                                         property_vertex_map_t>>());
 
     meta.AddKeyValue("projected_v_label", v_label);
     meta.AddKeyValue("projected_v_property", v_prop);
@@ -562,8 +569,8 @@ class ArrowProjectedFragment
     vineyard::ObjectID id;
     VINEYARD_CHECK_OK(client.CreateMetaData(meta, id));
 
-    return std::dynamic_pointer_cast<
-        ArrowProjectedFragment<oid_t, vid_t, vdata_t, edata_t>>(
+    return std::dynamic_pointer_cast<ArrowProjectedFragment<
+        oid_t, vid_t, vdata_t, edata_t, property_vertex_map_t>>(
         client.GetObject(id));
   }
 
@@ -576,7 +583,8 @@ class ArrowProjectedFragment
     vertex_prop_ = meta.GetKeyValue<prop_id_t>("projected_v_property");
     edge_prop_ = meta.GetKeyValue<prop_id_t>("projected_e_property");
 
-    fragment_ = std::make_shared<vineyard::ArrowFragment<oid_t, vid_t>>();
+    fragment_ = std::make_shared<
+        vineyard::ArrowFragment<oid_t, vid_t, property_vertex_map_t>>();
     fragment_->Construct(meta.GetMemberMeta("arrow_fragment"));
 
     fid_ = fragment_->fid_;
@@ -711,6 +719,14 @@ class ArrowProjectedFragment
 
   inline fid_t fnum() const { return fnum_; }
 
+  inline label_id_t vertex_label() const { return vertex_label_; }
+
+  inline label_id_t edge_label() const { return edge_label_; }
+
+  inline prop_id_t vertex_prop_id() const { return vertex_prop_; }
+
+  inline prop_id_t edge_prop_id() const { return edge_prop_; }
+
   inline vertex_range_t Vertices() const { return vertices_; }
 
   inline vertex_range_t InnerVertices() const { return inner_vertices_; }
@@ -769,6 +785,18 @@ class ArrowProjectedFragment
   inline size_t GetInEdgeNum() const { return ienum_; }
 
   inline size_t GetOutEdgeNum() const { return oenum_; }
+
+  /* Get outging edges num from this frag*/
+  inline size_t GetOutgoingEdgeNum() const {
+    return static_cast<size_t>(oe_offsets_end_->Value(ivnum_ - 1) -
+                               oe_offsets_begin_->Value(0));
+  }
+
+  /* Get incoming edges num to this frag*/
+  inline size_t GetIncomingEdgeNum() const {
+    return static_cast<size_t>(ie_offsets_end_->Value(ivnum_ - 1) -
+                               ie_offsets_begin_->Value(0));
+  }
 
   inline size_t GetTotalVerticesNum() const {
     return vm_ptr_->GetTotalVerticesNum();
@@ -982,6 +1010,16 @@ class ArrowProjectedFragment
   inline arrow_projected_fragment_impl::TypedArray<EDATA_T>&
   get_edata_array_accessor() {
     return edge_data_array_accessor_;
+  }
+
+  inline arrow_projected_fragment_impl::TypedArray<VDATA_T>&
+  get_vdata_array_accessor() {
+    return vertex_data_array_accessor_;
+  }
+
+  std::shared_ptr<vineyard::ArrowFragment<oid_t, vid_t, property_vertex_map_t>>
+  get_arrow_fragment() {
+    return fragment_;
   }
 
  private:
@@ -1219,7 +1257,8 @@ class ArrowProjectedFragment
 
   vineyard::IdParser<vid_t> vid_parser_;
 
-  std::shared_ptr<vineyard::ArrowFragment<oid_t, vid_t>> fragment_;
+  std::shared_ptr<vineyard::ArrowFragment<oid_t, vid_t, property_vertex_map_t>>
+      fragment_;
 
   std::vector<fid_t> idst_, odst_, iodst_;
   std::vector<fid_t*> idoffset_, odoffset_, iodoffset_;
@@ -1230,8 +1269,8 @@ class ArrowProjectedFragment
   std::vector<vid_t> outer_vertex_offsets_;
   std::vector<std::vector<vertex_t>> mirrors_of_frag_;
 
-  template <typename _OID_T, typename _VID_T, typename _OLD_VDATA_T,
-            typename _NEW_VDATA_T, typename _OLD_EDATA_T, typename _NEW_EDATA_T>
+  template <typename _OID_T, typename _VID_T, typename _NEW_VDATA_T,
+            typename _NEW_EDATA_T>
   friend class ArrowProjectedFragmentMapper;
 };
 

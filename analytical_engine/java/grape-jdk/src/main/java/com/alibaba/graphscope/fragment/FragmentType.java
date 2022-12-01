@@ -17,11 +17,7 @@
 package com.alibaba.graphscope.fragment;
 
 public enum FragmentType {
+    ImmutableEdgecutFragment,
     ArrowFragment,
     ArrowProjectedFragment,
-    GraphXFragment,
-    GraphXStringVDFragment,
-    GraphXStringEDFragment,
-    GraphXStringVEDFragment,
-    ImmutableEdgecutFragment
 }

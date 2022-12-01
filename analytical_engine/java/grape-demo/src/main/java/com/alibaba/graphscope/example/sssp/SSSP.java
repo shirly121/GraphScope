@@ -57,7 +57,7 @@ public class SSSP implements ParallelAppBase<Long, Long, Long, Long, SSSPContext
                         + ", "
                         + sourceInThisFrag
                         + ", lid: "
-                        + source.GetValue());
+                        + source.getValue());
 
         AtomicLongArrayWrapper partialResults = context.partialResults;
         VertexSet curModified = context.curModified;
@@ -71,13 +71,13 @@ public class SSSP implements ParallelAppBase<Long, Long, Long, Long, SSSPContext
                 partialResults.set(vertex, Math.min(nbr.data(), partialResults.get(vertex)));
                 if (fragment.isOuterVertex(vertex)) {
                     msg.setData(partialResults.get(vertex));
-                    mm.syncStateOnOuterVertex(fragment, vertex, msg, 0, 2L);
+                    mm.syncStateOnOuterVertex(fragment, vertex, msg, 0);
                 } else {
                     nextModified.set(vertex);
                 }
             }
         }
-        mm.ForceContinue();
+        mm.forceContinue();
         curModified.assign(nextModified);
     }
 
@@ -104,7 +104,7 @@ public class SSSP implements ParallelAppBase<Long, Long, Long, Long, SSSPContext
         context.sendMessageTime += System.nanoTime();
 
         if (!context.nextModified.partialEmpty(0, (int) fragment.getInnerVerticesNum())) {
-            messageManager.ForceContinue();
+            messageManager.forceContinue();
         }
         context.curModified.assign(context.nextModified);
     }
@@ -124,7 +124,7 @@ public class SSSP implements ParallelAppBase<Long, Long, Long, Long, SSSPContext
                     }
                 };
         messageManager.parallelProcess(
-                frag, context.threadNum, context.executor, msgSupplier, messageConsumer, 2L);
+                frag, context.threadNum, context.executor, msgSupplier, messageConsumer);
     }
 
     private void execute(SSSPContext context, IFragment<Long, Long, Long, Long> frag) {
@@ -135,7 +135,7 @@ public class SSSP implements ParallelAppBase<Long, Long, Long, Long, SSSPContext
                     long curDist = context.partialResults.get(vertex);
                     AdjList<Long, Long> nbrs = frag.getOutgoingAdjList(vertex);
                     for (Nbr<Long, Long> nbr : nbrs.iterable()) {
-                        long curLid = nbr.neighbor().GetValue();
+                        long curLid = nbr.neighbor().getValue();
                         long nextDist = curDist + nbr.data();
                         if (nextDist < context.partialResults.get(curLid)) {
                             context.partialResults.compareAndSetMin(curLid, nextDist);
@@ -160,7 +160,7 @@ public class SSSP implements ParallelAppBase<Long, Long, Long, Long, SSSPContext
                 (vertex, finalTid) -> {
                     LongMsg msg =
                             FFITypeFactoryhelper.newLongMsg(context.partialResults.get(vertex));
-                    messageManager.syncStateOnOuterVertex(frag, vertex, msg, finalTid, 2L);
+                    messageManager.syncStateOnOuterVertex(frag, vertex, msg, finalTid);
                 };
         forEachVertex(
                 frag.outerVertices(),

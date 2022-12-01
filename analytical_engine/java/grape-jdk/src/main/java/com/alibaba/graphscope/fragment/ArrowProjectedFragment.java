@@ -16,7 +16,7 @@
 
 package com.alibaba.graphscope.fragment;
 
-import static com.alibaba.graphscope.utils.CppClassName.ARROW_PROJECTED_FRAGMENT;
+import static com.alibaba.graphscope.utils.CppClassName.CPP_ARROW_PROJECTED_FRAGMENT;
 import static com.alibaba.graphscope.utils.CppHeaderName.ARROW_PROJECTED_FRAGMENT_H;
 import static com.alibaba.graphscope.utils.CppHeaderName.CORE_JAVA_TYPE_ALIAS_H;
 
@@ -25,11 +25,9 @@ import com.alibaba.fastffi.CXXReference;
 import com.alibaba.fastffi.CXXValue;
 import com.alibaba.fastffi.FFIGen;
 import com.alibaba.fastffi.FFINameAlias;
-import com.alibaba.fastffi.FFIPointer;
 import com.alibaba.fastffi.FFITypeAlias;
+import com.alibaba.graphscope.ds.BaseTypedArray;
 import com.alibaba.graphscope.ds.ProjectedAdjList;
-import com.alibaba.graphscope.ds.PropertyNbrUnit;
-import com.alibaba.graphscope.ds.TypedArray;
 import com.alibaba.graphscope.ds.Vertex;
 import com.alibaba.graphscope.utils.JNILibraryName;
 
@@ -46,10 +44,9 @@ import com.alibaba.graphscope.utils.JNILibraryName;
 @CXXHead(ARROW_PROJECTED_FRAGMENT_H)
 @CXXHead(CORE_JAVA_TYPE_ALIAS_H)
 @CXXHead(system = "stdint.h")
-@FFITypeAlias(ARROW_PROJECTED_FRAGMENT)
+@FFITypeAlias(CPP_ARROW_PROJECTED_FRAGMENT)
 public interface ArrowProjectedFragment<OID_T, VID_T, VDATA_T, EDATA_T>
-        extends EdgecutFragment<OID_T, VID_T, VDATA_T, EDATA_T>, FFIPointer {
-    long id();
+        extends BaseArrowProjectedFragment<OID_T, VID_T, VDATA_T, EDATA_T> {
 
     @FFINameAlias("GetIncomingAdjList")
     @CXXValue
@@ -59,35 +56,11 @@ public interface ArrowProjectedFragment<OID_T, VID_T, VDATA_T, EDATA_T>
     @CXXValue
     ProjectedAdjList<VID_T, EDATA_T> getOutgoingAdjList(@CXXReference Vertex<VID_T> vertex);
 
-    @FFINameAlias("get_out_edges_ptr")
-    PropertyNbrUnit<VID_T> getOutEdgesPtr();
-
-    @FFINameAlias("get_in_edges_ptr")
-    PropertyNbrUnit<VID_T> getInEdgesPtr();
-
-    @FFINameAlias("get_oe_offsets_begin_ptr")
-    long getOEOffsetsBeginPtr();
-
-    @FFINameAlias("get_ie_offsets_begin_ptr")
-    long getIEOffsetsBeginPtr();
-
-    @FFINameAlias("get_oe_offsets_end_ptr")
-    long getOEOffsetsEndPtr();
-
-    @FFINameAlias("get_ie_offsets_end_ptr")
-    long getIEOffsetsEndPtr();
-
     @FFINameAlias("get_edata_array_accessor")
     @CXXReference
-    TypedArray<EDATA_T> getEdataArrayAccessor();
+    BaseTypedArray<EDATA_T> getEdataArrayAccessor();
 
-    @FFINameAlias("GetInEdgeNum")
-    long getInEdgeNum();
-
-    @FFINameAlias("GetOutEdgeNum")
-    long getOutEdgeNum();
-
-    @FFINameAlias("GetData")
+    @FFINameAlias("get_vdata_array_accessor")
     @CXXReference
-    VDATA_T getData(@CXXReference Vertex<VID_T> vertex);
+    BaseTypedArray<VDATA_T> getVdataArrayAccessor();
 }
