@@ -61,6 +61,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             let pattern_meta = read_pattern_meta()?;
             Catalogue::build_from_meta(&pattern_meta, config.catalog_depth, config.catalog_depth)
         }
+        "mix_mode" => {
+            let pattern_meta = read_pattern_meta()?;
+            let patterns = read_patterns()?;
+            let mut catalog =
+                Catalogue::build_from_meta(&pattern_meta, config.catalog_depth, config.catalog_depth);
+            for pattern in patterns {
+                catalog.update_catalog_by_pattern(&pattern)
+            }
+            catalog
+        }
         _ => unreachable!(),
     };
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
