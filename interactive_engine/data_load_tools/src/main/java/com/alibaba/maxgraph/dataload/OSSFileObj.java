@@ -81,12 +81,12 @@ public class OSSFileObj {
     }
 
     public void uploadFileWithCheckPoint(
-            String ossBucketName, String ossObjectName, File uploadFile) throws IOException {
+            String ossBucketName, String ossObjectName, File uploadFile, long partSize) throws IOException {
         try {
             UploadFileRequest uploadFileRequest =
                     new UploadFileRequest(ossBucketName, ossObjectName);
             uploadFileRequest.setUploadFile(uploadFile.getAbsolutePath());
-            uploadFileRequest.setPartSize(10 * 1024 * 1024);
+            uploadFileRequest.setPartSize(partSize);
             uploadFileRequest.setEnableCheckpoint(true);
             ossClient.uploadFile(uploadFileRequest);
         } catch (OSSException oe) {

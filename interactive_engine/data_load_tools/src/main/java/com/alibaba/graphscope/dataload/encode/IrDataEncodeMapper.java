@@ -146,13 +146,14 @@ public class IrDataEncodeMapper extends MapperBase {
     public void cleanup(TaskContext context) throws IOException {
         super.cleanup(context);
         if (this.taskId == 0) {
+            int partSizeMB = Integer.valueOf(context.getJobConf().get(IrDataBuild.OSS_PART_SIZE_MB));
             String schemaJson = LIB.getSchemaJsonFromParser(this.parser);
             String ossObjectName =
                     Paths.get(this.ossObjectPrefix, "graph_schema", "schema.json").toString();
             String localPath = Paths.get(localRootDir, "graph_schema", "schema.json").toString();
             File localFile = new File(localPath);
             FileUtils.writeStringToFile(localFile, schemaJson, StandardCharsets.UTF_8);
-            this.ossFileObj.uploadFileWithCheckPoint(this.ossBucketName, ossObjectName, localFile);
+            this.ossFileObj.uploadFileWithCheckPoint(this.ossBucketName, ossObjectName, localFile, partSizeMB * 1024L * 1024L);
 
             if (localFile.exists()) {
                 localFile.delete();

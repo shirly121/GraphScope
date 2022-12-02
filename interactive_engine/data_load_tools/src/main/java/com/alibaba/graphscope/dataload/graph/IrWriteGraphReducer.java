@@ -126,6 +126,7 @@ public class IrWriteGraphReducer extends ReducerBase {
     @Override
     public void cleanup(TaskContext context) throws IOException {
         super.cleanup(context);
+        int partSizeMB = Integer.valueOf(context.getJobConf().get(IrDataBuild.OSS_PART_SIZE_MB));
         if (this.graphLoader != null) {
             ResultCode code = LIB.finalizeGraphLoading(this.graphLoader);
             if (code != ResultCode.Success) {
@@ -137,7 +138,7 @@ public class IrWriteGraphReducer extends ReducerBase {
             String ossObjectName = Paths.get(this.ossObjectPrefix, graphPath).toString();
             String localPath = Paths.get(this.localRootDir, graphPath).toString();
             this.ossFileObj.uploadFileWithCheckPoint(
-                    this.ossBucketName, ossObjectName, new File(localPath));
+                    this.ossBucketName, ossObjectName, new File(localPath), partSizeMB * 1024L * 1024L);
         }
         this.ossFileObj.close();
         File file = new File(Paths.get(localRootDir, "graph_data_bin").toString());

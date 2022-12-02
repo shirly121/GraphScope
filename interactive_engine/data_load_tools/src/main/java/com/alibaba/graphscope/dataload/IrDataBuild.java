@@ -20,6 +20,7 @@ import com.alibaba.graphscope.dataload.encode.IrDataEncodeMapper;
 import com.alibaba.graphscope.dataload.graph.*;
 import com.alibaba.maxgraph.dataload.databuild.OfflineBuildOdps;
 import com.aliyun.odps.data.TableInfo;
+import com.aliyun.odps.data.VolumeInfo;
 import com.aliyun.odps.mapred.JobClient;
 import com.aliyun.odps.mapred.conf.JobConf;
 import com.aliyun.odps.mapred.utils.InputUtils;
@@ -60,6 +61,10 @@ public class IrDataBuild {
 
     public static final String WRITE_RAW_BUF_SIZE_MB = "write.raw.buf.size.mb";
 
+    public static final String OSS_PART_SIZE_MB = "oss.part.size.mb";
+
+    public static final String WRITE_RAW_VOLUME_NAME = "write.raw.volume.name";
+
     public static void main(String[] args) throws Exception {
         File file = new File(args[0]);
         Properties properties = new Properties();
@@ -84,8 +89,11 @@ public class IrDataBuild {
         String accessKey = properties.getProperty(OfflineBuildOdps.OSS_ACCESS_KEY);
         String bucketName = properties.getProperty(OfflineBuildOdps.OSS_BUCKET_NAME);
 
-        int bufSize = Integer.valueOf(properties.getProperty(WRITE_RAW_BUF_SIZE_MB, "64"));
+        int bufSizeMB = Integer.valueOf(properties.getProperty(WRITE_RAW_BUF_SIZE_MB, "64"));
         int partitionNum = Integer.valueOf(properties.getProperty(WRITE_PARTITION_NUM, "1"));
+
+        // in MB
+        int ossPartSizeMB = Integer.valueOf(properties.getProperty(OSS_PART_SIZE_MB, "10"));
 
         JobConf job = new JobConf();
         if (mode.equals("ENCODE")) {
@@ -102,6 +110,7 @@ public class IrDataBuild {
             job.set(OfflineBuildOdps.OSS_BUCKET_NAME, bucketName);
             job.set(SEPARATOR, separator);
             job.setBoolean(SKIP_HEADER, Boolean.valueOf(skipHeader));
+            job.set(OSS_PART_SIZE_MB, String.valueOf(ossPartSizeMB));
             loadEncodeInputTable(job, properties);
             loadEncodeOutputTable(job, properties);
         } else if (mode.equals("WRITE_GRAPH")) {
@@ -116,6 +125,7 @@ public class IrDataBuild {
             job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);
             job.set(OfflineBuildOdps.OSS_ACCESS_KEY, accessKey);
             job.set(OfflineBuildOdps.OSS_BUCKET_NAME, bucketName);
+            job.set(OSS_PART_SIZE_MB, String.valueOf(ossPartSizeMB));
             job.setMapOutputKeySchema(
                     SchemaUtils.fromString(
                             "id:bigint,type:bigint")); // globalId for partition, typeId (vertex or
@@ -138,7 +148,8 @@ public class IrDataBuild {
             job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);
             job.set(OfflineBuildOdps.OSS_ACCESS_KEY, accessKey);
             job.set(OfflineBuildOdps.OSS_BUCKET_NAME, bucketName);
-            job.set(WRITE_RAW_BUF_SIZE_MB, String.valueOf(bufSize));
+            job.set(WRITE_RAW_BUF_SIZE_MB, String.valueOf(bufSizeMB));
+            job.set(OSS_PART_SIZE_MB, String.valueOf(ossPartSizeMB));
             job.setMapOutputKeySchema(
                     SchemaUtils.fromString(
                             "id:bigint,type:bigint")); // globalId for partition, typeId (vertex or
@@ -147,6 +158,7 @@ public class IrDataBuild {
                     SchemaUtils.fromString(
                             "id1:bigint,id2:bigint,id3:bigint,id4:bigint,id5:bigint,bytes:string,len:bigint,code:bigint"));
             loadGraphInputTable(job, properties);
+            loadWriteRawOutputVolume(job, properties);
         } else {
             throw new IllegalArgumentException(
                     "invalid mode " + mode + ", use ENCODE or WRITE_GRAPH instead");
@@ -192,6 +204,18 @@ public class IrDataBuild {
             tableNames.add(prefix + ENCODE_EDGE_MAGIC + i);
         }
         return tableNames;
+    }
+
+    private static void loadWriteRawOutputVolume(JobConf job, Properties properties) throws Exception {
+        String volumeName = makeWriteRawOutputVolumeName(properties);
+        OutputUtils.addVolume(new VolumeInfo(volumeName, "raw_data"), job);
+    }
+
+    private static String makeWriteRawOutputVolumeName(Properties properties) {
+        int partitions = Integer.valueOf(properties.getProperty(WRITE_PARTITION_NUM, "1"));
+        int reducers = Integer.valueOf(properties.getProperty(WRITE_REDUCER_NUM, "1"));
+        String prefix = properties.getProperty(UNIQUE_NAME);
+        return String.format("%s_r%d_p%d", prefix, reducers, partitions);
     }
 
     private static TableInfo parseTableURL(String tableFullName, Optional<String> labelOpt) {

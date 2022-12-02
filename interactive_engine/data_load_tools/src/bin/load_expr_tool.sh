@@ -105,23 +105,21 @@ download_data() {
 }
 
 download_partition_raw_data() {
-    ossutil=$1
-    download_path=$2
-    partition_id=$3
+    odps=odpscmd
+    download_path=$1
+    partition_id=$2
 
     graph_name=$(sed '/^unique.name=/!d;s/.*=//' ${artifacts_dir}/config.ini)
     reducer_num=$(sed '/^write.reducer.num=/!d;s/.*=//' ${artifacts_dir}/config.ini)
     partition_num=$(sed '/^write.partition.num=/!d;s/.*=//' ${artifacts_dir}/config.ini)
-    oss_bucket_name=$(sed '/^oss.bucket.name=/!d;s/.*=//' ${artifacts_dir}/config.ini)
-
-    oss_path_prefix=oss://${oss_bucket_name}/${graph_name}/reducers_${reducer_num}/partitions_${partition_num}
+    odps_volume_path=/${graph_name}_r${reducer_num}_p${partition_num}
 
     for i in $(seq 0 $((reducer_num-1)))
     do
         j=$(($i % $partition_num))
         if [ $j -eq $partition_id ]; then
-            ${ossutil} cp ${oss_path_prefix}/raw_data/vertices_$i $download_path/raw_data/vertices_$i
-            ${ossutil} cp ${oss_path_prefix}/raw_data/edges_$i $download_path/raw_data/edges_$i
+            ${odps} -e "fs -get ${odps_volume_path}/raw_data/vertices_$i $download_path/raw_data/vertices_$i;"
+            ${odps} -e "fs -get ${odps_volume_path}/raw_data/edges_$i $download_path/raw_data/edges_$i;"
         fi
     done
 }
@@ -195,11 +193,10 @@ then
 elif [ "$mode" = "get_partition_raw_data" ]
 then
     shift 1
-    ossutil=$1
-    if [[ "$#" -ne 3 ]] || $(! command -v ${ossutil} &> /dev/null); then
-      echo "usage: PATH=\$PATH:<your ossutil path> ./load_expr_tool.sh get_partition_raw_data <your ossutil binary name> <your local download path> <current partition id>" && exit 1
+    if [[ "$#" -ne 2 ]] || $(! command -v ${ossutil} &> /dev/null); then
+      echo "usage: PATH=\$PATH:<your odpscmd path> ./load_expr_tool.sh get_partition_raw_data <your local download path> <current partition id>" && exit 1
     fi
-    download_partition_raw_data $1 $2 $3
+    download_partition_raw_data $1 $2
 else
     echo "invalid mode"
 fi

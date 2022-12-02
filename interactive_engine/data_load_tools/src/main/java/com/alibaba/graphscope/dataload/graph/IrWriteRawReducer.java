@@ -3,54 +3,35 @@ package com.alibaba.graphscope.dataload.graph;
 import com.alibaba.graphscope.dataload.IrDataBuild;
 import com.alibaba.graphscope.dataload.IrEdgeData;
 import com.alibaba.graphscope.dataload.IrVertexData;
-import com.alibaba.maxgraph.dataload.OSSFileObj;
-import com.alibaba.maxgraph.dataload.databuild.OfflineBuildOdps;
 import com.aliyun.odps.data.Record;
 import com.aliyun.odps.mapred.ReducerBase;
+import com.aliyun.odps.volume.FileSystem;
+import com.aliyun.odps.volume.Path;
 
 import java.io.*;
 import java.nio.file.Paths;
 import java.util.*;
 
 public class IrWriteRawReducer extends ReducerBase {
-    private String localRootDir = "/tmp";
     private int taskId;
-    private OSSFileObj ossFileObj;
-    private String ossBucketName;
-    private String ossObjectPrefix;
     private IrVertexData vertexData;
     private IrEdgeData edgeData;
-    private OutputStream vertexOutput;
-    private OutputStream edgeOutput;
+    private BufferOutputWrapper vertexOutput;
+    private BufferOutputWrapper edgeOutput;
 
     @Override
     public void setup(TaskContext context) throws IOException {
         this.taskId = context.getTaskID().getInstId();
-        this.ossBucketName = context.getJobConf().get(OfflineBuildOdps.OSS_BUCKET_NAME);
-        this.ossObjectPrefix = context.getJobConf().get(IrDataBuild.WRITE_GRAPH_OSS_PATH);
 
-        String ossAccessId = context.getJobConf().get(OfflineBuildOdps.OSS_ACCESS_ID);
-        String ossAccessKey = context.getJobConf().get(OfflineBuildOdps.OSS_ACCESS_KEY);
-        String ossEndPoint = context.getJobConf().get(OfflineBuildOdps.OSS_ENDPOINT);
+        int bufSizeMB = Integer.valueOf(context.getJobConf().get(IrDataBuild.WRITE_RAW_BUF_SIZE_MB));
+        FileSystem fileSystem = context.getOutputVolumeFileSystem();
+        this.vertexOutput = new BufferOutputWrapper(
+                fileSystem.create(new Path(getVertexRawPath(this.taskId))),
+                bufSizeMB * 1024 * 1024);
+        this.edgeOutput = new BufferOutputWrapper(
+                fileSystem.create(new Path(getEdgeRawPath(this.taskId))),
+                bufSizeMB * 1024 * 1024);
 
-        Map<String, String> ossInfo = new HashMap();
-        ossInfo.put(OfflineBuildOdps.OSS_ENDPOINT, ossEndPoint);
-        ossInfo.put(OfflineBuildOdps.OSS_ACCESS_ID, ossAccessId);
-        ossInfo.put(OfflineBuildOdps.OSS_ACCESS_KEY, ossAccessKey);
-        this.ossFileObj = new OSSFileObj(ossInfo);
-
-        String vertexFullPath = Paths.get(this.localRootDir, getVertexRawPath(taskId)).toString();
-        String edgeFullPath = Paths.get(this.localRootDir, getEdgeRawPath(taskId)).toString();
-        makePathIfNotExists(vertexFullPath);
-        makePathIfNotExists(edgeFullPath);
-
-        int bufSize = Integer.valueOf(context.getJobConf().get(IrDataBuild.WRITE_RAW_BUF_SIZE_MB));
-        this.vertexOutput =
-                new BufferedOutputStream(
-                        new FileOutputStream(vertexFullPath, true), bufSize * 1024 * 1024);
-        this.edgeOutput =
-                new BufferedOutputStream(
-                        new FileOutputStream(edgeFullPath, true), bufSize * 1024 * 1024);
         this.vertexData = new IrVertexData();
         this.edgeData = new IrEdgeData();
     }
@@ -63,10 +44,10 @@ public class IrWriteRawReducer extends ReducerBase {
                 Record record = values.next();
                 if (type == 0) { // vertex
                     this.vertexData.readRecord(record);
-                    this.vertexOutput.write(this.vertexData.toBytes());
+                    this.vertexOutput.writeByteArray(this.vertexData.toBytes());
                 } else { // edge
                     this.edgeData.readRecord(record);
-                    this.edgeOutput.write(this.edgeData.toBytes());
+                    this.edgeOutput.writeByteArray(this.edgeData.toBytes());
                 }
             }
         } catch (IOException e) {
@@ -79,29 +60,16 @@ public class IrWriteRawReducer extends ReducerBase {
         super.cleanup(context);
         this.vertexOutput.flush();
         this.edgeOutput.flush();
-        List<String> rawPaths =
-                Arrays.asList(getVertexRawPath(this.taskId), getEdgeRawPath(this.taskId));
-        for (String rawPath : rawPaths) {
-            String ossObjectName = Paths.get(this.ossObjectPrefix, rawPath).toString();
-            String localPath = Paths.get(this.localRootDir, rawPath).toString();
-            this.ossFileObj.uploadFileWithCheckPoint(
-                    this.ossBucketName, ossObjectName, new File(localPath));
-        }
-        this.ossFileObj.close();
-        File file = new File(Paths.get(localRootDir, "raw_data").toString());
-        if (file.exists() && file.isDirectory()) {
-            file.delete();
-        }
+        this.vertexOutput.close();
+        this.edgeOutput.close();
     }
 
     private String getVertexRawPath(int partitionId) throws IOException {
-        String dir = "raw_data";
-        return Paths.get(dir, "vertices" + "_" + partitionId).toString();
+        return Paths.get("vertices" + "_" + partitionId).toString();
     }
 
     private String getEdgeRawPath(int partitionId) throws IOException {
-        String dir = "raw_data";
-        return Paths.get(dir, "edges" + "_" + partitionId).toString();
+        return Paths.get("edges" + "_" + partitionId).toString();
     }
 
     private void makePathIfNotExists(String filePath) throws IOException {
