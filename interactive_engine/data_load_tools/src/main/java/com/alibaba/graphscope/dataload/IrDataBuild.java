@@ -142,7 +142,9 @@ public class IrDataBuild {
             job.setPartitionerClass(IrWriteGraphPartitioner.class);
             job.set(WRITE_PARTITION_NUM, String.valueOf(partitionNum));
             job.set(WRITE_REDUCER_NUM, String.valueOf(reducerNum));
-            graphOssPath = Paths.get(encodePrefix, "reducers_" + reducerNum, "partitions_" + partitionNum).toString();
+            graphOssPath =
+                    Paths.get(encodePrefix, "reducers_" + reducerNum, "partitions_" + partitionNum)
+                            .toString();
             job.set(WRITE_GRAPH_OSS_PATH, graphOssPath);
             job.set(OfflineBuildOdps.OSS_ENDPOINT, endpoint);
             job.set(OfflineBuildOdps.OSS_ACCESS_ID, accessId);
