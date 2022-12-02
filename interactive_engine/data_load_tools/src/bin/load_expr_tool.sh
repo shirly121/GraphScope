@@ -52,6 +52,16 @@ prepare_odps_table() {
     done
 }
 
+prepare_odps_volume() {
+    odps=odpscmd
+    graph_name=$(sed '/^unique.name=/!d;s/.*=//' ${artifacts_dir}/config.ini)
+    reducer_num=$(sed '/^write.reducer.num=/!d;s/.*=//' ${artifacts_dir}/config.ini)
+    partition_num=$(sed '/^write.partition.num=/!d;s/.*=//' ${artifacts_dir}/config.ini)
+
+    odps_volume_name=${graph_name}_r${reducer_num}_p${partition_num}
+    ${odps} -e "fs -mkv ${odps_volume_name} '${graph_name} for ${reducer_num} reducers and ${partition_num} partitions'"
+}
+
 build_data() {
     odps=odpscmd
 
@@ -197,6 +207,13 @@ then
       echo "usage: PATH=\$PATH:<your odpscmd path> ./load_expr_tool.sh get_partition_raw_data <your local download path> <current partition id>" && exit 1
     fi
     download_partition_raw_data $1 $2
+elif [ "$mode" = "prepare_odps_volume" ]
+then
+    shift 1
+    if $(! command -v odpscmd &> /dev/null); then
+      echo "usage: PATH=\$PATH:<your odpscmd path> ./load_expr_tool.sh prepare_odps_volume" && exit 1
+    fi
+    prepare_odps_volume
 else
     echo "invalid mode"
 fi
