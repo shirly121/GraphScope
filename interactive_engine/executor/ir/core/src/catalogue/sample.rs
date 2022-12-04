@@ -98,14 +98,20 @@ impl Catalogue {
                     .pattern
                     .extend(&sub_task.extend_step)
                     .unwrap();
-                next_pattern_count_infos.insert(
-                    target_pattern_index,
-                    Arc::new(PatternCountInfo::new(
-                        target_pattern,
-                        sub_task_result.target_pattern_records,
-                        sub_task_result.target_pattern_count,
-                    )),
-                );
+                if self
+                    .pattern_out_approaches_iter(target_pattern_index)
+                    .count()
+                    > 0
+                {
+                    next_pattern_count_infos.insert(
+                        target_pattern_index,
+                        Arc::new(PatternCountInfo::new(
+                            target_pattern,
+                            sub_task_result.target_pattern_records,
+                            sub_task_result.target_pattern_count,
+                        )),
+                    );
+                }
                 relaxed_pattern_indices.insert(target_pattern_index);
                 pattern_counts_map.insert(target_pattern_index, sub_task_result.target_pattern_count);
             }
@@ -172,10 +178,12 @@ impl TableLogue {
         thread_num: usize,
     ) {
         let mut start_patterns_codes = HashSet::new();
+        let mut src_patterns = HashSet::new();
         for pattern in self.iter().map(|row| row.get_src_pattern()) {
             if pattern.get_vertices_num() == 1 {
                 start_patterns_codes.insert(pattern.encode_to());
             }
+            src_patterns.insert(pattern.encode_to());
         }
         let mut pattern_count_infos = HashMap::new();
         for pattern_code in start_patterns_codes.iter() {
@@ -200,7 +208,9 @@ impl TableLogue {
             let sub_task_result = sub_task.execute(thread_num, rate, limit);
             let target_pattern = src_pattern.extend(&extend_step).unwrap();
             let target_pattern_code = target_pattern.encode_to();
-            if !pattern_count_infos.contains_key(&target_pattern_code) {
+            if !pattern_count_infos.contains_key(&target_pattern_code)
+                && src_patterns.contains(&target_pattern_code)
+            {
                 pattern_count_infos.insert(
                     target_pattern_code,
                     Arc::new(PatternCountInfo::new(
