@@ -20,6 +20,7 @@ use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::KeyId;
+use ir_core::catalogue::PatternDirection;
 use ir_core::catalogue::pattern::*;
 use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
@@ -34,6 +35,10 @@ pub const TAG_A: KeyId = 0;
 pub const TAG_B: KeyId = 1;
 pub const TAG_C: KeyId = 2;
 pub const TAG_D: KeyId = 3;
+pub const TAG_E: KeyId = 4;
+pub const TAG_F: KeyId = 5;
+pub const TAG_G: KeyId = 6;
+pub const TAG_H: KeyId = 7;
 
 fn gen_edge_label_map(edges: Vec<String>) -> HashMap<String, PatternLabelId> {
     let mut rng = StdRng::from_seed([0; 32]);
@@ -71,6 +76,21 @@ pub fn query_params(
         predicate,
         sample_ratio: 1.0,
         extra: HashMap::new(),
+    }
+}
+
+pub fn build_edge_expand_opr(e_label: PatternLabelId, direction: PatternDirection) -> pb::EdgeExpand {
+    let dir: i32 = match direction {
+        PatternDirection::Out => 0,
+        PatternDirection::In => 1,
+    };
+
+    pb::EdgeExpand {
+        v_tag: None,
+        direction: dir,
+        params: Some(query_params(vec![e_label.into()], vec![], None)), //HASCREATOR
+        expand_opt: 0,
+        alias: None,
     }
 }
 
@@ -809,1680 +829,222 @@ pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
     Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
-// Test Cases for Index Ranking
-pub fn build_pattern_rank_ranking_case1() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(1);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    let pattern_vec = vec![new_pattern_edge(
-        0,
-        *edge_label_map.get("A->A").unwrap(),
-        *vertex_id_map.get("A0").unwrap(),
-        *vertex_id_map.get("A1").unwrap(),
-        *vertex_label_map.get("A").unwrap(),
-        *vertex_label_map.get("A").unwrap(),
-    )];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
+pub fn build_ldbc_bi3() -> Result<Pattern, IrError> {
+    let ldbc_pattern_mata = get_ldbc_pattern_meta();
+    // define pb pattern message
+    let forum_has_moderator_person = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                             // out
+        params: Some(query_params(vec![7.into()], vec![], None)), //HAS_MODERATOR
+        expand_opt: 0,
+        alias: None,
+    };
+    let person_is_located_in_place = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
+        expand_opt: 0,
+        alias: None,
+    };
+    let place_is_part_of_place = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![17.into()], vec![], None)), //ISPARTOF
+        expand_opt: 0,
+        alias: None,
+    };
+    let forum_container_of_post = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                             // out
+        params: Some(query_params(vec![5.into()], vec![], None)), //CONTAINER_OF
+        expand_opt: 0,
+        alias: None,
+    };
+    let comment_reply_of_post = pb::EdgeExpand {
+        v_tag: None,
+        direction: 1,                                             // in
+        params: Some(query_params(vec![3.into()], vec![], None)), //REPLY_OF
+        expand_opt: 0,
+        alias: None,
+    };
+    let comment_has_tag_tag = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                             // out
+        params: Some(query_params(vec![1.into()], vec![], None)), //HAS_TAG
+        expand_opt: 0,
+        alias: None,
+    };
+    let tag_has_type_tagclass = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![21.into()], vec![], None)), //HAS_TYPE
+        expand_opt: 0,
+        alias: None,
+    };
+    let pattern = pb::Pattern {
+        sentences: vec![
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(forum_has_moderator_person.clone())),
+                }],
+                end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(person_is_located_in_place.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_C.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(place_is_part_of_place.clone())),
+                }],
+                end: Some(TAG_D.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(forum_container_of_post.clone())),
+                }],
+                end: Some(TAG_E.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_E.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(comment_reply_of_post.clone())),
+                }],
+                end: Some(TAG_F.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_F.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(comment_has_tag_tag.clone())),
+                }],
+                end: Some(TAG_G.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_G.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(tag_has_type_tagclass.clone())),
+                }],
+                end: Some(TAG_H.into()),
+                join_kind: 0,
+            },
+        ],
+    };
+
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
 
-pub fn build_pattern_rank_ranking_case2() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(1);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    let edge_ids = gen_group_ids(1);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case3() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(2);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    let edge_ids = gen_group_ids(1);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case4() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(2);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    let edge_ids = gen_group_ids(2);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case5() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(2);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    let edge_ids = gen_group_ids(2);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case6() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->A")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(2);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    let edge_ids = gen_group_ids(3);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("B->A").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case7() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(2);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    let edge_ids = gen_group_ids(3);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case8() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(3);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
-    let edge_ids = gen_group_ids(3);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case9() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(3);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
-    let edge_ids = gen_group_ids(4);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case10() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(3);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
-    let edge_ids = gen_group_ids(5);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case11() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(4);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("B2"), vertex_ids[4]);
-    let edge_ids = gen_group_ids(6);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case12() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->B")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(5);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("B2"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("B3"), vertex_ids[5]);
-    let edge_ids = gen_group_ids(7);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B3").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case13() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> = gen_edge_label_map(vec![
-        String::from("A->A"),
-        String::from("A->B"),
-        String::from("B->B"),
-        String::from("B->A"),
-    ]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    let vertex_ids = gen_group_ids(5);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("B2"), vertex_ids[5]);
-    let edge_ids = gen_group_ids(7);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("B->A").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case14() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> = gen_edge_label_map(vec![
-        String::from("A->A"),
-        String::from("A->B"),
-        String::from("B->B"),
-        String::from("B->C"),
-    ]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    vertex_label_map.insert(String::from("C"), 3);
-    let vertex_ids = gen_group_ids(6);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("B2"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("B3"), vertex_ids[5]);
-    vertex_id_map.insert(String::from("C0"), vertex_ids[6]);
-    let edge_ids = gen_group_ids(8);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("B->B").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("B3").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[8],
-            *edge_label_map.get("B->C").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_id_map.get("C0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case15() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    vertex_label_map.insert(String::from("C"), 3);
-    let vertex_ids = gen_group_ids(9);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[5]);
-    vertex_id_map.insert(String::from("B2"), vertex_ids[6]);
-    vertex_id_map.insert(String::from("C0"), vertex_ids[8]);
-    vertex_id_map.insert(String::from("C1"), vertex_ids[9]);
-    let edge_ids = gen_group_ids(8);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("B->C").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("C0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("B->C").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("C1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[8],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case16() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> = gen_edge_label_map(vec![
-        String::from("A->A"),
-        String::from("A->B"),
-        String::from("B->C"),
-        String::from("C->D"),
-    ]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    vertex_label_map.insert(String::from("C"), 3);
-    vertex_label_map.insert(String::from("D"), 4);
-    let vertex_ids = gen_group_ids(9);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("B1"), vertex_ids[5]);
-    vertex_id_map.insert(String::from("B2"), vertex_ids[6]);
-    vertex_id_map.insert(String::from("C0"), vertex_ids[7]);
-    vertex_id_map.insert(String::from("C1"), vertex_ids[8]);
-    vertex_id_map.insert(String::from("D0"), vertex_ids[9]);
-    let edge_ids = gen_group_ids(9);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("B->C").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_id_map.get("C0").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("B->C").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_id_map.get("C1").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("B2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("B1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[8],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[9],
-            *edge_label_map.get("C->D").unwrap(),
-            *vertex_id_map.get("C1").unwrap(),
-            *vertex_id_map.get("D0").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-            *vertex_label_map.get("D").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case17() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(5);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
-    let edge_ids = gen_group_ids(4);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case17_even_num_chain() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(6);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
-    vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
-    let edge_ids = gen_group_ids(5);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_id_map.get("A6").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case17_long_chain() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(10);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
-    vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
-    vertex_id_map.insert(String::from("A7"), vertex_ids[7]);
-    vertex_id_map.insert(String::from("A8"), vertex_ids[8]);
-    vertex_id_map.insert(String::from("A9"), vertex_ids[9]);
-    vertex_id_map.insert(String::from("A10"), vertex_ids[10]);
-    let edge_ids = gen_group_ids(10);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_id_map.get("A6").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A6").unwrap(),
-            *vertex_id_map.get("A7").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A7").unwrap(),
-            *vertex_id_map.get("A8").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[8],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A8").unwrap(),
-            *vertex_id_map.get("A9").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[9],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A9").unwrap(),
-            *vertex_id_map.get("A10").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case17_special_id_situation_1() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_id_map.insert(String::from("A0"), 2);
-    vertex_id_map.insert(String::from("A1"), 5);
-    vertex_id_map.insert(String::from("A2"), 3);
-    vertex_id_map.insert(String::from("A3"), 0);
-    vertex_id_map.insert(String::from("A4"), 1);
-    vertex_id_map.insert(String::from("A5"), 4);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            2,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            3,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            1,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            4,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            0,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case17_special_id_situation_2() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_id_map.insert(String::from("A0"), 2);
-    vertex_id_map.insert(String::from("A1"), 1);
-    vertex_id_map.insert(String::from("A2"), 3);
-    vertex_id_map.insert(String::from("A3"), 0);
-    vertex_id_map.insert(String::from("A4"), 4);
-    vertex_id_map.insert(String::from("A5"), 5);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            0,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            1,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            2,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            4,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            3,
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case18() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(5);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
-    let edge_ids = gen_group_ids(5);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case19() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> = gen_edge_label_map(vec![
-        String::from("A->A"),
-        String::from("A->B"),
-        String::from("A->C"),
-        String::from("A->D"),
-        String::from("A->E"),
-    ]);
-    vertex_label_map.insert(String::from("A"), 1);
-    vertex_label_map.insert(String::from("B"), 2);
-    vertex_label_map.insert(String::from("C"), 3);
-    vertex_label_map.insert(String::from("D"), 4);
-    vertex_label_map.insert(String::from("E"), 5);
-    let vertex_ids = gen_group_ids(13);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
-    vertex_id_map.insert(String::from("A5"), vertex_ids[5]);
-    vertex_id_map.insert(String::from("A6"), vertex_ids[6]);
-    vertex_id_map.insert(String::from("A7"), vertex_ids[7]);
-    vertex_id_map.insert(String::from("A8"), vertex_ids[8]);
-    vertex_id_map.insert(String::from("A9"), vertex_ids[9]);
-    vertex_id_map.insert(String::from("B0"), vertex_ids[10]);
-    vertex_id_map.insert(String::from("C0"), vertex_ids[11]);
-    vertex_id_map.insert(String::from("D0"), vertex_ids[12]);
-    vertex_id_map.insert(String::from("E0"), vertex_ids[13]);
-    let edge_ids = gen_group_ids(13);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A6").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A7").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[8],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A8").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[9],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A5").unwrap(),
-            *vertex_id_map.get("A9").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[10],
-            *edge_label_map.get("A->B").unwrap(),
-            *vertex_id_map.get("A6").unwrap(),
-            *vertex_id_map.get("B0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("B").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[11],
-            *edge_label_map.get("A->D").unwrap(),
-            *vertex_id_map.get("A7").unwrap(),
-            *vertex_id_map.get("D0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("D").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[12],
-            *edge_label_map.get("A->C").unwrap(),
-            *vertex_id_map.get("A8").unwrap(),
-            *vertex_id_map.get("C0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("C").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[13],
-            *edge_label_map.get("A->E").unwrap(),
-            *vertex_id_map.get("A9").unwrap(),
-            *vertex_id_map.get("E0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("E").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case20() -> (Pattern, HashMap<String, PatternId>) {
-    let mut vertex_label_map: HashMap<String, PatternLabelId> = HashMap::new();
-    let mut vertex_id_map: HashMap<String, PatternId> = HashMap::new();
-    let edge_label_map: HashMap<String, PatternLabelId> =
-        gen_edge_label_map(vec![String::from("A->A"), String::from("A->B"), String::from("B->C")]);
-    vertex_label_map.insert(String::from("A"), 1);
-    let vertex_ids = gen_group_ids(4);
-    vertex_id_map.insert(String::from("A0"), vertex_ids[0]);
-    vertex_id_map.insert(String::from("A1"), vertex_ids[1]);
-    vertex_id_map.insert(String::from("A2"), vertex_ids[2]);
-    vertex_id_map.insert(String::from("A3"), vertex_ids[3]);
-    vertex_id_map.insert(String::from("A4"), vertex_ids[4]);
-    let edge_ids = gen_group_ids(11);
-    let pattern_vec = vec![
-        new_pattern_edge(
-            edge_ids[0],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[1],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[2],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[3],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[4],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[5],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[6],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[7],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A2").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[8],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[9],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A3").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[10],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A0").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-        new_pattern_edge(
-            edge_ids[11],
-            *edge_label_map.get("A->A").unwrap(),
-            *vertex_id_map.get("A4").unwrap(),
-            *vertex_id_map.get("A1").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-            *vertex_label_map.get("A").unwrap(),
-        ),
-    ];
-    (Pattern::try_from(pattern_vec).unwrap(), vertex_id_map)
-}
-
-pub fn build_pattern_rank_ranking_case21() -> Pattern {
-    let vertex0 = PatternVertex::new(0, 1);
-    let vertex1 = PatternVertex::new(1, 2);
-    let vertex3 = PatternVertex::new(3, 0);
-    let vertex4 = PatternVertex::new(4, 1);
-    let vertex5 = PatternVertex::new(5, 2);
-    let edge0 = PatternEdge::new(0, 13, vertex0, vertex1);
-    let edge2 = PatternEdge::new(2, 11, vertex0, vertex3);
-    let edge4 = PatternEdge::new(4, 11, vertex4, vertex3);
-    let edge6 = PatternEdge::new(6, 13, vertex4, vertex5);
-    let edges = vec![edge0, edge2, edge4, edge6];
-    Pattern::try_from(edges).unwrap()
+pub fn build_ldbc_bi11() -> Result<Pattern, IrError> {
+    let ldbc_pattern_mata = get_ldbc_pattern_meta();
+    // define pb pattern message
+    let expand_opr0 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // both
+        params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
+        expand_opt: 0,
+        alias: None,
+    };
+    let expand_opr1 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
+        expand_opt: 0,
+        alias: None,
+    };
+    let expand_opr2 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![17.into()], vec![], None)), //ISPARTOF
+        expand_opt: 0,
+        alias: None,
+    };
+    let pattern = pb::Pattern {
+        sentences: vec![
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                }],
+                end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr0.clone())),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                }],
+                end: Some(TAG_D.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                }],
+                end: Some(TAG_E.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_C.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                }],
+                end: Some(TAG_F.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
+                }],
+                end: Some(TAG_H.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_E.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
+                }],
+                end: Some(TAG_H.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_F.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2.clone())),
+                }],
+                end: Some(TAG_H.into()),
+                join_kind: 0,
+            },
+        ],
+    };
+    
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }

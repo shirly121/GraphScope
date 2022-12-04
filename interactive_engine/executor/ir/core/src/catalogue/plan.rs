@@ -20,7 +20,7 @@ use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::{Approach, Catalogue};
+use crate::catalogue::catalog::{Catalogue, Approach, ApproachWeight, PatternWeight, ExtendWeight, JoinWeight};
 use crate::catalogue::extend_step::DefiniteExtendStep;
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -28,8 +28,83 @@ use crate::catalogue::PatternDirection;
 use crate::catalogue::PatternId;
 use crate::error::{IrError, IrResult};
 
+use super::catalog::PatMatPlanSpace;
+
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
+
+#[derive(Debug, Clone, Default)]
+pub struct CostMetric {
+    alpha: f64,
+    beta: f64,
+    w1: f64,
+    w2: f64,
+}
+
+/// Cost Metric of Catalogue
+impl CostMetric {
+    pub fn default() -> Self {
+        CostMetric { alpha: ALPHA, beta: BETA, w1: 1.0, w2: 1.0 }
+    }
+
+    /// Cost Estimation Functions
+    pub fn cost_estimate(&self, catalogue: &Catalogue, approach: &Approach) -> usize {
+        let approach_weight = catalogue
+            .get_approach_weight(approach.get_approach_index())
+            .expect("No such approach exists in catalogue");
+        if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
+            self.extend_step_cost_estimate(catalogue, approach, extend_weight)
+        } else if let ApproachWeight::BinaryJoinStep(join_weight) = approach_weight {
+            self.binary_join_step_cost_estimate(catalogue, approach, join_weight)
+        } else {
+            usize::MAX
+        }
+    }
+
+    /// Cost Estimation Function of Extend Step
+    fn extend_step_cost_estimate(&self, catalogue: &Catalogue, approach: &Approach, extend_weight: &ExtendWeight) -> usize {
+        // Cost of finding adjacency lists of each vertex. (Normalized with coefficient alpha)
+        let find_cost: usize = ((extend_weight.get_adjacency_count() as f64) * self.alpha) as usize;
+        // Cost of doing intersection on multiple adjacency lists.
+        // Zero if there is only one adjacency list for intersection.
+        let intersection_cost: usize = ((extend_weight.get_intersect_count() as f64) * self.beta) as usize;
+        // Cost of extending pattern Qk-1 to Qk (Dominant Cost)
+        let extension_cost: usize = catalogue
+            .get_pattern_weight(approach.get_target_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        // Cost of dropping useless instances of pattern Qk-1 after extension (Dominant Cost)
+        let drop_cost: usize = catalogue
+            .get_pattern_weight(approach.get_src_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        // Sum up all four costs
+        find_cost + intersection_cost + extension_cost + drop_cost
+    }
+
+    /// Cost Estimation Function of Binary Join Step
+    fn binary_join_step_cost_estimate(&self, catalogue: &Catalogue, approach: &Approach, join_weight: &JoinWeight) -> usize {
+        // Collect data for cost estimation
+        let build_pattern_cardinality = catalogue
+            .get_pattern_weight(approach.get_src_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        let probe_pattern_cardinality = catalogue
+            .get_pattern_weight(join_weight.get_probe_pattern_node_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        let joined_pattern_cardinality = catalogue
+            .get_pattern_weight(approach.get_target_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        // Cost Estimtion
+        let join_cost: usize = (self.w1 * build_pattern_cardinality as f64) as usize
+            + (self.w2 * probe_pattern_cardinality as f64) as usize;
+        let output_cost = joined_pattern_cardinality;
+
+        join_cost + output_cost
+    }
+}
 
 /// Methods for Pattern to generate pb Logical plan of pattern matching
 impl Pattern {

@@ -14,9 +14,9 @@
 //! limitations under the License.
 //!
 
-use ir_core::catalogue::catalog::Catalogue;
-use ir_core::catalogue::sparsify::read_sparsify_config;
+use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
 use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
+use ir_core::catalogue::sparsify::read_sparsify_config;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Instant;
@@ -41,6 +41,8 @@ pub struct Config {
     sample_rate: f64,
     #[structopt(short = "l", long = "medium_results_limit")]
     limit: Option<usize>,
+    #[structopt(short = "s", long = "plan_space")]
+    plan_space: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -51,7 +53,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut catalog = match config.catalog_mode.as_str() {
         "from_pattern" => {
             let pattern = read_pattern()?;
-            Catalogue::build_from_pattern(&pattern)
+            let plan_space = PatMatPlanSpace::Hybrid;
+            Catalogue::build_from_pattern(&pattern, plan_space)
         }
         "from_patterns" => {
             let patterns = read_patterns()?;
