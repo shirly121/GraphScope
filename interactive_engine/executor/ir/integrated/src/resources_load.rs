@@ -57,7 +57,7 @@ pub fn read_sample_graph() -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dy
     read_graph_from_path(&sample_graph_path)
 }
 
-fn read_graph_from_path(graph_path: &str) -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error>> {
+pub fn read_graph_from_path(graph_path: &str) -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error>> {
     info!("Read the sample graph data from {:?}.", graph_path);
     let graph = GraphDBConfig::default()
         .root_dir(&graph_path)

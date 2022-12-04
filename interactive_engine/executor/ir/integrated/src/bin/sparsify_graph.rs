@@ -37,14 +37,25 @@ pub struct Config {
     optimizer_tools: String,
     #[structopt(short = "m", long = "rate_mod", default_value = "unique")]
     is_unique_rate: String,
+    #[structopt(short = "j", long = "given_json", default_value = "no")]
+    is_support_edge_sta: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
     let graph = read_graph()?;
-    let graph2 = read_graph()?;
-    dump_edge_info(get_edge_distribution(graph2),&config.low_order_path);
-    let executed_command = "SPARSE_RATE=".to_string()+&config.sample_rate.to_string()+" SPARSE_STATISTIC_PATH="+&config.low_order_path+" SPARSE_RATE_PATH="+&config.sparsify_rate_path+" python3 "+config.optimizer_tools.as_str();
+    if config.is_support_edge_sta == "no" {
+        let graph2 = read_graph()?;
+        dump_edge_info(get_edge_distribution(graph2), &config.low_order_path);
+    }
+    let executed_command = "SPARSE_RATE=".to_string()
+        + &config.sample_rate.to_string()
+        + " SPARSE_STATISTIC_PATH="
+        + &config.low_order_path
+        + " SPARSE_RATE_PATH="
+        + &config.sparsify_rate_path
+        + " python3 "
+        + config.optimizer_tools.as_str();
     let mut generating_sparsify_rate = Command::new("sh");
     generating_sparsify_rate.arg("-c")
               .arg(executed_command);

@@ -38,7 +38,6 @@ import re
 from collections import defaultdict
 from graphviz import Digraph
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default='executor.log')

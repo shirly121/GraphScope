@@ -31,14 +31,29 @@ pub struct Config {
     catalog_mode: String,
     #[structopt(short = "d", long = "catalog_depth", default_value = "3")]
     catalog_depth: usize,
+    #[structopt(short = "r", long = "sample_rate", default_value = "0.2")]
+    sample_rate: f64,
+    #[structopt(short = "l", long = "sample_limit", default_value = "0")]
+    sample_limit: usize,
     #[structopt(short = "p", long = "export_path")]
     export_path: String,
     #[structopt(short = "s", long = "sparsify_rate_path", default_value = "sparsify_rate.json")]
     sparsify_rate_path: String,
 }
 
+fn print_config(config: &Config) {
+    println!("Configuration for Catlog Build");
+    println!("  catalog_mode: {}", config.catalog_mode);
+    println!("  catalog_depth: {}", config.catalog_depth);
+    println!("  sample_rate: {}", config.sample_rate);
+    println!("  sample_limit: {}", config.sample_limit);
+    println!("  export_path: {}", config.export_path);
+    println!("\n");
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
+    print_config(&config);
     let sample_graph = Arc::new(read_sample_graph()?);
     println!("start building catalog...");
     let catalog_build_start_time = Instant::now();
