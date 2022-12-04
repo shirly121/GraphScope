@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
@@ -815,5 +815,146 @@ impl Catalogue {
     pub fn import<P: AsRef<Path>>(path: P) -> BincodeResult<Self> {
         let mut reader = BufReader::new(File::open(path)?);
         deserialize_from(&mut reader)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TableRow {
+    src_pattern: Pattern,
+    target_pattern: Pattern,
+    extend_step: ExtendStep,
+    extend_counts: Vec<usize>,
+    pattern_count: usize,
+}
+
+impl TableRow {
+    pub fn new(
+        src_pattern: Pattern, target_pattern: Pattern, extend_step: ExtendStep, extend_counts: Vec<usize>,
+        pattern_count: usize,
+    ) -> TableRow {
+        TableRow { src_pattern, target_pattern, extend_step, extend_counts, pattern_count }
+    }
+
+    pub fn get_src_pattern(&self) -> &Pattern {
+        &self.src_pattern
+    }
+
+    pub fn get_target_pattern(&self) -> &Pattern {
+        &self.target_pattern
+    }
+
+    pub fn get_extend_step(&self) -> &ExtendStep {
+        &self.extend_step
+    }
+
+    pub fn get_extend_counts(&self) -> Vec<usize> {
+        self.extend_counts.clone()
+    }
+
+    pub fn get_pattern_count(&self) -> usize {
+        self.pattern_count
+    }
+
+    pub fn set_extend_counts(&mut self, extend_counts: Vec<usize>) {
+        self.extend_counts = extend_counts
+    }
+
+    pub fn set_pattern_count(&mut self, pattern_count: usize) {
+        self.pattern_count = pattern_count
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TableLogue {
+    rows: Vec<TableRow>,
+}
+
+impl TableLogue {
+    pub fn iter(&self) -> DynIter<&TableRow> {
+        Box::new(self.rows.iter())
+    }
+
+    pub fn iter_mut(&mut self) -> DynIter<&mut TableRow> {
+        Box::new(self.rows.iter_mut())
+    }
+
+    pub fn add_row(&mut self, row: TableRow) {
+        self.rows.push(row)
+    }
+
+    pub fn get_patterns_num(&self) -> usize {
+        let mut pattern_code_set = HashSet::new();
+        for (src_pattern, target_pattern) in self
+            .rows
+            .iter()
+            .map(|row| (&row.src_pattern, &row.target_pattern))
+        {
+            pattern_code_set.insert(src_pattern.encode_to());
+            pattern_code_set.insert(target_pattern.encode_to());
+        }
+        pattern_code_set.len()
+    }
+
+    pub fn get_extends_num(&self) -> usize {
+        self.rows.len()
+    }
+}
+
+impl TableLogue {
+    pub fn from_meta(pattern_meta: &PatternMeta, pattern_size_limit: usize) -> TableLogue {
+        let mut table_logue = TableLogue::default();
+        let mut queue = VecDeque::new();
+        let mut pattern_code_set = HashSet::new();
+        for vertex_label in pattern_meta.vertex_label_ids_iter() {
+            let new_pattern = Pattern::from(PatternVertex::new(0, vertex_label));
+            if pattern_code_set.insert(new_pattern.encode_to()) {
+                queue.push_back(new_pattern);
+            }
+        }
+        while let Some(relaxed_pattern) = queue.pop_front() {
+            if relaxed_pattern.get_vertices_num() >= pattern_size_limit {
+                continue;
+            }
+            let extend_steps = relaxed_pattern.get_extend_steps(pattern_meta, pattern_size_limit);
+            for extend_step in extend_steps.iter() {
+                let new_pattern = relaxed_pattern.extend(extend_step).unwrap();
+                let table_row = TableRow::new(
+                    relaxed_pattern.clone(),
+                    new_pattern.clone(),
+                    extend_step.clone(),
+                    vec![0; extend_step.get_extend_edges_num()],
+                    1,
+                );
+                table_logue.add_row(table_row);
+                if pattern_code_set.insert(new_pattern.encode_to()) {
+                    queue.push_back(new_pattern)
+                }
+            }
+        }
+        table_logue
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{catalogue::pattern_meta::PatternMeta, plan::meta::Schema, JsonIO};
+    use std::fs::File;
+
+    use super::{Catalogue, TableLogue};
+
+    #[test]
+    fn test_table_logue_struct() {
+        let ldbc_schema_file = match File::open("resource/ldbc_schema_broad.json") {
+            Ok(file) => file,
+            Err(_) => match File::open("core/resource/ldbc_schema_broad.json") {
+                Ok(file) => file,
+                Err(_) => File::open("../core/resource/ldbc_schema_broad.json").unwrap(),
+            },
+        };
+        let pattern_meta = PatternMeta::from(Schema::from_json(ldbc_schema_file).unwrap());
+        let table_logue = TableLogue::from_meta(&pattern_meta, 4);
+        let g_logue = Catalogue::build_from_meta(&pattern_meta, 4, 4);
+        assert_eq!(table_logue.get_patterns_num() + 5, g_logue.get_patterns_num());
+        assert_eq!(table_logue.get_extends_num(), g_logue.store.edge_count());
     }
 }

@@ -15,6 +15,7 @@
 //!
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fs::File;
 use std::iter::FromIterator;
 use std::path::Path;
@@ -25,7 +26,7 @@ use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
 use graph_store::prelude::{DefaultId, GlobalStoreTrait, GraphDBConfig, InternalId, LabelId, LargeGraphDB};
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::Catalogue;
+use crate::catalogue::catalog::{Catalogue, TableLogue};
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -162,6 +163,55 @@ impl Catalogue {
             );
         }
         pattern_nodes
+    }
+}
+
+impl TableLogue {
+    pub fn estimate_graph(
+        &mut self, graph: Arc<LargeGraphDB<DefaultId, InternalId>>, rate: f64, limit: Option<usize>,
+        thread_num: usize,
+    ) {
+        let mut start_patterns_codes = HashSet::new();
+        for pattern in self.iter().map(|row| row.get_src_pattern()) {
+            if pattern.get_vertices_num() == 1 {
+                start_patterns_codes.insert(pattern.encode_to());
+            }
+        }
+        let mut pattern_count_infos = HashMap::new();
+        for pattern_code in start_patterns_codes.iter() {
+            let pattern = Pattern::decode_from(pattern_code).unwrap();
+            let extend_step = DefiniteExtendStep::try_from(pattern.clone()).unwrap();
+            let mut pattern_records = get_src_records(&graph, vec![extend_step], limit);
+            let pattern_count = pattern_records.len();
+            pattern_records = sample_records(pattern_records, rate, limit);
+            pattern_count_infos.insert(
+                pattern_code.clone(),
+                Arc::new(PatternCountInfo::new(pattern, pattern_records, pattern_count)),
+            );
+        }
+        for row in self.iter_mut() {
+            let src_pattern = row.get_src_pattern();
+            let src_pattern_code = src_pattern.encode_to();
+            let src_pattern_count_infos = pattern_count_infos
+                .get(&src_pattern_code)
+                .unwrap();
+            let extend_step = Arc::new(row.get_extend_step().clone());
+            let sub_task = SubTask::new(src_pattern_count_infos, &extend_step, &graph);
+            let sub_task_result = sub_task.execute(thread_num, rate, limit);
+            let target_pattern = src_pattern.extend(&extend_step).unwrap();
+            let target_pattern_code = target_pattern.encode_to();
+            if !pattern_count_infos.contains_key(&target_pattern_code) {
+                pattern_count_infos.insert(
+                    target_pattern_code,
+                    Arc::new(PatternCountInfo::new(
+                        target_pattern,
+                        sub_task_result.target_pattern_records,
+                        sub_task_result.target_pattern_count,
+                    )),
+                );
+            }
+            row.set_pattern_count(sub_task_result.target_pattern_count);
+        }
     }
 }
 
