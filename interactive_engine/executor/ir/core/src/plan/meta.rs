@@ -68,10 +68,13 @@ pub fn set_catalogue(catalogue: Catalogue) {
     }
 }
 
-pub fn set_catalogue_from_path<P: AsRef<Path>>(catalog_path: P) {
+pub fn set_catalogue_from_path<P: AsRef<Path> + Debug>(catalog_path: P) {
+    println!("catalog path: {:?}", catalog_path);
     match Catalogue::import(catalog_path) {
         Ok(catalogue) => set_catalogue(catalogue),
-        Err(error) => println!("{:?}", error),
+        Err(error) => {
+            println!("{:?}", error);
+        }
     }
 }
 
