@@ -15,6 +15,7 @@
 //!
 
 use ir_core::catalogue::catalog::TableLogue;
+use ir_core::catalogue::PatternLabelId;
 use runtime_integration::{read_pattern_meta, read_sample_graph};
 use std::error::Error;
 use std::sync::Arc;
@@ -27,7 +28,9 @@ static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 #[derive(StructOpt)]
 pub struct Config {
     #[structopt(short = "d", long = "catalog_depth", default_value = "3")]
-    catalog_depth: usize,
+    table_log_depth: usize,
+    #[structopt(short = "m", long = "table_log_mode", default_value = "from_meta")]
+    table_log_mode: String,
     #[structopt(short = "t", long = "thread_num", default_value = "1")]
     thread_num: usize,
 }
@@ -38,8 +41,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pattern_meta = read_pattern_meta()?;
     println!("start building table log...");
     let table_log_build_start_time = Instant::now();
-    let mut table_log = TableLogue::from_meta(&pattern_meta, config.catalog_depth);
+    let mut table_log = match config.table_log_mode.as_str() {
+        "from_meta" => TableLogue::from_meta(&pattern_meta, config.table_log_depth),
+        "naive" => {
+            let vertex_labels: Vec<PatternLabelId> = pattern_meta.vertex_label_ids_iter().collect();
+            let edge_labels: Vec<PatternLabelId> = pattern_meta.edge_label_ids_iter().collect();
+            TableLogue::naive_init(vertex_labels, edge_labels, config.table_log_depth)
+        }
+        _ => unreachable!(),
+    };
     table_log.estimate_graph(sample_graph, 1.0, None, config.thread_num);
     println!("building table log time cost is: {:?} s", table_log_build_start_time.elapsed().as_secs());
+    println!("{:?}", table_log.iter().count());
     Ok(())
 }

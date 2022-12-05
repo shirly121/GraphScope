@@ -902,16 +902,16 @@ impl TableLogue {
 
 impl TableLogue {
     pub fn naive_init(
-        vertex_labels: Vec<PatternLabelId>, edge_label_ids: Vec<PatternLabelId>, pattern_size_limit: usize,
+        vertex_labels: Vec<PatternLabelId>, edge_labels: Vec<PatternLabelId>, pattern_size_limit: usize,
     ) -> TableLogue {
         let mut table_logue = TableLogue::default();
         let mut queue = VecDeque::new();
         let mut pattern_code_set = HashSet::new();
-        let adjacent_edges: Vec<(PatternLabelId, PatternDirection)> = edge_label_ids
+        let adjacent_edges: Vec<(PatternLabelId, PatternDirection)> = edge_labels
             .iter()
             .map(|edge_id| (*edge_id, PatternDirection::Out))
             .chain(
-                edge_label_ids
+                edge_labels
                     .iter()
                     .map(|edge_id| (*edge_id, PatternDirection::In)),
             )
