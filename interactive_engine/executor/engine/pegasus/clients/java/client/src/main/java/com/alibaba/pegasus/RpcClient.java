@@ -51,7 +51,7 @@ public class RpcClient {
             JobServiceStub asyncStub = JobServiceGrpc.newStub(rpcChannel.getChannel());
             // todo: make timeout configurable
             asyncStub
-                    .withDeadlineAfter(600000, TimeUnit.MILLISECONDS)
+                    .withDeadlineAfter(60000000, TimeUnit.MILLISECONDS)
                     .submit(
                             jobRequest,
                             new JobResponseObserver(responseIterator, finished, counter));
