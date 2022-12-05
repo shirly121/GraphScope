@@ -69,8 +69,9 @@ pub fn set_catalogue(catalogue: Catalogue) {
 }
 
 pub fn set_catalogue_from_path<P: AsRef<Path>>(catalog_path: P) {
-    if let Ok(catalogue) = Catalogue::import(catalog_path) {
-        set_catalogue(catalogue)
+    match Catalogue::import(catalog_path) {
+        Ok(catalogue) => set_catalogue(catalogue),
+        Err(error) => println!("{:?}", error),
     }
 }
 
