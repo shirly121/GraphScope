@@ -428,6 +428,7 @@ impl LogicalPlan {
                         }
                         self.append_plan(plan, parent_ids.clone())
                     } else {
+                        println!("Generate Naive Plan");
                         let strategy = NaiveStrategy::try_from(pb_pattern.clone())?;
                         let plan = strategy.build_logical_plan()?;
                         self.append_plan(plan, parent_ids.clone())

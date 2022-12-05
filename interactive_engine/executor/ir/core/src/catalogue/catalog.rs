@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Adjacency, Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::{DynIter, PatternId};
+use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
 
 /// In Catalog Graph, Vertex Represents a Pattern
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -901,6 +901,65 @@ impl TableLogue {
 }
 
 impl TableLogue {
+    pub fn naive_init(
+        vertex_labels: Vec<PatternLabelId>, edge_label_ids: Vec<PatternLabelId>, pattern_size_limit: usize,
+    ) -> TableLogue {
+        let mut table_logue = TableLogue::default();
+        let mut queue = VecDeque::new();
+        let mut pattern_code_set = HashSet::new();
+        let adjacent_edges: Vec<(PatternLabelId, PatternDirection)> = edge_label_ids
+            .iter()
+            .map(|edge_id| (*edge_id, PatternDirection::Out))
+            .chain(
+                edge_label_ids
+                    .iter()
+                    .map(|edge_id| (*edge_id, PatternDirection::In)),
+            )
+            .collect();
+        for &vertex_label in vertex_labels.iter() {
+            let new_pattern = Pattern::from(PatternVertex::new(0, vertex_label));
+            if pattern_code_set.insert(new_pattern.encode_to()) {
+                queue.push_back(new_pattern);
+            }
+        }
+        while let Some(relaxed_pattern) = queue.pop_front() {
+            if relaxed_pattern.get_vertices_num() >= pattern_size_limit {
+                continue;
+            }
+            let mut extend_steps = vec![];
+            let adjacent_edges_arranges =
+                get_vec_arranges(&adjacent_edges, relaxed_pattern.get_vertices_num());
+            for &vertex_label in vertex_labels.iter() {
+                for adjacent_edges in adjacent_edges_arranges.iter() {
+                    let extend_edges: Vec<ExtendEdge> = adjacent_edges
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &(edge_label, edge_dir))| ExtendEdge::new(i, edge_label, edge_dir))
+                        .collect();
+                    for extend_edges in get_subsets(extend_edges, |_, _| false) {
+                        let extend_step = ExtendStep::new(vertex_label, extend_edges);
+                        extend_steps.push(extend_step);
+                    }
+                }
+            }
+            for extend_step in extend_steps {
+                let new_pattern = relaxed_pattern.extend(&extend_step).unwrap();
+                let table_row = TableRow::new(
+                    relaxed_pattern.clone(),
+                    new_pattern.clone(),
+                    extend_step.clone(),
+                    vec![0; extend_step.get_extend_edges_num()],
+                    1,
+                );
+                table_logue.add_row(table_row);
+                if pattern_code_set.insert(new_pattern.encode_to()) {
+                    queue.push_back(new_pattern)
+                }
+            }
+        }
+        table_logue
+    }
+
     pub fn from_meta(pattern_meta: &PatternMeta, pattern_size_limit: usize) -> TableLogue {
         let mut table_logue = TableLogue::default();
         let mut queue = VecDeque::new();
@@ -935,12 +994,32 @@ impl TableLogue {
     }
 }
 
+fn get_vec_arranges<T: Clone>(vector: &Vec<T>, len: usize) -> Vec<Vec<T>> {
+    let mut vec_arranges = vec![];
+    let mut stack = vec![];
+    for element in vector.iter() {
+        stack.push(vec![element.clone()]);
+    }
+    while let Some(vec_arrange) = stack.pop() {
+        if vec_arrange.len() == len {
+            vec_arranges.push(vec_arrange);
+        } else {
+            for element in vector.iter() {
+                let mut new_vec_arrange = vec_arrange.clone();
+                new_vec_arrange.push(element.clone());
+                stack.push(new_vec_arrange);
+            }
+        }
+    }
+    vec_arranges
+}
+
 #[cfg(test)]
 mod test {
     use crate::{catalogue::pattern_meta::PatternMeta, plan::meta::Schema, JsonIO};
     use std::fs::File;
 
-    use super::{Catalogue, TableLogue};
+    use super::{get_vec_arranges, Catalogue, TableLogue};
 
     #[test]
     fn test_table_logue_struct() {
@@ -956,5 +1035,11 @@ mod test {
         let g_logue = Catalogue::build_from_meta(&pattern_meta, 4, 4);
         assert_eq!(table_logue.get_patterns_num() + 5, g_logue.get_patterns_num());
         assert_eq!(table_logue.get_extends_num(), g_logue.store.edge_count());
+    }
+
+    #[test]
+    fn test_get_vec_arranges() {
+        let vector = vec![1, 2, 3];
+        println!("{:?}", get_vec_arranges(&vector, 3));
     }
 }
