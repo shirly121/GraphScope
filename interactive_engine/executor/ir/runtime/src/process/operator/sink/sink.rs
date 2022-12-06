@@ -66,7 +66,8 @@ impl RecordSinkEncoder {
                     .unwrap();
                 let mut collection_pb = Vec::with_capacity(intersection.len());
                 for v in intersection.iter() {
-                    let vertex_pb = self.vertex_to_pb(v);
+                    let vertex_pb =
+                        result_pb::Vertex { id: v.id() as i64, label: None, properties: vec![] };
                     let element_pb =
                         result_pb::Element { inner: Some(result_pb::element::Inner::Vertex(vertex_pb)) };
                     collection_pb.push(element_pb);

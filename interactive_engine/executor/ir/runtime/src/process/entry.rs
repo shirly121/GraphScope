@@ -385,9 +385,9 @@ impl std::ops::Add for DynEntry {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct IDEntry {
-    id: ID,
+    pub id: ID,
 }
 
 impl_as_any!(IDEntry);
