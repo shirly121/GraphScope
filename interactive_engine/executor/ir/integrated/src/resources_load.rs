@@ -24,10 +24,9 @@ use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
 use ir_core::plan::meta::Schema;
 use ir_core::JsonIO;
-use log::info;
 use std::convert::TryFrom;
 use std::error::Error;
-use std::fs::{read_to_string, File};
+use std::fs::{read_dir, read_to_string, File};
 use std::path::Path;
 
 pub fn read_schema() -> Result<Schema, Box<dyn Error>> {
@@ -52,18 +51,30 @@ pub fn read_graph() -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error
     read_graph_from_path(&graph_path)
 }
 
+pub fn read_graphs() -> Result<Vec<LargeGraphDB<DefaultId, InternalId>>, Box<dyn Error>> {
+    let graphs_path = std::env::var("GRAPHS_PATH")?;
+    let mut graphs = vec![];
+    for graph_path_entry in read_dir(graphs_path)? {
+        let graph_path = graph_path_entry?.path();
+        graphs.push(read_graph_from_path(graph_path)?)
+    }
+    Ok(graphs)
+}
+
 pub fn read_sample_graph() -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error>> {
     let sample_graph_path = std::env::var("SAMPLE_PATH")?;
     read_graph_from_path(&sample_graph_path)
 }
 
-fn read_graph_from_path(graph_path: &str) -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error>> {
-    info!("Read the sample graph data from {:?}.", graph_path);
+fn read_graph_from_path<P: AsRef<Path>>(
+    graph_path: P,
+) -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error>> {
     let graph = GraphDBConfig::default()
         .root_dir(&graph_path)
         .partition(1)
         .schema_file(
-            Path::new(&graph_path)
+            graph_path
+                .as_ref()
                 .join(DIR_GRAPH_SCHEMA)
                 .join(FILE_SCHEMA),
         )
@@ -106,4 +117,15 @@ fn read_pattern_from_path(pattern_path: &str) -> Result<Pattern, Box<dyn Error>>
     }
     let pattern = Pattern::try_from(pattern_edges)?;
     Ok(pattern)
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_read_dir() {
+        for path_dir_entry in std::fs::read_dir("/Users/meloyang/").unwrap() {
+            let path_dir = path_dir_entry.unwrap().path();
+            println!("{:?}", path_dir);
+        }
+    }
 }
