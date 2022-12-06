@@ -172,6 +172,10 @@ impl TryFrom<Pattern> for DefiniteExtendStep {
 }
 
 impl DefiniteExtendStep {
+    pub fn new(target_vertex: PatternVertex, extend_edges: Vec<DefiniteExtendEdge>) -> DefiniteExtendStep {
+        DefiniteExtendStep { target_vertex, extend_edges }
+    }
+
     /// Given a target pattern with a vertex id, pick all its neiboring edges and vertices to generate a definite extend step
     pub fn from_target_pattern(target_pattern: &Pattern, target_vertex_id: PatternId) -> Option<Self> {
         if let Some(&target_vertex) = target_pattern.get_vertex(target_vertex_id) {

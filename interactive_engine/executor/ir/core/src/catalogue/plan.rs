@@ -408,7 +408,7 @@ fn sort_extend_approaches(
 ///           /   |    \
 ///           \   |    /
 ///            intersect
-fn build_distributed_match_plan(
+pub fn build_distributed_match_plan(
     origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
     pattern_meta: &PatternMeta,
 ) -> IrResult<pb::LogicalPlan> {
@@ -479,7 +479,7 @@ fn build_distributed_match_plan(
     Ok(match_plan)
 }
 
-fn build_stand_alone_match_plan(
+pub fn build_stand_alone_match_plan(
     origin_pattern: &Pattern, mut definite_extend_steps: Vec<DefiniteExtendStep>,
     pattern_meta: &PatternMeta,
 ) -> IrResult<pb::LogicalPlan> {
