@@ -428,6 +428,11 @@ fn intersect_sets<T: Clone + Ord>(set1: BTreeSet<T>, set2: BTreeSet<T>, is_start
 }
 
 fn sample_records(records: Vec<PatternRecord>, rate: f64, limit: Option<usize>) -> Vec<PatternRecord> {
+    if let Some(upper_bound) = limit {
+        if records.len() < upper_bound {
+            return records;
+        }
+    }
     let expected_len = if let Some(upper_bound) = limit {
         std::cmp::min(((records.len() as f64) * rate).floor() as usize, upper_bound)
     } else {
