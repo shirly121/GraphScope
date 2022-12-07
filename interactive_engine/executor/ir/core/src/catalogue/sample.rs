@@ -90,19 +90,20 @@ impl Catalogue {
                     )
                 })
                 .collect();
+            pattern_count_infos.clear();
             let mut next_pattern_count_infos = HashMap::new();
             for (target_pattern_index, sub_task) in sub_tasks {
-                let sub_task_result = sub_task.execute(thread_num, rate, limit);
+                let is_end = self
+                    .pattern_out_approaches_iter(target_pattern_index)
+                    .next()
+                    .is_none();
+                let sub_task_result = sub_task.execute(thread_num, rate, limit, is_end);
                 let target_pattern = sub_task
                     .pattern_count_info
                     .pattern
                     .extend(&sub_task.extend_step)
                     .unwrap();
-                if self
-                    .pattern_out_approaches_iter(target_pattern_index)
-                    .count()
-                    > 0
-                {
+                if !is_end {
                     next_pattern_count_infos.insert(
                         target_pattern_index,
                         Arc::new(PatternCountInfo::new(
@@ -205,7 +206,7 @@ impl TableLogue {
                 .unwrap();
             let extend_step = Arc::new(row.get_extend_step().clone());
             let sub_task = SubTask::new(src_pattern_count_infos, &extend_step, &graph);
-            let sub_task_result = sub_task.execute(thread_num, rate, limit);
+            let sub_task_result = sub_task.execute(thread_num, rate, limit, false);
             let target_pattern = src_pattern.extend(&extend_step).unwrap();
             let target_pattern_code = target_pattern.encode_to();
             if !pattern_count_infos.contains_key(&target_pattern_code)
@@ -273,10 +274,12 @@ impl SubTask {
 }
 
 impl SubTask {
-    fn execute(&self, thread_num: usize, rate: f64, limit: Option<usize>) -> SubTaskResult {
+    fn execute(&self, thread_num: usize, rate: f64, limit: Option<usize>, is_end: bool) -> SubTaskResult {
         let mut extend_nums_counts = HashMap::new();
+        let mut target_pattern_count = 0;
         let mut target_pattern_records = Vec::new();
-        let (tx_count, rx_count) = mpsc::channel();
+        let (tx_extend_count, rx_extend_count) = mpsc::channel();
+        let (tx_record_count, rx_record_count) = mpsc::channel();
         let (tx_records, rx_records) = mpsc::channel();
         let mut thread_handles = Vec::with_capacity(thread_num);
         for thread_id in 0..thread_num {
@@ -284,21 +287,28 @@ impl SubTask {
             let thread_handle = thread_sub_task.execute_internal(
                 thread_id,
                 thread_num,
-                tx_count.clone(),
+                tx_extend_count.clone(),
+                tx_record_count.clone(),
                 tx_records.clone(),
+                is_end,
             );
             thread_handles.push(thread_handle);
         }
         for thread_handle in thread_handles {
             thread_handle.join().unwrap();
         }
-        while let Ok((extend_edge, count)) = rx_count.try_recv() {
+        while let Ok((extend_edge, count)) = rx_extend_count.try_recv() {
             *extend_nums_counts
                 .entry(extend_edge)
                 .or_insert(0.0) += count as f64
         }
-        while let Ok(target_pattern_record) = rx_records.try_recv() {
-            target_pattern_records.push(target_pattern_record);
+        while let Ok(partial_count) = rx_record_count.try_recv() {
+            target_pattern_count += partial_count;
+        }
+        if !is_end {
+            while let Ok(target_pattern_record) = rx_records.try_recv() {
+                target_pattern_records.push(target_pattern_record);
+            }
         }
         if self.get_pattern_records().len() != 0 {
             for (_, count) in extend_nums_counts.iter_mut() {
@@ -309,15 +319,15 @@ impl SubTask {
             0
         } else {
             (self.get_pattern_count() as f64
-                * (target_pattern_records.len() as f64 / self.get_pattern_records().len() as f64))
+                * (target_pattern_count as f64 / self.get_pattern_records().len() as f64))
                 as usize
         };
         SubTaskResult::new(sample_records(target_pattern_records, rate, limit), target_pattern_count)
     }
 
     fn execute_internal(
-        self, thread_id: usize, thread_num: usize, tx_count: Sender<(ExtendEdge, usize)>,
-        tx_records: Sender<PatternRecord>,
+        self, thread_id: usize, thread_num: usize, tx_extend_count: Sender<(ExtendEdge, usize)>,
+        tx_record_count: Sender<usize>, tx_records: Sender<PatternRecord>, is_end: bool,
     ) -> JoinHandle<()> {
         thread::spawn(move || {
             let target_vertex_id = self.get_pattern().get_max_vertex_id() + 1;
@@ -330,7 +340,7 @@ impl SubTask {
                         &DefiniteExtendEdge::from_extend_edge(extend_edge, self.get_pattern()).unwrap(),
                         self.extend_step.get_target_vertex_label(),
                     );
-                    tx_count
+                    tx_extend_count
                         .send((extend_edge.clone(), adj_vertices_set.len()))
                         .unwrap();
                     intersect_vertices_set =
@@ -344,7 +354,12 @@ impl SubTask {
                         target_pattern_record
                     })
                 {
-                    tx_records.send(target_pattern_record).unwrap();
+                    tx_record_count
+                        .send(target_pattern_record.len())
+                        .unwrap();
+                    if !is_end {
+                        tx_records.send(target_pattern_record).unwrap();
+                    }
                 }
             }
         })
