@@ -739,20 +739,27 @@ impl From<&Catalogue> for CataTopo {
 impl From<CataTopo> for Catalogue {
     fn from(cata_topo: CataTopo) -> Self {
         let mut catalog = Catalogue::default();
+        let mut old_new_pattern_index_map = HashMap::new();
         for (pattern_index, pattern_weight) in cata_topo.pattern_map.into_iter() {
             let pattern = pattern_weight.get_pattern();
             let pattern_code = pattern.encode_to();
+            let pattern_vertices_num = pattern.get_vertices_num();
+            let new_pattern_index = catalog.store.add_node(pattern_weight);
             catalog
                 .pattern_locate_map
-                .insert(pattern_code, pattern_index);
-            if pattern.get_vertices_num() == 1 {
-                catalog.entries.push(pattern_index);
+                .insert(pattern_code, new_pattern_index);
+            if pattern_vertices_num == 1 {
+                catalog.entries.push(new_pattern_index);
             }
-            catalog.store.add_node(pattern_weight);
+            old_new_pattern_index_map.insert(pattern_index, new_pattern_index);
         }
         for (approach, approach_weight) in cata_topo.approach_map.into_iter() {
-            let src_pattern_index = approach.get_src_pattern_index();
-            let target_pattern_index = approach.get_target_pattern_index();
+            let src_pattern_index = *old_new_pattern_index_map
+                .get(&approach.get_src_pattern_index())
+                .unwrap();
+            let target_pattern_index = *old_new_pattern_index_map
+                .get(&approach.get_target_pattern_index())
+                .unwrap();
             catalog
                 .store
                 .add_edge(src_pattern_index, target_pattern_index, approach_weight);
