@@ -33,6 +33,10 @@ pub struct Config {
     table_log_mode: String,
     #[structopt(short = "t", long = "thread_num", default_value = "1")]
     thread_num: usize,
+    #[structopt(short = "r", long = "sample_rate", default_value = "1.0")]
+    sample_rate: f64,
+    #[structopt(short = "l", long = "medium_results_limit")]
+    limit: Option<usize>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -50,7 +54,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         _ => unreachable!(),
     };
-    table_log.estimate_graph(sample_graph, 1.0, None, config.thread_num);
+    table_log.estimate_graph(sample_graph, config.sample_rate, config.limit, config.thread_num);
     println!("building table log time cost is: {:?} s", table_log_build_start_time.elapsed().as_secs());
     println!("{:?}", table_log.iter().count());
     Ok(())
