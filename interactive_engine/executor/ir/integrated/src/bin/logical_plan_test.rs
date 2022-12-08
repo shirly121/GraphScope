@@ -184,19 +184,14 @@ fn define_definite_extend_steps() -> Vec<DefiniteExtendStep> {
     let mut definite_extend_steps = vec![
         DefiniteExtendStep::new(PatternVertex::new(0, 1), vec![]),
         DefiniteExtendStep::new(
-            PatternVertex::new(1, 2),
-            vec![DefiniteExtendEdge::new(PatternVertex::new(0, 1), 0, 13, PatternDirection::Out)],
+            PatternVertex::new(1, 1),
+            vec![DefiniteExtendEdge::new(PatternVertex::new(0, 1), 0, 12, PatternDirection::Out)],
         ),
         DefiniteExtendStep::new(
-            PatternVertex::new(2, 2),
-            vec![DefiniteExtendEdge::new(PatternVertex::new(0, 1), 1, 0, PatternDirection::In)],
-        ),
-        DefiniteExtendStep::new(
-            PatternVertex::new(3, 7),
+            PatternVertex::new(2, 5),
             vec![
-                DefiniteExtendEdge::new(PatternVertex::new(0, 1), 2, 10, PatternDirection::Out),
-                DefiniteExtendEdge::new(PatternVertex::new(1, 2), 3, 1, PatternDirection::Out),
-                DefiniteExtendEdge::new(PatternVertex::new(2, 2), 4, 1, PatternDirection::Out),
+                DefiniteExtendEdge::new(PatternVertex::new(0, 1), 1, 15, PatternDirection::Out),
+                DefiniteExtendEdge::new(PatternVertex::new(1, 1), 2, 15, PatternDirection::Out),
             ],
         ),
     ];

@@ -16,6 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use std::iter::FromIterator;
 use std::path::Path;
 
 use bincode::Result as BincodeResult;
@@ -656,42 +657,69 @@ impl Catalogue {
         } else if let Some(&patten_count) = self.pattern_count_map.get(&pattern_code) {
             patten_count
         } else {
-            let mut sub_pattern_0 = None;
-            let mut sub_pattern_1 = None;
-            let mut intersect_pattern = None;
+            let mut pattern_combinations = vec![];
             let edges: Vec<PatternEdge> = pattern.edges_iter().cloned().collect();
-            'outer: for i in 0..edges.len() {
+            for i in 0..edges.len() {
                 for j in (i + 1)..edges.len() {
-                    let edge_0 = edges.get(i).unwrap().get_id();
-                    let edge_1 = edges.get(j).unwrap().get_id();
-                    if let (Some(pattern_0), Some(pattern_1)) =
-                        (pattern.clone().remove_edge(edge_0), pattern.clone().remove_edge(edge_1))
-                    {
-                        if let Some(inter_pattern) = pattern_0.clone().remove_edge(edge_1) {
-                            sub_pattern_0 = Some(pattern_0);
-                            sub_pattern_1 = Some(pattern_1);
-                            intersect_pattern = Some(inter_pattern);
-                            break 'outer;
+                    let edge_0 = edges.get(i).unwrap().clone();
+                    let edge_1 = edges.get(j).unwrap().clone();
+                    if let (Some(sub_pattern_0), Some(sub_pattern_1)) = (
+                        pattern.clone().remove_edge(edge_0.get_id()),
+                        pattern.clone().remove_edge(edge_1.get_id()),
+                    ) {
+                        if let Some(intersect_pattern) = sub_pattern_0
+                            .clone()
+                            .remove_edge(edge_1.get_id())
+                        {
+                            pattern_combinations.push((
+                                sub_pattern_0,
+                                sub_pattern_1,
+                                intersect_pattern,
+                                edge_0,
+                                edge_1,
+                            ));
                         }
                     }
                 }
             }
-            if sub_pattern_0.is_some() && sub_pattern_1.is_some() && intersect_pattern.is_some() {
-                let sub_pattern_0_count = self.estimate_pattern_count(&sub_pattern_0.unwrap());
-                let sub_pattern_1_count = self.estimate_pattern_count(&sub_pattern_1.unwrap());
-                let intersect_pattern_count = self.estimate_pattern_count(&intersect_pattern.unwrap());
-                let pattern_count = if intersect_pattern_count == 0 {
+            let mut estimate_count_sum = 0;
+            for (sub_pattern_0, sub_pattern_1, intersect_pattern, edge_0, edge_1) in
+                pattern_combinations.iter()
+            {
+                let sub_pattern_0_count = self.estimate_pattern_count(sub_pattern_0);
+                let sub_pattern_1_count = self.estimate_pattern_count(sub_pattern_1);
+                let mut intersect_pattern_count = self.estimate_pattern_count(intersect_pattern);
+                let edge_0_vertices: HashSet<PatternVertex> =
+                    HashSet::from_iter([edge_0.get_start_vertex(), edge_0.get_end_vertex()]);
+                let edge_1_vertices: HashSet<PatternVertex> =
+                    HashSet::from_iter([edge_1.get_start_vertex(), edge_1.get_end_vertex()]);
+                if let Some(common_vertex_count) = edge_0_vertices
+                    .intersection(&edge_1_vertices)
+                    .next()
+                    .map(|&vertex| self.estimate_pattern_count(&Pattern::from(vertex)))
+                {
+                    if intersect_pattern.get_vertices_num() > 1 {
+                        intersect_pattern_count *= common_vertex_count;
+                    }
+                }
+                let estimate_count = if intersect_pattern_count == 0 {
                     sub_pattern_0_count * sub_pattern_1_count
                 } else {
                     sub_pattern_0_count * sub_pattern_1_count / intersect_pattern_count
                 };
-                self.pattern_count_map
-                    .insert(pattern_code, pattern_count);
-                pattern_count
-            } else {
-                //ToDo: such pattern's count info must be stored in catalog
-                0
+                estimate_count_sum += estimate_count;
             }
+            let pattern_count = if pattern_combinations.len() == 0 {
+                0
+            } else {
+                estimate_count_sum / pattern_combinations.len()
+            };
+            println!("{:?}", pattern);
+            println!("{:?}", pattern_count);
+            println!("");
+            self.pattern_count_map
+                .insert(pattern_code, pattern_count);
+            pattern_count
         }
     }
 }

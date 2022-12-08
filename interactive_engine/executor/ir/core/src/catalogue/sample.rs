@@ -73,7 +73,9 @@ impl Catalogue {
                         let pre_pattern_count = pattern_count_infos
                             .get(&approach.get_src_pattern_index())
                             .unwrap();
-                        if pre_pattern_count.pattern_count < min_count {
+                        if pre_pattern_count.pattern_count < min_count
+                            && pre_pattern_count.pattern_records.len() != 0
+                        {
                             min_count = pre_pattern_count.pattern_count;
                             pre_pattern_count_min = Some(pre_pattern_count.clone());
                             extend_step = Some(Arc::new(
@@ -331,6 +333,7 @@ impl SubTask {
     ) -> JoinHandle<()> {
         thread::spawn(move || {
             let target_vertex_id = self.get_pattern().get_max_vertex_id() + 1;
+            let mut target_pattern_partial_count = 0;
             for pattern_record in split_vector(self.get_pattern_records(), thread_num, thread_id) {
                 let mut intersect_vertices_set = BTreeSet::new();
                 for (i, extend_edge) in self.extend_step.iter().enumerate() {
@@ -354,14 +357,15 @@ impl SubTask {
                         target_pattern_record
                     })
                 {
-                    tx_record_count
-                        .send(target_pattern_record.len())
-                        .unwrap();
                     if !is_end {
                         tx_records.send(target_pattern_record).unwrap();
                     }
                 }
+                target_pattern_partial_count += intersect_vertices_set.len();
             }
+            tx_record_count
+                .send(target_pattern_partial_count)
+                .unwrap();
         })
     }
 }
