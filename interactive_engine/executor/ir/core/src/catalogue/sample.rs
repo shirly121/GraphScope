@@ -63,35 +63,33 @@ impl Catalogue {
                     }
                 }
             }
-            let sub_tasks: HashMap<NodeIndex, SubTask> = next_pattern_indices
-                .into_iter()
-                .map(|next_pattern_index| {
-                    let mut min_count = usize::MAX;
-                    let mut pre_pattern_count_min = None;
-                    let mut extend_step = None;
-                    for approach in self.pattern_in_approaches_iter(next_pattern_index) {
-                        let pre_pattern_count = pattern_count_infos
-                            .get(&approach.get_src_pattern_index())
-                            .unwrap();
-                        if pre_pattern_count.pattern_count < min_count
-                            && pre_pattern_count.pattern_records.len() != 0
-                        {
-                            min_count = pre_pattern_count.pattern_count;
-                            pre_pattern_count_min = Some(pre_pattern_count.clone());
-                            extend_step = Some(Arc::new(
-                                self.get_extend_weight(approach.get_approach_index())
-                                    .unwrap()
-                                    .get_extend_step()
-                                    .clone(),
-                            ))
-                        }
+            let mut sub_tasks = HashMap::new();
+            for next_pattern_index in next_pattern_indices {
+                let mut min_count = usize::MAX;
+                let mut pre_pattern_count_min = None;
+                let mut extend_step = None;
+                for approach in self.pattern_in_approaches_iter(next_pattern_index) {
+                    let pre_pattern_count = pattern_count_infos
+                        .get(&approach.get_src_pattern_index())
+                        .unwrap();
+                    if pre_pattern_count.pattern_count < min_count
+                        && pre_pattern_count.pattern_records.len() != 0
+                    {
+                        min_count = pre_pattern_count.pattern_count;
+                        pre_pattern_count_min = Some(pre_pattern_count.clone());
+                        extend_step = Some(Arc::new(
+                            self.get_extend_weight(approach.get_approach_index())
+                                .unwrap()
+                                .get_extend_step()
+                                .clone(),
+                        ))
                     }
-                    (
-                        next_pattern_index,
-                        SubTask::new(&pre_pattern_count_min.unwrap(), &extend_step.unwrap(), &graph),
-                    )
-                })
-                .collect();
+                }
+                if let Some(count) = pre_pattern_count_min {
+                    sub_tasks
+                        .insert(next_pattern_index, SubTask::new(&count, &extend_step.unwrap(), &graph));
+                }
+            }
             pattern_count_infos.clear();
             let mut next_pattern_count_infos = HashMap::new();
             for (target_pattern_index, sub_task) in sub_tasks {
