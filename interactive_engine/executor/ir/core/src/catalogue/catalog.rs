@@ -722,6 +722,19 @@ impl Catalogue {
             pattern_count
         }
     }
+
+    pub fn print_count_info(&self) {
+        for node_index in self.store.node_indices() {
+            println!(
+                "{:?}: {:?}",
+                node_index,
+                self.store
+                    .node_weight(node_index)
+                    .unwrap()
+                    .get_count()
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
