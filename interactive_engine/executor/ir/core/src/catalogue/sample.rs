@@ -69,20 +69,21 @@ impl Catalogue {
                 let mut pre_pattern_count_min = None;
                 let mut extend_step = None;
                 for approach in self.pattern_in_approaches_iter(next_pattern_index) {
-                    let pre_pattern_count = pattern_count_infos
-                        .get(&approach.get_src_pattern_index())
-                        .unwrap();
-                    if pre_pattern_count.pattern_count < min_count
-                        && pre_pattern_count.pattern_records.len() != 0
+                    if let Some(pre_pattern_count) =
+                        pattern_count_infos.get(&approach.get_src_pattern_index())
                     {
-                        min_count = pre_pattern_count.pattern_count;
-                        pre_pattern_count_min = Some(pre_pattern_count.clone());
-                        extend_step = Some(Arc::new(
-                            self.get_extend_weight(approach.get_approach_index())
-                                .unwrap()
-                                .get_extend_step()
-                                .clone(),
-                        ))
+                        if pre_pattern_count.pattern_count < min_count
+                            && pre_pattern_count.pattern_records.len() != 0
+                        {
+                            min_count = pre_pattern_count.pattern_count;
+                            pre_pattern_count_min = Some(pre_pattern_count.clone());
+                            extend_step = Some(Arc::new(
+                                self.get_extend_weight(approach.get_approach_index())
+                                    .unwrap()
+                                    .get_extend_step()
+                                    .clone(),
+                            ))
+                        }
                     }
                 }
                 if let Some(count) = pre_pattern_count_min {
