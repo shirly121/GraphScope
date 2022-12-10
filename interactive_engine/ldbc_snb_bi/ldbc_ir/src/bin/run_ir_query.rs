@@ -6,7 +6,6 @@ use std::time::Instant;
 use graph_proxy::{create_exp_store, SimplePartition};
 use graph_store::prelude::*;
 use itertools::__std_iter::Iterator;
-use mcsr::graph_db::GlobalCsrTrait;
 use pegasus::result::{ResultSink, ResultStream};
 use pegasus::{run_opt, Configuration, JobConf, ServerConf};
 use pegasus_server::job::JobAssembly;
@@ -80,8 +79,6 @@ fn main() {
         let cancel_hook = sink.get_cancel_hook().clone();
         let mut results = ResultStream::new(conf.job_id, cancel_hook, rx);
         run_opt(conf, sink, move |worker| assemble.assemble(&job, worker)).expect("Submit job failed");
-        while let Some(res) = results.next() {
-            println!("Query result is  {:?}", res);
-        }
+        while let Some(res) = results.next() {}
     }
 }
