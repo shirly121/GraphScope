@@ -23,6 +23,7 @@ mod test {
     use std::convert::TryInto;
     use std::time::Instant;
     use std::env;
+    use std::fs::File;
 
     use ir_common::generated::algebra::{self as pb, logical_plan};
     use ir_common::generated::common::{self as common_pb};
@@ -36,6 +37,9 @@ mod test {
     use ir_core::plan::logical::LogicalPlan;
     use ir_core::plan::physical::AsPhysical;
     use pegasus_client::builder::JobBuilder;
+    use ir_core::catalogue::pattern_meta::PatternMeta;
+    use ir_core::plan::meta::PlanMeta;
+    use ir_core::{plan::meta::Schema, JsonIO};
 
     use crate::common::{self, test::*};
 
@@ -45,11 +49,17 @@ mod test {
     use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
     use std::path::Path;
 
+    pub fn get_ldbc_pattern_meta() -> PatternMeta {
+        let ldbc_schema_file = File::open("../core/resource/ldbc_schema_broad.json").unwrap();
+        let ldbc_schema = Schema::from_json(ldbc_schema_file).unwrap();
+        PatternMeta::from(ldbc_schema)
+    }
+
     fn generate_pattern_match_plan(pattern: &Pattern, catalogue: &Catalogue) -> IrResult<pb::LogicalPlan> {
         println!("start generating plan...");
         let plan_generation_start_time = Instant::now();
         let pb_plan: pb::LogicalPlan = pattern
-            .generate_optimized_match_plan_recursively(&mut catalogue.clone(), &get_ldbc_pattern_meta(), is_distributed)
+            .generate_optimized_match_plan_recursively(&mut catalogue.clone(), &get_ldbc_pattern_meta(), false)
             .expect("Failed to generate pattern match plan");
         print_pb_logical_plan(&pb_plan);
         println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
@@ -487,14 +497,14 @@ mod test {
     #[test]
     fn generate_optimized_pattern_match_plan_for_ldbc_pattern_from_pb_case1() {
         let pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        // Naive Extend-Based Plan
-        println!("Extend-Based Plan:");
-        let catalogue =
-            Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
-            .expect("Failed to generate pattern match plan");
-        execute_pb_logical_plan(pb_plan);
-        println!("\n\n");
+        // // Naive Extend-Based Plan
+        // println!("Extend-Based Plan:");
+        // let catalogue =
+        //     Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
+        // let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        //     .expect("Failed to generate pattern match plan");
+        // execute_pb_logical_plan(pb_plan);
+        // println!("\n\n");
 
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");

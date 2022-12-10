@@ -26,6 +26,7 @@ use petgraph::Direction;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
+use crate::catalogue::join_step::BinaryJoinPlan;
 use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Adjacency, Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -93,11 +94,16 @@ impl PatternWeight {
 pub struct JoinWeight {
     /// Probe Pattern Node Index
     probe_pattern_node_index: NodeIndex,
+    join_plan: BinaryJoinPlan,
 }
 
 impl JoinWeight {
     pub fn get_probe_pattern_node_index(&self) -> NodeIndex {
         self.probe_pattern_node_index
+    }
+
+    pub fn get_join_plan(&self) -> &BinaryJoinPlan {
+        &self.join_plan
     }
 }
 
@@ -449,18 +455,18 @@ impl Catalogue {
                     self.get_pattern_index(&probe_pattern_code)
                         .expect("Pattern not hit in catalogue")
                 };
+                // Iteratively update the two sub-patterns
+                self.update_join_steps_by_pattern(&build_pattern);
+                self.update_join_steps_by_pattern(&probe_pattern);
                 // Build binary join step edges in Catalogue
                 self.store.add_edge(
                     build_pattern_node_index,
                     pattern_node_index,
                     ApproachWeight::BinaryJoinStep(JoinWeight {
                         probe_pattern_node_index,
+                        join_plan: binary_join_plan,
                     }),
                 );
-
-                // Iteratively update the two sub-patterns
-                self.update_join_steps_by_pattern(&build_pattern);
-                self.update_join_steps_by_pattern(&probe_pattern);
             });
     }
 }

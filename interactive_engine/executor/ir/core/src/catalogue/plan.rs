@@ -13,22 +13,22 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{HashMap, HashSet};
+use std::cmp::Ordering;
+use std::collections::{HashSet, HashMap};
 use std::convert::{TryFrom, TryInto};
 
 use ir_common::expr_parse::str_to_expr_pb;
-use ir_common::generated::algebra as pb;
+use ir_common::generated::algebra::{self as pb, Intersect};
+use ir_common::generated::common::{self as common_pb, Variable};
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::{Catalogue, Approach, ApproachWeight, PatternWeight, ExtendWeight, JoinWeight};
+use crate::catalogue::catalog::{Catalogue, Approach, ApproachWeight, PatternWeight, ExtendWeight, JoinWeight, PatMatPlanSpace};
 use crate::catalogue::extend_step::DefiniteExtendStep;
-use crate::catalogue::pattern::Pattern;
+use crate::catalogue::pattern::{Pattern, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::PatternDirection;
-use crate::catalogue::PatternId;
+use crate::catalogue::{query_params, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
-
-use super::catalog::PatMatPlanSpace;
 
 static ALPHA: f64 = 0.5;
 static BETA: f64 = 0.5;
@@ -45,64 +45,6 @@ pub struct CostMetric {
 impl CostMetric {
     pub fn default() -> Self {
         CostMetric { alpha: ALPHA, beta: BETA, w1: 1.0, w2: 1.0 }
-    }
-
-    /// Cost Estimation Functions
-    pub fn cost_estimate(&self, catalogue: &Catalogue, approach: &Approach) -> usize {
-        let approach_weight = catalogue
-            .get_approach_weight(approach.get_approach_index())
-            .expect("No such approach exists in catalogue");
-        if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
-            self.extend_step_cost_estimate(catalogue, approach, extend_weight)
-        } else if let ApproachWeight::BinaryJoinStep(join_weight) = approach_weight {
-            self.binary_join_step_cost_estimate(catalogue, approach, join_weight)
-        } else {
-            usize::MAX
-        }
-    }
-
-    /// Cost Estimation Function of Extend Step
-    fn extend_step_cost_estimate(&self, catalogue: &Catalogue, approach: &Approach, extend_weight: &ExtendWeight) -> usize {
-        // Cost of finding adjacency lists of each vertex. (Normalized with coefficient alpha)
-        let find_cost: usize = ((extend_weight.get_adjacency_count() as f64) * self.alpha) as usize;
-        // Cost of doing intersection on multiple adjacency lists.
-        // Zero if there is only one adjacency list for intersection.
-        let intersection_cost: usize = ((extend_weight.get_intersect_count() as f64) * self.beta) as usize;
-        // Cost of extending pattern Qk-1 to Qk (Dominant Cost)
-        let extension_cost: usize = catalogue
-            .get_pattern_weight(approach.get_target_pattern_index())
-            .expect("Cannot find pattern weight in catalogue")
-            .get_count();
-        // Cost of dropping useless instances of pattern Qk-1 after extension (Dominant Cost)
-        let drop_cost: usize = catalogue
-            .get_pattern_weight(approach.get_src_pattern_index())
-            .expect("Cannot find pattern weight in catalogue")
-            .get_count();
-        // Sum up all four costs
-        find_cost + intersection_cost + extension_cost + drop_cost
-    }
-
-    /// Cost Estimation Function of Binary Join Step
-    fn binary_join_step_cost_estimate(&self, catalogue: &Catalogue, approach: &Approach, join_weight: &JoinWeight) -> usize {
-        // Collect data for cost estimation
-        let build_pattern_cardinality = catalogue
-            .get_pattern_weight(approach.get_src_pattern_index())
-            .expect("Cannot find pattern weight in catalogue")
-            .get_count();
-        let probe_pattern_cardinality = catalogue
-            .get_pattern_weight(join_weight.get_probe_pattern_node_index())
-            .expect("Cannot find pattern weight in catalogue")
-            .get_count();
-        let joined_pattern_cardinality = catalogue
-            .get_pattern_weight(approach.get_target_pattern_index())
-            .expect("Cannot find pattern weight in catalogue")
-            .get_count();
-        // Cost Estimtion
-        let join_cost: usize = (self.w1 * build_pattern_cardinality as f64) as usize
-            + (self.w2 * probe_pattern_cardinality as f64) as usize;
-        let output_cost = joined_pattern_cardinality;
-
-        join_cost + output_cost
     }
 }
 
@@ -571,4 +513,87 @@ fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta:
         }
     }
     target_vertex_labels.len()
+}
+
+fn match_pb_plan_add_source(pb_plan: &mut pb::LogicalPlan) -> Option<()> {
+    if let pb::logical_plan::operator::Opr::Select(first_select) = pb_plan
+        .nodes
+        .get(0)
+        .unwrap()
+        .opr
+        .as_ref()
+        .unwrap()
+        .opr
+        .as_ref()
+        .unwrap()
+        .clone()
+    {
+        let label_id = first_select
+            .predicate
+            .as_ref()
+            .unwrap()
+            .operators
+            .get(2)
+            .and_then(|opr| opr.item.as_ref())
+            .and_then(
+                |item| if let common_pb::expr_opr::Item::Const(value) = item { Some(value) } else { None },
+            )
+            .and_then(|value| {
+                if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+                    Some(label_id as i32)
+                } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
+                    Some(label_id)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let source = pb::Scan {
+            scan_opt: 0,
+            alias: None,
+            params: Some(pb::QueryParams {
+                tables: vec![label_id.into()],
+                columns: vec![],
+                is_all_columns: false,
+                limit: None,
+                predicate: None,
+                sample_ratio: 1.0,
+                extra: HashMap::new(),
+            }),
+            idx_predicate: None,
+        };
+        pb_plan.nodes.remove(0);
+        pb_plan
+            .nodes
+            .insert(0, pb::logical_plan::Node { opr: Some(source.into()), children: vec![1] });
+        Some(())
+    } else {
+        None
+    }
+}
+
+fn pb_plan_add_count_sink_operator(pb_plan: &mut pb::LogicalPlan) {
+    let pb_plan_len = pb_plan.nodes.len();
+    let count = pb::GroupBy {
+        mappings: vec![],
+        functions: vec![pb::group_by::AggFunc {
+            vars: vec![],
+            aggregate: 3, // count
+            alias: Some(0.into()),
+        }],
+    };
+    pb_plan
+        .nodes
+        .push(pb::logical_plan::Node { opr: Some(count.into()), children: vec![(pb_plan_len + 1) as i32] });
+    let sink = pb::Sink {
+        tags: vec![common_pb::NameOrIdKey { key: Some(0.into()) }],
+        sink_target: Some(pb::sink::SinkTarget {
+            inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
+                id_name_mappings: vec![],
+            })),
+        }),
+    };
+    pb_plan
+        .nodes
+        .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
 }
