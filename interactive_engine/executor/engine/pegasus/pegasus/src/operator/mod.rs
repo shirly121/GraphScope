@@ -291,6 +291,7 @@ impl Operator {
     pub fn has_outstanding(&self) -> IOResult<bool> {
         for input in self.inputs.iter() {
             if input.has_outstanding()? {
+                debug!("operator {:?} is ready because has input;", self.info);
                 return Ok(true);
             }
         }
@@ -300,10 +301,12 @@ impl Operator {
     pub fn is_finished(&self) -> bool {
         for output in self.outputs.iter() {
             if !output.get_blocks().is_empty() {
+                debug!("operator {:?} is unfinished since output has block", self.info);
                 return false;
             }
         }
 
+        debug!("operator {:?} is unfinished since inputs are not exhaust", self.info);
         self.inputs.is_empty() || self.inputs.iter().all(|i| i.is_exhaust())
     }
 
