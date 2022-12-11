@@ -336,6 +336,7 @@ impl Operator {
             while let Some(end) = input.extract_end() {
                 let notification = End { port, end };
                 self.core.on_end(notification, &self.outputs)?;
+                debug!("Operator {:?} come to end", self.info);
             }
         }
 
