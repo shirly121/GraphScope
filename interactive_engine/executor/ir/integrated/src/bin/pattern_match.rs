@@ -109,11 +109,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("############ Plan Generation ############");
     println!("start generating plan...");
     let plan_generation_start_time = Instant::now();
-    let mut pb_plan = pattern.generate_optimized_match_plan_recursively(
-        &mut catalog,
-        &pattern_meta,
-        config.is_distributed,
-    )?;
+    let mut pb_plan =
+        pattern.generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed)?;
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
     if config.print_intermediate_result {
         // split the original logical plan into plans of intermediate results

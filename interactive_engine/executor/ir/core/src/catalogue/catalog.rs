@@ -16,7 +16,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
-use std::iter::FromIterator;
 use std::path::Path;
 
 use bincode::Result as BincodeResult;
@@ -650,19 +649,26 @@ impl Catalogue {
 
     pub fn estimate_pattern_count(&mut self, pattern: &Pattern) -> usize {
         let pattern_code = pattern.encode_to();
+        // If the pattern is stored in the catalog, directly return its count
         if let Some(pattern_index) = self.get_pattern_index(&pattern_code) {
             self.get_pattern_weight(pattern_index)
                 .unwrap()
                 .get_count()
-        } else if let Some(&patten_count) = self.pattern_count_map.get(&pattern_code) {
+        }
+        // Check whether the Pattern Count info is historically cached
+        else if let Some(&patten_count) = self.pattern_count_map.get(&pattern_code) {
             patten_count
         } else {
+            // pattern combinations stores
+            // (sub pattern0, sub pattern1, intersect pattern, removed edge0, removed edge1)
             let mut pattern_combinations = vec![];
+            // Enumarate all (edge0, edge1) pairs to find possible pattern combination
             let edges: Vec<PatternEdge> = pattern.edges_iter().cloned().collect();
             for i in 0..edges.len() {
                 for j in (i + 1)..edges.len() {
-                    let edge_0 = edges.get(i).unwrap().clone();
-                    let edge_1 = edges.get(j).unwrap().clone();
+                    let edge_0 = edges.get(i).unwrap();
+                    let edge_1 = edges.get(j).unwrap();
+                    // legal sub pattern has to be fully connected after remove an edge
                     if let (Some(sub_pattern_0), Some(sub_pattern_1)) = (
                         pattern.clone().remove_edge(edge_0.get_id()),
                         pattern.clone().remove_edge(edge_1.get_id()),
@@ -675,33 +681,36 @@ impl Catalogue {
                                 sub_pattern_0,
                                 sub_pattern_1,
                                 intersect_pattern,
-                                edge_0,
-                                edge_1,
+                                edge_0.clone(),
+                                edge_1.clone(),
                             ));
                         }
                     }
                 }
             }
+            // Iterate over all possible pattern combinations to get average estimate pattern count
+            // estimate pattern count = count(sub pattern 0) * count(sub pattern 1) / count(intersect pattern)
             let mut estimate_count_sum = 0;
             for (sub_pattern_0, sub_pattern_1, intersect_pattern, edge_0, edge_1) in
                 pattern_combinations.iter()
             {
+                // Get these sub patterns' counts recursively
                 let sub_pattern_0_count = self.estimate_pattern_count(sub_pattern_0);
                 let sub_pattern_1_count = self.estimate_pattern_count(sub_pattern_1);
                 let mut intersect_pattern_count = self.estimate_pattern_count(intersect_pattern);
-                let edge_0_vertices: HashSet<PatternVertex> =
-                    HashSet::from_iter([edge_0.get_start_vertex(), edge_0.get_end_vertex()]);
-                let edge_1_vertices: HashSet<PatternVertex> =
-                    HashSet::from_iter([edge_1.get_start_vertex(), edge_1.get_end_vertex()]);
-                if let Some(common_vertex_count) = edge_0_vertices
-                    .intersection(&edge_1_vertices)
-                    .next()
-                    .map(|&vertex| self.estimate_pattern_count(&Pattern::from(vertex)))
-                {
-                    if intersect_pattern.get_vertices_num() > 1 {
+                // Deal with the situation that the intersect pattern is disconnected
+                // the intersect pattern is disconnected if
+                // 1. its vertex number > 1
+                // 2. edge0 and edge1 shares a common vertex
+                if intersect_pattern.get_vertices_num() > 1 {
+                    if let Some(common_vertex) = get_common_vertex_of_edges(edge_0, edge_1) {
+                        let common_vertex_count =
+                            self.estimate_pattern_count(&Pattern::from(common_vertex));
+                        // intersect pattern's count should multiply the common vertex's count
                         intersect_pattern_count *= common_vertex_count;
                     }
                 }
+                // Deal with the situation that intersect pattern count is 0
                 let estimate_count = if intersect_pattern_count == 0 {
                     sub_pattern_0_count * sub_pattern_1_count
                 } else {
@@ -709,14 +718,15 @@ impl Catalogue {
                 };
                 estimate_count_sum += estimate_count;
             }
+            // If pattern combinations's len is 0, which means
+            // 1. pattern's edge number <= 1
+            // 2. such pattern's count info should be stored in the catalog
+            // 3. therefore, its count is estimated as 0
             let pattern_count = if pattern_combinations.len() == 0 {
                 0
             } else {
                 estimate_count_sum / pattern_combinations.len()
             };
-            println!("{:?}", pattern);
-            println!("{:?}", pattern_count);
-            println!("");
             self.pattern_count_map
                 .insert(pattern_code, pattern_count);
             pattern_count
@@ -734,6 +744,20 @@ impl Catalogue {
                     .get_count()
             );
         }
+    }
+}
+
+fn get_common_vertex_of_edges(edge_0: &PatternEdge, edge_1: &PatternEdge) -> Option<PatternVertex> {
+    let start_vertex_0 = edge_0.get_start_vertex();
+    let end_vertex_0 = edge_0.get_end_vertex();
+    let start_vertex_1 = edge_1.get_start_vertex();
+    let end_vertex_1 = edge_1.get_end_vertex();
+    if start_vertex_0 == start_vertex_1 || start_vertex_0 == end_vertex_1 {
+        Some(start_vertex_0)
+    } else if end_vertex_0 == start_vertex_1 || end_vertex_0 == end_vertex_1 {
+        Some(end_vertex_0)
+    } else {
+        None
     }
 }
 

@@ -13,7 +13,6 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 
@@ -21,7 +20,7 @@ use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::{Approach, Catalogue, PatternWeight};
+use crate::catalogue::catalog::{Approach, Catalogue};
 use crate::catalogue::extend_step::DefiniteExtendStep;
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -62,60 +61,7 @@ impl Pattern {
         }
     }
 
-    /// Generate an optimized extend based pattern match plan
-    /// Current implementation is Top-Down Greedy method
-    pub fn generate_optimized_match_plan_greedily(
-        &self, catalog: &Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
-    ) -> IrResult<pb::LogicalPlan> {
-        let pattern_code = self.encode_to();
-        // locate the pattern node in the catalog graph
-        if let Some(node_index) = catalog.get_pattern_index(&pattern_code) {
-            let mut trace_pattern = self.clone();
-            let mut trace_pattern_index = node_index;
-            let mut trace_pattern_weight = catalog
-                .get_pattern_weight(trace_pattern_index)
-                .unwrap();
-            let mut definite_extend_steps = vec![];
-            while trace_pattern.get_vertices_num() > 1 {
-                let mut all_extend_approaches: Vec<Approach> = catalog
-                    .pattern_in_approaches_iter(trace_pattern_index)
-                    .filter(|approach| {
-                        catalog
-                            .get_approach_weight(approach.get_approach_index())
-                            .unwrap()
-                            .is_extend()
-                    })
-                    .collect();
-                // use the extend step with the lowerst estimated cost
-                sort_extend_approaches(
-                    &mut all_extend_approaches,
-                    catalog,
-                    &trace_pattern,
-                    trace_pattern_weight,
-                );
-                let selected_approach = all_extend_approaches[0];
-                let (pre_pattern, definite_extend_step, _) =
-                    pattern_roll_back(trace_pattern, trace_pattern_index, selected_approach, catalog);
-                definite_extend_steps.push(definite_extend_step);
-                trace_pattern = pre_pattern;
-                trace_pattern_index = selected_approach.get_src_pattern_index();
-                trace_pattern_weight = catalog
-                    .get_pattern_weight(trace_pattern_index)
-                    .unwrap();
-            }
-            // transform the one-vertex pattern into definite extend step
-            definite_extend_steps.push(trace_pattern.try_into()?);
-            if is_distributed {
-                build_distributed_match_plan(self, definite_extend_steps, pattern_meta)
-            } else {
-                build_stand_alone_match_plan(self, definite_extend_steps, pattern_meta)
-            }
-        } else {
-            Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
-        }
-    }
-
-    pub fn generate_optimized_match_plan_recursively(
+    pub fn generate_optimized_match_plan(
         &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
         let (mut definite_extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
@@ -347,58 +293,6 @@ fn sort_vertex_ids(vertex_ids: &mut Vec<PatternId>, pattern: &Pattern) {
             v2_edges_predicate_num,
             v2_degree,
             v2_out_degree,
-        ))
-    });
-}
-
-fn sort_extend_approaches(
-    approaches: &mut Vec<Approach>, catalog: &Catalogue, pattern: &Pattern, pattern_weight: &PatternWeight,
-) {
-    approaches.sort_by(|approach1, approach2| {
-        let extend_weight1 = catalog
-            .get_extend_weight(approach1.get_approach_index())
-            .unwrap();
-        let extend_weight2 = catalog
-            .get_extend_weight(approach2.get_approach_index())
-            .unwrap();
-        let target_vertex1_has_predicate = pattern
-            .get_vertex_predicate(
-                pattern
-                    .get_vertex_from_rank(extend_weight1.get_target_vertex_rank())
-                    .unwrap()
-                    .get_id(),
-            )
-            .is_some();
-        let target_vertex2_has_predicate = pattern
-            .get_vertex_predicate(
-                pattern
-                    .get_vertex_from_rank(extend_weight2.get_target_vertex_rank())
-                    .unwrap()
-                    .get_id(),
-            )
-            .is_some();
-        if target_vertex1_has_predicate && !target_vertex2_has_predicate {
-            return Ordering::Greater;
-        } else if !target_vertex1_has_predicate && target_vertex2_has_predicate {
-            return Ordering::Less;
-        }
-        let pre_pattern_weight1 = catalog
-            .get_pattern_weight(approach1.get_src_pattern_index())
-            .unwrap();
-        let pre_pattern_weight2 = catalog
-            .get_pattern_weight(approach2.get_src_pattern_index())
-            .unwrap();
-        extend_cost_estimate(
-            pre_pattern_weight1.get_count(),
-            pattern_weight.get_count(),
-            extend_weight1.get_adjacency_count(),
-            extend_weight1.get_intersect_count(),
-        )
-        .cmp(&extend_cost_estimate(
-            pre_pattern_weight2.get_count(),
-            pattern_weight.get_count(),
-            extend_weight2.get_adjacency_count(),
-            extend_weight2.get_intersect_count(),
         ))
     });
 }

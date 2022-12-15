@@ -1178,7 +1178,7 @@ impl MatchingStrategy for ExtendStrategy {
             if let Some(catalog) = catalog_guard.as_mut() {
                 println!("Generate Extend Plan with Catalogue");
                 self.pattern
-                    .generate_optimized_match_plan_recursively(catalog, &pattern_meta, true)
+                    .generate_optimized_match_plan(catalog, &pattern_meta, true)
             } else {
                 println!("Generate Extend Plan without Catalogue");
                 self.pattern
