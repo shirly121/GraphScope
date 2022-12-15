@@ -14,8 +14,10 @@
 //! limitations under the License.
 
 mod assemble;
+mod query_submit;
 mod resources_load;
 pub use assemble::{QueryExpGraph, QueryGrootGraph, QueryVineyard};
+pub use query_submit::*;
 pub use resources_load::*;
 use runtime::IRJobAssembly;
 

@@ -14,6 +14,7 @@
 //! limitations under the License.
 //!
 
+use crate::{InitializeJobAssembly, QueryExpGraph};
 use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
 use graph_store::prelude::LargeGraphDB;
 use graph_store::prelude::{DefaultId, GraphDBConfig, InternalId};
@@ -24,10 +25,16 @@ use ir_core::catalogue::{PatternId, PatternLabelId};
 use ir_core::error::IrError;
 use ir_core::plan::meta::Schema;
 use ir_core::JsonIO;
+use lazy_static::lazy_static;
+use runtime::IRJobAssembly;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::{read_dir, read_to_string, File};
 use std::path::Path;
+
+lazy_static! {
+    pub(crate) static ref FACTORY: IRJobAssembly = initialize_job_assembly();
+}
 
 pub fn read_schema() -> Result<Schema, Box<dyn Error>> {
     let schema_path = std::env::var("SCHEMA_PATH")?;
@@ -98,7 +105,7 @@ pub fn read_patterns() -> Result<Vec<Pattern>, Box<dyn Error>> {
     Ok(patterns)
 }
 
-fn read_pattern_from_path(pattern_path: &str) -> Result<Pattern, Box<dyn Error>> {
+fn read_pattern_from_path<P: AsRef<Path>>(pattern_path: P) -> Result<Pattern, Box<dyn Error>> {
     let pattern_file = File::open(pattern_path)?;
     let mut pattern_csv = csv::Reader::from_reader(pattern_file);
     let mut pattern_edges = vec![];
@@ -119,13 +126,22 @@ fn read_pattern_from_path(pattern_path: &str) -> Result<Pattern, Box<dyn Error>>
     Ok(pattern)
 }
 
-#[cfg(test)]
-mod test {
-    #[test]
-    fn test_read_dir() {
-        for path_dir_entry in std::fs::read_dir("/Users/meloyang/").unwrap() {
-            let path_dir = path_dir_entry.unwrap().path();
-            println!("{:?}", path_dir);
-        }
-    }
+pub fn read_pattern_extend_order<P: AsRef<Path>>(
+    order_path: P, split: &str,
+) -> Result<Vec<PatternId>, Box<dyn Error>> {
+    let order_str = read_to_string(order_path)?;
+    let order: Vec<PatternId> = order_str
+        .split(split)
+        .into_iter()
+        .map(|s| {
+            s.parse()
+                .expect("element of order should be a number")
+        })
+        .collect();
+    Ok(order)
+}
+
+fn initialize_job_assembly() -> IRJobAssembly {
+    let query_exp_graph = QueryExpGraph::new(1);
+    query_exp_graph.initialize_job_assembly()
 }
