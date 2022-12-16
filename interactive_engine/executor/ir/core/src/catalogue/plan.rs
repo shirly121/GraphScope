@@ -16,9 +16,10 @@
 use std::cmp::Ordering;
 use std::collections::{HashSet, HashMap};
 use std::convert::{TryFrom, TryInto};
+use std::vec;
 
 use ir_common::expr_parse::str_to_expr_pb;
-use ir_common::generated::algebra::{self as pb, Intersect};
+use ir_common::generated::algebra::{self as pb, Intersect, edge_expand};
 use ir_common::generated::common::{self as common_pb, Variable};
 use petgraph::graph::NodeIndex;
 
@@ -71,11 +72,16 @@ impl Pattern {
                 .unwrap();
         }
         definite_extend_steps.push(trace_pattern.try_into()?);
-        if is_distributed {
+        let mut pb_plan = if is_distributed {
             build_distributed_match_plan(self, definite_extend_steps, pattern_meta)
+                .expect("Failed to build distributed pattern match plan")
         } else {
             build_stand_alone_match_plan(self, definite_extend_steps, pattern_meta)
-        }
+                .expect("Failed to build stand-alone pattern match plan")
+        };
+        match_pb_plan_add_source(&mut pb_plan);
+        pb_plan_add_count_sink_operator(&mut pb_plan);
+        Ok(pb_plan)
     }
 
     pub fn generate_optimized_match_plan(
@@ -270,7 +276,7 @@ fn pattern_roll_back(
     let pre_pattern = pattern.remove_vertex(target_vertex_id).unwrap();
     let definite_extend_step =
         DefiniteExtendStep::from_src_pattern(&pre_pattern, &extend_step, target_vertex_id, edge_id_map)
-            .unwrap();
+            .expect("Failed to build DefiniteExtendStep from src pattern");
     (pre_pattern, definite_extend_step, this_step_cost)
 }
 

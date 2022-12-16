@@ -20,46 +20,43 @@ mod common;
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;
-    use std::convert::TryInto;
+    use std::convert::{TryFrom, TryInto};
     use std::time::Instant;
     use std::env;
-    use std::fs::File;
+    use std::path::Path;
+    use std::sync::Arc;
+    use prost::Message;
 
     use ir_common::generated::algebra::{self as pb, logical_plan};
     use ir_common::generated::common::{self as common_pb};
+    use ir_common::generated::results as result_pb;
+    use ir_common::KeyId;
     use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
     use ir_core::catalogue::plan::get_definite_extend_steps;
     use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
-    use ir_core::catalogue::{PatternDirection, PatternLabelId};
+    use ir_core::catalogue::{PatternDirection, PatternId, PatternLabelId};
     use ir_core::error::{IrError, IrResult};
     use ir_core::plan::logical::LogicalPlan;
     use ir_core::plan::physical::AsPhysical;
     use pegasus_client::builder::JobBuilder;
-    use ir_core::catalogue::pattern_meta::PatternMeta;
-    use ir_core::plan::meta::PlanMeta;
-    use ir_core::{plan::meta::Schema, JsonIO};
+    use pegasus::result::{ResultSink, ResultStream};
+    use pegasus_server::JobRequest;
+    use runtime::process::record::{Entry, Record};
 
-    use crate::common::{self, test::*};
+    use crate::common::{test::*, pattern_cases::*};
 
     use graph_store::prelude::{
         DefaultId, GlobalStoreTrait, GlobalStoreUpdate, GraphDBConfig, InternalId, LargeGraphDB, MutableGraphDB,
     };
     use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
-    use std::path::Path;
 
-    pub fn get_ldbc_pattern_meta() -> PatternMeta {
-        let ldbc_schema_file = File::open("../core/resource/ldbc_schema_broad.json").unwrap();
-        let ldbc_schema = Schema::from_json(ldbc_schema_file).unwrap();
-        PatternMeta::from(ldbc_schema)
-    }
-
-    fn generate_pattern_match_plan(pattern: &Pattern, catalogue: &Catalogue) -> IrResult<pb::LogicalPlan> {
+    fn generate_pattern_match_plan(pattern: &Pattern, catalogue: &Catalogue, is_distributed: bool) -> IrResult<pb::LogicalPlan> {
         println!("start generating plan...");
         let plan_generation_start_time = Instant::now();
         let pb_plan: pb::LogicalPlan = pattern
-            .generate_optimized_match_plan_recursively(&mut catalogue.clone(), &get_ldbc_pattern_meta(), false)
+            .generate_optimized_match_plan_recursively(&mut catalogue.clone(), &get_ldbc_pattern_meta(), is_distributed)
             .expect("Failed to generate pattern match plan");
         print_pb_logical_plan(&pb_plan);
         println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
@@ -91,400 +88,49 @@ mod test {
         };
         println!("number of cores: {}", number_of_cores);
         let mut results = submit_query(request, number_of_cores);
-        let mut count = 0;
         while let Some(result) = results.next() {
-            if let Ok(_) = result {
-                count += 1;
+            if let Ok(record_code) = result {
+                if let Some(record) = parse_result(record_code) {
+                    println!("{:?}", record);
+                }
             }
         }
-        println!("Pattern Match Output: {}", count);
+        // println!("Pattern Match Output: {}", count);
         println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
-    // Pattern from ldbc schema file and build from pb::Pattern message
-    //           Person
-    //     knows/      \knows
-    //      Person -> Person
-    pub fn build_ldbc_pattern_from_pb_case1() -> Result<Pattern, IrError> {
-        let ldbc_pattern_mata = get_ldbc_pattern_meta();
-        // define pb pattern message
-        let expand_opr = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
-            expand_opt: 0,
-            alias: None,
-        };
-        let pattern = pb::Pattern {
-            sentences: vec![
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-            ],
-        };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
+    fn parse_result(result: Vec<u8>) -> Option<Record> {
+        let result: result_pb::Results = result_pb::Results::decode(result.as_slice()).unwrap();
+        if let Some(result_pb::results::Inner::Record(record_pb)) = result.inner {
+            let mut record = Record::default();
+            for column in record_pb.columns {
+                let tag: Option<KeyId> = if let Some(tag) = column.name_or_id {
+                    match tag.item.unwrap() {
+                        common_pb::name_or_id::Item::Name(name) => Some(
+                            name.parse::<KeyId>()
+                                .unwrap_or(KeyId::max_value()),
+                        ),
+                        common_pb::name_or_id::Item::Id(id) => Some(id),
+                    }
+                } else {
+                    None
+                };
+                let entry = column.entry.unwrap();
+                // append entry without moving head
+                if let Some(tag) = tag {
+                    let columns = record.get_columns_mut();
+                    columns.insert(tag as usize, Arc::new(Entry::try_from(entry).unwrap()));
+                } else {
+                    record.append(Entry::try_from(entry).unwrap(), None);
+                }
+            }
+            Some(record)
+        } else {
+            None
+        }
     }
-
-    // Pattern from ldbc schema file and build from pb::Pattern message
-    //           University
-    //     study at/      \study at
-    //      Person   ->    Person
-    pub fn build_ldbc_pattern_from_pb_case2() -> Result<Pattern, IrError> {
-        let ldbc_pattern_mata = get_ldbc_pattern_meta();
-        // define pb pattern message
-        let expand_opr1 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 1,                                              // in
-            params: Some(query_params(vec![15.into()], vec![], None)), //STUDYAT
-            expand_opt: 0,
-            alias: None,
-        };
-        let expand_opr2 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 1,                                              // in
-            params: Some(query_params(vec![15.into()], vec![], None)), //STUDYAT
-            expand_opt: 0,
-            alias: None,
-        };
-        let expand_opr3 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-            expand_opt: 0,
-            alias: None,
-        };
-        let pattern = pb::Pattern {
-            sentences: vec![
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1)),
-                    }],
-                    end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr2)),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr3)),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-            ],
-        };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
-    }
-
-    // Pattern from ldbc schema file and build from pb::Pattern message
-    // 4 Persons know each other
-    pub fn build_ldbc_pattern_from_pb_case3() -> Result<Pattern, IrError> {
-        let ldbc_pattern_mata = get_ldbc_pattern_meta();
-        // define pb pattern message
-        let expand_opr = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![12.into()], vec![], None)), //KNOWS
-            expand_opt: 0,
-            alias: None,
-        };
-        let pattern = pb::Pattern {
-            sentences: vec![
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_D.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_D.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_C.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_D.into()),
-                    join_kind: 0,
-                },
-            ],
-        };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
-    }
-
-    // Pattern from ldbc schema file and build from pb::Pattern message
-    //             City
-    //      lives/     \lives
-    //     Person      Person
-    //     likes \      / has creator
-    //           Comment
-    pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
-        let ldbc_pattern_mata = get_ldbc_pattern_meta();
-        // define pb pattern message
-        let expand_opr1 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
-            expand_opt: 0,
-            alias: None,
-        };
-        let expand_opr2 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
-            expand_opt: 0,
-            alias: None,
-        };
-        let expand_opr3 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![13.into()], vec![], None)), //LIKES
-            expand_opt: 0,
-            alias: None,
-        };
-        let expand_opr4 = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                             // out
-            params: Some(query_params(vec![0.into()], vec![], None)), //HASCREATOR
-            expand_opt: 0,
-            alias: None,
-        };
-        let pattern = pb::Pattern {
-            sentences: vec![
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1)),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr2)),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr3)),
-                    }],
-                    end: Some(TAG_D.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_D.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr4)),
-                    }],
-                    end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-            ],
-        };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
-    }
-
-    pub fn build_ldbc_pattern_from_pb_case5() -> Result<Pattern, IrError> {
-        let ldbc_pattern_mata = get_ldbc_pattern_meta();
-        // define pb pattern message
-        let person_knows_person = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
-            expand_opt: 0,
-            alias: None,
-        };
-        let pattern = pb::Pattern {
-            sentences: vec![
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(person_knows_person.clone())),
-                    }],
-                    end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(person_knows_person.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(person_knows_person.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(person_knows_person.clone())),
-                    }],
-                    end: Some(TAG_D.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(person_knows_person.clone())),
-                    }],
-                    end: Some(TAG_E.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_D.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(person_knows_person.clone())),
-                    }],
-                    end: Some(TAG_E.into()),
-                    join_kind: 0,
-                },
-            ],
-        };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
-    }
-
-    pub fn build_ldbc_pattern_from_pb_case6() -> Result<Pattern, IrError> {
-        let ldbc_pattern_mata = get_ldbc_pattern_meta();
-        // define pb pattern message
-        let expand_opr = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![12.into()], vec![], None)), // KNOWS
-            expand_opt: 0,
-            alias: None,
-        };
-        let edge_expand_has_interest = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![10.into()], vec![], None)), // HAS_INTEREST
-            expand_opt: 0,
-            alias: None,
-        };
-        let edge_expand_has_type = pb::EdgeExpand {
-            v_tag: None,
-            direction: 0,                                              // out
-            params: Some(query_params(vec![21.into()], vec![], None)), // HAS_INTEREST
-            expand_opt: 0,
-            alias: None,
-        };
-
-        let pattern = pb::Pattern {
-            sentences: vec![
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_B.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_A.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(expand_opr.clone())),
-                    }],
-                    end: Some(TAG_C.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_B.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(edge_expand_has_interest.clone())),
-                    }],
-                    end: Some(TAG_D.into()),
-                    join_kind: 0,
-                },
-                pb::pattern::Sentence {
-                    start: Some(TAG_D.into()),
-                    binders: vec![pb::pattern::Binder {
-                        item: Some(pb::pattern::binder::Item::Edge(edge_expand_has_type.clone())),
-                    }],
-                    end: Some(TAG_E.into()),
-                    join_kind: 0,
-                },
-            ],
-        };
-        Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
-    }
-
+    
+    #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
         let pb_plan = ldbc_pattern
@@ -497,20 +143,20 @@ mod test {
     #[test]
     fn generate_optimized_pattern_match_plan_for_ldbc_pattern_from_pb_case1() {
         let pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        // // Naive Extend-Based Plan
-        // println!("Extend-Based Plan:");
-        // let catalogue =
-        //     Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        // let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
-        //     .expect("Failed to generate pattern match plan");
-        // execute_pb_logical_plan(pb_plan);
-        // println!("\n\n");
+        // Naive Extend-Based Plan
+        println!("Extend-Based Plan:");
+        let catalogue =
+            Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+            .expect("Failed to generate pattern match plan");
+        execute_pb_logical_plan(pb_plan);
+        println!("\n\n");
 
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -555,7 +201,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -564,7 +210,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -587,7 +233,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -596,7 +242,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -618,7 +264,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -627,7 +273,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -649,7 +295,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -658,7 +304,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -680,7 +326,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -689,7 +335,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -711,7 +357,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -720,7 +366,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -742,7 +388,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -751,7 +397,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -773,7 +419,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -782,7 +428,7 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -805,7 +451,7 @@ mod test {
         println!("Extend-Based Plan:");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -814,18 +460,45 @@ mod test {
         println!("Hybrid Plan: ");
         let catalogue =
             Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue)
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
-        // execute_pb_logical_plan(pb_plan);
+        execute_pb_logical_plan(pb_plan);
     }
 
     /// HandWritten Logical Plans
-    fn build_scan_opr(v_label: Option<PatternLabelId>) -> logical_plan::Operator {
-        let query_table = if let Some(label) = v_label { vec![(label as i32).into()] } else { vec![] };
+    fn build_scan_opr(v_labels: Vec<PatternLabelId>) -> logical_plan::Operator {
+        // let query_table = if let Some(label) = v_label { vec![(label as i32).into()] } else { vec![] };
         pb::Scan {
             scan_opt: 0,
             alias: None,
-            params: Some(query_params(query_table, vec![], None)),
+            params: Some(query_params(
+                v_labels
+                    .into_iter()
+                    .map(|v_label| {
+                        (v_label as i32).into()
+                    })
+                    .collect(),
+                vec![],
+                None)),
+            idx_predicate: None,
+        }
+        .into()
+    }
+
+    fn build_scan_opr_with_as(v_labels: Vec<PatternLabelId>, v_id: PatternId) -> logical_plan::Operator {
+        // let query_table = if let Some(label) = v_label { vec![(label as i32).into()] } else { vec![] };
+        pb::Scan {
+            scan_opt: 0,
+            alias: Some((v_id as i32).into()),
+            params: Some(query_params(
+                v_labels
+                    .into_iter()
+                    .map(|v_label| {
+                        (v_label as i32).into()
+                    })
+                    .collect(),
+                vec![],
+                None)),
             idx_predicate: None,
         }
         .into()
@@ -876,8 +549,54 @@ mod test {
         .into()
     }
 
+    fn build_select_opr(v_label: PatternLabelId) -> logical_plan::Operator {
+        use ir_common::expr_parse::str_to_expr_pb;
+        pb::Select {
+            predicate: Some(str_to_expr_pb(format!("@.~label == {}", v_label)).unwrap()),
+        }
+        .into()
+    }
+
     fn build_node(opr: logical_plan::Operator, children: Vec<i32>) -> pb::logical_plan::Node {
         pb::logical_plan::Node { opr: Some(opr.into()), children }
+    }
+    
+    #[test]
+    fn handwritten_hybrid_plan_ldbc_bi_3() {
+        let v_label_forum: i32 = 4;
+        let v_label_comment: i32 = 2;
+        let v_label_tagclass: i32 = 6;
+        let e_label_hasModerator: i32 = 7;
+        let e_label_isLocatedIn: i32 = 11;
+        let e_label_isPartOf: i32 = 17;
+        let e_label_containerOf: i32 = 5;
+        let e_label_replyOf: i32 = 3;
+        let e_label_hasTag: i32 = 1;
+        let e_label_hasType: i32 = 21;
+        let mut pb_plan = pb::LogicalPlan::default();
+        pb_plan.nodes = vec![
+            build_node(build_scan_opr(vec![v_label_forum, v_label_tagclass]), vec![1, 6]),
+            // Subpattern 1 from forum
+            build_node(build_select_opr(v_label_forum), vec![2]),
+            build_node(build_as_opr(Some(3)), vec![3]),
+            build_node(build_expand_opr(3, 2, PatternDirection::Out, e_label_hasModerator), vec![4]),
+            build_node(build_expand_opr(2, 1, PatternDirection::Out, e_label_isLocatedIn), vec![5]),
+            build_node(build_expand_opr(1, 0, PatternDirection::Out, e_label_isPartOf), vec![13]),
+            // Subpattern 2 from tagclass
+            build_node(build_select_opr(v_label_tagclass), vec![7]),
+            build_node(build_as_opr(Some(7)), vec![8]),
+            build_node(build_expand_opr(7, 6, PatternDirection::In, e_label_hasType), vec![9]),
+            build_node(build_expand_opr(6, 5, PatternDirection::In, e_label_hasTag), vec![10]),
+            build_node(build_select_opr(v_label_comment), vec![11]),
+            build_node(build_expand_opr(5, 4, PatternDirection::Out, e_label_replyOf), vec![12]),
+            build_node(build_expand_opr(4, 3, PatternDirection::In, e_label_containerOf), vec![13]),
+            build_node(build_join_opr(vec![3], vec![3]), vec![14]),
+            build_node(build_sink_opr(vec![0, 1, 2, 3, 4, 5, 6, 7]), vec![]),
+        ];
+        pb_plan.roots = vec![0];
+
+        print_pb_logical_plan(&pb_plan);
+        execute_pb_logical_plan(pb_plan);
     }
 
     #[test]
@@ -886,7 +605,7 @@ mod test {
         let e_knows_label: i32 = 12;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(Some(v_person_label)), vec![1, 3]),
+            build_node(build_scan_opr(vec![v_person_label]), vec![1, 3]),
             build_node(build_as_opr(Some(0)), vec![2]),
             build_node(build_expand_opr(0, 1, PatternDirection::Out, e_knows_label), vec![5]),
             build_node(build_as_opr(Some(2)), vec![4]),
@@ -908,11 +627,11 @@ mod test {
         let e_has_interested_label: i32 = 10;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(None), vec![1, 4]),
-            build_node(build_scan_opr(Some(v_person_label)), vec![2]),
+            build_node(build_scan_opr(vec![]), vec![1, 4]),
+            build_node(build_scan_opr(vec![v_person_label]), vec![2]),
             build_node(build_as_opr(Some(0)), vec![3]),
             build_node(build_expand_opr(0, 1, PatternDirection::In, e_knows_label), vec![7]),
-            build_node(build_scan_opr(Some(v_tag_label)), vec![5]),
+            build_node(build_scan_opr(vec![v_tag_label]), vec![5]),
             build_node(build_as_opr(Some(2)), vec![6]),
             build_node(build_expand_opr(2, 1, PatternDirection::In, e_has_interested_label), vec![7]),
             build_node(build_join_opr(vec![1], vec![1]), vec![8]),
@@ -933,8 +652,8 @@ mod test {
         let e_has_type_label: i32 = 21;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(None), vec![1, 7]),
-            build_node(build_scan_opr(Some(v_person_label)), vec![2]),
+            build_node(build_scan_opr(vec![]), vec![1, 7]),
+            build_node(build_scan_opr(vec![v_person_label]), vec![2]),
             build_node(build_as_opr(Some(0)), vec![3]),
             build_node(build_expand_opr(0, 1, PatternDirection::Out, e_knows_label), vec![4, 5]),
             build_node(build_expand_opr(0, 2, PatternDirection::Out, e_knows_label), vec![6]),
@@ -943,7 +662,7 @@ mod test {
                 opr: Some(pb::Intersect { parents: vec![], key: Some((2 as i32).into()) }.into()),
                 children: vec![11],
             },
-            build_node(build_scan_opr(Some(v_person_label)), vec![8]),
+            build_node(build_scan_opr(vec![v_person_label]), vec![8]),
             build_node(build_as_opr(Some(2)), vec![9]),
             build_node(build_expand_opr(2, 3, PatternDirection::Out, e_has_interested_label), vec![10]),
             build_node(build_expand_opr(3, 4, PatternDirection::Out, e_has_type_label), vec![11]),
@@ -965,9 +684,9 @@ mod test {
         let e_has_type_label: i32 = 21;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(None), vec![1]),
+            build_node(build_scan_opr(vec![]), vec![1]),
             build_node(build_as_opr(None), vec![2, 8]),
-            build_node(build_scan_opr(Some(v_person_label)), vec![3]),
+            build_node(build_scan_opr(vec![v_person_label]), vec![3]),
             build_node(build_as_opr(Some(0)), vec![4]),
             build_node(build_expand_opr(0, 1, PatternDirection::Out, e_knows_label), vec![5, 6]),
             build_node(build_expand_opr(0, 2, PatternDirection::Out, e_knows_label), vec![7]),
@@ -976,7 +695,7 @@ mod test {
                 opr: Some(pb::Intersect { parents: vec![], key: Some((2 as i32).into()) }.into()),
                 children: vec![12],
             },
-            build_node(build_scan_opr(Some(v_person_label)), vec![9]),
+            build_node(build_scan_opr(vec![v_person_label]), vec![9]),
             build_node(build_as_opr(Some(2)), vec![10]),
             build_node(build_expand_opr(2, 3, PatternDirection::Out, e_has_interested_label), vec![11]),
             build_node(build_expand_opr(3, 4, PatternDirection::Out, e_has_type_label), vec![12]),
@@ -998,8 +717,8 @@ mod test {
         let e_label_place_is_part_of_place: i32 = 17;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(None), vec![]),
-            build_node(build_scan_opr(Some(v_label_person)), vec![2]),
+            build_node(build_scan_opr(vec![]), vec![]),
+            build_node(build_scan_opr(vec![v_label_person]), vec![2]),
             build_node(build_as_opr(Some(0)), vec![3]),
             // build_node(build_expand_opr(0, 1, dir, e_label), children)
         ];
@@ -1015,7 +734,7 @@ mod test {
         let e_label_hasmember: i32 = 6;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(Some(v_label_comment)), vec![1]),
+            build_node(build_scan_opr(vec![v_label_comment]), vec![1]),
             build_node(build_as_opr(Some(2)), vec![2]),
             build_node(build_expand_opr(2, 1, PatternDirection::Out, e_label_reply_of), vec![3]),
             build_node(build_expand_opr(1, 0, PatternDirection::In, e_label_forum_containerof_post), vec![4]),
@@ -1037,7 +756,7 @@ mod test {
         let e_label_hasmember: i32 = 6;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(Some(v_label_forum)), vec![1]),
+            build_node(build_scan_opr(vec![v_label_forum]), vec![1]),
             build_node(build_as_opr(Some(4)), vec![2]),
             build_node(build_expand_opr(4, 3, PatternDirection::Out, e_label_hasmember), vec![3]),
             build_node(build_expand_opr(3, 2, PatternDirection::In, e_label_hascreator), vec![4]),
@@ -1059,12 +778,12 @@ mod test {
         let e_label_hasmember: i32 = 6;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(None), vec![1, 5]),
-            build_node(build_scan_opr(Some(v_label_forum)), vec![2]),
+            build_node(build_scan_opr(vec![]), vec![1, 5]),
+            build_node(build_scan_opr(vec![v_label_forum]), vec![2]),
             build_node(build_as_opr(Some(0)), vec![3]),
             build_node(build_expand_opr(0, 1, PatternDirection::Out, e_label_forum_containerof_post), vec![4]),
             build_node(build_expand_opr(1, 2, PatternDirection::In, e_label_reply_of), vec![9]),
-            build_node(build_scan_opr(Some(v_label_forum)), vec![6]),
+            build_node(build_scan_opr(vec![v_label_forum]), vec![6]),
             build_node(build_as_opr(Some(4)), vec![7]),
             build_node(build_expand_opr(4, 3, PatternDirection::Out, e_label_hasmember), vec![8]),
             build_node(build_expand_opr(3, 2, PatternDirection::In, e_label_hascreator), vec![9]),
@@ -1087,13 +806,13 @@ mod test {
         let e_label_hasmember: i32 = 6;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
-            build_node(build_scan_opr(None), vec![1]),
+            build_node(build_scan_opr(vec![]), vec![1]),
             build_node(build_as_opr(None), vec![2, 6]),
-            build_node(build_scan_opr(Some(v_label_forum)), vec![3]),
+            build_node(build_scan_opr(vec![v_label_forum]), vec![3]),
             build_node(build_as_opr(Some(0)), vec![4]),
             build_node(build_expand_opr(0, 1, PatternDirection::Out, e_label_forum_containerof_post), vec![5]),
             build_node(build_expand_opr(1, 2, PatternDirection::In, e_label_reply_of), vec![10]),
-            build_node(build_scan_opr(Some(v_label_forum)), vec![7]),
+            build_node(build_scan_opr(vec![v_label_forum]), vec![7]),
             build_node(build_as_opr(Some(4)), vec![8]),
             build_node(build_expand_opr(4, 3, PatternDirection::Out, e_label_hasmember), vec![9]),
             build_node(build_expand_opr(3, 2, PatternDirection::In, e_label_hascreator), vec![10]),
