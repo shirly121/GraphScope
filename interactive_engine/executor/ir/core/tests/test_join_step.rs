@@ -18,7 +18,7 @@ mod common;
 #[cfg(test)]
 mod tests {
     use ir_core::catalogue::pattern::Pattern;
-    use ir_core::glogue::PatternLabelId;
+    use ir_core::catalogue::PatternLabelId;
 
     use crate::common::pattern_cases::*;
     use crate::common::canonical_label_cases::*;

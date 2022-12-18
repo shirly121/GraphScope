@@ -13,22 +13,22 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::cmp::Ordering;
 use std::collections::{HashSet, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::vec;
 
 use ir_common::expr_parse::str_to_expr_pb;
-use ir_common::generated::algebra::{self as pb, Intersect, edge_expand};
+use ir_common::generated::algebra::{self as pb};
 use ir_common::generated::common::{self as common_pb, Variable};
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::{Catalogue, Approach, ApproachWeight, PatternWeight, ExtendWeight, JoinWeight, PatMatPlanSpace};
+use crate::catalogue::catalog::{Catalogue, Approach, ApproachWeight, ExtendWeight, JoinWeight, PatMatPlanSpace};
 use crate::catalogue::extend_step::DefiniteExtendStep;
+use crate::catalogue::join_step::BinaryJoinPlan;
 use crate::catalogue::pattern::{Pattern, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::PatternDirection;
-use crate::catalogue::{query_params, PatternId, PatternLabelId};
+use crate::catalogue::{PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 
 static ALPHA: f64 = 0.5;
@@ -45,7 +45,11 @@ pub struct CostMetric {
 /// Cost Metric of Catalogue
 impl CostMetric {
     pub fn default() -> Self {
-        CostMetric { alpha: ALPHA, beta: BETA, w1: 1.0, w2: 1.0 }
+        CostMetric { alpha: ALPHA, beta: BETA, w1: 0.0, w2: 0.0 }
+    }
+
+    pub fn new(alpha: f64, beta: f64, w1: f64, w2: f64) -> Self {
+        CostMetric { alpha, beta, w1, w2 }
     }
 }
 
@@ -85,15 +89,718 @@ impl Pattern {
     }
 
     pub fn generate_optimized_match_plan(
-        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
+        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool, cost_metric: CostMetric,
     ) -> IrResult<pb::LogicalPlan> {
-        let (mut definite_extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
-        definite_extend_steps.reverse();
-        if is_distributed {
-            build_distributed_match_plan(self, definite_extend_steps, pattern_meta)
+        let pattern_code: Vec<u8> = self.encode_to();
+        if let Some(_pattern_index) = catalog.get_pattern_index(&pattern_code) {
+            let pb_plan: IrResult<pb::LogicalPlan> = match catalog.get_plan_space() {
+                PatMatPlanSpace::BinaryJoin => {
+                    Err(IrError::Unsupported("Do not support pure binary join plan with no extend steps".to_string()))
+                }
+                _ => {
+                    catalog.set_best_approach_by_pattern(&cost_metric, self);
+                    PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
+                        .generate_pattern_match_plan()
+                }
+            };
+            pb_plan
         } else {
-            build_stand_alone_match_plan(self, definite_extend_steps, pattern_meta)
+            Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
         }
+    }
+}
+
+impl Catalogue {
+    fn set_best_approach_by_pattern(&mut self, cost_metric: &CostMetric, pattern: &Pattern) {
+        let node_index = self.get_pattern_index(&pattern.encode_to())
+            .expect("Pattern not found in catalogue");
+        self.set_node_best_approach_recursively(cost_metric, node_index)
+            .expect("Failed to set node best approach recursively");
+    }
+
+    /// Given a node in catalogue, find the best approach and the lowest cost to reach to it
+    fn set_node_best_approach_recursively(
+        &mut self, cost_metric: &CostMetric, node_index: NodeIndex,
+    ) -> IrResult<(Option<Approach>, usize)> {
+        let pattern_weight = self
+            .get_pattern_weight(node_index)
+            .expect("Failed to get pattern weight");
+        let pattern = pattern_weight.get_pattern();
+        if pattern.get_vertices_num() == 1 {
+            Ok((None, pattern_weight.get_count()))
+        } else if let Some(best_approach) = pattern_weight.get_best_approach() {
+            // Recursively set best approach
+            let pre_pattern_index = best_approach.get_src_pattern_index();
+            let (_pre_best_approach, mut cost) = self.
+                set_node_best_approach_recursively(cost_metric, pre_pattern_index)
+                .expect("Failed to set node best approach recursively");
+            let this_step_cost = self.estimate_approach_cost(cost_metric, &best_approach);
+            cost += this_step_cost;
+            Ok((Some(best_approach), cost))
+        } else {
+            let mut min_cost = usize::MAX;
+            let candidate_approaches: Vec<Approach> = self.collect_candidate_approaches(node_index);
+            if candidate_approaches.len() == 0 {
+                return Err(IrError::Unsupported("No approach found for pattern in catalog".to_string()));
+            }
+
+            let mut best_approach = candidate_approaches[0];
+            for approach in candidate_approaches {
+                let pre_pattern_index = approach.get_src_pattern_index();
+                let (_pre_best_approach, mut cost) = self.
+                    set_node_best_approach_recursively(cost_metric, pre_pattern_index)
+                    .expect("Failed to set node best approach recursively");
+                let this_step_cost = self.estimate_approach_cost(cost_metric, &best_approach);
+                cost += this_step_cost;
+                if cost < min_cost {
+                    min_cost = cost;
+                    best_approach = approach;
+                }
+            }
+            
+            // set best approach in the catalogue
+            self.set_pattern_best_approach(node_index, best_approach);
+            Ok((Some(best_approach), min_cost))
+        }
+    }
+
+    /// Collect all candidate approaches in plan space of the give node
+    fn collect_candidate_approaches(&self, node_index: NodeIndex) -> Vec<Approach> {
+        let candidate_approaches: Vec<Approach> = self
+            .pattern_in_approaches_iter(node_index)
+            .filter(|approach| {
+                let approach_weight = self
+                    .get_approach_weight(approach.get_approach_index())
+                    .expect("No such approach exists in catalogue");
+                let is_approach_in_plan_space: bool = match self.get_plan_space() {
+                    PatMatPlanSpace::ExtendWithIntersection => approach_weight.is_extend(),
+                    PatMatPlanSpace::BinaryJoin => approach_weight.is_join(),
+                    PatMatPlanSpace::Hybrid => true,
+                };
+                is_approach_in_plan_space
+            })
+            .collect();
+        candidate_approaches
+    }
+
+    /// Cost Estimation Functions
+    fn estimate_approach_cost(&self, cost_metric: &CostMetric, approach: &Approach) -> usize {
+        let approach_weight = self
+            .get_approach_weight(approach.get_approach_index())
+            .expect("Approach not found in catalogue");
+        if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
+            self.estimate_extend_step_cost(cost_metric, approach, extend_weight)
+        } else if let ApproachWeight::BinaryJoinStep(join_weight) = approach_weight {
+            self.estimate_binary_join_step_cost(cost_metric, approach, join_weight)
+        } else {
+            usize::MAX
+        }
+    }
+
+    /// Cost Estimation Function of Extend Step
+    fn estimate_extend_step_cost(&self, cost_metric: &CostMetric, approach: &Approach, extend_weight: &ExtendWeight) -> usize {
+        // Cost of finding adjacency lists of each vertex. (Normalized with coefficient alpha)
+        let find_cost: usize = ((extend_weight.get_adjacency_count() as f64) * cost_metric.alpha) as usize;
+        // Cost of doing intersection on multiple adjacency lists.
+        // Zero if there is only one adjacency list for intersection.
+        let intersection_cost: usize = ((extend_weight.get_intersect_count() as f64) * cost_metric.beta) as usize;
+        // Cost of extending pattern Qk-1 to Qk (Dominant Cost)
+        let extension_cost: usize = self
+            .get_pattern_weight(approach.get_target_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        // Cost of dropping useless instances of pattern Qk-1 after extension (Dominant Cost)
+        let drop_cost: usize = self
+            .get_pattern_weight(approach.get_src_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        // Sum up all four costs
+        find_cost + intersection_cost + extension_cost + drop_cost
+    }
+
+    /// Cost Estimation Function of Binary Join Step
+    fn estimate_binary_join_step_cost(&self, cost_metric: &CostMetric, approach: &Approach, join_weight: &JoinWeight) -> usize {
+        // Collect data for cost estimation
+        let build_pattern_cardinality = self
+            .get_pattern_weight(approach.get_src_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        let probe_pattern_cardinality = self
+            .get_pattern_weight(join_weight.get_probe_pattern_node_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        let joined_pattern_cardinality = self
+            .get_pattern_weight(approach.get_target_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        // Cost Estimtion
+        let join_cost: usize = (cost_metric.w1 * build_pattern_cardinality as f64) as usize
+            + (cost_metric.w2 * probe_pattern_cardinality as f64) as usize;
+        let output_cost = joined_pattern_cardinality;
+        join_cost + output_cost
+    }
+}
+
+/// ## Plan Generator for Catalogue
+/// 
+/// plan: pb logical plan
+/// 
+/// trace_pattern: the pattern traced for plan generator, and it will be changed recursively during generation.
+/// 
+/// target_pattern: the reference of the target pattern, fixed after initialization
+/// 
+/// catalog: the reference of the catalogue 
+struct PlanGenerator<'a> {
+    plan: pb::LogicalPlan,
+    trace_pattern: Pattern,
+    target_pattern: &'a Pattern,
+    catalog: &'a Catalogue,
+    pattern_meta: &'a PatternMeta,
+    is_distributed: bool,
+}
+
+impl<'a> PlanGenerator<'a> {
+    pub fn new(
+        pattern: &'a Pattern,
+        catalog: &'a Catalogue,
+        pattern_meta: &'a PatternMeta,
+        is_distributed: bool
+    ) -> Self {
+        PlanGenerator {
+            catalog,
+            is_distributed,
+            pattern_meta,
+            trace_pattern: pattern.clone(),
+            target_pattern: pattern,
+            plan: pb::LogicalPlan::default(),
+        }
+    }
+
+    /// Return the number of nodes in the logical plan
+    fn get_node_num(&self) -> usize {
+        self.plan.nodes.len()
+    }
+
+    fn insert_node(&mut self, index: usize, node: pb::logical_plan::Node) -> IrResult<()> {
+        if self.get_node_num() < index {
+            return Err(IrError::Unsupported("Failed in Plan Generation: Node Insertion, Index out of bound".to_string()));
+        }
+
+        self.plan.nodes.insert(index, node);
+        // Offset the nodes after the inserted one by 1
+        self.plan
+            .nodes
+            .iter_mut()
+            .enumerate()
+            .filter(|(current_node_idx, _node)| *current_node_idx > index)
+            .for_each(|(_index, current_node)| {
+                current_node
+                    .children
+                    .iter_mut()
+                    .for_each(|child_id| {
+                        *child_id += 1;
+                    });
+            });
+        Ok(())
+    }
+
+    fn remove_node(&mut self, index: usize) -> IrResult<()> {
+        if self.get_node_num() < index {
+            return Err(IrError::Unsupported("Failed in Plan Generation: Node Removal, Index out of bound".to_string()));
+        }
+
+        // Offset the nodes after the inserted one by -1
+        self.plan
+            .nodes
+            .iter_mut()
+            .enumerate()
+            .filter(|(current_node_idx, _node)| *current_node_idx > index)
+            .for_each(|(_index, current_node)| {
+                current_node
+                    .children
+                    .iter_mut()
+                    .for_each(|child_id| {
+                        *child_id -= 1;
+                    });
+            });
+        // Remove the node at specified index
+        self.plan.nodes.remove(index);
+
+        Ok(())
+    }
+
+    pub fn generate_pattern_match_plan(&mut self) -> IrResult<pb::LogicalPlan> {
+        self.generate_pattern_match_plan_recursively(self.target_pattern)
+            .expect("Failed to generate pattern match plan with catalogue");
+        self.match_pb_plan_add_source();
+        self.pb_plan_add_count_sink_operator();
+        Ok(self.plan.clone())
+    }
+
+    fn generate_pattern_match_plan_recursively(&mut self, pattern: &Pattern) -> IrResult<()> {
+        // locate the pattern node in the catalog graph
+        if let Some(node_index) = self.catalog.get_pattern_index(&pattern.encode_to()) {
+            if pattern.get_vertices_num() == 0 {
+                return Err(IrError::InvalidPattern("No vertex in pattern".to_string()))
+            } else if pattern.get_vertices_num() == 1 {
+                self.generate_pattern_match_plan_for_size_one_pattern(&pattern);
+            } else {
+                // Get the best approach to reach the node
+                let best_approach_opt = self
+                    .catalog
+                    .get_pattern_weight(node_index)
+                    .expect("Failed to get pattern weight from node index")
+                    .get_best_approach();
+                // Set trace pattern for recursive plan generation
+                self.trace_pattern = pattern.clone();
+                if let Some(best_approach) = best_approach_opt {
+                    let approach_weight = self
+                        .catalog
+                        .get_approach_weight(best_approach.get_approach_index())
+                        .expect("No sub approach exists in catalogue");
+                    match approach_weight {
+                        ApproachWeight::ExtendStep(_extend_weight) => {
+                            self.generate_pattern_match_plan_recursively_for_extend_approach(best_approach);
+                        }
+                        ApproachWeight::BinaryJoinStep(_join_weight) => {
+                            self.generate_pattern_match_plan_recursively_for_join_approach(best_approach);
+                        }
+                        _ => return Err(IrError::Unsupported("Unsupported Pattern Match Strategy".to_string()))
+                    }
+                } else {
+                    return Err(IrError::Unsupported("Best approach not found for pattern in catalog".to_string()));
+                }
+            }
+            Ok(())
+        } else {
+            Err(IrError::Unsupported("Pattern not found in catalog".to_string()))
+        }
+    }
+
+    fn generate_pattern_match_plan_recursively_for_extend_approach(&mut self, extend_approach: Approach) {
+        // Build logical plan for src pattern
+        let target_pattern: Pattern = self.trace_pattern.clone();
+        let pattern_index: NodeIndex = self.catalog
+            .get_pattern_index(&target_pattern.encode_to())
+            .expect("Pattern not found in catalog");
+        let (src_pattern, definite_extend_step, _cost) = pattern_roll_back(
+            self.trace_pattern.clone(),
+            pattern_index,
+            extend_approach,
+            self.catalog
+        );
+        // Recursively generate pattern match plan for the source node
+        self
+            .generate_pattern_match_plan_recursively(&src_pattern)
+            .expect("Failed to generate optimized pattern match plan recursively");
+        // Append Extend Operator in logical plan
+        self
+            .append_extend_operator(&src_pattern, &target_pattern, definite_extend_step)
+            .expect("Failed to append extend operator");
+    }
+
+    fn generate_pattern_match_plan_recursively_for_join_approach(&mut self, join_approach: Approach) {
+        // Collect Join Weight
+        let join_weight = self.catalog
+            .get_approach_weight(join_approach.get_approach_index())
+            .expect("No such approach exists in catalogue")
+            .get_join_weight()
+            .expect("Failed to get join weight");
+        // Roll back join plan for exact pattern instances with vertex/edge id cohesion
+        let join_plan = self
+            .trace_pattern
+            .binary_join_decomposition()
+            .expect("Failed to do binary join decomposition")
+            .into_iter()
+            .filter(|binary_join_plan| {
+                let build_pattern_in_catalog = join_weight
+                    .get_join_plan()
+                    .get_build_pattern();
+                pattern_equal(build_pattern_in_catalog, binary_join_plan.get_build_pattern())
+                ||
+                pattern_equal(build_pattern_in_catalog, binary_join_plan.get_probe_pattern())
+            })
+            .collect::<Vec<BinaryJoinPlan>>()
+            .first()
+            .expect("No valid join plan during pattern rollback")
+            .clone();
+        // Generate plan for build pattern
+        self.generate_pattern_match_plan_recursively(join_plan.get_build_pattern())
+            .expect("Failed to generate optimized pattern match plan recursively");
+        // Generate plan for probe pattern
+        let mut probe_pattern_logical_plan_builder =
+            PlanGenerator::new(join_plan.get_probe_pattern(), self.catalog, self.pattern_meta, self.is_distributed);
+        probe_pattern_logical_plan_builder
+            .generate_pattern_match_plan_recursively(join_plan.get_probe_pattern())
+            .expect("Failed to generate optimized pattern match plan recursively");
+        // Append binary join operator to join two plans
+        let join_keys: Vec<Variable> = join_plan.generate_join_keys();
+        self.join(probe_pattern_logical_plan_builder, join_keys)
+            .expect("Failed to join two logical plans");
+    }
+
+    fn generate_pattern_match_plan_for_size_one_pattern(&mut self, pattern: &Pattern) {
+        // Source operator when there is only one vertex in pattern
+        let vertex: &PatternVertex = pattern
+            .vertices_iter()
+            .collect::<Vec<&PatternVertex>>()
+            [0];
+        let vertex_label: PatternLabelId = vertex.get_label();
+        // Append select node
+        let select_node = {
+            let opr = pb::Select {
+                predicate: Some(str_to_expr_pb(format!("@.~label == {}", vertex_label)).unwrap()),
+            };
+            let children: Vec<i32> = vec![1];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.plan.nodes.push(select_node);
+        // Append as node
+        let as_node = {
+            let opr = pb::As { alias: Some((vertex.get_id() as i32).into()) };
+            let children: Vec<i32> = vec![2];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.plan.nodes.push(as_node);
+        self.plan.roots = vec![0];
+    }
+
+    /// Append logical plan operators for extend step
+    /// ```text
+    ///             source
+    ///           /   |    \
+    ///        ...Edge Expand...
+    ///           \   |    /
+    ///            Intersect
+    /// ```
+    fn append_extend_operator(
+        &mut self,
+        src_pattern: &Pattern,
+        target_pattern: &Pattern,
+        definite_extend_step: DefiniteExtendStep,
+    ) -> IrResult<()> {
+        if self.is_distributed {
+            self.append_extend_operator_distributed(
+                src_pattern,
+                target_pattern,
+                definite_extend_step,
+            )
+            .expect("Failed to append extend operator in distributed mode");
+        } else {
+            self.append_extend_operator_stand_alone(
+                src_pattern,
+                target_pattern,
+                definite_extend_step,
+            )
+            .expect("Failed to append extend operator in stand-alone mode");
+        }
+
+        Ok(())
+    }
+
+    fn append_extend_operator_distributed(
+        &mut self,
+        src_pattern: &Pattern,
+        target_pattern: &Pattern,
+        definite_extend_step: DefiniteExtendStep,
+    ) -> IrResult<()> {
+        // Modify Children ID in the last node of the input plan
+        let mut child_offset = (self.get_node_num() + 1) as i32;
+        let edge_expands: Vec<pb::EdgeExpand> =
+            definite_extend_step.generate_expand_operators(target_pattern);
+        let edge_expands_num = edge_expands.len();
+        let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
+            .map(|i| i + child_offset)
+            .collect();
+        // if edge expand num > 1, we need a Intersect Operator
+        if edge_expands_num > 1 {
+            for edge_expand in edge_expands {
+                let edge_expand_node = pb::logical_plan::Node {
+                    opr: Some(edge_expand.into()),
+                    children: vec![child_offset],
+                };
+                self.plan.nodes.push(edge_expand_node);
+                child_offset += 1;
+            }
+            let intersect_node = {
+                let opr = definite_extend_step
+                    .generate_intersect_operator(edge_expands_ids);
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(intersect_node);
+            child_offset += 1;
+        } else if edge_expands_num == 1 {
+            let edge_expand_node = {
+                let opr = edge_expands
+                    .into_iter()
+                    .last()
+                    .expect("Failed to get edge expand operator");
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(edge_expand_node);
+            child_offset += 1;
+        } else {
+            return Err(IrError::InvalidPattern(
+                "Build logical plan error: extend step is not source but has 0 edges".to_string(),
+            ));
+        }
+        // Filter by the label of target vertex
+        if check_target_vertex_label_num(&definite_extend_step, self.pattern_meta) > 1 {
+            let select_node = {
+                let target_vertex_label = definite_extend_step
+                    .get_target_vertex()
+                    .get_label();
+                let opr = pb::Select {
+                    predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
+                };
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(select_node);
+            child_offset += 1;
+        }
+        // Filter by the predicate of target vertex
+        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(src_pattern) {
+            let select_node = pb::logical_plan::Node {
+                opr: Some(filter.into()),
+                children: vec![child_offset],
+            };
+            self.plan.nodes.push(select_node);
+        }
+
+        Ok(())
+    }
+
+    fn append_extend_operator_stand_alone(
+        &mut self,
+        src_pattern: &Pattern,
+        target_pattern: &Pattern,
+        definite_extend_step: DefiniteExtendStep,
+    ) -> IrResult<()> {
+        // Modify Children ID in the last node of the input plan
+        let mut child_offset = (self.get_node_num() + 1) as i32;
+        let mut edge_expands: Vec<pb::EdgeExpand> =
+            definite_extend_step.generate_expand_operators(target_pattern);
+        let edge_expands_num = edge_expands.len();
+        // Append Edge Expand Nodes
+        if edge_expands_num == 0 {
+            return Err(IrError::InvalidPattern(
+                "Build logical plan error: extend step is not source but has 0 edges".to_string(),
+            ));
+        } else if edge_expands_num == 1 {
+            let edge_expand_node = {
+                let opr = edge_expands.remove(0);
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(edge_expand_node);
+            child_offset += 1;
+        } else {
+            let expand_intersect_node = {
+                let opr = pb::ExpandAndIntersect { edge_expands };
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(expand_intersect_node);
+            child_offset += 1;
+        }
+        // Filter on the label of target vertex
+        if check_target_vertex_label_num(&definite_extend_step, self.pattern_meta) > 1 {
+            let select_ndoe = {
+                let target_vertex_label = definite_extend_step
+                    .get_target_vertex()
+                    .get_label();
+                let opr = pb::Select {
+                    predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
+                };
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(select_ndoe);
+            child_offset += 1;
+        }
+        // Filter on the predicate of target vertex
+        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(src_pattern) {
+            let select_node = {
+                let opr = filter;
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            self.plan.nodes.push(select_node);
+        }
+
+        Ok(())
+    }
+
+    /// Join two logical plan builder, resulting in one logical plan builder with join operator
+    fn join(&mut self, mut other: PlanGenerator, join_keys: Vec<Variable>) -> IrResult<()> {
+        // Add an as node with alias = None for binary join
+        let as_node_for_join = {
+            let opr = pb::As { alias: None };
+            let children: Vec<i32> = vec![self.plan.roots[0] + 1, self.get_node_num() as i32 + 1];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.insert_node(0, as_node_for_join)
+            .expect("Failed to insert node to pb_plan");
+
+        // Offset children IDs for the other logical plan
+        let left_size = self.get_node_num();
+        let right_size = other.get_node_num();
+        other.plan
+            .nodes
+            .iter_mut()
+            .for_each(|node| {
+                node.children
+                    .iter_mut()
+                    .for_each(|child| {
+                        *child += left_size as i32;
+                    });
+            });
+
+        // Link the last node of both left and right plan to the join node
+        let join_node_idx = left_size + right_size;
+        if let Some(node) = self.plan.nodes.last_mut() {
+            // node.children.push(join_node_idx as i32);
+            node.children = vec![join_node_idx as i32];
+        } else {
+            return Err(IrError::Unsupported("No node in binary join component".to_string()));
+        }
+
+        if let Some(node) = other.plan.nodes.last_mut() {
+            // node.children.push(join_node_idx as i32);
+            node.children = vec![join_node_idx as i32];
+        } else {
+            return Err(IrError::Unsupported("No node in binary join component".to_string()));
+        }
+
+        // Concat two plans to be one
+        self.plan.nodes.extend(other.plan.nodes);
+
+        // Append join node
+        let join_node = {
+            let opr = pb::Join {
+                left_keys: join_keys.clone(),
+                right_keys: join_keys,
+                kind: pb::join::JoinKind::Inner as i32,
+            };
+            let children: Vec<i32> = vec![];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.plan.nodes.push(join_node);
+
+        Ok(())
+    }
+
+    fn match_pb_plan_add_source(&mut self) {
+        // Iterate through all nodes and collect Select nodes
+        let mut vertex_labels_to_scan: Vec<PatternLabelId> = vec![];
+        self.plan
+            .nodes
+            .iter()
+            .for_each(|node| {
+                if let pb::logical_plan::operator::Opr::Select(first_select) = node
+                    .opr
+                    .as_ref()
+                    .unwrap()
+                    .opr
+                    .as_ref()
+                    .unwrap()
+                    .clone()
+                {
+                    let label_id: PatternLabelId = first_select
+                        .predicate
+                        .as_ref()
+                        .unwrap()
+                        .operators
+                        .get(2)
+                        .and_then(|opr| opr.item.as_ref())
+                        .and_then(
+                            |item| if let common_pb::expr_opr::Item::Const(value) = item { Some(value) } else { None },
+                        )
+                        .and_then(|value| {
+                            if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+                                Some(label_id as i32)
+                            } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
+                                Some(label_id)
+                            } else {
+                                None
+                            }
+                        })
+                        .expect("Failed to get vertex label from Select Node");
+                    vertex_labels_to_scan.push(label_id);
+                }
+            });
+
+        // If the plan is purely extend-based, the first Select node could be removed, and we only need to scan the first vertex
+        match self.catalog.get_plan_space() {
+            PatMatPlanSpace::ExtendWithIntersection => {
+                vertex_labels_to_scan = vec![vertex_labels_to_scan[0]];
+                self.remove_node(0)
+                    .expect("Failed to remove node from pb_plan");
+            },
+            _ => {},
+        }
+        
+        // Append Sink Node
+        let scan_node = {
+            let opr = pb::Scan {
+                scan_opt: 0,
+                alias: None,
+                params: Some(pb::QueryParams {
+                    tables: vertex_labels_to_scan
+                        .into_iter()
+                        .map(|v_label| v_label.into())
+                        .collect(),
+                    columns: vec![],
+                    is_all_columns: false,
+                    limit: None,
+                    predicate: None,
+                    sample_ratio: 1.0,
+                    extra: HashMap::new(),
+                }),
+                idx_predicate: None,
+            };
+            let children: Vec<i32> = vec![1];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.insert_node(0, scan_node)
+            .expect("Failed to insert node to pb_plan");
+    }
+
+    fn pb_plan_add_count_sink_operator(&mut self) {
+        let pb_plan_len = self.plan.nodes.len();
+        // Modify the children ID of the last node
+        self.plan.nodes[pb_plan_len - 1].children = vec![pb_plan_len as i32];
+        // Append Count Aggregate Node
+        let count_node = {
+            let opr = pb::GroupBy {
+                mappings: vec![],
+                functions: vec![pb::group_by::AggFunc {
+                    vars: vec![],
+                    aggregate: 3, // count
+                    alias: Some(0.into()),
+                }],
+            };
+            let children: Vec<i32> = vec![(pb_plan_len + 1) as i32];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.plan.nodes.push(count_node);
+        // Append Sink Node
+        let sink_node = {
+            let opr = pb::Sink {
+                tags: vec![common_pb::NameOrIdKey { key: Some(0.into()) }],
+                sink_target: Some(pb::sink::SinkTarget {
+                    inner: Some(pb::sink::sink_target::Inner::SinkDefault(pb::SinkDefault {
+                        id_name_mappings: vec![],
+                    })),
+                }),
+            };
+            let children: Vec<i32> = vec![];
+            pb::logical_plan::Node { opr: Some(opr.into()), children }
+        };
+        self.plan.nodes.push(sink_node);
     }
 }
 
@@ -273,7 +980,8 @@ fn pattern_roll_back(
             )
         })
         .collect();
-    let pre_pattern = pattern.remove_vertex(target_vertex_id).unwrap();
+    let pre_pattern = pattern.remove_vertex(target_vertex_id)
+        .expect("Failed to remove vertex from pattern");
     let definite_extend_step =
         DefiniteExtendStep::from_src_pattern(&pre_pattern, &extend_step, target_vertex_id, edge_id_map)
             .expect("Failed to build DefiniteExtendStep from src pattern");
@@ -602,4 +1310,14 @@ fn pb_plan_add_count_sink_operator(pb_plan: &mut pb::LogicalPlan) {
     pb_plan
         .nodes
         .push(pb::logical_plan::Node { opr: Some(sink.into()), children: vec![] });
+}
+
+fn pattern_equal(pattern1: &Pattern, pattern2: &Pattern) -> bool {
+    if pattern1.get_vertices_num() == pattern2.get_vertices_num()
+       &&
+       pattern1.get_edges_num() == pattern2.get_edges_num() {
+        return pattern1.encode_to() == pattern2.encode_to();
+    }
+
+    return false;
 }

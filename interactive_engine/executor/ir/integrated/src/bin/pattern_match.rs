@@ -14,19 +14,22 @@
 //! limitations under the License.
 //!
 
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::error::Error;
+use std::path::PathBuf;
+use std::time::Instant;
+use ir_core::catalogue::plan::CostMetric;
+use structopt::StructOpt;
+
 use graph_proxy::create_exp_store;
 use ir_common::generated::algebra as pb;
+use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
 use ir_core::plan::logical::LogicalPlan;
 use ir_core::plan::physical::AsPhysical;
 use pegasus::{Configuration, JobConf};
 use pegasus_client::builder::JobBuilder;
 use runtime_integration::*;
-use std::convert::TryInto;
-use std::error::Error;
-use std::path::PathBuf;
-use std::time::Instant;
-use structopt::StructOpt;
-use std::collections::HashMap;
 
 #[global_allocator]
 static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
@@ -43,6 +46,18 @@ pub struct Config {
     print_intermediate_result: bool,
     #[structopt(short = "n", long = "no_query_execution")]
     no_query_execution: bool,
+    #[structopt(short = "s", long = "plan_space", default_value = "extend")]
+    plan_space: String,
+    // #[structopt(long = "cost_metric")]
+    // cost_metric: Vec<f64>,
+    #[structopt(long = "alpha", default_value = "0.5")]
+    alpha: f64,
+    #[structopt(long = "beta", default_value = "0.5")]
+    beta: f64,
+    #[structopt(long = "w1", default_value = "1.0")]
+    w1: f64,
+    #[structopt(long = "w2", default_value = "1.0")]
+    w2: f64,
 }
 
 // lazy_static! {
@@ -55,82 +70,10 @@ fn print_config(config: &Config) {
     println!("  num_workers: {}", config.workers);
     println!("  is_distributed: {}", config.is_distributed);
     println!("  print_intermediate_result: {}", config.print_intermediate_result);
-    println!(" no_query_execution: {}", config.no_query_execution);
+    println!("  no_query_execution: {}", config.no_query_execution);
+    println!("  plan space: {}", config.plan_space);
+    // println!("  Cost metric hyper-parameters: {:?}", config.cost_metric);
     println!("");
-}
-
-fn split_intermediate_pb_logical_plan(pb_plan: &pb::LogicalPlan) -> Vec<pb::LogicalPlan> {
-    use pb::logical_plan::operator::Opr;
-    let mut intermediate_pb_plans: Vec<pb::LogicalPlan> = vec![];
-    let mut intermediate_pb_plan: pb::LogicalPlan = pb::LogicalPlan::default();
-    intermediate_pb_plan.roots = vec![];
-    let pb_plan_len = pb_plan.nodes.len();
-    for node_idx in 0..pb_plan_len {
-        let pb_node = &pb_plan.nodes[node_idx];
-        let opr = pb_node
-            .opr
-            .as_ref()
-            .unwrap()
-            .opr
-            .as_ref()
-            .unwrap();
-        match opr {
-            Opr::Edge(_opr) => {
-                intermediate_pb_plans.push(intermediate_pb_plan.clone());
-            }
-            Opr::ExpandIntersect(_opr) => {
-                intermediate_pb_plans.push(intermediate_pb_plan.clone());
-            }
-            _ => {}
-        };
-        intermediate_pb_plan.nodes.push(pb_node.clone());
-    }
-
-    return intermediate_pb_plans;
-}
-
-fn print_pb_logical_plan(pb_plan: &pb::LogicalPlan) {
-    println!("pb logical plan:");
-    let mut id = 0;
-    pb_plan.nodes.iter().for_each(|node| {
-        println!("ID: {:?}, {:?}", id, node);
-        id += 1;
-    });
-    println!("Roots: {:?}\n", pb_plan.roots);
-}
-
-fn print_config(config: &Config) {
-    println!("Configuration:");
-    println!("  config_dir: {:?}", config.config_dir);
-    println!("  num_workers: {}", config.workers);
-    println!("  is_distributed: {}", config.is_distributed);
-    println!("  print_intermediate_result: {}", config.print_intermediate_result);
-    println!(" no_query_execution: {}", config.no_query_execution);
-    println!("");
-}
-
-fn split_intermediate_pb_logical_plan(pb_plan: &pb::LogicalPlan) -> Vec<pb::LogicalPlan> {
-    use pb::logical_plan::operator::Opr;
-    let mut intermediate_pb_plans: Vec<pb::LogicalPlan> = vec![];
-    let mut intermediate_pb_plan: pb::LogicalPlan = pb::LogicalPlan::default();
-    intermediate_pb_plan.roots = vec![];
-    let pb_plan_len = pb_plan.nodes.len();
-    for node_idx in 0..pb_plan_len {
-        let pb_node = &pb_plan.nodes[node_idx];
-        let opr = pb_node.opr.as_ref().unwrap().opr.as_ref().unwrap();
-        match opr {
-            Opr::Edge(_opr) => {
-                intermediate_pb_plans.push(intermediate_pb_plan.clone());
-            },
-            Opr::ExpandIntersect(_opr) => {
-                intermediate_pb_plans.push(intermediate_pb_plan.clone());
-            },
-            _ => {},
-        };
-        intermediate_pb_plan.nodes.push(pb_node.clone());
-    }
-
-    return intermediate_pb_plans;
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -153,40 +96,58 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut catalog = read_catalogue()?;
     println!("############ Plan Generation ############");
     println!("start generating plan...");
+    let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
+        "extend" => PatMatPlanSpace::ExtendWithIntersection,
+        "hybrid" => PatMatPlanSpace::Hybrid,
+        _ => unreachable!(),
+    };
+    catalog.set_plan_space(plan_space);
+    // let cost_metric = CostMetric::new(
+    //     config.cost_metric[0],
+    //     config.cost_metric[1],
+    //     config.cost_metric[2],
+    //     config.cost_metric[3],
+    // );
+    let cost_metric = CostMetric::new(
+        config.alpha,
+        config.beta,
+        config.w1,
+        config.w2,
+    );
     let plan_generation_start_time = Instant::now();
     let mut pb_plan =
-        pattern.generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed)?;
+        pattern.generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed, cost_metric)
+        .expect("Failed to generate optimized pattern match plan");
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
-    if config.print_intermediate_result {
-        // split the original logical plan into plans of intermediate results
-        println!("############ Print Intermediate Results ############");
-        let mut intermediate_pb_plans: Vec<pb::LogicalPlan> = split_intermediate_pb_logical_plan(&pb_plan);
-        intermediate_pb_plans
-            .iter_mut()
-            .for_each(|intermediate_pb_plan| {
-                match_pb_plan_add_source(intermediate_pb_plan);
-                pb_plan_add_count_sink_operator(intermediate_pb_plan);
-                print_pb_logical_plan(&intermediate_pb_plan);
-                // Submit Query to get the intermediate results
-                let plan: LogicalPlan = intermediate_pb_plan
-                    .clone()
-                    .try_into()
-                    .expect("Failed to convert to logical plan");
-                let mut job_builder = JobBuilder::default();
-                let mut plan_meta = plan.get_meta().clone().with_partition();
-                plan.add_job_builder(&mut job_builder, &mut plan_meta)
-                    .unwrap();
-                let request = job_builder
-                    .build()
-                    .expect("Failed at job builder");
-                println!("start executing query...");
-                submit_query(request, conf.clone()).expect("Failed to submit query");
-                println!("\n\n");
-            });
-    }
 
-    match_pb_plan_add_source(&mut pb_plan);
-    pb_plan_add_count_sink_operator(&mut pb_plan);
+    // if config.print_intermediate_result {
+    //     // split the original logical plan into plans of intermediate results
+    //     println!("############ Print Intermediate Results ############");
+    //     let mut intermediate_pb_plans: Vec<pb::LogicalPlan> = split_intermediate_pb_logical_plan(&pb_plan);
+    //     intermediate_pb_plans
+    //         .iter_mut()
+    //         .for_each(|intermediate_pb_plan| {
+    //             match_pb_plan_add_source(intermediate_pb_plan);
+    //             pb_plan_add_count_sink_operator(intermediate_pb_plan);
+    //             print_pb_logical_plan(&intermediate_pb_plan);
+    //             // Submit Query to get the intermediate results
+    //             let plan: LogicalPlan = intermediate_pb_plan
+    //                 .clone()
+    //                 .try_into()
+    //                 .expect("Failed to convert to logical plan");
+    //             let mut job_builder = JobBuilder::default();
+    //             let mut plan_meta = plan.get_meta().clone().with_partition();
+    //             plan.add_job_builder(&mut job_builder, &mut plan_meta)
+    //                 .unwrap();
+    //             let request = job_builder
+    //                 .build()
+    //                 .expect("Failed at job builder");
+    //             println!("start executing query...");
+    //             submit_query(request, conf.clone()).expect("Failed to submit query");
+    //             println!("\n\n");
+    //         });
+    // }
+
     println!("Final pb logical plan:");
     print_pb_logical_plan(&pb_plan);
 

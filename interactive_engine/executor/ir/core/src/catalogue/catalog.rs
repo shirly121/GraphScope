@@ -102,8 +102,16 @@ impl JoinWeight {
         self.probe_pattern_node_index
     }
 
+    pub fn set_probe_pattern_node_index(&mut self, node_index: NodeIndex) {
+        self.probe_pattern_node_index = node_index;
+    }
+
     pub fn get_join_plan(&self) -> &BinaryJoinPlan {
         &self.join_plan
+    }
+
+    pub fn set_join_plan(&mut self, binary_join_plan: BinaryJoinPlan) {
+        self.join_plan = binary_join_plan;
     }
 }
 
@@ -444,17 +452,13 @@ impl Catalogue {
             .for_each(|binary_join_plan| {
                 // Build nodes for both build and probe patterns if no existing patterns can be found
                 let build_pattern = binary_join_plan.get_build_pattern();
-                let build_pattern_node_index = {
-                    let build_pattern_code: Vec<u8> = build_pattern.encode_to();
-                    self.get_pattern_index(&build_pattern_code)
-                        .expect("Pattern not hit in catalogue")
-                };
-                let probe_pattern = binary_join_plan.get_probe_pattern().clone();
-                let probe_pattern_node_index = {
-                    let probe_pattern_code = probe_pattern.encode_to();
-                    self.get_pattern_index(&probe_pattern_code)
-                        .expect("Pattern not hit in catalogue")
-                };
+                let build_pattern_node_index = self
+                    .get_pattern_index(&build_pattern.encode_to())
+                    .expect("Pattern not hit in catalogue");
+                let probe_pattern = binary_join_plan.get_probe_pattern();
+                let probe_pattern_node_index = self
+                    .get_pattern_index(&probe_pattern.encode_to())
+                    .expect("Pattern not hit in catalogue");
                 // Iteratively update the two sub-patterns
                 self.update_join_steps_by_pattern(&build_pattern);
                 self.update_join_steps_by_pattern(&probe_pattern);

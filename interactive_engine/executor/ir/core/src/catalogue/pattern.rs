@@ -1506,14 +1506,62 @@ impl Pattern {
                         .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
                 }
             }
+            self.canonical_labeling();
             if self.is_connected() {
-                self.canonical_labeling();
                 Some(self)
             } else {
                 None
             }
         } else {
             None
+        }
+    }
+
+    /// Remove a vertex with all its adjacent edges in the current pattern
+    pub fn remove_vertex_local(&mut self, vertex_id: PatternId) {
+        if self.get_vertex(vertex_id).is_some() {
+            let adjacencies: Vec<Adjacency> = self
+                .adjacencies_iter(vertex_id)
+                .cloned()
+                .collect();
+            // delete target vertex
+            // delete in vertices
+            self.vertices.remove(vertex_id);
+            // delete in vertex tag map
+            if let Some(tag) = self.get_vertex_tag(vertex_id) {
+                self.tag_vertex_map.remove(&tag);
+            }
+            // delete in vertices data
+            self.vertices_data.remove(vertex_id);
+            for adjacency in adjacencies {
+                let adjacent_vertex_id = adjacency.get_adj_vertex().get_id();
+                let adjacent_edge_id = adjacency.get_edge_id();
+                // delete adjacent edges
+                // delete in edges
+                self.edges.remove(adjacent_edge_id);
+                // delete in edge tag map
+                if let Some(tag) = self.get_edge_tag(adjacent_edge_id) {
+                    self.tag_edge_map.remove(&tag);
+                }
+                // delete in edges data
+                self.edges_data.remove(adjacent_edge_id);
+                // update adjcent vertices's info
+                if let PatternDirection::Out = adjacency.get_direction() {
+                    self.vertices_data
+                        .get_mut(adjacent_vertex_id)
+                        .unwrap()
+                        .in_adjacencies
+                        .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
+                } else {
+                    self.vertices_data
+                        .get_mut(adjacent_vertex_id)
+                        .unwrap()
+                        .out_adjacencies
+                        .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
+                }
+            }
+
+            self.canonical_labeling();
         }
     }
 

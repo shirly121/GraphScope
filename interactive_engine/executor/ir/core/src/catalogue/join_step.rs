@@ -620,7 +620,7 @@ impl Pattern {
         }
 
         // Remove the new disjoint vertex from build pattern
-        next_build_pattern.remove_vertex(shared_v_id);
+        next_build_pattern.remove_vertex_local(shared_v_id);
         if next_build_pattern.is_connected() {
             // // ---debug---
             // println!("Removed pattern is connected");

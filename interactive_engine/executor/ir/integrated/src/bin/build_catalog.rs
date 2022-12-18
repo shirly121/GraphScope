@@ -41,24 +41,43 @@ pub struct Config {
     sample_rate: f64,
     #[structopt(short = "l", long = "medium_results_limit")]
     limit: Option<usize>,
-    #[structopt(short = "s", long = "plan_space")]
+    #[structopt(short = "s", long = "plan_space", default_value = "hybrid")]
     plan_space: String,
+}
+
+fn print_config(config: &Config) {
+    println!("Configuration:");
+    println!("  Catalog mode: {}", config.catalog_mode);
+    println!("  Catalog depth: {}", config.catalog_depth);
+    println!("  export path: {}", config.export_path);
+    println!("  sparsify_rate_path: {}", config.sparsify_rate_path);
+    println!("  Num threads: {}", config.thread_num);
+    println!("  Sample Rate: {}", config.sample_rate);
+    println!("  Medium results limit: {:?}", config.limit);
+    println!("  plan space: {}", config.plan_space);
+    println!("");
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
+    print_config(&config);
     let sample_graph = Arc::new(read_sample_graph()?);
     println!("start building catalog...");
+    let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
+        "extend" => PatMatPlanSpace::ExtendWithIntersection,
+        "hybrid" => PatMatPlanSpace::Hybrid,
+        _ => unreachable!(),
+    };
     let catalog_build_start_time = Instant::now();
     let mut catalog = match config.catalog_mode.as_str() {
         "from_pattern" => {
             let pattern = read_pattern()?;
-            let plan_space = PatMatPlanSpace::Hybrid;
             Catalogue::build_from_pattern(&pattern, plan_space)
         }
         "from_patterns" => {
             let patterns = read_patterns()?;
             let mut catalog = Catalogue::default();
+            catalog.set_plan_space(plan_space);
             for pattern in patterns {
                 catalog.update_catalog_by_pattern(&pattern)
             }
@@ -73,6 +92,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let patterns = read_patterns()?;
             let mut catalog =
                 Catalogue::build_from_meta(&pattern_meta, config.catalog_depth, config.catalog_depth);
+            catalog.set_plan_space(plan_space);
             for pattern in patterns {
                 catalog.update_catalog_by_pattern(&pattern)
             }

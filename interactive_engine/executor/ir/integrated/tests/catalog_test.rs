@@ -34,7 +34,7 @@ mod test {
     use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
     use ir_core::catalogue::pattern::Pattern;
     use ir_core::catalogue::pattern_meta::PatternMeta;
-    use ir_core::catalogue::plan::get_definite_extend_steps;
+    use ir_core::catalogue::plan::{get_definite_extend_steps, CostMetric};
     use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
     use ir_core::catalogue::{PatternDirection, PatternId, PatternLabelId};
     use ir_core::error::{IrError, IrResult};
@@ -56,10 +56,10 @@ mod test {
         println!("start generating plan...");
         let plan_generation_start_time = Instant::now();
         let pb_plan: pb::LogicalPlan = pattern
-            .generate_optimized_match_plan_recursively(&mut catalogue.clone(), &get_ldbc_pattern_meta(), is_distributed)
+            .generate_optimized_match_plan(&mut catalogue.clone(), &get_ldbc_pattern_meta(), is_distributed, CostMetric::default())
             .expect("Failed to generate pattern match plan");
-        print_pb_logical_plan(&pb_plan);
         println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
+        print_pb_logical_plan(&pb_plan);
         Ok(pb_plan)
     }
 
@@ -95,7 +95,7 @@ mod test {
                 }
             }
         }
-        // println!("Pattern Match Output: {}", count);
+
         println!("executing query time cost is {:?} ms", query_execution_start_time.elapsed().as_millis());
     }
 
@@ -566,30 +566,30 @@ mod test {
         let v_label_forum: i32 = 4;
         let v_label_comment: i32 = 2;
         let v_label_tagclass: i32 = 6;
-        let e_label_hasModerator: i32 = 7;
-        let e_label_isLocatedIn: i32 = 11;
-        let e_label_isPartOf: i32 = 17;
-        let e_label_containerOf: i32 = 5;
-        let e_label_replyOf: i32 = 3;
-        let e_label_hasTag: i32 = 1;
-        let e_label_hasType: i32 = 21;
+        let e_label_has_moderator: i32 = 7;
+        let e_label_is_located_in: i32 = 11;
+        let e_label_is_part_of: i32 = 17;
+        let e_label_container_of: i32 = 5;
+        let e_label_reply_of: i32 = 3;
+        let e_label_has_tag: i32 = 1;
+        let e_label_has_type: i32 = 21;
         let mut pb_plan = pb::LogicalPlan::default();
         pb_plan.nodes = vec![
             build_node(build_scan_opr(vec![v_label_forum, v_label_tagclass]), vec![1, 6]),
             // Subpattern 1 from forum
             build_node(build_select_opr(v_label_forum), vec![2]),
             build_node(build_as_opr(Some(3)), vec![3]),
-            build_node(build_expand_opr(3, 2, PatternDirection::Out, e_label_hasModerator), vec![4]),
-            build_node(build_expand_opr(2, 1, PatternDirection::Out, e_label_isLocatedIn), vec![5]),
-            build_node(build_expand_opr(1, 0, PatternDirection::Out, e_label_isPartOf), vec![13]),
+            build_node(build_expand_opr(3, 2, PatternDirection::Out, e_label_has_moderator), vec![4]),
+            build_node(build_expand_opr(2, 1, PatternDirection::Out, e_label_is_located_in), vec![5]),
+            build_node(build_expand_opr(1, 0, PatternDirection::Out, e_label_is_part_of), vec![13]),
             // Subpattern 2 from tagclass
             build_node(build_select_opr(v_label_tagclass), vec![7]),
             build_node(build_as_opr(Some(7)), vec![8]),
-            build_node(build_expand_opr(7, 6, PatternDirection::In, e_label_hasType), vec![9]),
-            build_node(build_expand_opr(6, 5, PatternDirection::In, e_label_hasTag), vec![10]),
+            build_node(build_expand_opr(7, 6, PatternDirection::In, e_label_has_type), vec![9]),
+            build_node(build_expand_opr(6, 5, PatternDirection::In, e_label_has_tag), vec![10]),
             build_node(build_select_opr(v_label_comment), vec![11]),
-            build_node(build_expand_opr(5, 4, PatternDirection::Out, e_label_replyOf), vec![12]),
-            build_node(build_expand_opr(4, 3, PatternDirection::In, e_label_containerOf), vec![13]),
+            build_node(build_expand_opr(5, 4, PatternDirection::Out, e_label_reply_of), vec![12]),
+            build_node(build_expand_opr(4, 3, PatternDirection::In, e_label_container_of), vec![13]),
             build_node(build_join_opr(vec![3], vec![3]), vec![14]),
             build_node(build_sink_opr(vec![0, 1, 2, 3, 4, 5, 6, 7]), vec![]),
         ];
