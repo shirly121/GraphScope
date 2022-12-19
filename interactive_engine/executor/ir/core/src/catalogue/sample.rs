@@ -24,6 +24,7 @@ use std::{thread, thread::JoinHandle, vec};
 
 use graph_store::config::{DIR_GRAPH_SCHEMA, FILE_SCHEMA};
 use graph_store::prelude::{DefaultId, GlobalStoreTrait, GraphDBConfig, InternalId, LabelId, LargeGraphDB};
+use log::info;
 use petgraph::graph::NodeIndex;
 
 use crate::catalogue::catalog::{Catalogue, TableLogue};
@@ -57,7 +58,7 @@ impl Catalogue {
             // Store patterns' count
             update_pattern_counts_map(&mut pattern_counts_map, &pattern_count_infos);
         }
-        println!("{:?}", pattern_counts_map);
+        info!("{:?}", pattern_counts_map);
         // Set pattern count in the catalog with sparsify rate info
         for (&pattern_index, &pattern_count) in pattern_counts_map.iter() {
             self.set_pattern_count_with_rate(pattern_index, pattern_count, &sparsify_rate);

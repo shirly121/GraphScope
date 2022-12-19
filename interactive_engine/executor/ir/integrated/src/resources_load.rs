@@ -126,21 +126,6 @@ fn read_pattern_from_path<P: AsRef<Path>>(pattern_path: P) -> Result<Pattern, Bo
     Ok(pattern)
 }
 
-pub fn read_pattern_extend_order<P: AsRef<Path>>(
-    order_path: P, split: &str,
-) -> Result<Vec<PatternId>, Box<dyn Error>> {
-    let order_str = read_to_string(order_path)?;
-    let order: Vec<PatternId> = order_str
-        .split(split)
-        .into_iter()
-        .map(|s| {
-            s.parse()
-                .expect("element of order should be a number")
-        })
-        .collect();
-    Ok(order)
-}
-
 fn initialize_job_assembly() -> IRJobAssembly {
     let query_exp_graph = QueryExpGraph::new(1);
     query_exp_graph.initialize_job_assembly()

@@ -15,6 +15,8 @@
 //!
 
 use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
+use ir_core::catalogue::sparsify::read_sparsify_config;
+use log::info;
 use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
 use ir_core::catalogue::sparsify::read_sparsify_config;
 use std::error::Error;
@@ -59,10 +61,11 @@ fn print_config(config: &Config) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
     let config = Config::from_args();
     print_config(&config);
     let sample_graph = Arc::new(read_sample_graph()?);
-    println!("start building catalog...");
+    info!("start building catalog...");
     let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
         "extend" => PatMatPlanSpace::ExtendWithIntersection,
         "hybrid" => PatMatPlanSpace::Hybrid,
@@ -108,7 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         config.limit,
         config.thread_num,
     );
-    println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+    info!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
     catalog.export(config.export_path)?;
     Ok(())
 }
