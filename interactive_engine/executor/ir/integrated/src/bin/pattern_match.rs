@@ -42,6 +42,10 @@ pub struct Config {
     print_intermediate_result: bool,
     #[structopt(short = "n", long = "no_query_execution")]
     no_query_execution: bool,
+    #[structopt(long = "batch_size", default_value = "1024")]
+    batch_size: u32,
+    #[structopt(long = "batch_capacity", default_value = "64")]
+    batch_capacity: u32,
 }
 
 // lazy_static! {
@@ -101,6 +105,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut conf = JobConf::new("GLogue Universal Test");
     conf.set_workers(config.workers);
     conf.reset_servers(pegasus::ServerConf::All);
+    conf.batch_size = config.batch_size;
+    conf.batch_capacity = config.batch_capacity;
     pegasus::startup(server_config)?;
     pegasus::wait_servers_ready(&conf.servers());
     let pattern_meta = read_pattern_meta()?;
