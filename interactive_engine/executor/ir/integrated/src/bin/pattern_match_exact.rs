@@ -37,8 +37,8 @@ static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 pub struct Config {
     #[structopt(short = "c", long = "config_dir")]
     config_dir: Option<PathBuf>,
-    #[structopt(short = "o", long = "order_path")]
-    order_path: String,
+    #[structopt(short = "o", long = "order")]
+    order: String,
     #[structopt(short = "s", long = "split", default_value = " ")]
     split: String,
     #[structopt(short = "w", long = "workers", default_value = "1")]
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     pegasus::wait_servers_ready(&conf.servers());
     let pattern_meta = read_pattern_meta()?;
     let pattern = read_pattern()?;
-    let order = read_pattern_extend_order(&config.order_path, &config.split)?;
+    let order = get_pattern_extend_order(config.order, &config.split)?;
     println!("start generating plan...");
     let plan_generation_start_time = Instant::now();
     let mut pb_plan = if config.is_distributed {
@@ -96,6 +96,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn get_pattern_extend_order(order_str: String, split: &str) -> Result<Vec<PatternId>, Box<dyn Error>> {
+    let order: Vec<PatternId> = order_str
+        .split(split)
+        .into_iter()
+        .map(|s| {
+            s.parse()
+                .expect("element of order should be a number")
+        })
+        .collect();
+    Ok(order)
+}
+
 fn get_definite_extend_steps_from_pattern_with_order(
     pattern: &Pattern, mut order: Vec<PatternId>,
 ) -> Vec<DefiniteExtendStep> {
@@ -104,7 +116,9 @@ fn get_definite_extend_steps_from_pattern_with_order(
     while let Some(vertex_id) = order.pop() {
         let extend_step = DefiniteExtendStep::from_target_pattern(&trace_pattern, vertex_id).unwrap();
         extend_steps.push(extend_step);
-        trace_pattern = trace_pattern.remove_vertex(vertex_id).unwrap();
+        if trace_pattern.get_vertices_num() > 1 {
+            trace_pattern = trace_pattern.remove_vertex(vertex_id).unwrap();
+        }
     }
     extend_steps
 }

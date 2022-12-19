@@ -16,6 +16,7 @@
 
 use ir_core::catalogue::catalog::Catalogue;
 use ir_core::catalogue::sparsify::read_sparsify_config;
+use log::info;
 use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
 use std::error::Error;
 use std::sync::Arc;
@@ -44,9 +45,10 @@ pub struct Config {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
     let config = Config::from_args();
     let sample_graph = Arc::new(read_sample_graph()?);
-    println!("start building catalog...");
+    info!("start building catalog...");
     let catalog_build_start_time = Instant::now();
     let mut catalog = match config.catalog_mode.as_str() {
         "from_pattern" => {
@@ -85,7 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         config.limit,
         config.thread_num,
     );
-    println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
+    info!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
     catalog.export(config.export_path)?;
     Ok(())
 }
