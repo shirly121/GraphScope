@@ -14,15 +14,15 @@
 //! limitations under the License.
 //!
 
-use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
-use ir_core::catalogue::sparsify::read_sparsify_config;
 use log::info;
-use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
-use ir_core::catalogue::sparsify::read_sparsify_config;
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Instant;
 use structopt::StructOpt;
+
+use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
+use ir_core::catalogue::sparsify::read_sparsify_config;
+use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
 
 #[global_allocator]
 static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
