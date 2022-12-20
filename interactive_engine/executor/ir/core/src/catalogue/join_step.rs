@@ -42,7 +42,7 @@ pub struct BinaryJoinPlan {
 }
 
 impl BinaryJoinPlan {
-    fn init(build_pattern: Pattern, probe_pattern: Pattern) -> Self {
+    pub fn init(build_pattern: Pattern, probe_pattern: Pattern) -> Self {
         let shared_vertices: BTreeSet<PatternId> = build_pattern
             .vertices_iter()
             .map(|vertex| vertex.get_id())
@@ -51,7 +51,7 @@ impl BinaryJoinPlan {
         BinaryJoinPlan::new(build_pattern, probe_pattern, shared_vertices)
     }
 
-    fn new(build_pattern: Pattern, probe_pattern: Pattern, shared_vertices: BTreeSet<PatternId>) -> Self {
+    pub fn new(build_pattern: Pattern, probe_pattern: Pattern, shared_vertices: BTreeSet<PatternId>) -> Self {
         BinaryJoinPlan { build_pattern, probe_pattern, shared_vertices }
     }
 

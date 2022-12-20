@@ -105,7 +105,7 @@ pub fn read_patterns() -> Result<Vec<Pattern>, Box<dyn Error>> {
     Ok(patterns)
 }
 
-fn read_pattern_from_path<P: AsRef<Path>>(pattern_path: P) -> Result<Pattern, Box<dyn Error>> {
+pub fn read_pattern_from_path<P: AsRef<Path>>(pattern_path: P) -> Result<Pattern, Box<dyn Error>> {
     let pattern_file = File::open(pattern_path)?;
     let mut pattern_csv = csv::Reader::from_reader(pattern_file);
     let mut pattern_edges = vec![];

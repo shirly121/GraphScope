@@ -108,7 +108,7 @@ impl Pattern {
 }
 
 impl Catalogue {
-    fn set_best_approach_by_pattern(&mut self, pattern: &Pattern) {
+    pub fn set_best_approach_by_pattern(&mut self, pattern: &Pattern) {
         let node_index = self
             .get_pattern_index(&pattern.encode_to())
             .expect("Pattern not found in catalogue");
@@ -263,9 +263,9 @@ impl Catalogue {
 /// trace_pattern: the pattern traced for plan generator, and it will be changed recursively during generation.
 ///
 /// target_pattern: the reference of the target pattern, fixed after initialization
-///
-/// catalog: the reference of the catalogue
-struct PlanGenerator<'a> {
+/// 
+/// catalog: the reference of the catalogue 
+pub struct PlanGenerator<'a> {
     plan: pb::LogicalPlan,
     trace_pattern: Pattern,
     target_pattern: &'a Pattern,
@@ -286,6 +286,11 @@ impl<'a> PlanGenerator<'a> {
             target_pattern: pattern,
             plan: pb::LogicalPlan::default(),
         }
+    }
+
+    /// Get the pb logical plan
+    pub fn get_pb_plan(&self) -> pb::LogicalPlan {
+        self.plan.clone()
     }
 
     /// Return the number of nodes in the logical plan
@@ -353,7 +358,7 @@ impl<'a> PlanGenerator<'a> {
         Ok(self.plan.clone())
     }
 
-    fn generate_pattern_match_plan_recursively(&mut self, pattern: &Pattern) -> IrResult<()> {
+    pub fn generate_pattern_match_plan_recursively(&mut self, pattern: &Pattern) -> IrResult<()> {
         // locate the pattern node in the catalog graph
         if let Some(node_index) = self
             .catalog
@@ -636,7 +641,7 @@ impl<'a> PlanGenerator<'a> {
     }
 
     /// Join two logical plan builder, resulting in one logical plan builder with join operator
-    fn join(&mut self, mut other: PlanGenerator, join_keys: Vec<Variable>) -> IrResult<()> {
+    pub fn join(&mut self, mut other: PlanGenerator, join_keys: Vec<Variable>) -> IrResult<()> {
         // Add an as node with alias = None for binary join
         let as_node_for_join = {
             let opr = pb::As { alias: None };
@@ -689,7 +694,7 @@ impl<'a> PlanGenerator<'a> {
         Ok(())
     }
 
-    fn match_pb_plan_add_source(&mut self) {
+    pub fn match_pb_plan_add_source(&mut self) {
         // Iterate through all nodes and collect Select nodes
         let mut vertex_labels_to_scan: Vec<PatternLabelId> = vec![];
         self.plan.nodes.iter().for_each(|node| {
@@ -730,16 +735,16 @@ impl<'a> PlanGenerator<'a> {
             }
         });
 
-        // If the plan is purely extend-based, the first Select node could be removed, and we only need to scan the first vertex
-        match self.catalog.get_plan_space() {
-            PatMatPlanSpace::ExtendWithIntersection => {
-                vertex_labels_to_scan = vec![vertex_labels_to_scan[0]];
-                self.remove_node(0)
-                    .expect("Failed to remove node from pb_plan");
-            }
-            _ => {}
-        }
-
+        // // If the plan is purely extend-based, the first Select node could be removed, and we only need to scan the first vertex
+        // match self.catalog.get_plan_space() {
+        //     PatMatPlanSpace::ExtendWithIntersection => {
+        //         vertex_labels_to_scan = vec![vertex_labels_to_scan[0]];
+        //         self.remove_node(0)
+        //             .expect("Failed to remove node from pb_plan");
+        //     },
+        //     _ => {},
+        // }
+        
         // Append Sink Node
         let scan_node = {
             let opr = pb::Scan {
@@ -766,7 +771,7 @@ impl<'a> PlanGenerator<'a> {
             .expect("Failed to insert node to pb_plan");
     }
 
-    fn pb_plan_add_count_sink_operator(&mut self) {
+    pub fn pb_plan_add_count_sink_operator(&mut self) {
         let pb_plan_len = self.plan.nodes.len();
         // Modify the children ID of the last node
         self.plan.nodes[pb_plan_len - 1].children = vec![pb_plan_len as i32];
