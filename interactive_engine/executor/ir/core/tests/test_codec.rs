@@ -20,6 +20,7 @@ mod tests {
     use ir_core::catalogue::pattern::*;
 
     use crate::common::pattern_cases::*;
+    use crate::common::canonical_label_cases::*;
 
     #[test]
     fn test_encode_decode_one_vertex_pattern() {

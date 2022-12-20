@@ -18,6 +18,7 @@ mod common;
 #[cfg(test)]
 mod test {
     use ir_core::catalogue::catalog::Catalogue;
+    use ir_core::catalogue::catalog::PatMatPlanSpace;
 
     use crate::common::pattern_cases::*;
     use crate::common::pattern_meta_cases::*;
@@ -41,7 +42,7 @@ mod test {
     #[test]
     fn test_catalog_for_modern_pattern_case1() {
         let modern_pattern = build_modern_pattern_case1();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        let catalog = Catalogue::build_from_pattern(&modern_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(1, catalog.get_patterns_num());
         assert_eq!(0, catalog.get_approaches_num());
     }
@@ -49,7 +50,7 @@ mod test {
     #[test]
     fn test_catalog_for_modern_pattern_case2() {
         let modern_pattern = build_modern_pattern_case2();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        let catalog = Catalogue::build_from_pattern(&modern_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(1, catalog.get_patterns_num());
         assert_eq!(0, catalog.get_approaches_num());
     }
@@ -57,7 +58,7 @@ mod test {
     #[test]
     fn test_catalog_for_modern_pattern_case3() {
         let modern_pattern = build_modern_pattern_case3();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        let catalog = Catalogue::build_from_pattern(&modern_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(2, catalog.get_patterns_num());
         assert_eq!(2, catalog.get_approaches_num());
     }
@@ -65,7 +66,7 @@ mod test {
     #[test]
     fn test_catalog_for_modern_pattern_case4() {
         let modern_pattern = build_modern_pattern_case4();
-        let catalog = Catalogue::build_from_pattern(&modern_pattern);
+        let catalog = Catalogue::build_from_pattern(&modern_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(3, catalog.get_patterns_num());
         assert_eq!(2, catalog.get_approaches_num());
     }
@@ -73,7 +74,7 @@ mod test {
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(6, catalog.get_patterns_num());
         assert_eq!(9, catalog.get_approaches_num());
     }
@@ -81,7 +82,7 @@ mod test {
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(8, catalog.get_patterns_num());
         assert_eq!(12, catalog.get_approaches_num());
     }
@@ -89,7 +90,7 @@ mod test {
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case3() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(19, catalog.get_patterns_num());
         assert_eq!(28, catalog.get_approaches_num());
     }
@@ -97,7 +98,7 @@ mod test {
     #[test]
     fn test_catalog_for_ldbc_pattern_from_pb_case4() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
-        let catalog = Catalogue::build_from_pattern(&ldbc_pattern);
+        let catalog = Catalogue::build_from_pattern(&ldbc_pattern, PatMatPlanSpace::ExtendWithIntersection);
         assert_eq!(15, catalog.get_patterns_num());
         assert_eq!(25, catalog.get_approaches_num());
     }

@@ -26,6 +26,7 @@ use petgraph::Direction;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
+use crate::catalogue::join_step::BinaryJoinPlan;
 use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
 use crate::catalogue::pattern::{Adjacency, Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
@@ -91,13 +92,26 @@ impl PatternWeight {
 /// Edge Weight for approach case is join
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinWeight {
-    /// Join with which pattern
-    pattern_index: NodeIndex,
+    /// Probe Pattern Node Index
+    probe_pattern_node_index: NodeIndex,
+    join_plan: BinaryJoinPlan,
 }
 
 impl JoinWeight {
-    pub fn get_pattern_index(&self) -> NodeIndex {
-        self.pattern_index
+    pub fn get_probe_pattern_node_index(&self) -> NodeIndex {
+        self.probe_pattern_node_index
+    }
+
+    pub fn set_probe_pattern_node_index(&mut self, node_index: NodeIndex) {
+        self.probe_pattern_node_index = node_index;
+    }
+
+    pub fn get_join_plan(&self) -> &BinaryJoinPlan {
+        &self.join_plan
+    }
+
+    pub fn set_join_plan(&mut self, binary_join_plan: BinaryJoinPlan) {
+        self.join_plan = binary_join_plan;
     }
 }
 
@@ -149,7 +163,7 @@ impl ExtendWeight {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproachWeight {
     /// Case that the approach is join
-    Join(JoinWeight),
+    BinaryJoinStep(JoinWeight),
     /// Case that the approach is extend
     ExtendStep(ExtendWeight),
 }
@@ -165,7 +179,7 @@ impl ApproachWeight {
     }
 
     pub fn is_join(&self) -> bool {
-        if let ApproachWeight::Join(_) = self {
+        if let ApproachWeight::BinaryJoinStep(_) = self {
             true
         } else {
             false
@@ -189,7 +203,7 @@ impl ApproachWeight {
     }
 
     pub fn get_join_weight(&self) -> Option<&JoinWeight> {
-        if let ApproachWeight::Join(join_weight) = self {
+        if let ApproachWeight::BinaryJoinStep(join_weight) = self {
             Some(join_weight)
         } else {
             None
@@ -197,7 +211,7 @@ impl ApproachWeight {
     }
 
     pub fn get_join_weight_mut(&mut self) -> Option<&mut JoinWeight> {
-        if let ApproachWeight::Join(join_weight) = self {
+        if let ApproachWeight::BinaryJoinStep(join_weight) = self {
             Some(join_weight)
         } else {
             None
@@ -244,6 +258,19 @@ impl Approach {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum PatMatPlanSpace {
+    ExtendWithIntersection,
+    BinaryJoin,
+    Hybrid,
+}
+
+impl Default for PatMatPlanSpace {
+    fn default() -> Self {
+        PatMatPlanSpace::Hybrid
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Catalogue {
     /// Catalog Graph
@@ -254,8 +281,10 @@ pub struct Catalogue {
     /// Those patterns with size 1 are the entries of catalogue
     /// - Stores entries with their NodeIndex and PatternLabelId
     entries: Vec<NodeIndex>,
-    ///
+    /// Map from pattern code to its estimated cardinality
     pattern_count_map: HashMap<Vec<u8>, usize>,
+    /// Pattern Match Plan Space
+    plan_space: PatMatPlanSpace,
 }
 
 impl Catalogue {
@@ -302,17 +331,46 @@ impl Catalogue {
     }
 
     /// Build a catalog from a pattern dedicated for its optimization
-    pub fn build_from_pattern(pattern: &Pattern) -> Catalogue {
-        // Empty catalog
+    pub fn build_from_pattern(pattern: &Pattern, plan_space: PatMatPlanSpace) -> Catalogue {
+        // Initialize Catalog
         let mut catalog = Catalogue::default();
-        // Update the empty catalog by the pattern to add necessary optimization info
+        catalog.set_plan_space(plan_space);
+        // Update catalog with a given pattern to add necessary optimization info
         catalog.update_catalog_by_pattern(pattern);
         catalog
     }
 
+    /// Usage: Update the current catalog with the given pattern.
+    /// Aims to add neccesary optimization info of the pattern
+    ///
+    /// Use BFS to traverse all possible approaches to match the given pattern
+    pub fn update_catalog_by_pattern(&mut self, pattern: &Pattern) {
+        match self.plan_space {
+            PatMatPlanSpace::ExtendWithIntersection => {
+                self.update_extend_steps_by_pattern(pattern);
+                println!("Extend Pattern Num: {}", self.get_patterns_num());
+                println!("ExtendStep Num: {}", self.get_approaches_num());
+            }
+            PatMatPlanSpace::BinaryJoin => {
+                self.update_join_steps_by_pattern(pattern);
+            }
+            PatMatPlanSpace::Hybrid => {
+                self.update_extend_steps_by_pattern(pattern);
+                println!("Extend Pattern Num: {}", self.get_patterns_num());
+                println!("ExtendStep Num: {}", self.get_approaches_num());
+                self.update_join_steps_by_pattern(pattern);
+                println!("Extend Pattern Num: {}", self.get_patterns_num());
+                println!("ExtendStep Num: {}", self.get_approaches_num());
+            }
+            _ => {
+                panic!("Unsupported pattern match plan space");
+            }
+        }
+    }
+
     /// Update the current catalog by given pattern
     /// Aims to add neccesary optimization info of the pattern
-    pub fn update_catalog_by_pattern(&mut self, pattern: &Pattern) {
+    pub fn update_extend_steps_by_pattern(&mut self, pattern: &Pattern) {
         // Use BFS to get all possible extend approaches to get the pattern
         let mut queue = VecDeque::new();
         // record sub patterns that are relaxed (by vertex id set)
@@ -365,6 +423,55 @@ impl Catalogue {
                 relaxed_patterns.insert(relaxed_pattern_vertices);
             }
         }
+    }
+
+    /// Usage: Given a pattern, find out all (build pattern, binary join steo) pairs that join to get the given pattern, and store them in catalogue.
+    fn update_join_steps_by_pattern(&mut self, pattern: &Pattern) {
+        let pattern_code: Vec<u8> = pattern.encode_to();
+        let pattern_node_index: NodeIndex = 
+            if let Some(&node_index) = self.pattern_locate_map.get(&pattern_code) {
+                node_index
+            } else {
+                let node_index = self
+                    .store
+                    .add_node(PatternWeight {
+                        pattern: pattern.clone(),
+                        count: 0,
+                        best_approach: None,
+                        out_extend_map: HashMap::new(),
+                    });
+                self.pattern_locate_map
+                    .insert(pattern_code, node_index);
+                node_index
+            };
+        // Iterate through all binary join plans
+        pattern
+            .binary_join_decomposition()
+            .expect("Failed to decompose binary join plans")
+            .into_iter()
+            .for_each(|binary_join_plan| {
+                // Build nodes for both build and probe patterns if no existing patterns can be found
+                let build_pattern = binary_join_plan.get_build_pattern();
+                let build_pattern_node_index = self
+                    .get_pattern_index(&build_pattern.encode_to())
+                    .expect("Pattern not hit in catalogue");
+                let probe_pattern = binary_join_plan.get_probe_pattern();
+                let probe_pattern_node_index = self
+                    .get_pattern_index(&probe_pattern.encode_to())
+                    .expect("Pattern not hit in catalogue");
+                // Iteratively update the two sub-patterns
+                self.update_join_steps_by_pattern(&build_pattern);
+                self.update_join_steps_by_pattern(&probe_pattern);
+                // Build binary join step edges in Catalogue
+                self.store.add_edge(
+                    build_pattern_node_index,
+                    pattern_node_index,
+                    ApproachWeight::BinaryJoinStep(JoinWeight {
+                        probe_pattern_node_index,
+                        join_plan: binary_join_plan,
+                    }),
+                );
+            });
     }
 }
 
@@ -557,6 +664,14 @@ impl Catalogue {
                 .edges_directed(pattern_index, Direction::Incoming)
                 .map(move |edge| Approach::from(edge)),
         )
+    }
+
+    pub fn get_plan_space(&self) -> &PatMatPlanSpace {
+        &self.plan_space
+    }
+
+    pub fn set_plan_space(&mut self, plan_space: PatMatPlanSpace) {
+        self.plan_space = plan_space;
     }
 
     pub fn set_pattern_count(&mut self, pattern_index: NodeIndex, count: usize) {

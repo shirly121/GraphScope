@@ -27,6 +27,7 @@ use ir_common::generated::common as common_pb;
 use ir_common::NameOrId;
 
 use crate::catalogue::pattern::Pattern;
+use crate::catalogue::plan::CostMetric;
 use crate::error::{IrError, IrResult};
 use crate::plan::meta::{PlanMeta, CATALOGUE, PATTERN_META};
 
@@ -1178,7 +1179,7 @@ impl MatchingStrategy for ExtendStrategy {
             if let Some(catalog) = catalog_guard.as_mut() {
                 println!("Generate Extend Plan with Catalogue");
                 self.pattern
-                    .generate_optimized_match_plan(catalog, &pattern_meta, true)
+                    .generate_optimized_match_plan(catalog, &pattern_meta, true, CostMetric::default())
             } else {
                 println!("Generate Extend Plan without Catalogue");
                 self.pattern
