@@ -20,12 +20,13 @@ use std::error::Error;
 use structopt::StructOpt;
 use std::process::Command;
 use std::collections::HashMap;
+use std::fs::{read_to_string};
 #[global_allocator]
 static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
 #[derive(StructOpt)]
 pub struct Config {
-    #[structopt(short = "p", long = "export_path")]
+    #[structopt(short = "p", long = "export_path", default_value = "a")]
     export_path: String,
     #[structopt(short = "r", long = "sample_rate", default_value = "0.1")]
     sample_rate: f64,
@@ -37,39 +38,81 @@ pub struct Config {
     optimizer_tools: String,
     #[structopt(short = "m", long = "rate_mod", default_value = "unique")]
     is_unique_rate: String,
-    #[structopt(short = "j", long = "given_json", default_value = "no")]
-    is_support_edge_sta: String,
+    #[structopt(short = "b", long = "batch_mode")]
+    batch_sparsify: bool,
+    #[structopt(short = "c", long = "export_paths_collector")]
+    export_paths: String,
+
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
-    dump_edge_info(get_edge_distribution(read_graph()?), &config.low_order_path);
     let graph = read_graph()?;
-    let executed_command = "SPARSE_RATE=".to_string()
-        + &config.sample_rate.to_string()
-        + " SPARSE_STATISTIC_PATH="
-        + &config.low_order_path
-        + " SPARSE_RATE_PATH="
-        + &config.sparsify_rate_path
-        + " python3 "
-        + config.optimizer_tools.as_str();
-    let mut generating_sparsify_rate = Command::new("sh");
-    generating_sparsify_rate.arg("-c")
-              .arg(executed_command);
-    let optimization_program = generating_sparsify_rate.output().expect("failed to execute process");
-    // println!("{:?}",optimization_program);
-    let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
-    let mut naive_sparsify_rate = HashMap::new();
-    for (key, _value) in sparsify_rate.clone() {
-        naive_sparsify_rate.insert(key, config.sample_rate);
-    }
-    dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
-    if config.is_unique_rate=="unique" {
-        create_sparsified_graph(graph, sparsify_rate, config.export_path);
+    dump_edge_info(get_edge_distribution(&graph), &config.low_order_path);
+    if !config.batch_sparsify {    
+        let executed_command = "SPARSE_RATE=".to_string()
+            + &config.sample_rate.to_string()
+            + " SPARSE_STATISTIC_PATH="
+            + &config.low_order_path
+            + " SPARSE_RATE_PATH="
+            + &config.sparsify_rate_path
+            + " python3 "
+            + config.optimizer_tools.as_str();
+        let mut generating_sparsify_rate = Command::new("sh");
+        generating_sparsify_rate.arg("-c")
+                .arg(executed_command);
+        let _optimization_program = generating_sparsify_rate.output().expect("failed to execute process");
+        // println!("{:?}",_optimization_program);
+        let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
+        let mut naive_sparsify_rate = HashMap::new();
+        for (key, _value) in sparsify_rate.clone() {
+            naive_sparsify_rate.insert(key, config.sample_rate);
+        }
+        dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
+        if config.is_unique_rate=="unique" {
+            create_sparsified_graph(&graph, sparsify_rate, config.export_path);
+        }
+        else {
+            dump_edge_info(naive_sparsify_rate.clone(), &config.sparsify_rate_path);
+            create_sparsified_graph(&graph, naive_sparsify_rate, config.export_path);
+        }
     }
     else {
-        dump_edge_info(naive_sparsify_rate.clone(), &config.sparsify_rate_path);
-        create_sparsified_graph(graph, naive_sparsify_rate, config.export_path);
+
+        for sparsify_info in read_to_string(config.export_paths)?.split("\n") {
+            let info: Vec<&str>=sparsify_info.split(' ').collect();
+            let rate= info[0].parse::<f64>().unwrap();
+            let path = info[1];
+            println!("Do sparsify graph");
+            println!("rate {:?}, export path {:?}",rate,path);
+            let sparse_rate_path = path.to_string() + "/sparsify_rate.json";
+            let executed_command = "SPARSE_RATE=".to_string()
+                + &rate.to_string()
+                + " SPARSE_STATISTIC_PATH="
+                + &config.low_order_path
+                + " SPARSE_RATE_PATH="
+                + &sparse_rate_path
+                + " python3 "
+                + config.optimizer_tools.as_str();
+            let mut generating_sparsify_rate = Command::new("sh");
+            generating_sparsify_rate.arg("-c")
+                    .arg(executed_command);
+            let _optimization_program = generating_sparsify_rate.output().expect("failed to execute process");
+            // println!("{:?}",_optimization_program);
+            let sparsify_rate = read_sparsify_config(&sparse_rate_path);
+            let mut naive_sparsify_rate = HashMap::new();
+            for (key, _value) in sparsify_rate.clone() {
+                naive_sparsify_rate.insert(key, rate);
+            }
+            dump_edge_info(sparsify_rate.clone(), &sparse_rate_path);
+            if config.is_unique_rate=="unique" {
+                create_sparsified_graph(&graph, sparsify_rate, path);
+            }
+            else {
+                dump_edge_info(naive_sparsify_rate.clone(), &sparse_rate_path);
+                create_sparsified_graph(&graph, naive_sparsify_rate, path);
+            }
+        }
     }
     Ok(())
 }

@@ -17,14 +17,14 @@
 
 use graph_store::prelude::{
     DefaultId, GlobalStoreTrait, GlobalStoreUpdate, GraphDBConfig, InternalId, ItemType, LargeGraphDB,
-    MutableGraphDB, Row, INVALID_LABEL_ID,
+    MutableGraphDB, Row,
 };
 use rand::{thread_rng, Rng};
 use serde_json::{Map, Value};
 use std::fs::{self, File};
 use std::{collections::{HashMap, HashSet}, path::Path};
 
-pub static sparsify_accuracy: u64 = 1000000;
+pub static SPARSIFY_ACCURACY: u64 = 1000000;
 // pub fn generate_sparsify_rate(rate: f64, edge_distribution: HashMap<(u8,u8,u8), f64>) -> HashMap<(u8,u8,u8),f64> {
 //     let mut sparsify_rate = HashMap::new();
 //     let function = NumericalDifferentiation::new(Func(|x: &[f64;2]| {
@@ -58,7 +58,7 @@ pub fn read_sparsify_config(path: &str) -> HashMap<(u8,u8,u8), f64> {
     sparsify_rate
 }
 
-pub fn get_edge_distribution(src_graph: LargeGraphDB) -> HashMap<(u8,u8,u8), f64> {
+pub fn get_edge_distribution(src_graph: &LargeGraphDB) -> HashMap<(u8,u8,u8), f64> {
     let mut edge_distribution = HashMap::new();
     for j in src_graph.get_all_edges(None) {
         let src_label = src_graph
@@ -74,8 +74,8 @@ pub fn get_edge_distribution(src_graph: LargeGraphDB) -> HashMap<(u8,u8,u8), f64
             .get_label();
         let edge_label = j.get_label();
         // As current Pattern only use hyper label, here only use hyper label [0]
-        let mut src_filter_label= src_label[0];
-        let mut dst_filter_label= dst_label[0];
+        let src_filter_label= src_label[0];
+        let dst_filter_label= dst_label[0];
         // if src_label[1] == INVALID_LABEL_ID {
         //     src_filter_label = src_label[0];
         // }
@@ -88,7 +88,7 @@ pub fn get_edge_distribution(src_graph: LargeGraphDB) -> HashMap<(u8,u8,u8), f64
     edge_distribution
 }
 
-pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, sparsify_rate: HashMap<(u8,u8,u8), f64>, path: P) {
+pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: &LargeGraphDB, sparsify_rate: HashMap<(u8,u8,u8), f64>, path: P) {
     let mut mut_graph: MutableGraphDB<DefaultId, InternalId> =
         GraphDBConfig::default().root_dir(path).new();
     // random edge
@@ -104,8 +104,8 @@ pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, sparsify
         
         let dst_label = src_graph.get_vertex(dst_id).unwrap().get_label();
         let edge_label = j.get_label();
-        let mut src_filter_label= src_label[0];
-        let mut dst_filter_label= dst_label[0];
+        let src_filter_label= src_label[0];
+        let dst_filter_label= dst_label[0];
         // if src_label[1] == INVALID_LABEL_ID {
         //     src_filter_label = src_label[0];
         // }
@@ -115,7 +115,7 @@ pub fn create_sparsified_graph<P: AsRef<Path>>(src_graph: LargeGraphDB, sparsify
         let relation_key = (src_filter_label,edge_label,dst_filter_label);
         let rate = sparsify_rate[&relation_key];
         let mut rng = thread_rng();
-        let ran = (rng.gen_range(0u64..sparsify_accuracy)) as f64 / (sparsify_accuracy) as f64;
+        let ran = (rng.gen_range(0u64..SPARSIFY_ACCURACY)) as f64 / (SPARSIFY_ACCURACY) as f64;
         if ran <= rate {
             if !insert_vertex.contains(&src_id) {
                 mut_graph.add_vertex(src_id, src_label);
