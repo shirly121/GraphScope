@@ -301,12 +301,12 @@ impl Operator {
     pub fn is_finished(&self) -> bool {
         for output in self.outputs.iter() {
             if !output.get_blocks().is_empty() {
-                debug!("operator {:?} is unfinished since output has block", self.info);
+                debug_worker!("operator {:?} is unfinished since output has block", self.info);
                 return false;
             }
         }
 
-        debug!("operator {:?} is unfinished since inputs are not exhaust", self.info);
+        debug_worker!("operator {:?} is unfinished since inputs are not exhaust", self.info);
         self.inputs.is_empty() || self.inputs.iter().all(|i| i.is_exhaust())
     }
 
