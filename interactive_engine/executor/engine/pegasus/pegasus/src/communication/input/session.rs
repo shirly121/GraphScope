@@ -122,12 +122,12 @@ impl<'a, D: Data> InputSession<'a, D> {
                 if log_enabled!(log::Level::Trace) {
                     if !batch.is_empty() {
                         if is_last {
-                            trace_worker!("handle last batch of {:?}, len = {}", batch.tag, batch.len());
+                            debug_worker!("handle last batch of {:?}, len = {}", batch.tag, batch.len());
                         } else {
                             trace_worker!("handle batch of {:?}, len = {}", batch.tag, batch.len());
                         }
                     } else if is_last {
-                        trace_worker!("handle end of {:?}", batch.tag);
+                        debug_worker!("handle end of {:?}", batch.tag);
                     }
                 }
             }
@@ -185,7 +185,7 @@ impl<'a, D: Data> InputSession<'a, D> {
             false
         } else {
             if !batch.is_empty() {
-                warn_worker!(
+                debug_worker!(
                     "ch[{:?}]: {} data in batch of {:?} not consumed",
                     self.input.ch_info.id,
                     batch.len(),

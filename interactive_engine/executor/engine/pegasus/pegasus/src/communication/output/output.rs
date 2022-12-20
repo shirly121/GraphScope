@@ -526,7 +526,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
             } else {
                 MicroBatch::new(end.tag.clone(), self.src, ReadBuffer::new())
             };
-            trace_worker!(
+            debug_worker!(
                 "output[{:?}] send end of scope{:?} peers: {:?}",
                 self.port,
                 batch.tag,
