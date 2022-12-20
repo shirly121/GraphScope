@@ -258,7 +258,7 @@ impl Approach {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum PatMatPlanSpace {
     ExtendWithIntersection,
     BinaryJoin,

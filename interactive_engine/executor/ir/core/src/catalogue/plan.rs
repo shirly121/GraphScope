@@ -95,20 +95,28 @@ impl Pattern {
         cost_metric: CostMetric,
     ) -> IrResult<pb::LogicalPlan> {
         let pattern_code: Vec<u8> = self.encode_to();
-        if let Some(_pattern_index) = catalog.get_pattern_index(&pattern_code) {
-            let pb_plan: IrResult<pb::LogicalPlan> = match catalog.get_plan_space() {
-                PatMatPlanSpace::BinaryJoin => Err(IrError::Unsupported(
-                    "Do not support pure binary join plan with no extend steps".to_string(),
-                )),
-                _ => {
+        match catalog.get_plan_space() {
+            PatMatPlanSpace::BinaryJoin => Err(IrError::Unsupported(
+                "Do not support pure binary join plan with no extend steps".to_string(),
+            )),
+            PatMatPlanSpace::Hybrid => {
+                if let Some(_pattern_index) = catalog.get_pattern_index(&pattern_code) {
                     catalog.set_best_approach_by_pattern(&cost_metric, self);
                     PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
                         .generate_pattern_match_plan()
+                } else {
+                    Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
                 }
-            };
-            pb_plan
-        } else {
-            Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
+            }
+            PatMatPlanSpace::ExtendWithIntersection => {
+                let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
+                extend_steps.reverse();
+                if is_distributed {
+                    build_distributed_match_plan(self, extend_steps, pattern_meta)
+                } else {
+                    build_stand_alone_match_plan(self, extend_steps, pattern_meta)
+                }
+            }
         }
     }
 }

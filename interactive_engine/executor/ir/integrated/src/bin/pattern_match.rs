@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // );
     let cost_metric = CostMetric::new(config.alpha, config.beta, config.w1, config.w2);
     let plan_generation_start_time = Instant::now();
-    let pb_plan = pattern
+    let mut pb_plan = pattern
         .generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed, cost_metric)
         .expect("Failed to generate optimized pattern match plan");
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
@@ -146,7 +146,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     //             println!("\n\n");
     //         });
     // }
-
+    if let PatMatPlanSpace::ExtendWithIntersection = plan_space {
+        match_pb_plan_add_source(&mut pb_plan);
+        pb_plan_add_count_sink_operator(&mut pb_plan);
+    }
     println!("Final pb logical plan:");
     print_pb_logical_plan(&pb_plan);
 
