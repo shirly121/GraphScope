@@ -209,6 +209,6 @@ mod tests {
         let ldbc_pattern_meta = get_ldbc_pattern_meta();
         let person_knows_person = build_ldbc_pattern_case1();
         let all_extend_steps = person_knows_person.get_extend_steps(&ldbc_pattern_meta, 10);
-        assert_eq!(all_extend_steps.len(), 44);
+        assert_eq!(all_extend_steps.len(), 46);
     }
 }

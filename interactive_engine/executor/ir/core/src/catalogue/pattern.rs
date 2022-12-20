@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
@@ -1148,11 +1148,9 @@ impl Pattern {
                         .get_label();
                     let traversed_vertices: Vec<PatternId> = self
                         .adjacencies_iter(current_v_id)
-                        .filter(|&adj| {
-                            !visited_vertices.contains(&adj.get_adj_vertex().get_id())
-                        })
+                        .filter(|&adj| !visited_vertices.contains(&adj.get_adj_vertex().get_id()))
                         .map(|adj| {
-                            let adj_v_id:PatternId = adj.get_adj_vertex().get_id();
+                            let adj_v_id: PatternId = adj.get_adj_vertex().get_id();
                             let adj_v_label: PatternLabelId = adj.get_adj_vertex().get_label();
                             let e_id: PatternId = adj.get_edge_id();
                             let e_label: PatternLabelId = adj.get_edge_label();
@@ -1174,10 +1172,9 @@ impl Pattern {
                         })
                         .collect();
                     // Mark traversed vertices as visited
-                    traversed_vertices.iter()
-                        .for_each(|&v_id| {
-                            visited_vertices.insert(v_id);
-                        });
+                    traversed_vertices.iter().for_each(|&v_id| {
+                        visited_vertices.insert(v_id);
+                    });
                 }
 
                 // Build pattern

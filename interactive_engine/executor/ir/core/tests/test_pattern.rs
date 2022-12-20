@@ -166,7 +166,7 @@ mod tests {
             // 1 University vertex
             assert_eq!(
                 pattern
-                    .vertices_iter_by_label(12)
+                    .vertices_iter_by_label(5)
                     .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
@@ -188,7 +188,7 @@ mod tests {
                 2
             );
             // check structure
-            let pattern_vertex1 = PatternVertex::new(0, 12);
+            let pattern_vertex1 = PatternVertex::new(0, 5);
             let pattern_vertex2 = PatternVertex::new(1, 1);
             let pattern_vertex3 = PatternVertex::new(2, 1);
             let pattern_edge1 = PatternEdge::new(0, 15, pattern_vertex2, pattern_vertex1);
@@ -325,7 +325,7 @@ mod tests {
             // 1 City vertex
             assert_eq!(
                 pattern
-                    .vertices_iter_by_label(9)
+                    .vertices_iter_by_label(0)
                     .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
@@ -365,7 +365,7 @@ mod tests {
             // check structure
             // build identical pattern for comparison
             let pattern_vertex1 = PatternVertex::new(0, 1);
-            let pattern_vertex2 = PatternVertex::new(1, 9);
+            let pattern_vertex2 = PatternVertex::new(1, 0);
             let pattern_vertex3 = PatternVertex::new(2, 1);
             let pattern_vertex4 = PatternVertex::new(3, 2);
             let pattern_edge1 = PatternEdge::new(0, 11, pattern_vertex1, pattern_vertex2);
@@ -506,7 +506,7 @@ mod tests {
             // 1 City vertex
             assert_eq!(
                 pattern
-                    .vertices_iter_by_label(9)
+                    .vertices_iter_by_label(0)
                     .collect::<Vec<&PatternVertex>>()
                     .len(),
                 1
@@ -554,7 +554,7 @@ mod tests {
             // check structure
             // build identical pattern for comparison
             let pattern_vertex1 = PatternVertex::new(0, 1);
-            let pattern_vertex2 = PatternVertex::new(1, 9);
+            let pattern_vertex2 = PatternVertex::new(1, 0);
             let pattern_vertex3 = PatternVertex::new(2, 1);
             let pattern_vertex4 = PatternVertex::new(3, 1);
             let pattern_vertex5 = PatternVertex::new(4, 1);

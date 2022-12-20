@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 use std::vec;
 
@@ -22,7 +22,9 @@ use ir_common::generated::algebra::{self as pb};
 use ir_common::generated::common::{self as common_pb, Variable};
 use petgraph::graph::NodeIndex;
 
-use crate::catalogue::catalog::{Catalogue, Approach, ApproachWeight, ExtendWeight, JoinWeight, PatMatPlanSpace};
+use crate::catalogue::catalog::{
+    Approach, ApproachWeight, Catalogue, ExtendWeight, JoinWeight, PatMatPlanSpace,
+};
 use crate::catalogue::extend_step::DefiniteExtendStep;
 use crate::catalogue::join_step::BinaryJoinPlan;
 use crate::catalogue::pattern::{Pattern, PatternVertex};
@@ -89,14 +91,15 @@ impl Pattern {
     }
 
     pub fn generate_optimized_match_plan(
-        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool, cost_metric: CostMetric,
+        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
+        cost_metric: CostMetric,
     ) -> IrResult<pb::LogicalPlan> {
         let pattern_code: Vec<u8> = self.encode_to();
         if let Some(_pattern_index) = catalog.get_pattern_index(&pattern_code) {
             let pb_plan: IrResult<pb::LogicalPlan> = match catalog.get_plan_space() {
-                PatMatPlanSpace::BinaryJoin => {
-                    Err(IrError::Unsupported("Do not support pure binary join plan with no extend steps".to_string()))
-                }
+                PatMatPlanSpace::BinaryJoin => Err(IrError::Unsupported(
+                    "Do not support pure binary join plan with no extend steps".to_string(),
+                )),
                 _ => {
                     catalog.set_best_approach_by_pattern(&cost_metric, self);
                     PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
@@ -112,7 +115,8 @@ impl Pattern {
 
 impl Catalogue {
     fn set_best_approach_by_pattern(&mut self, cost_metric: &CostMetric, pattern: &Pattern) {
-        let node_index = self.get_pattern_index(&pattern.encode_to())
+        let node_index = self
+            .get_pattern_index(&pattern.encode_to())
             .expect("Pattern not found in catalogue");
         self.set_node_best_approach_recursively(cost_metric, node_index)
             .expect("Failed to set node best approach recursively");
@@ -131,8 +135,8 @@ impl Catalogue {
         } else if let Some(best_approach) = pattern_weight.get_best_approach() {
             // Recursively set best approach
             let pre_pattern_index = best_approach.get_src_pattern_index();
-            let (_pre_best_approach, mut cost) = self.
-                set_node_best_approach_recursively(cost_metric, pre_pattern_index)
+            let (_pre_best_approach, mut cost) = self
+                .set_node_best_approach_recursively(cost_metric, pre_pattern_index)
                 .expect("Failed to set node best approach recursively");
             let this_step_cost = self.estimate_approach_cost(cost_metric, &best_approach);
             cost += this_step_cost;
@@ -147,8 +151,8 @@ impl Catalogue {
             let mut best_approach = candidate_approaches[0];
             for approach in candidate_approaches {
                 let pre_pattern_index = approach.get_src_pattern_index();
-                let (_pre_best_approach, mut cost) = self.
-                    set_node_best_approach_recursively(cost_metric, pre_pattern_index)
+                let (_pre_best_approach, mut cost) = self
+                    .set_node_best_approach_recursively(cost_metric, pre_pattern_index)
                     .expect("Failed to set node best approach recursively");
                 let this_step_cost = self.estimate_approach_cost(cost_metric, &best_approach);
                 cost += this_step_cost;
@@ -157,7 +161,7 @@ impl Catalogue {
                     best_approach = approach;
                 }
             }
-            
+
             // set best approach in the catalogue
             self.set_pattern_best_approach(node_index, best_approach);
             Ok((Some(best_approach), min_cost))
@@ -198,12 +202,15 @@ impl Catalogue {
     }
 
     /// Cost Estimation Function of Extend Step
-    fn estimate_extend_step_cost(&self, cost_metric: &CostMetric, approach: &Approach, extend_weight: &ExtendWeight) -> usize {
+    fn estimate_extend_step_cost(
+        &self, cost_metric: &CostMetric, approach: &Approach, extend_weight: &ExtendWeight,
+    ) -> usize {
         // Cost of finding adjacency lists of each vertex. (Normalized with coefficient alpha)
         let find_cost: usize = ((extend_weight.get_adjacency_count() as f64) * cost_metric.alpha) as usize;
         // Cost of doing intersection on multiple adjacency lists.
         // Zero if there is only one adjacency list for intersection.
-        let intersection_cost: usize = ((extend_weight.get_intersect_count() as f64) * cost_metric.beta) as usize;
+        let intersection_cost: usize =
+            ((extend_weight.get_intersect_count() as f64) * cost_metric.beta) as usize;
         // Cost of extending pattern Qk-1 to Qk (Dominant Cost)
         let extension_cost: usize = self
             .get_pattern_weight(approach.get_target_pattern_index())
@@ -219,7 +226,9 @@ impl Catalogue {
     }
 
     /// Cost Estimation Function of Binary Join Step
-    fn estimate_binary_join_step_cost(&self, cost_metric: &CostMetric, approach: &Approach, join_weight: &JoinWeight) -> usize {
+    fn estimate_binary_join_step_cost(
+        &self, cost_metric: &CostMetric, approach: &Approach, join_weight: &JoinWeight,
+    ) -> usize {
         // Collect data for cost estimation
         let build_pattern_cardinality = self
             .get_pattern_weight(approach.get_src_pattern_index())
@@ -242,14 +251,14 @@ impl Catalogue {
 }
 
 /// ## Plan Generator for Catalogue
-/// 
+///
 /// plan: pb logical plan
-/// 
+///
 /// trace_pattern: the pattern traced for plan generator, and it will be changed recursively during generation.
-/// 
+///
 /// target_pattern: the reference of the target pattern, fixed after initialization
-/// 
-/// catalog: the reference of the catalogue 
+///
+/// catalog: the reference of the catalogue
 struct PlanGenerator<'a> {
     plan: pb::LogicalPlan,
     trace_pattern: Pattern,
@@ -261,10 +270,7 @@ struct PlanGenerator<'a> {
 
 impl<'a> PlanGenerator<'a> {
     pub fn new(
-        pattern: &'a Pattern,
-        catalog: &'a Catalogue,
-        pattern_meta: &'a PatternMeta,
-        is_distributed: bool
+        pattern: &'a Pattern, catalog: &'a Catalogue, pattern_meta: &'a PatternMeta, is_distributed: bool,
     ) -> Self {
         PlanGenerator {
             catalog,
@@ -283,7 +289,9 @@ impl<'a> PlanGenerator<'a> {
 
     fn insert_node(&mut self, index: usize, node: pb::logical_plan::Node) -> IrResult<()> {
         if self.get_node_num() < index {
-            return Err(IrError::Unsupported("Failed in Plan Generation: Node Insertion, Index out of bound".to_string()));
+            return Err(IrError::Unsupported(
+                "Failed in Plan Generation: Node Insertion, Index out of bound".to_string(),
+            ));
         }
 
         self.plan.nodes.insert(index, node);
@@ -306,7 +314,9 @@ impl<'a> PlanGenerator<'a> {
 
     fn remove_node(&mut self, index: usize) -> IrResult<()> {
         if self.get_node_num() < index {
-            return Err(IrError::Unsupported("Failed in Plan Generation: Node Removal, Index out of bound".to_string()));
+            return Err(IrError::Unsupported(
+                "Failed in Plan Generation: Node Removal, Index out of bound".to_string(),
+            ));
         }
 
         // Offset the nodes after the inserted one by -1
@@ -339,9 +349,12 @@ impl<'a> PlanGenerator<'a> {
 
     fn generate_pattern_match_plan_recursively(&mut self, pattern: &Pattern) -> IrResult<()> {
         // locate the pattern node in the catalog graph
-        if let Some(node_index) = self.catalog.get_pattern_index(&pattern.encode_to()) {
+        if let Some(node_index) = self
+            .catalog
+            .get_pattern_index(&pattern.encode_to())
+        {
             if pattern.get_vertices_num() == 0 {
-                return Err(IrError::InvalidPattern("No vertex in pattern".to_string()))
+                return Err(IrError::InvalidPattern("No vertex in pattern".to_string()));
             } else if pattern.get_vertices_num() == 1 {
                 self.generate_pattern_match_plan_for_size_one_pattern(&pattern);
             } else {
@@ -365,10 +378,11 @@ impl<'a> PlanGenerator<'a> {
                         ApproachWeight::BinaryJoinStep(_join_weight) => {
                             self.generate_pattern_match_plan_recursively_for_join_approach(best_approach);
                         }
-                        _ => return Err(IrError::Unsupported("Unsupported Pattern Match Strategy".to_string()))
                     }
                 } else {
-                    return Err(IrError::Unsupported("Best approach not found for pattern in catalog".to_string()));
+                    return Err(IrError::Unsupported(
+                        "Best approach not found for pattern in catalog".to_string(),
+                    ));
                 }
             }
             Ok(())
@@ -380,28 +394,24 @@ impl<'a> PlanGenerator<'a> {
     fn generate_pattern_match_plan_recursively_for_extend_approach(&mut self, extend_approach: Approach) {
         // Build logical plan for src pattern
         let target_pattern: Pattern = self.trace_pattern.clone();
-        let pattern_index: NodeIndex = self.catalog
+        let pattern_index: NodeIndex = self
+            .catalog
             .get_pattern_index(&target_pattern.encode_to())
             .expect("Pattern not found in catalog");
-        let (src_pattern, definite_extend_step, _cost) = pattern_roll_back(
-            self.trace_pattern.clone(),
-            pattern_index,
-            extend_approach,
-            self.catalog
-        );
+        let (src_pattern, definite_extend_step, _cost) =
+            pattern_roll_back(self.trace_pattern.clone(), pattern_index, extend_approach, self.catalog);
         // Recursively generate pattern match plan for the source node
-        self
-            .generate_pattern_match_plan_recursively(&src_pattern)
+        self.generate_pattern_match_plan_recursively(&src_pattern)
             .expect("Failed to generate optimized pattern match plan recursively");
         // Append Extend Operator in logical plan
-        self
-            .append_extend_operator(&src_pattern, &target_pattern, definite_extend_step)
+        self.append_extend_operator(&src_pattern, &target_pattern, definite_extend_step)
             .expect("Failed to append extend operator");
     }
 
     fn generate_pattern_match_plan_recursively_for_join_approach(&mut self, join_approach: Approach) {
         // Collect Join Weight
-        let join_weight = self.catalog
+        let join_weight = self
+            .catalog
             .get_approach_weight(join_approach.get_approach_index())
             .expect("No such approach exists in catalogue")
             .get_join_weight()
@@ -413,12 +423,9 @@ impl<'a> PlanGenerator<'a> {
             .expect("Failed to do binary join decomposition")
             .into_iter()
             .filter(|binary_join_plan| {
-                let build_pattern_in_catalog = join_weight
-                    .get_join_plan()
-                    .get_build_pattern();
+                let build_pattern_in_catalog = join_weight.get_join_plan().get_build_pattern();
                 pattern_equal(build_pattern_in_catalog, binary_join_plan.get_build_pattern())
-                ||
-                pattern_equal(build_pattern_in_catalog, binary_join_plan.get_probe_pattern())
+                    || pattern_equal(build_pattern_in_catalog, binary_join_plan.get_probe_pattern())
             })
             .collect::<Vec<BinaryJoinPlan>>()
             .first()
@@ -428,8 +435,12 @@ impl<'a> PlanGenerator<'a> {
         self.generate_pattern_match_plan_recursively(join_plan.get_build_pattern())
             .expect("Failed to generate optimized pattern match plan recursively");
         // Generate plan for probe pattern
-        let mut probe_pattern_logical_plan_builder =
-            PlanGenerator::new(join_plan.get_probe_pattern(), self.catalog, self.pattern_meta, self.is_distributed);
+        let mut probe_pattern_logical_plan_builder = PlanGenerator::new(
+            join_plan.get_probe_pattern(),
+            self.catalog,
+            self.pattern_meta,
+            self.is_distributed,
+        );
         probe_pattern_logical_plan_builder
             .generate_pattern_match_plan_recursively(join_plan.get_probe_pattern())
             .expect("Failed to generate optimized pattern match plan recursively");
@@ -443,8 +454,7 @@ impl<'a> PlanGenerator<'a> {
         // Source operator when there is only one vertex in pattern
         let vertex: &PatternVertex = pattern
             .vertices_iter()
-            .collect::<Vec<&PatternVertex>>()
-            [0];
+            .collect::<Vec<&PatternVertex>>()[0];
         let vertex_label: PatternLabelId = vertex.get_label();
         // Append select node
         let select_node = {
@@ -474,34 +484,22 @@ impl<'a> PlanGenerator<'a> {
     ///            Intersect
     /// ```
     fn append_extend_operator(
-        &mut self,
-        src_pattern: &Pattern,
-        target_pattern: &Pattern,
+        &mut self, src_pattern: &Pattern, target_pattern: &Pattern,
         definite_extend_step: DefiniteExtendStep,
     ) -> IrResult<()> {
         if self.is_distributed {
-            self.append_extend_operator_distributed(
-                src_pattern,
-                target_pattern,
-                definite_extend_step,
-            )
-            .expect("Failed to append extend operator in distributed mode");
+            self.append_extend_operator_distributed(src_pattern, target_pattern, definite_extend_step)
+                .expect("Failed to append extend operator in distributed mode");
         } else {
-            self.append_extend_operator_stand_alone(
-                src_pattern,
-                target_pattern,
-                definite_extend_step,
-            )
-            .expect("Failed to append extend operator in stand-alone mode");
+            self.append_extend_operator_stand_alone(src_pattern, target_pattern, definite_extend_step)
+                .expect("Failed to append extend operator in stand-alone mode");
         }
 
         Ok(())
     }
 
     fn append_extend_operator_distributed(
-        &mut self,
-        src_pattern: &Pattern,
-        target_pattern: &Pattern,
+        &mut self, src_pattern: &Pattern, target_pattern: &Pattern,
         definite_extend_step: DefiniteExtendStep,
     ) -> IrResult<()> {
         // Modify Children ID in the last node of the input plan
@@ -515,16 +513,13 @@ impl<'a> PlanGenerator<'a> {
         // if edge expand num > 1, we need a Intersect Operator
         if edge_expands_num > 1 {
             for edge_expand in edge_expands {
-                let edge_expand_node = pb::logical_plan::Node {
-                    opr: Some(edge_expand.into()),
-                    children: vec![child_offset],
-                };
+                let edge_expand_node =
+                    pb::logical_plan::Node { opr: Some(edge_expand.into()), children: vec![child_offset] };
                 self.plan.nodes.push(edge_expand_node);
                 child_offset += 1;
             }
             let intersect_node = {
-                let opr = definite_extend_step
-                    .generate_intersect_operator(edge_expands_ids);
+                let opr = definite_extend_step.generate_intersect_operator(edge_expands_ids);
                 let children: Vec<i32> = vec![child_offset];
                 pb::logical_plan::Node { opr: Some(opr.into()), children }
             };
@@ -553,7 +548,9 @@ impl<'a> PlanGenerator<'a> {
                     .get_target_vertex()
                     .get_label();
                 let opr = pb::Select {
-                    predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
+                    predicate: Some(
+                        str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap(),
+                    ),
                 };
                 let children: Vec<i32> = vec![child_offset];
                 pb::logical_plan::Node { opr: Some(opr.into()), children }
@@ -563,10 +560,8 @@ impl<'a> PlanGenerator<'a> {
         }
         // Filter by the predicate of target vertex
         if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(src_pattern) {
-            let select_node = pb::logical_plan::Node {
-                opr: Some(filter.into()),
-                children: vec![child_offset],
-            };
+            let select_node =
+                pb::logical_plan::Node { opr: Some(filter.into()), children: vec![child_offset] };
             self.plan.nodes.push(select_node);
         }
 
@@ -574,9 +569,7 @@ impl<'a> PlanGenerator<'a> {
     }
 
     fn append_extend_operator_stand_alone(
-        &mut self,
-        src_pattern: &Pattern,
-        target_pattern: &Pattern,
+        &mut self, src_pattern: &Pattern, target_pattern: &Pattern,
         definite_extend_step: DefiniteExtendStep,
     ) -> IrResult<()> {
         // Modify Children ID in the last node of the input plan
@@ -613,7 +606,9 @@ impl<'a> PlanGenerator<'a> {
                     .get_target_vertex()
                     .get_label();
                 let opr = pb::Select {
-                    predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
+                    predicate: Some(
+                        str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap(),
+                    ),
                 };
                 let children: Vec<i32> = vec![child_offset];
                 pb::logical_plan::Node { opr: Some(opr.into()), children }
@@ -648,16 +643,11 @@ impl<'a> PlanGenerator<'a> {
         // Offset children IDs for the other logical plan
         let left_size = self.get_node_num();
         let right_size = other.get_node_num();
-        other.plan
-            .nodes
-            .iter_mut()
-            .for_each(|node| {
-                node.children
-                    .iter_mut()
-                    .for_each(|child| {
-                        *child += left_size as i32;
-                    });
+        other.plan.nodes.iter_mut().for_each(|node| {
+            node.children.iter_mut().for_each(|child| {
+                *child += left_size as i32;
             });
+        });
 
         // Link the last node of both left and right plan to the join node
         let join_node_idx = left_size + right_size;
@@ -696,42 +686,43 @@ impl<'a> PlanGenerator<'a> {
     fn match_pb_plan_add_source(&mut self) {
         // Iterate through all nodes and collect Select nodes
         let mut vertex_labels_to_scan: Vec<PatternLabelId> = vec![];
-        self.plan
-            .nodes
-            .iter()
-            .for_each(|node| {
-                if let pb::logical_plan::operator::Opr::Select(first_select) = node
-                    .opr
+        self.plan.nodes.iter().for_each(|node| {
+            if let pb::logical_plan::operator::Opr::Select(first_select) = node
+                .opr
+                .as_ref()
+                .unwrap()
+                .opr
+                .as_ref()
+                .unwrap()
+                .clone()
+            {
+                let label_id: PatternLabelId = first_select
+                    .predicate
                     .as_ref()
                     .unwrap()
-                    .opr
-                    .as_ref()
-                    .unwrap()
-                    .clone()
-                {
-                    let label_id: PatternLabelId = first_select
-                        .predicate
-                        .as_ref()
-                        .unwrap()
-                        .operators
-                        .get(2)
-                        .and_then(|opr| opr.item.as_ref())
-                        .and_then(
-                            |item| if let common_pb::expr_opr::Item::Const(value) = item { Some(value) } else { None },
-                        )
-                        .and_then(|value| {
-                            if let Some(common_pb::value::Item::I64(label_id)) = value.item {
-                                Some(label_id as i32)
-                            } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
-                                Some(label_id)
-                            } else {
-                                None
-                            }
-                        })
-                        .expect("Failed to get vertex label from Select Node");
-                    vertex_labels_to_scan.push(label_id);
-                }
-            });
+                    .operators
+                    .get(2)
+                    .and_then(|opr| opr.item.as_ref())
+                    .and_then(|item| {
+                        if let common_pb::expr_opr::Item::Const(value) = item {
+                            Some(value)
+                        } else {
+                            None
+                        }
+                    })
+                    .and_then(|value| {
+                        if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+                            Some(label_id as i32)
+                        } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
+                            Some(label_id)
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("Failed to get vertex label from Select Node");
+                vertex_labels_to_scan.push(label_id);
+            }
+        });
 
         // If the plan is purely extend-based, the first Select node could be removed, and we only need to scan the first vertex
         match self.catalog.get_plan_space() {
@@ -739,10 +730,10 @@ impl<'a> PlanGenerator<'a> {
                 vertex_labels_to_scan = vec![vertex_labels_to_scan[0]];
                 self.remove_node(0)
                     .expect("Failed to remove node from pb_plan");
-            },
-            _ => {},
+            }
+            _ => {}
         }
-        
+
         // Append Sink Node
         let scan_node = {
             let opr = pb::Scan {
@@ -988,7 +979,8 @@ fn pattern_roll_back(
             )
         })
         .collect();
-    let pre_pattern = pattern.remove_vertex(target_vertex_id)
+    let pre_pattern = pattern
+        .remove_vertex(target_vertex_id)
         .expect("Failed to remove vertex from pattern");
     let definite_extend_step =
         DefiniteExtendStep::from_src_pattern(&pre_pattern, &extend_step, target_vertex_id, edge_id_map)
@@ -1328,8 +1320,8 @@ fn pb_plan_add_count_sink_operator(pb_plan: &mut pb::LogicalPlan) {
 
 fn pattern_equal(pattern1: &Pattern, pattern2: &Pattern) -> bool {
     if pattern1.get_vertices_num() == pattern2.get_vertices_num()
-       &&
-       pattern1.get_edges_num() == pattern2.get_edges_num() {
+        && pattern1.get_edges_num() == pattern2.get_edges_num()
+    {
         return pattern1.encode_to() == pattern2.encode_to();
     }
 

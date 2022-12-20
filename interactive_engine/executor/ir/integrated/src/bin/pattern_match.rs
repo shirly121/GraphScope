@@ -14,17 +14,15 @@
 //! limitations under the License.
 //!
 
-use std::collections::HashMap;
+use ir_core::catalogue::plan::CostMetric;
 use std::convert::TryInto;
 use std::error::Error;
 use std::path::PathBuf;
 use std::time::Instant;
-use ir_core::catalogue::plan::CostMetric;
 use structopt::StructOpt;
 
 use graph_proxy::create_exp_store;
-use ir_common::generated::algebra as pb;
-use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
+use ir_core::catalogue::catalog::PatMatPlanSpace;
 use ir_core::plan::logical::LogicalPlan;
 use ir_core::plan::physical::AsPhysical;
 use pegasus::{Configuration, JobConf};
@@ -114,15 +112,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     //     config.cost_metric[2],
     //     config.cost_metric[3],
     // );
-    let cost_metric = CostMetric::new(
-        config.alpha,
-        config.beta,
-        config.w1,
-        config.w2,
-    );
+    let cost_metric = CostMetric::new(config.alpha, config.beta, config.w1, config.w2);
     let plan_generation_start_time = Instant::now();
-    let mut pb_plan =
-        pattern.generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed, cost_metric)
+    let pb_plan = pattern
+        .generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed, cost_metric)
         .expect("Failed to generate optimized pattern match plan");
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
 

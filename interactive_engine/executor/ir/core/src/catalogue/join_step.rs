@@ -13,9 +13,9 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
-use serde::{Deserialize, Serialize};
 
 use ir_common::generated::common::{self as common_pb, NameOrId, Variable};
 
@@ -42,30 +42,17 @@ pub struct BinaryJoinPlan {
 }
 
 impl BinaryJoinPlan {
-    fn init(
-        build_pattern: Pattern,
-        probe_pattern: Pattern,
-    ) -> Self {
+    fn init(build_pattern: Pattern, probe_pattern: Pattern) -> Self {
         let shared_vertices: BTreeSet<PatternId> = build_pattern
             .vertices_iter()
             .map(|vertex| vertex.get_id())
-            .filter(|&v_id| {
-                probe_pattern.get_vertex(v_id).is_some()
-            })
+            .filter(|&v_id| probe_pattern.get_vertex(v_id).is_some())
             .collect();
-        BinaryJoinPlan { build_pattern, probe_pattern, shared_vertices }
+        BinaryJoinPlan::new(build_pattern, probe_pattern, shared_vertices)
     }
 
-    fn new(
-        build_pattern: Pattern,
-        probe_pattern: Pattern,
-        shared_vertices: BTreeSet<PatternId>
-    ) -> Self {
-        BinaryJoinPlan {
-            build_pattern,
-            probe_pattern,
-            shared_vertices,
-        }
+    fn new(build_pattern: Pattern, probe_pattern: Pattern, shared_vertices: BTreeSet<PatternId>) -> Self {
+        BinaryJoinPlan { build_pattern, probe_pattern, shared_vertices }
     }
 
     pub fn get_build_pattern(&self) -> &Pattern {
@@ -85,12 +72,15 @@ impl BinaryJoinPlan {
     /// - The second element represents the ID of the shared vertex in build pattern
     pub fn get_shared_vertices_rank_map(&self) -> BTreeMap<usize, usize> {
         let mut shared_vertices_rank_map: BTreeMap<usize, usize> = BTreeMap::new();
-        self.shared_vertices.iter()
+        self.shared_vertices
+            .iter()
             .for_each(|&shared_v_id| {
-                let v_rank_build = self.build_pattern
+                let v_rank_build = self
+                    .build_pattern
                     .get_vertex_rank(shared_v_id)
                     .expect("Failed to get vertex rank");
-                let v_rank_probe = self.probe_pattern
+                let v_rank_probe = self
+                    .probe_pattern
                     .get_vertex_rank(shared_v_id)
                     .expect("Failed to get vertex rank");
                 shared_vertices_rank_map.insert(v_rank_probe, v_rank_build);
@@ -98,26 +88,26 @@ impl BinaryJoinPlan {
         shared_vertices_rank_map
     }
 
-    fn debug_print(&self, target_pattern: &Pattern) {
-        let shared_vertices_info: BTreeSet<(PatternLabelId, usize, usize)> =
-            self.get_shared_vertices()
-            .iter()
-            .map(|&shared_v_id| {
-                let v_label: PatternLabelId = target_pattern
-                    .get_vertex(shared_v_id)
-                    .expect("Failed to get vertex from id")
-                    .get_label();
-                let v_group: usize = target_pattern
-                    .get_vertex_group(shared_v_id)
-                    .expect("Faield to get vertex group");
-                let v_rank: usize = target_pattern
-                    .get_vertex_rank(shared_v_id)
-                    .expect("Failed to get vertex rank");
-                (v_label, v_group, v_rank)
-            })
-            .collect();
-        println!("[Join Plan Print] shared vertices info = {:?}", shared_vertices_info);
-    }
+    // fn debug_print(&self, target_pattern: &Pattern) {
+    //     let shared_vertices_info: BTreeSet<(PatternLabelId, usize, usize)> =
+    //         self.get_shared_vertices()
+    //         .iter()
+    //         .map(|&shared_v_id| {
+    //             let v_label: PatternLabelId = target_pattern
+    //                 .get_vertex(shared_v_id)
+    //                 .expect("Failed to get vertex from id")
+    //                 .get_label();
+    //             let v_group: usize = target_pattern
+    //                 .get_vertex_group(shared_v_id)
+    //                 .expect("Faield to get vertex group");
+    //             let v_rank: usize = target_pattern
+    //                 .get_vertex_rank(shared_v_id)
+    //                 .expect("Failed to get vertex rank");
+    //             (v_label, v_group, v_rank)
+    //         })
+    //         .collect();
+    //     println!("[Join Plan Print] shared vertices info = {:?}", shared_vertices_info);
+    // }
 }
 
 impl BinaryJoinPlan {
@@ -146,8 +136,7 @@ impl BinaryJoinPlan {
         let build_pattern = self.get_build_pattern();
         let probe_pattern: &Pattern = self.get_probe_pattern();
         let mut target_pattern: Pattern = build_pattern.clone();
-        let shared_vertices_id_map: BTreeMap<PatternId, PatternId> =
-            self.init_shared_vertices_id_map();
+        let shared_vertices_id_map: BTreeMap<PatternId, PatternId> = self.init_shared_vertices_id_map();
         let mut vertex_id_map_probe_to_build: BTreeMap<PatternId, PatternId> =
             shared_vertices_id_map.clone();
         // Record the mapping of edge ID from probe pattern to build pattern
@@ -241,9 +230,7 @@ impl BinaryJoinPlan {
         while let Some(v_id) = vertex_queue.pop_back() {
             probe_pattern
                 .adjacencies_iter(v_id)
-                .filter(|&adj| {
-                    visited_edges.insert(adj.get_edge_id())
-                })
+                .filter(|&adj| visited_edges.insert(adj.get_edge_id()))
                 .filter(|&adj| {
                     target_pattern
                         .get_edge(adj.get_edge_id())
@@ -304,16 +291,18 @@ impl BinaryJoinPlan {
         let is_plan_valid: bool = shared_vertices_num > 0
             && build_pattern_vertices_num > shared_vertices_num + 1
             && probe_pattern_vertices_num > shared_vertices_num + 1;
-        if !is_plan_valid { return false }
+        if !is_plan_valid {
+            return false;
+        }
         for &shared_v_id in self.get_shared_vertices().iter() {
             let num_connected_build_vertices = target_pattern
                 .adjacencies_iter(shared_v_id)
-                .map(|adj| adj.get_adj_vertex().get_id() )
-                .filter(|adj_v_id| {
-                    !self.get_shared_vertices().contains(adj_v_id)
-                })
+                .map(|adj| adj.get_adj_vertex().get_id())
+                .filter(|adj_v_id| !self.get_shared_vertices().contains(adj_v_id))
                 .filter(|&adj_v_id| {
-                    self.get_build_pattern().get_vertex(adj_v_id).is_some()
+                    self.get_build_pattern()
+                        .get_vertex(adj_v_id)
+                        .is_some()
                 })
                 .map(|adj_v_id| {
                     // // ---debug---
@@ -329,12 +318,12 @@ impl BinaryJoinPlan {
                 .count();
             let num_connected_probe_vertices = target_pattern
                 .adjacencies_iter(shared_v_id)
-                .map(|adj| adj.get_adj_vertex().get_id() )
-                .filter(|adj_v_id| {
-                    !self.get_shared_vertices().contains(adj_v_id)
-                })
+                .map(|adj| adj.get_adj_vertex().get_id())
+                .filter(|adj_v_id| !self.get_shared_vertices().contains(adj_v_id))
                 .filter(|&adj_v_id| {
-                    self.get_probe_pattern().get_vertex(adj_v_id).is_some()
+                    self.get_probe_pattern()
+                        .get_vertex(adj_v_id)
+                        .is_some()
                 })
                 .map(|adj_v_id| {
                     // // ---debug---
@@ -348,15 +337,15 @@ impl BinaryJoinPlan {
                     adj_v_id
                 })
                 .count();
-            if num_connected_build_vertices == 0 || num_connected_probe_vertices == 0 { return false }
+            if num_connected_build_vertices == 0 || num_connected_probe_vertices == 0 {
+                return false;
+            }
         }
 
         // Ensure that the two subpatterns can join to be the target pattern
-        let joined_pattern: Pattern = self.join()
-            .expect("Failed to get two patterns");
+        let joined_pattern: Pattern = self.join().expect("Failed to get two patterns");
         if joined_pattern.get_vertices_num() != target_pattern.get_vertices_num()
-           ||
-           joined_pattern.get_edges_num() != target_pattern.get_edges_num()
+            || joined_pattern.get_edges_num() != target_pattern.get_edges_num()
         {
             return false;
         }
@@ -371,8 +360,7 @@ impl BinaryJoinPlan {
 
     /// Check if the decomposition plan is redundant
     fn is_redundant(
-        &self, target_pattern: &Pattern,
-        pattern_code_set: &mut BTreeSet<BTreeSet<Vec<u8>>>,
+        &self, _target_pattern: &Pattern, pattern_code_set: &mut BTreeSet<BTreeSet<Vec<u8>>>,
     ) -> bool {
         let mut pattern_codes: BTreeSet<Vec<u8>> = BTreeSet::new();
         pattern_codes.insert(self.get_build_pattern().encode_to());
@@ -464,7 +452,9 @@ impl Pattern {
             self.extend_decomposition_plans(&candidate_plan)
                 .into_iter()
                 .filter(|plan_to_extend| {
-                    !plan_to_extend.plan.is_redundant(self, &mut pattern_code_set)
+                    !plan_to_extend
+                        .plan
+                        .is_redundant(self, &mut pattern_code_set)
                 })
                 .for_each(|plan_to_extend| {
                     candidate_plan_queue.push_back(plan_to_extend);
@@ -478,12 +468,7 @@ impl Pattern {
                     (build_pattern, probe_pattern) = (probe_pattern, build_pattern);
                 }
 
-                decomposition_plans.push(
-                    BinaryJoinPlan::init(
-                        build_pattern,
-                        probe_pattern,
-                    )
-                );
+                decomposition_plans.push(BinaryJoinPlan::init(build_pattern, probe_pattern));
             }
         }
 
@@ -503,18 +488,15 @@ impl Pattern {
             v1_degree.cmp(&v2_degree)
         });
         for v_id in vertex_ids {
-            let v_label: PatternLabelId = self.get_vertex(v_id)
+            let v_label: PatternLabelId = self
+                .get_vertex(v_id)
                 .expect("Faield to get vertex from id")
                 .get_label();
             let build_pattern: Pattern = self.clone();
-            let probe_pattern = Pattern::try_from(
-                PatternVertex::new(v_id, v_label)
-            ).expect("Faield to build pattern from one single vertex");
+            let probe_pattern = Pattern::try_from(PatternVertex::new(v_id, v_label))
+                .expect("Faield to build pattern from one single vertex");
             let plan = JoinDecompositionPlan {
-                plan: BinaryJoinPlan::init(
-                    build_pattern,
-                    probe_pattern,
-                ),
+                plan: BinaryJoinPlan::init(build_pattern, probe_pattern),
                 always_shared_vertices: BTreeSet::new(),
             };
             candidate_decomposition_plan_queue.push_back(plan);
@@ -527,15 +509,13 @@ impl Pattern {
     /// Extend to other candidate decomposition plans and shore in bfs queue
     ///
     /// Return an iterator of candidate decomposition plans
-    /// 
+    ///
     /// Idea:
     /// to extend an existing decomposition plan, at least one disjoint vertex should be added to the probe pattern.
     /// The new disjoint vertex can derived be of two cases:
     /// Case-1: From a shared vertex
     /// Case-2: From a neighbor of a shared vertex
-    fn extend_decomposition_plans(
-        &self, last_plan: &JoinDecompositionPlan,
-    ) -> Vec<JoinDecompositionPlan> {
+    fn extend_decomposition_plans(&self, last_plan: &JoinDecompositionPlan) -> Vec<JoinDecompositionPlan> {
         let mut candidate_plans_to_extend: Vec<JoinDecompositionPlan> = vec![];
         let shared_vertices: &BTreeSet<PatternId> = last_plan.plan.get_shared_vertices();
         for &shared_v_id in shared_vertices.iter() {
@@ -602,10 +582,14 @@ impl Pattern {
         candidate_plans_to_extend
     }
 
-    fn extend_shared_vertex_as_disjoint(&self, last_plan: &JoinDecompositionPlan, shared_v_id: PatternId)
-        -> Vec<JoinDecompositionPlan> {
+    fn extend_shared_vertex_as_disjoint(
+        &self, last_plan: &JoinDecompositionPlan, shared_v_id: PatternId,
+    ) -> Vec<JoinDecompositionPlan> {
         // Vertices that are always shared cannot be disjoint
-        if last_plan.always_shared_vertices.contains(&shared_v_id) {
+        if last_plan
+            .always_shared_vertices
+            .contains(&shared_v_id)
+        {
             return vec![];
         }
 
@@ -631,9 +615,7 @@ impl Pattern {
             // Neighbors of the new disjoint vertex in build pattern become shared vertices
             let neighbor_vertices: BTreeSet<PatternId> = last_build_pattern
                 .adjacencies_iter(shared_v_id)
-                .filter(|adj| {
-                    !last_shared_vertices.contains(&adj.get_adj_vertex().get_id())
-                })
+                .filter(|adj| !last_shared_vertices.contains(&adj.get_adj_vertex().get_id()))
                 .map(|adj| {
                     let pattern_edge: PatternEdge = last_build_pattern
                         .get_edge(adj.get_edge_id())
@@ -644,13 +626,15 @@ impl Pattern {
                     adj.get_adj_vertex().get_id()
                 })
                 .collect();
-            
+
             for neighbor_v_id in neighbor_vertices {
                 last_build_pattern
                     .adjacencies_iter(neighbor_v_id)
                     .filter(|&adj| {
                         let adj_v_id: PatternId = adj.get_adj_vertex().get_id();
-                        next_probe_pattern.get_vertex(adj_v_id).is_some()
+                        next_probe_pattern
+                            .get_vertex(adj_v_id)
+                            .is_some()
                     })
                     .filter(|&adj| {
                         let adj_e_id: PatternId = adj.get_edge_id();
@@ -668,15 +652,10 @@ impl Pattern {
             next_probe_pattern = next_probe_pattern
                 .extend_by_edges(edges_to_insert.iter())
                 .expect("Failed to extend pattern by edges");
-            vec![
-                JoinDecompositionPlan {
-                    plan: BinaryJoinPlan::init(
-                        next_build_pattern,
-                        next_probe_pattern,
-                    ),
-                    always_shared_vertices: last_plan.always_shared_vertices.clone(),
-                },
-            ]
+            vec![JoinDecompositionPlan {
+                plan: BinaryJoinPlan::init(next_build_pattern, next_probe_pattern),
+                always_shared_vertices: last_plan.always_shared_vertices.clone(),
+            }]
         } else {
             // Union connected components if the new build pattern is not connected
             let num_connected_comps = next_build_pattern.get_connected_component_num();
@@ -690,8 +669,7 @@ impl Pattern {
             }
 
             // Exteng edges in one of the connected coomponents
-            let connected_components: Vec<Pattern> = next_build_pattern
-                .get_connected_components();
+            let connected_components: Vec<Pattern> = next_build_pattern.get_connected_components();
             let extended_connected_comps: Vec<Pattern> = connected_components
                 .into_iter()
                 .map(|connected_component| {
@@ -700,7 +678,9 @@ impl Pattern {
                         .adjacencies_iter(shared_v_id)
                         .filter(|&adj| {
                             let adj_v_id = adj.get_adj_vertex().get_id();
-                            connected_component.get_vertex(adj_v_id).is_some()
+                            connected_component
+                                .get_vertex(adj_v_id)
+                                .is_some()
                         })
                         .map(|adj| {
                             // Collect edges to insert to probe pattern
@@ -717,11 +697,10 @@ impl Pattern {
             let next_probe_patterns: Vec<Pattern> = extended_connected_comps
                 .iter()
                 .map(|extended_connected_comp| {
-                    let binary_join_plan = BinaryJoinPlan::init(
-                        last_probe_pattern.clone(),
-                        extended_connected_comp.clone(),
-                    );
-                    binary_join_plan.join_with_raw_id()
+                    let binary_join_plan =
+                        BinaryJoinPlan::init(last_probe_pattern.clone(), extended_connected_comp.clone());
+                    binary_join_plan
+                        .join_with_raw_id()
                         .expect("Failed to join two patterns")
                 })
                 .collect();
@@ -746,7 +725,7 @@ impl Pattern {
     }
 
     fn extend_one_neighbor_of_shared_vertex_as_shared(
-        &self, last_plan: &JoinDecompositionPlan, shared_v_id: PatternId
+        &self, last_plan: &JoinDecompositionPlan, shared_v_id: PatternId,
     ) -> Vec<JoinDecompositionPlan> {
         let last_build_pattern: &Pattern = last_plan.plan.get_build_pattern();
         let last_probe_pattern: &Pattern = last_plan.plan.get_probe_pattern();
@@ -755,9 +734,7 @@ impl Pattern {
         let neighbor_vertices: BTreeSet<PatternId> = last_build_pattern
             .adjacencies_iter(shared_v_id)
             .map(|adj| adj.get_adj_vertex().get_id())
-            .filter(|adj_v_id| {
-                !last_shared_vertices.contains(adj_v_id)
-            })
+            .filter(|adj_v_id| !last_shared_vertices.contains(adj_v_id))
             .collect();
         // Collect plans to extend to
         let mut plans_to_extend: Vec<JoinDecompositionPlan> = vec![];
@@ -792,9 +769,7 @@ impl Pattern {
                 let next_probe_pattern: Pattern = last_probe_pattern
                     .extend_by_edges(edges_to_insert.into_iter())
                     .expect("Failed to extend pattern by edges");
-                let mut always_shared_vertices = last_plan
-                    .always_shared_vertices
-                    .clone();
+                let mut always_shared_vertices = last_plan.always_shared_vertices.clone();
                 always_shared_vertices.insert(shared_v_id);
                 // Check if the extended plan is valid
                 // let shared_vertices: BTreeSet<PatternId> = next_probe_pattern
@@ -806,21 +781,18 @@ impl Pattern {
                 //     .collect();
                 let num_valid_edges = self
                     .adjacencies_iter(shared_v_id)
-                    .map(|adj| adj.get_adj_vertex().get_id() )
+                    .map(|adj| adj.get_adj_vertex().get_id())
                     .filter(|&adj_v_id| {
-                        next_probe_pattern.get_vertex(adj_v_id).is_none()
+                        next_probe_pattern
+                            .get_vertex(adj_v_id)
+                            .is_none()
                     })
                     .count();
                 if num_valid_edges > 0 {
-                    plans_to_extend.push(
-                        JoinDecompositionPlan {
-                            plan: BinaryJoinPlan::init(
-                                next_build_pattern,
-                                next_probe_pattern,
-                            ),
-                            always_shared_vertices,
-                        }
-                    );
+                    plans_to_extend.push(JoinDecompositionPlan {
+                        plan: BinaryJoinPlan::init(next_build_pattern, next_probe_pattern),
+                        always_shared_vertices,
+                    });
                 }
             });
         plans_to_extend

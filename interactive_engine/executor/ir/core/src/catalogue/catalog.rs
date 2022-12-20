@@ -26,8 +26,8 @@ use petgraph::Direction;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
-use crate::catalogue::join_step::BinaryJoinPlan;
 use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
+use crate::catalogue::join_step::BinaryJoinPlan;
 use crate::catalogue::pattern::{Adjacency, Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
@@ -362,9 +362,6 @@ impl Catalogue {
                 println!("Extend Pattern Num: {}", self.get_patterns_num());
                 println!("ExtendStep Num: {}", self.get_approaches_num());
             }
-            _ => {
-                panic!("Unsupported pattern match plan space");
-            }
         }
     }
 
@@ -428,18 +425,16 @@ impl Catalogue {
     /// Usage: Given a pattern, find out all (build pattern, binary join steo) pairs that join to get the given pattern, and store them in catalogue.
     fn update_join_steps_by_pattern(&mut self, pattern: &Pattern) {
         let pattern_code: Vec<u8> = pattern.encode_to();
-        let pattern_node_index: NodeIndex = 
+        let pattern_node_index: NodeIndex =
             if let Some(&node_index) = self.pattern_locate_map.get(&pattern_code) {
                 node_index
             } else {
-                let node_index = self
-                    .store
-                    .add_node(PatternWeight {
-                        pattern: pattern.clone(),
-                        count: 0,
-                        best_approach: None,
-                        out_extend_map: HashMap::new(),
-                    });
+                let node_index = self.store.add_node(PatternWeight {
+                    pattern: pattern.clone(),
+                    count: 0,
+                    best_approach: None,
+                    out_extend_map: HashMap::new(),
+                });
                 self.pattern_locate_map
                     .insert(pattern_code, node_index);
                 node_index

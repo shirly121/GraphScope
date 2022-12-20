@@ -15,14 +15,15 @@
 
 use std::fs::File;
 
-use ir_common::generated::algebra::{self as pb};
+use ir_common::expr_parse::str_to_expr_pb;
+use ir_common::generated::algebra as pb;
 use ir_core::catalogue::pattern::Pattern;
 use ir_core::catalogue::pattern_meta::PatternMeta;
 use ir_core::error::{IrError, IrResult};
-use ir_core::{plan::meta::Schema, JsonIO};
 use ir_core::plan::meta::PlanMeta;
+use ir_core::{plan::meta::Schema, JsonIO};
 
-use crate::common::{test::*};
+use crate::common::test::*;
 
 pub fn get_ldbc_pattern_meta() -> PatternMeta {
     let ldbc_schema_file = File::open("../core/resource/ldbc_schema_broad.json").unwrap();
@@ -238,6 +239,8 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
         expand_opt: 0,
         alias: None,
     };
+    let select_comment =
+        pb::Select { predicate: Some(str_to_expr_pb("@.~label == 2".to_string()).unwrap()) };
     let pattern = pb::Pattern {
         sentences: vec![
             pb::pattern::Sentence {
@@ -270,6 +273,14 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
                     item: Some(pb::pattern::binder::Item::Edge(expand_opr4)),
                 }],
                 end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Select(select_comment)),
+                }],
+                end: None,
                 join_kind: 0,
             },
         ],
@@ -534,7 +545,7 @@ pub fn build_ldbc_bi4_subtask_1() -> IrResult<Pattern> {
     // Define Pattern Edges
     let forum_has_member_person = pb::EdgeExpand {
         v_tag: None,
-        direction: 0,                                              // out
+        direction: 0,                                             // out
         params: Some(query_params(vec![6.into()], vec![], None)), //KNOWS
         expand_opt: 0,
         alias: None,
@@ -589,28 +600,28 @@ pub fn build_ldbc_bi4_subtask_2() -> IrResult<Pattern> {
     // Define Pattern Edges
     let forum_container_of_post = pb::EdgeExpand {
         v_tag: None,
-        direction: 0,                                              // out
+        direction: 0,                                             // out
         params: Some(query_params(vec![5.into()], vec![], None)), //KNOWS
         expand_opt: 0,
         alias: None,
     };
     let post_reply_of_message = pb::EdgeExpand {
         v_tag: None,
-        direction: 1,                                              // in
+        direction: 1,                                             // in
         params: Some(query_params(vec![3.into()], vec![], None)), //KNOWS
         expand_opt: 0,
         alias: None,
     };
     let message_has_creator_person = pb::EdgeExpand {
         v_tag: None,
-        direction: 0,                                              // out
+        direction: 0,                                             // out
         params: Some(query_params(vec![0.into()], vec![], None)), //KNOWS
         expand_opt: 0,
         alias: None,
     };
     let person_has_member_forum = pb::EdgeExpand {
         v_tag: None,
-        direction: 1,                                              // in
+        direction: 1,                                             // in
         params: Some(query_params(vec![6.into()], vec![], None)), //KNOWS
         expand_opt: 0,
         alias: None,
