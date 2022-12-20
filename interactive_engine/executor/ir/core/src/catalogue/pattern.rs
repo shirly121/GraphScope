@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
@@ -1086,7 +1086,10 @@ impl Pattern {
         canonical_label_manager
             .vertex_ranks_iter()
             .for_each(|(v_id, v_rank)| {
-                self.set_vertex_rank(v_id, v_rank.unwrap());
+                self.set_vertex_rank(
+                    v_id,
+                    v_rank.expect("Error occurs when ranking vertices: Not all vertices are ranked"),
+                );
             });
 
         // Update edge ranks
@@ -1094,8 +1097,107 @@ impl Pattern {
         canonical_label_manager
             .edge_ranks_iter()
             .for_each(|(e_id, e_rank)| {
-                self.set_edge_rank(e_id, e_rank.unwrap());
+                self.set_edge_rank(
+                    e_id,
+                    e_rank.expect("Error occurs when ranking edges: Not all edges are ranked"),
+                );
             });
+    }
+
+    /// Return the number of connected components in a pattern
+    ///
+    /// Pattern is disconnected if number of connected components is bigger than 1
+    pub fn get_connected_component_num(&self) -> usize {
+        self.vertices_iter()
+            .map(|vertex| vertex.get_id())
+            .filter(|&v_id| self.get_vertex_rank(v_id).unwrap() == 0)
+            .count()
+    }
+
+    /// Determine whther a pattern is connected or not
+    ///
+    /// The edge ranks are used since only disconnected pattern could result in some edges with None rank.
+    pub fn is_connected(&self) -> bool {
+        self.get_connected_component_num() == 1
+    }
+
+    pub fn get_connected_components(&self) -> Vec<Pattern> {
+        // // ---debug---
+        // self.vertices_iter()
+        //     .for_each(|vertex| {
+        //         let v_id = vertex.get_id();
+        //         let v_label = vertex.get_label();
+        //         let v_rank = self.get_vertex_rank(v_id).expect("Failed to get vertex rank from id");
+        //         println!("ID: {v_id}, Label: {v_label}, Rank: {v_rank}");
+        //     });
+        // // ---debug---
+        let mut visited_vertices: BTreeSet<PatternId> = BTreeSet::new();
+        let connected_components: Vec<Pattern> = self
+            .vertices_iter()
+            .map(|vertex| vertex.get_id())
+            .filter(|&v_id| self.get_vertex_rank(v_id).unwrap() == 0)
+            .map(|v_id| {
+                // BFS to traverse the connected component
+                let mut vertices_queue: VecDeque<PatternId> = VecDeque::new();
+                let mut pattern_edges: Vec<PatternEdge> = vec![];
+                vertices_queue.push_back(v_id);
+                while let Some(current_v_id) = vertices_queue.pop_front() {
+                    let current_v_label: PatternLabelId = self
+                        .get_vertex(current_v_id)
+                        .expect("Vertex Not Found")
+                        .get_label();
+                    let traversed_vertices: Vec<PatternId> = self
+                        .adjacencies_iter(current_v_id)
+                        .filter(|&adj| {
+                            !visited_vertices.contains(&adj.get_adj_vertex().get_id())
+                        })
+                        .map(|adj| {
+                            let adj_v_id:PatternId = adj.get_adj_vertex().get_id();
+                            let adj_v_label: PatternLabelId = adj.get_adj_vertex().get_label();
+                            let e_id: PatternId = adj.get_edge_id();
+                            let e_label: PatternLabelId = adj.get_edge_label();
+                            let e_direction: PatternDirection = adj.get_direction();
+                            let (start_v_id, end_v_id) = match e_direction {
+                                PatternDirection::Out => (current_v_id, adj_v_id),
+                                PatternDirection::In => (adj_v_id, current_v_id),
+                            };
+                            let (start_v_label, end_v_label) = match e_direction {
+                                PatternDirection::Out => (current_v_label, adj_v_label),
+                                PatternDirection::In => (adj_v_label, current_v_label),
+                            };
+                            let start_vertex = PatternVertex::new(start_v_id, start_v_label);
+                            let end_vertex = PatternVertex::new(end_v_id, end_v_label);
+                            pattern_edges.push(PatternEdge::new(e_id, e_label, start_vertex, end_vertex));
+                            // Push unvisited vertex to vertices queue
+                            vertices_queue.push_back(adj_v_id);
+                            current_v_id
+                        })
+                        .collect();
+                    // Mark traversed vertices as visited
+                    traversed_vertices.iter()
+                        .for_each(|&v_id| {
+                            visited_vertices.insert(v_id);
+                        });
+                }
+
+                // Build pattern
+                if pattern_edges.len() == 0 {
+                    // Case-1: Single Vertex
+                    let v_label: PatternLabelId = self
+                        .get_vertex(v_id)
+                        .expect("Vertex Not Found in Pattern")
+                        .get_label();
+                    return Pattern::try_from(PatternVertex::new(v_id, v_label))
+                        .expect("Failed to build pattern from a single vertex");
+                } else {
+                    // Case-2: Pattern Edges
+                    return Pattern::try_from(pattern_edges)
+                        .expect("Failed to build pattern from a single vertex");
+                }
+            })
+            .collect();
+
+        connected_components
     }
 }
 
@@ -1404,14 +1506,62 @@ impl Pattern {
                         .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
                 }
             }
+            self.canonical_labeling();
             if self.is_connected() {
-                self.canonical_labeling();
                 Some(self)
             } else {
                 None
             }
         } else {
             None
+        }
+    }
+
+    /// Remove a vertex with all its adjacent edges in the current pattern
+    pub fn remove_vertex_local(&mut self, vertex_id: PatternId) {
+        if self.get_vertex(vertex_id).is_some() {
+            let adjacencies: Vec<Adjacency> = self
+                .adjacencies_iter(vertex_id)
+                .cloned()
+                .collect();
+            // delete target vertex
+            // delete in vertices
+            self.vertices.remove(vertex_id);
+            // delete in vertex tag map
+            if let Some(tag) = self.get_vertex_tag(vertex_id) {
+                self.tag_vertex_map.remove(&tag);
+            }
+            // delete in vertices data
+            self.vertices_data.remove(vertex_id);
+            for adjacency in adjacencies {
+                let adjacent_vertex_id = adjacency.get_adj_vertex().get_id();
+                let adjacent_edge_id = adjacency.get_edge_id();
+                // delete adjacent edges
+                // delete in edges
+                self.edges.remove(adjacent_edge_id);
+                // delete in edge tag map
+                if let Some(tag) = self.get_edge_tag(adjacent_edge_id) {
+                    self.tag_edge_map.remove(&tag);
+                }
+                // delete in edges data
+                self.edges_data.remove(adjacent_edge_id);
+                // update adjcent vertices's info
+                if let PatternDirection::Out = adjacency.get_direction() {
+                    self.vertices_data
+                        .get_mut(adjacent_vertex_id)
+                        .unwrap()
+                        .in_adjacencies
+                        .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
+                } else {
+                    self.vertices_data
+                        .get_mut(adjacent_vertex_id)
+                        .unwrap()
+                        .out_adjacencies
+                        .retain(|adj| adj.get_edge_id() != adjacent_edge_id)
+                }
+            }
+
+            self.canonical_labeling();
         }
     }
 
@@ -1484,22 +1634,22 @@ impl Pattern {
         self.edges_data.remove(edge_id);
     }
 
-    fn is_connected(&self) -> bool {
-        let mut visted_vertices = HashSet::new();
-        let start_vertex = self.vertices_iter().next().unwrap().get_id();
-        let mut stack = vec![start_vertex];
-        while let Some(src_vertex) = stack.pop() {
-            visted_vertices.insert(src_vertex);
-            for neighbor_vertex in self
-                .adjacencies_iter(src_vertex)
-                .map(|adj| adj.get_adj_vertex().get_id())
-                .filter(|vertex| !visted_vertices.contains(&vertex))
-            {
-                stack.push(neighbor_vertex);
-            }
-        }
-        visted_vertices.len() == self.get_vertices_num()
-    }
+    // fn is_connected(&self) -> bool {
+    //     let mut visted_vertices = HashSet::new();
+    //     let start_vertex = self.vertices_iter().next().unwrap().get_id();
+    //     let mut stack = vec![start_vertex];
+    //     while let Some(src_vertex) = stack.pop() {
+    //         visted_vertices.insert(src_vertex);
+    //         for neighbor_vertex in self
+    //             .adjacencies_iter(src_vertex)
+    //             .map(|adj| adj.get_adj_vertex().get_id())
+    //             .filter(|vertex| !visted_vertices.contains(&vertex))
+    //         {
+    //             stack.push(neighbor_vertex);
+    //         }
+    //     }
+    //     visted_vertices.len() == self.get_vertices_num()
+    // }
 }
 
 impl Serialize for Pattern {

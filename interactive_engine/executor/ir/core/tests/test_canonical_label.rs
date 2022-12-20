@@ -17,7 +17,7 @@ mod common;
 
 #[cfg(test)]
 mod tests {
-    use crate::common::pattern_cases::*;
+    use crate::common::canonical_label_cases::*;
 
     #[test]
     fn vertex_grouping_case1() {
@@ -1510,5 +1510,15 @@ mod tests {
                 .unwrap(),
             13
         );
+    }
+
+    #[test]
+    fn pattern_rank_ranking_case21() {
+        let pattern = build_pattern_rank_ranking_case21();
+        assert_eq!(pattern.get_vertex_group(0).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(1).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(3).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(4).unwrap(), 0);
+        assert_eq!(pattern.get_vertex_group(5).unwrap(), 0);
     }
 }

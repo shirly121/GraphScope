@@ -223,3 +223,7 @@ pub mod test {
         })
     }
 }
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub mod pattern_cases;

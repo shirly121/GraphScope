@@ -203,10 +203,61 @@ impl CanonicalLabelManager {
     }
 }
 
+/// Methods for Pattern Ranking
 impl CanonicalLabelManager {
     /// Set unique ranks to each vertex and edge
     pub fn pattern_ranking(&mut self, pattern: &mut Pattern) {
-        let start_v_id: PatternId = self.get_pattern_ranking_start_vertex(pattern);
+        let mut start_v_id;
+        if let Some(value) = self.get_pattern_ranking_start_vertex(pattern) {
+            start_v_id = value;
+        } else {
+            return;
+        }
+
+        loop {
+            self.pattern_ranking_from_vertex(start_v_id);
+
+            // Find another starting vertex to deal with disconnected pattern
+            let start_vertex = pattern
+                .vertices_iter()
+                .filter(|vertex| self.get_vertex_rank(vertex.get_id()).is_none())
+                .min_by(|v1, v2| {
+                    let v1_label = v1.get_label();
+                    let v1_group = self.get_vertex_group(v1.get_id()).unwrap();
+                    let v2_label: PatternLabelId = v2.get_label();
+                    let v2_group = self.get_vertex_group(v2.get_id()).unwrap();
+                    (v1_label, v1_group).cmp(&(v2_label, v2_group))
+                });
+            match start_vertex {
+                Some(vertex) => start_v_id = vertex.get_id(),
+                None => break,
+            }
+        }
+    }
+
+    /// Return the ID of the starting vertex of pattern ranking.
+    ///
+    /// In our case, it's the vertex with the smallest label and group ID
+    fn get_pattern_ranking_start_vertex(&self, pattern: &Pattern) -> Option<PatternId> {
+        let min_v_label: PatternLabelId;
+        if let Some(value) = pattern.get_min_vertex_label() {
+            min_v_label = value;
+        } else {
+            return None;
+        }
+
+        pattern
+            .vertices_iter_by_label(min_v_label)
+            .map(|vertex| vertex.get_id())
+            .min_by(|&v1_id, &v2_id| {
+                let v1_group = self.get_vertex_group(v1_id).unwrap();
+                let v2_group = self.get_vertex_group(v2_id).unwrap();
+                v1_group.cmp(&v2_group)
+            })
+    }
+
+    /// Given a starting vertex, rank all vertices and edges that are reachable from this vertex.
+    fn pattern_ranking_from_vertex(&mut self, start_v_id: PatternId) {
         let mut next_free_vertex_rank: PatternId = 0;
         let mut next_free_edge_rank: PatternId = 0;
         self.vertex_rank_map
@@ -256,22 +307,6 @@ impl CanonicalLabelManager {
         }
     }
 
-    /// Return the ID of the starting vertex of pattern ranking.
-    ///
-    /// In our case, it's the vertex with the smallest label and group ID
-    fn get_pattern_ranking_start_vertex(&self, pattern: &Pattern) -> PatternId {
-        let min_v_label = pattern.get_min_vertex_label().unwrap();
-        pattern
-            .vertices_iter_by_label(min_v_label)
-            .map(|vertex| vertex.get_id())
-            .min_by(|&v1_id, &v2_id| {
-                let v1_group = self.get_vertex_group(v1_id).unwrap();
-                let v2_group = self.get_vertex_group(v2_id).unwrap();
-                v1_group.cmp(&v2_group)
-            })
-            .unwrap()
-    }
-
     /// Pattern Ranking adopts DFS and the stack for DFS stores vertex adjacencies
     fn init_adjacencies_stack(
         &self, start_v_id: PatternId, vertex_adjacencies_map: &BTreeMap<PatternId, Vec<Adjacency>>,
@@ -288,6 +323,7 @@ impl CanonicalLabelManager {
     }
 }
 
+/// Tool Methods for Comparing Vertices and Adjacencies, and Updating the Order of Adjacencies
 impl CanonicalLabelManager {
     /// Compare two adjacencies in the pattern.
     /// The following data are taken into consideration:
@@ -367,17 +403,13 @@ impl CanonicalLabelManager {
         }
 
         // Compare Adjacencies
-        let mut v1_adjacencies_iter = self.adjacencies_iter(v1_id);
-        let mut v2_adjacencies_iter = self.adjacencies_iter(v2_id);
-        loop {
-            let v1_adjacency = v1_adjacencies_iter.next();
-            let v2_adjacency = v2_adjacencies_iter.next();
-            if v1_adjacency.is_none() || v2_adjacency.is_none() {
-                break;
-            }
-
+        let v1_adjacencies = self.vertex_adjacencies_map.get(&v1_id).expect("Invalid Vertex ID");
+        let v2_adjacencies = self.vertex_adjacencies_map.get(&v2_id).expect("Invalid Vertex ID");
+        for adj_idx in 0..v1_adjacencies.len() {
+            let v1_adjacency = &v1_adjacencies[adj_idx];
+            let v2_adjacency = &v2_adjacencies[adj_idx];
             // Compare direction and labels
-            match self.cmp_adjacencies(v1_adjacency.unwrap(), v2_adjacency.unwrap()) {
+            match self.cmp_adjacencies(v1_adjacency, v2_adjacency) {
                 Ordering::Less => return Ordering::Less,
                 Ordering::Greater => return Ordering::Greater,
                 Ordering::Equal => (),
@@ -437,13 +469,5 @@ impl CanonicalLabelManager {
                     }
                 });
             });
-    }
-
-    fn adjacencies_iter(&self, vertex_id: PatternId) -> DynIter<&Adjacency> {
-        if let Some(adjacencies) = self.vertex_adjacencies_map.get(&vertex_id) {
-            Box::new(adjacencies.iter())
-        } else {
-            Box::new(std::iter::empty())
-        }
     }
 }

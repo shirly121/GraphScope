@@ -14,14 +14,15 @@
 //! limitations under the License.
 //!
 
-use ir_core::catalogue::catalog::Catalogue;
-use ir_core::catalogue::sparsify::read_sparsify_config;
 use log::info;
-use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Instant;
 use structopt::StructOpt;
+
+use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
+use ir_core::catalogue::sparsify::read_sparsify_config;
+use runtime_integration::{read_pattern, read_pattern_meta, read_patterns, read_sample_graph};
 
 #[global_allocator]
 static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
@@ -42,22 +43,44 @@ pub struct Config {
     sample_rate: f64,
     #[structopt(short = "l", long = "medium_results_limit")]
     limit: Option<usize>,
+    #[structopt(short = "s", long = "plan_space", default_value = "hybrid")]
+    plan_space: String,
+}
+
+fn print_config(config: &Config) {
+    println!("Configuration:");
+    println!("  Catalog mode: {}", config.catalog_mode);
+    println!("  Catalog depth: {}", config.catalog_depth);
+    println!("  export path: {}", config.export_path);
+    println!("  sparsify_rate_path: {}", config.sparsify_rate_path);
+    println!("  Num threads: {}", config.thread_num);
+    println!("  Sample Rate: {}", config.sample_rate);
+    println!("  Medium results limit: {:?}", config.limit);
+    println!("  plan space: {}", config.plan_space);
+    println!("");
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
     let config = Config::from_args();
+    print_config(&config);
     let sample_graph = Arc::new(read_sample_graph()?);
     info!("start building catalog...");
+    let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
+        "extend" => PatMatPlanSpace::ExtendWithIntersection,
+        "hybrid" => PatMatPlanSpace::Hybrid,
+        _ => unreachable!(),
+    };
     let catalog_build_start_time = Instant::now();
     let mut catalog = match config.catalog_mode.as_str() {
         "from_pattern" => {
             let pattern = read_pattern()?;
-            Catalogue::build_from_pattern(&pattern)
+            Catalogue::build_from_pattern(&pattern, plan_space)
         }
         "from_patterns" => {
             let patterns = read_patterns()?;
             let mut catalog = Catalogue::default();
+            catalog.set_plan_space(plan_space);
             for pattern in patterns {
                 catalog.update_catalog_by_pattern(&pattern)
             }
@@ -72,6 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let patterns = read_patterns()?;
             let mut catalog =
                 Catalogue::build_from_meta(&pattern_meta, config.catalog_depth, config.catalog_depth);
+            catalog.set_plan_space(plan_space);
             for pattern in patterns {
                 catalog.update_catalog_by_pattern(&pattern)
             }

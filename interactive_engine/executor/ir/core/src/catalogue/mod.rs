@@ -110,6 +110,8 @@ pub mod canonical_label;
 
 pub mod codec;
 
+pub mod join_step;
+
 pub mod extend_step;
 
 pub mod pattern;

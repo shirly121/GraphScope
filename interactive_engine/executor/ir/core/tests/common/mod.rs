@@ -24,3 +24,11 @@ pub mod pattern_meta_cases;
 #[cfg(test)]
 #[allow(dead_code)]
 pub mod extend_step_cases;
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub mod join_step_cases;
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub mod canonical_label_cases;
