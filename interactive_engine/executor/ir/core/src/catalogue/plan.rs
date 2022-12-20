@@ -28,8 +28,8 @@ use crate::catalogue::PatternDirection;
 use crate::catalogue::PatternId;
 use crate::error::{IrError, IrResult};
 
-static ALPHA: f64 = 0.5;
-static BETA: f64 = 0.5;
+static ALPHA: f64 = 0.15;
+static BETA: f64 = 0.1;
 
 /// Methods for Pattern to generate pb Logical plan of pattern matching
 impl Pattern {
@@ -101,8 +101,13 @@ pub fn get_definite_extend_steps(
             let adjacency_count = get_adjacency_count(&sub_pattern, &mut extend_step, catalog);
             let intersect_count = get_intersect_count(&sub_pattern, &extend_step, catalog);
             let (mut extend_steps, pre_cost) = get_definite_extend_steps(sub_pattern, catalog);
-            let this_step_cost =
-                extend_cost_estimate(sub_pattern_count, pattern_count, adjacency_count, intersect_count);
+            let this_step_cost = extend_cost_estimate(
+                sub_pattern_count,
+                pattern_count,
+                adjacency_count,
+                intersect_count,
+                extend_step.get_extend_edges_num(),
+            );
 
             if sub_pattern_predicate_num > max_predicate_num
                 || (pre_cost + this_step_cost < min_cost && sub_pattern_predicate_num == max_predicate_num)
@@ -231,6 +236,9 @@ fn pattern_roll_back(
         pattern_weight.get_count(),
         extend_weight.get_adjacency_count(),
         extend_weight.get_intersect_count(),
+        extend_weight
+            .get_extend_step()
+            .get_extend_edges_num(),
     );
     let target_vertex_id = pattern
         .get_vertex_from_rank(extend_weight.get_target_vertex_rank())
@@ -436,11 +444,17 @@ pub fn build_stand_alone_match_plan(
 /// Cost estimation functions
 fn extend_cost_estimate(
     pre_pattern_count: usize, pattern_count: usize, adjacency_count: usize, intersect_count: usize,
+    extend_num: usize,
 ) -> usize {
     pre_pattern_count
         + pattern_count
-        + ((adjacency_count as f64) * ALPHA) as usize
-        + ((intersect_count as f64) * BETA) as usize
+        + (if extend_num > 1 {
+            ((adjacency_count as f64) * ALPHA) as usize
+                + ((intersect_count as f64) * BETA) as usize
+                + pre_pattern_count * extend_num
+        } else {
+            0
+        })
 }
 
 fn generate_add_start_nodes(
