@@ -216,8 +216,11 @@ impl<D: Data> InputHandle<D> {
 
     pub(crate) fn extract_end(&mut self) -> Option<EndOfScope> {
         if !self.current_end.is_empty() {
-            debug_worker!("get endscope from current_end");
-            self.current_end.pop_front()
+            let endscope = self.current_end.pop_front();
+            if endscope.is_some() {
+                debug_worker!("get endscope from current_end");
+            }
+            endscope
         } else {
             self.stash_index
                 .retain(|_, s| !s.is_empty() || s.is_block());
