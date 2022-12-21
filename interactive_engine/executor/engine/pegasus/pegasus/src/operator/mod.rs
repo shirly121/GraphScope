@@ -329,6 +329,7 @@ impl Operator {
         let mut result = self.fire_inner();
         if let Err(err) = result {
             if !err.can_be_retried() {
+                debug_worker!("error occured: {}", err.to_string());
                 return Err(err);
             } else {
                 result = Err(err);
