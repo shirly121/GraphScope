@@ -21,6 +21,7 @@
 pub mod test {
     use std::collections::HashMap;
     use std::convert::{TryFrom, TryInto};
+    use std::fs::File;
     use std::sync::{Arc, Once};
 
     use graph_proxy::apis::{DynDetails, Edge, Vertex, VertexOrEdge, ID};
@@ -29,6 +30,8 @@ pub mod test {
     use ir_common::generated::common as common_pb;
     use ir_common::generated::results as result_pb;
     use ir_common::{KeyId, LabelId, NameOrId};
+    use ir_core::catalogue::pattern_meta::PatternMeta;
+    use ir_core::{plan::meta::Schema, JsonIO};
     use lazy_static::lazy_static;
     use pegasus::result::{ResultSink, ResultStream};
     use pegasus::{run_opt, Configuration, JobConf, StartupError};
@@ -40,6 +43,7 @@ pub mod test {
     use runtime::IRJobAssembly;
     use runtime_integration::{InitializeJobAssembly, QueryExpGraph};
 
+    // Entity ID
     pub const TAG_A: KeyId = 0;
     pub const TAG_B: KeyId = 1;
     pub const TAG_C: KeyId = 2;
@@ -53,6 +57,38 @@ pub mod test {
     pub const SOFTWARE_LABEL: LabelId = 1;
     pub const KNOWS_LABEL: LabelId = 0;
     pub const CREATED_LABEL: LabelId = 1;
+
+    // Entity Label
+    pub const PLACE: LabelId = 0;
+    pub const PERSON: LabelId = 1;
+    pub const COMMENT: LabelId = 2;
+    pub const POST: LabelId = 3;
+    pub const FORUM: LabelId = 4;
+    pub const ORGANISATION: LabelId = 5;
+    pub const TAGCLASS: LabelId = 6;
+    pub const TAG: LabelId = 7;
+    pub const COUNTRY: LabelId = 8;
+    pub const CITY: LabelId = 9;
+    pub const CONTINENT: LabelId = 10;
+    pub const COMPANY: LabelId = 11;
+    pub const UNIVERSITY: LabelId = 12;
+
+    // Relation Label
+    pub const HASCREATOR: LabelId = 0;
+    pub const HASTAG: LabelId = 1;
+    pub const REPLYOF: LabelId = 3;
+    pub const CONTAINEROF: LabelId = 5;
+    pub const HASMEMBER: LabelId = 6;
+    pub const HASMODERATOR: LabelId = 7;
+    pub const HASINTEREST: LabelId = 10;
+    pub const ISLOCATEDIN: LabelId = 11;
+    pub const KNOWS: LabelId = 12;
+    pub const LIKES: LabelId = 13;
+    pub const STUDYAT: LabelId = 15;
+    pub const WORKAT: LabelId = 16;
+    pub const ISPARTOF: LabelId = 17;
+    pub const HASTYPE: LabelId = 21;
+    pub const ISSUBCLASSOF: LabelId = 22;
 
     static INIT: Once = Once::new();
 
@@ -221,6 +257,12 @@ pub mod test {
                 id_name_mappings: vec![],
             })),
         })
+    }
+
+    pub fn get_ldbc_pattern_meta() -> PatternMeta {
+        let ldbc_schema_file = File::open("../core/resource/ldbc_schema_broad.json").unwrap();
+        let ldbc_schema = Schema::from_json(ldbc_schema_file).unwrap();
+        PatternMeta::from(ldbc_schema)
     }
 }
 
