@@ -522,7 +522,8 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
         let level = end.tag.len() as u32;
         if level == self.scope_level {
             let mut batch = if let Some(buf) = self.buf_pool.take_last_buf(&end.tag) {
-                MicroBatch::new(end.tag.clone(), self.src, buf.into_read_only())
+                self.send_batch(MicroBatch::new(end.tag.clone(), self.src, buf.into_read_only()));
+                MicroBatch::new(end.tag.clone(), self.src, ReadBuffer::new())
             } else {
                 MicroBatch::new(end.tag.clone(), self.src, ReadBuffer::new())
             };
