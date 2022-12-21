@@ -505,6 +505,9 @@ impl<D: Data> BlockPush for ExchangeByDataPush<D> {
     fn try_unblock(&mut self, tag: &Tag) -> Result<bool, IOError> {
         if let Some(mut blocks) = self.blocks.remove(tag) {
             while let Some(block) = blocks.pop_front() {
+                if blocks.is_empty() {
+                    debug_worker!("push last batch from block");
+                }
                 match block {
                     BlockEntry::Single((t, d)) => {
                         match self.buffers[t].push(tag, d) {
@@ -527,6 +530,9 @@ impl<D: Data> BlockPush for ExchangeByDataPush<D> {
                         }
                     }
                     BlockEntry::Batch(b) => {
+                        if b.is_last() {
+                            debug_worker!("push last batch from block which has end scope");
+                        }
                         if let Err(err) = self.push_inner(b) {
                             return if err.is_would_block() {
                                 if !blocks.is_empty() {
