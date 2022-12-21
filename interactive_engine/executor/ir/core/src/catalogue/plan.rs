@@ -13,13 +13,15 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use core::ops::{Add, AddAssign};
 use std::collections::{HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
-use std::vec;
+use std::sync::RwLock;
 
 use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra::{self as pb};
 use ir_common::generated::common::{self as common_pb, Variable};
+use lazy_static::lazy_static;
 use petgraph::graph::NodeIndex;
 
 use crate::catalogue::catalog::{
@@ -33,26 +35,11 @@ use crate::catalogue::PatternDirection;
 use crate::catalogue::{PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 
-static ALPHA: f64 = 0.15;
-static BETA: f64 = 0.1;
-
-#[derive(Debug, Clone, Default)]
-pub struct CostMetric {
-    alpha: f64,
-    beta: f64,
-    w1: f64,
-    w2: f64,
-}
-
-/// Cost Metric of Catalogue
-impl CostMetric {
-    pub fn default() -> Self {
-        CostMetric { alpha: ALPHA, beta: BETA, w1: 0.0, w2: 0.0 }
-    }
-
-    pub fn new(alpha: f64, beta: f64, w1: f64, w2: f64) -> Self {
-        CostMetric { alpha, beta, w1, w2 }
-    }
+lazy_static! {
+    static ref ALPHA: RwLock<f64> = RwLock::new(0.15);
+    static ref BETA: RwLock<f64> = RwLock::new(0.1);
+    static ref W1: RwLock<f64> = RwLock::new(6.0);
+    static ref W2: RwLock<f64> = RwLock::new(3.0);
 }
 
 /// Methods for Pattern to generate pb Logical plan of pattern matching
@@ -92,7 +79,6 @@ impl Pattern {
 
     pub fn generate_optimized_match_plan(
         &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
-        cost_metric: CostMetric,
     ) -> IrResult<pb::LogicalPlan> {
         let pattern_code: Vec<u8> = self.encode_to();
         match catalog.get_plan_space() {
@@ -101,7 +87,7 @@ impl Pattern {
             )),
             PatMatPlanSpace::Hybrid => {
                 if let Some(_pattern_index) = catalog.get_pattern_index(&pattern_code) {
-                    catalog.set_best_approach_by_pattern(&cost_metric, self);
+                    catalog.set_best_approach_by_pattern(self);
                     PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
                         .generate_pattern_match_plan()
                 } else {
@@ -122,54 +108,62 @@ impl Pattern {
 }
 
 impl Catalogue {
-    fn set_best_approach_by_pattern(&mut self, cost_metric: &CostMetric, pattern: &Pattern) {
+    fn set_best_approach_by_pattern(&mut self, pattern: &Pattern) {
         let node_index = self
             .get_pattern_index(&pattern.encode_to())
             .expect("Pattern not found in catalogue");
-        self.set_node_best_approach_recursively(cost_metric, node_index)
+        self.set_node_best_approach_recursively(node_index)
             .expect("Failed to set node best approach recursively");
     }
 
     /// Given a node in catalogue, find the best approach and the lowest cost to reach to it
     fn set_node_best_approach_recursively(
-        &mut self, cost_metric: &CostMetric, node_index: NodeIndex,
-    ) -> IrResult<(Option<Approach>, usize)> {
+        &mut self, node_index: NodeIndex,
+    ) -> IrResult<(Option<Approach>, CostCount)> {
         let pattern_weight = self
             .get_pattern_weight(node_index)
             .expect("Failed to get pattern weight");
-        let pattern = pattern_weight.get_pattern();
+        let pattern = pattern_weight.get_pattern().clone();
         if pattern.get_vertices_num() == 1 {
-            Ok((None, pattern_weight.get_count()))
+            Ok((None, CostCount::from_src_pattern(pattern_weight.get_count())))
         } else if let Some(best_approach) = pattern_weight.get_best_approach() {
             // Recursively set best approach
             let pre_pattern_index = best_approach.get_src_pattern_index();
             let (_pre_best_approach, mut cost) = self
-                .set_node_best_approach_recursively(cost_metric, pre_pattern_index)
+                .set_node_best_approach_recursively(pre_pattern_index)
                 .expect("Failed to set node best approach recursively");
-            let this_step_cost = self.estimate_approach_cost(cost_metric, &best_approach);
+            let this_step_cost = self.estimate_approach_cost(&best_approach);
             cost += this_step_cost;
             Ok((Some(best_approach), cost))
         } else {
-            let mut min_cost = usize::MAX;
+            let mut min_cost = CostCount::max_value();
             let candidate_approaches: Vec<Approach> = self.collect_candidate_approaches(node_index);
             if candidate_approaches.len() == 0 {
                 return Err(IrError::Unsupported("No approach found for pattern in catalog".to_string()));
             }
 
             let mut best_approach = candidate_approaches[0];
+            let mut cost_counts_vec = vec![];
             for approach in candidate_approaches {
                 let pre_pattern_index = approach.get_src_pattern_index();
-                let (_pre_best_approach, mut cost) = self
-                    .set_node_best_approach_recursively(cost_metric, pre_pattern_index)
+                let (_pre_best_approach, pre_cost) = self
+                    .set_node_best_approach_recursively(pre_pattern_index)
                     .expect("Failed to set node best approach recursively");
-                let this_step_cost = self.estimate_approach_cost(cost_metric, &best_approach);
-                cost += this_step_cost;
+                let this_step_cost = self.estimate_approach_cost(&best_approach);
+                let cost = pre_cost + this_step_cost;
+                cost_counts_vec.push((pre_pattern_index, pre_cost, this_step_cost, cost));
                 if cost < min_cost {
                     min_cost = cost;
                     best_approach = approach;
                 }
             }
-
+            print_pattern_choose_approach_log(
+                &pattern,
+                node_index,
+                best_approach,
+                min_cost,
+                cost_counts_vec,
+            );
             // set best approach in the catalogue
             self.set_pattern_best_approach(node_index, best_approach);
             Ok((Some(best_approach), min_cost))
@@ -196,47 +190,47 @@ impl Catalogue {
     }
 
     /// Cost Estimation Functions
-    fn estimate_approach_cost(&self, cost_metric: &CostMetric, approach: &Approach) -> usize {
+    fn estimate_approach_cost(&mut self, approach: &Approach) -> CostCount {
         let approach_weight = self
             .get_approach_weight(approach.get_approach_index())
             .expect("Approach not found in catalogue");
         if let ApproachWeight::ExtendStep(extend_weight) = approach_weight {
-            self.estimate_extend_step_cost(cost_metric, approach, extend_weight)
-        } else if let ApproachWeight::BinaryJoinStep(join_weight) = approach_weight {
-            self.estimate_binary_join_step_cost(cost_metric, approach, join_weight)
+            self.estimate_extend_step_cost(approach, extend_weight)
+        } else if let ApproachWeight::BinaryJoinStep(join_weight) = approach_weight.clone() {
+            self.estimate_binary_join_step_cost(approach, &join_weight)
         } else {
-            usize::MAX
+            CostCount::max_value()
         }
     }
 
     /// Cost Estimation Function of Extend Step
-    fn estimate_extend_step_cost(
-        &self, cost_metric: &CostMetric, approach: &Approach, extend_weight: &ExtendWeight,
-    ) -> usize {
-        // Cost of finding adjacency lists of each vertex. (Normalized with coefficient alpha)
-        let find_cost: usize = ((extend_weight.get_adjacency_count() as f64) * cost_metric.alpha) as usize;
-        // Cost of doing intersection on multiple adjacency lists.
-        // Zero if there is only one adjacency list for intersection.
-        let intersection_cost: usize =
-            ((extend_weight.get_intersect_count() as f64) * cost_metric.beta) as usize;
-        // Cost of extending pattern Qk-1 to Qk (Dominant Cost)
-        let extension_cost: usize = self
-            .get_pattern_weight(approach.get_target_pattern_index())
-            .expect("Cannot find pattern weight in catalogue")
-            .get_count();
-        // Cost of dropping useless instances of pattern Qk-1 after extension (Dominant Cost)
-        let drop_cost: usize = self
+    fn estimate_extend_step_cost(&self, approach: &Approach, extend_weight: &ExtendWeight) -> CostCount {
+        let sub_pattern_count = self
             .get_pattern_weight(approach.get_src_pattern_index())
             .expect("Cannot find pattern weight in catalogue")
             .get_count();
-        // Sum up all four costs
-        find_cost + intersection_cost + extension_cost + drop_cost
+        let pattern_count = self
+            .get_pattern_weight(approach.get_target_pattern_index())
+            .expect("Cannot find pattern weight in catalogue")
+            .get_count();
+        let adjacency_count = extend_weight.get_adjacency_count();
+        let intersect_count = extend_weight.get_intersect_count();
+        let extend_num = extend_weight
+            .get_extend_step()
+            .get_extend_edges_num();
+        CostCount::from_extend(
+            sub_pattern_count,
+            pattern_count,
+            adjacency_count,
+            intersect_count,
+            extend_num,
+        )
     }
 
     /// Cost Estimation Function of Binary Join Step
     fn estimate_binary_join_step_cost(
-        &self, cost_metric: &CostMetric, approach: &Approach, join_weight: &JoinWeight,
-    ) -> usize {
+        &mut self, approach: &Approach, join_weight: &JoinWeight,
+    ) -> CostCount {
         // Collect data for cost estimation
         let build_pattern_cardinality = self
             .get_pattern_weight(approach.get_src_pattern_index())
@@ -250,11 +244,15 @@ impl Catalogue {
             .get_pattern_weight(approach.get_target_pattern_index())
             .expect("Cannot find pattern weight in catalogue")
             .get_count();
-        // Cost Estimtion
-        let join_cost: usize = (cost_metric.w1 * build_pattern_cardinality as f64) as usize
-            + (cost_metric.w2 * probe_pattern_cardinality as f64) as usize;
-        let output_cost = joined_pattern_cardinality;
-        join_cost + output_cost
+        let (_, probe_pattern_cost) = self
+            .set_node_best_approach_recursively(join_weight.get_probe_pattern_node_index())
+            .unwrap();
+        probe_pattern_cost
+            + CostCount::from_join(
+                build_pattern_cardinality,
+                probe_pattern_cardinality,
+                joined_pattern_cardinality,
+            )
     }
 }
 
@@ -805,7 +803,7 @@ impl<'a> PlanGenerator<'a> {
 
 pub fn get_definite_extend_steps(
     pattern: Pattern, catalog: &mut Catalogue,
-) -> (Vec<DefiniteExtendStep>, usize) {
+) -> (Vec<DefiniteExtendStep>, CostCount) {
     let pattern_code = pattern.encode_to();
     if let Some(pattern_index) = catalog.get_pattern_index(&pattern_code) {
         get_definite_extend_steps_in_catalog(catalog, pattern_index, pattern)
@@ -822,7 +820,7 @@ pub fn get_definite_extend_steps(
             }
         }
         let mut optimal_extend_steps = vec![];
-        let mut min_cost = usize::MAX;
+        let mut min_cost = CostCount::max_value();
         let mut max_predicate_num = usize::MIN;
         for (sub_pattern, mut extend_step) in sub_patterns_extend_steps {
             let sub_pattern_predicate_num = sub_pattern.get_predicate_num();
@@ -830,7 +828,7 @@ pub fn get_definite_extend_steps(
             let adjacency_count = get_adjacency_count(&sub_pattern, &mut extend_step, catalog);
             let intersect_count = get_intersect_count(&sub_pattern, &extend_step, catalog);
             let (mut extend_steps, pre_cost) = get_definite_extend_steps(sub_pattern, catalog);
-            let this_step_cost = extend_cost_estimate(
+            let this_step_cost = CostCount::from_extend(
                 sub_pattern_count,
                 pattern_count,
                 adjacency_count,
@@ -895,14 +893,14 @@ fn get_intersect_count(
 
 fn get_definite_extend_steps_in_catalog(
     catalog: &mut Catalogue, pattern_index: NodeIndex, pattern: Pattern,
-) -> (Vec<DefiniteExtendStep>, usize) {
+) -> (Vec<DefiniteExtendStep>, CostCount) {
     let pattern_weight = catalog
         .get_pattern_weight(pattern_index)
         .unwrap();
     let predicate_num = pattern.get_predicate_num();
     if pattern.get_vertices_num() == 1 {
         let src_definite_extend_step = DefiniteExtendStep::try_from(pattern).unwrap();
-        let cost = pattern_weight.get_count();
+        let cost = CostCount::from_src_pattern(pattern_weight.get_count());
         return (vec![src_definite_extend_step], cost);
     } else if pattern_weight.get_best_approach().is_some() && predicate_num == 0 {
         let best_approach = pattern_weight.get_best_approach().unwrap();
@@ -916,21 +914,23 @@ fn get_definite_extend_steps_in_catalog(
         return (definite_extend_steps, cost);
     } else {
         let mut optimal_extend_steps = vec![];
-        let mut min_cost = usize::MAX;
+        let mut min_cost = CostCount::max_value();
         let mut max_predicate_num = usize::MIN;
         let approaches: Vec<Approach> = catalog
             .pattern_in_approaches_iter(pattern_index)
             .collect();
         let mut best_approach = approaches[0];
+        let mut cost_counts_vec = vec![];
         for approach in approaches {
             let (pre_pattern, definite_extend_step, this_step_cost) =
                 pattern_roll_back(pattern.clone(), pattern_index, approach, catalog);
             let pre_pattern_predicate_num = pre_pattern.get_predicate_num();
             let pre_pattern_index = approach.get_src_pattern_index();
-            let (mut extend_steps, mut cost) =
+            let (mut extend_steps, pre_cost) =
                 get_definite_extend_steps_in_catalog(catalog, pre_pattern_index, pre_pattern);
             extend_steps.push(definite_extend_step);
-            cost += this_step_cost;
+            let cost = pre_cost + this_step_cost;
+            cost_counts_vec.push((pre_pattern_index, pre_cost, this_step_cost, cost));
             if pre_pattern_predicate_num > max_predicate_num
                 || (cost < min_cost && pre_pattern_predicate_num == max_predicate_num)
             {
@@ -940,6 +940,13 @@ fn get_definite_extend_steps_in_catalog(
                 best_approach = approach;
             }
         }
+        print_pattern_choose_approach_log(
+            &pattern,
+            pattern_index,
+            best_approach,
+            min_cost,
+            cost_counts_vec,
+        );
         if predicate_num == 0 {
             catalog.set_pattern_best_approach(pattern_index, best_approach);
         }
@@ -949,7 +956,7 @@ fn get_definite_extend_steps_in_catalog(
 
 fn pattern_roll_back(
     pattern: Pattern, pattern_index: NodeIndex, approach: Approach, catalog: &Catalogue,
-) -> (Pattern, DefiniteExtendStep, usize) {
+) -> (Pattern, DefiniteExtendStep, CostCount) {
     let pattern_weight = catalog
         .get_pattern_weight(pattern_index)
         .unwrap();
@@ -960,7 +967,7 @@ fn pattern_roll_back(
     let pre_pattern_weight = catalog
         .get_pattern_weight(pre_pattern_index)
         .unwrap();
-    let this_step_cost = extend_cost_estimate(
+    let this_step_cost = CostCount::from_extend(
         pre_pattern_weight.get_count(),
         pattern_weight.get_count(),
         extend_weight.get_adjacency_count(),
@@ -1173,15 +1180,15 @@ pub fn build_stand_alone_match_plan(
 }
 
 /// Cost estimation functions
-fn extend_cost_estimate(
+pub fn extend_cost_estimate(
     pre_pattern_count: usize, pattern_count: usize, adjacency_count: usize, intersect_count: usize,
     extend_num: usize,
 ) -> usize {
     pre_pattern_count
         + pattern_count
         + (if extend_num > 1 {
-            ((adjacency_count as f64) * ALPHA) as usize
-                + ((intersect_count as f64) * BETA) as usize
+            ((adjacency_count as f64) * (*ALPHA.read().unwrap())) as usize
+                + ((intersect_count as f64) * (*BETA.read().unwrap())) as usize
                 + pre_pattern_count * extend_num
         } else {
             0
@@ -1334,4 +1341,136 @@ fn pattern_equal(pattern1: &Pattern, pattern2: &Pattern) -> bool {
     }
 
     return false;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord)]
+pub struct CostCount {
+    instance_count: usize,
+    adjacency_count: usize,
+    intersect_count: usize,
+    left_join_count: usize,
+    right_join_count: usize,
+}
+
+impl CostCount {
+    fn new(
+        instance_count: usize, adjacency_count: usize, intersect_count: usize, left_join_count: usize,
+        right_join_count: usize,
+    ) -> CostCount {
+        CostCount { instance_count, adjacency_count, intersect_count, left_join_count, right_join_count }
+    }
+
+    fn from_src_pattern(src_pattern_count: usize) -> CostCount {
+        CostCount::new(src_pattern_count, 0, 0, 0, 0)
+    }
+
+    fn from_extend(
+        sub_pattern_count: usize, pattern_count: usize, adjacency_count: usize, intersect_count: usize,
+        extend_num: usize,
+    ) -> CostCount {
+        let instance_count = sub_pattern_count
+            + pattern_count
+            + if extend_num <= 1 { 0 } else { sub_pattern_count * extend_num };
+        let adjacency_count = if extend_num <= 1 { 0 } else { adjacency_count };
+        CostCount::new(instance_count, adjacency_count, intersect_count, 0, 0)
+    }
+
+    fn from_join(left_pattern_count: usize, right_pattern_count: usize, pattern_count: usize) -> CostCount {
+        CostCount::new(pattern_count, 0, 0, left_pattern_count, right_pattern_count)
+    }
+
+    fn max_value() -> CostCount {
+        CostCount::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX, usize::MAX)
+    }
+
+    fn get_cost(&self) -> usize {
+        if *self == CostCount::max_value() {
+            usize::MAX
+        } else {
+            self.instance_count
+                + (self.adjacency_count as f64 * (*ALPHA.read().unwrap())) as usize
+                + (self.intersect_count as f64 * (*BETA.read().unwrap())) as usize
+                + (self.left_join_count as f64 * (*W1.read().unwrap())) as usize
+                + (self.right_join_count as f64 * (*W1.read().unwrap())) as usize
+        }
+    }
+}
+
+impl Add for CostCount {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        CostCount {
+            instance_count: self.instance_count + rhs.instance_count,
+            adjacency_count: self.adjacency_count + rhs.adjacency_count,
+            intersect_count: self.intersect_count + rhs.intersect_count,
+            left_join_count: self.left_join_count + rhs.left_join_count,
+            right_join_count: self.right_join_count + rhs.left_join_count,
+        }
+    }
+}
+
+impl AddAssign for CostCount {
+    fn add_assign(&mut self, rhs: Self) {
+        self.instance_count += rhs.instance_count;
+        self.adjacency_count += rhs.adjacency_count;
+        self.intersect_count += rhs.intersect_count;
+        self.left_join_count += rhs.left_join_count;
+        self.right_join_count += rhs.right_join_count;
+    }
+}
+
+impl PartialOrd for CostCount {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.get_cost().partial_cmp(&other.get_cost())
+    }
+}
+
+pub fn set_alpha(alpha: f64) {
+    if let Ok(mut old_alpha) = ALPHA.write() {
+        *old_alpha = alpha;
+    }
+}
+
+pub fn set_beta(beta: f64) {
+    if let Ok(mut old_beta) = BETA.write() {
+        *old_beta = beta
+    }
+}
+
+pub fn set_w1(w1: f64) {
+    if let Ok(mut old_w1) = W1.write() {
+        *old_w1 = w1
+    }
+}
+
+pub fn set_w2(w2: f64) {
+    if let Ok(mut old_w2) = W2.write() {
+        *old_w2 = w2
+    }
+}
+
+fn print_pattern_choose_approach_log(
+    pattern: &Pattern, pattern_index: NodeIndex, best_approach: Approach, min_cost: CostCount,
+    cost_counts_vec: Vec<(NodeIndex, CostCount, CostCount, CostCount)>,
+) {
+    info!("Pattern:\n {:?}", pattern.format_edges());
+    info!("Pattern Index: {:?}", pattern_index.index());
+    info!("-------------------------------------");
+    for (pre_pattern_index, pre_pattern_cost, step_cost, cost) in cost_counts_vec {
+        if pre_pattern_index == best_approach.get_src_pattern_index() {
+            info!("This is the chosen Pre Pattern!");
+        }
+        info!("Pre Pattern Index: {:?}", pre_pattern_index.index());
+        info!("Pre Pattern CostCount: {:?}", pre_pattern_cost);
+        info!("Pre Pattern Cost: {:?}", pre_pattern_cost.get_cost());
+        info!("Step CostCount: {:?}", step_cost);
+        info!("Step Cost: {:?}", step_cost.get_cost());
+        info!("Pattern CostCount: {:?}", cost);
+        info!("Pattern Cost: {:?}", cost.get_cost());
+        info!("-------------------------------------");
+    }
+    info!("Chosen Pre Pattern Index: {:?}", best_approach.get_src_pattern_index().index());
+    info!("Pattern Final CostCount: {:?}", min_cost);
+    info!("Pattern Final Cost: {:?}\n", min_cost.get_cost());
 }

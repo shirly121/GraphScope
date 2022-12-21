@@ -15,6 +15,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
+use std::fmt::Debug;
 use std::iter::FromIterator;
 
 use ir_common::generated::algebra as pb;
@@ -977,6 +978,20 @@ impl Pattern {
             self.out_adjacencies_iter(vertex_id)
                 .chain(self.in_adjacencies_iter(vertex_id)),
         )
+    }
+
+    pub fn format_edges(&self) -> String {
+        let mut edges_string = String::new();
+        for edge in self.edges_iter() {
+            let edge_string = format!(
+                "Edge Label:{}, Start Vertex Label:{}, End Vertex Label:{} ",
+                edge.get_label(),
+                edge.get_start_vertex().get_label(),
+                edge.get_end_vertex().get_label()
+            );
+            edges_string.push_str(&edge_string);
+        }
+        edges_string
     }
 }
 

@@ -28,7 +28,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             .get_pattern_weight(pattern_index)
             .unwrap()
             .get_count();
-        println!("{:?}", pattern);
+        println!("Pattern: {:?}", pattern.format_edges());
+        println!("Pattern Index: {:?}", pattern_index);
         println!("Estimate pattern count is {}", pattern_count);
     } else {
         println!("Sorry, don't find pattern's info in the catalog");

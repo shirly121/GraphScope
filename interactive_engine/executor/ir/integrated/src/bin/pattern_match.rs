@@ -14,7 +14,6 @@
 //! limitations under the License.
 //!
 
-use ir_core::catalogue::plan::CostMetric;
 use std::convert::TryInto;
 use std::error::Error;
 use std::path::PathBuf;
@@ -23,6 +22,7 @@ use structopt::StructOpt;
 
 use graph_proxy::create_exp_store;
 use ir_core::catalogue::catalog::PatMatPlanSpace;
+use ir_core::catalogue::plan::{set_alpha, set_beta, set_w1, set_w2};
 use ir_core::plan::logical::LogicalPlan;
 use ir_core::plan::physical::AsPhysical;
 use pegasus::{Configuration, JobConf};
@@ -46,20 +46,20 @@ pub struct Config {
     no_query_execution: bool,
     #[structopt(short = "s", long = "plan_space", default_value = "extend")]
     plan_space: String,
-    // #[structopt(long = "cost_metric")]
-    // cost_metric: Vec<f64>,
-    #[structopt(long = "alpha", default_value = "0.5")]
+    #[structopt(long = "alpha", default_value = "0.15")]
     alpha: f64,
-    #[structopt(long = "beta", default_value = "0.5")]
+    #[structopt(long = "beta", default_value = "0.1")]
     beta: f64,
-    #[structopt(long = "w1", default_value = "1.0")]
+    #[structopt(long = "w1", default_value = "6.0")]
     w1: f64,
-    #[structopt(long = "w2", default_value = "1.0")]
+    #[structopt(long = "w2", default_value = "3.0")]
     w2: f64,
     #[structopt(long = "batch_size", default_value = "1024")]
     batch_size: u32,
     #[structopt(long = "batch_capacity", default_value = "64")]
     batch_capacity: u32,
+    #[structopt(long = "mode", default_value = "single")]
+    mode: String,
 }
 
 // lazy_static! {
@@ -96,77 +96,86 @@ fn main() -> Result<(), Box<dyn Error>> {
     pegasus::startup(server_config)?;
     pegasus::wait_servers_ready(&conf.servers());
     let pattern_meta = read_pattern_meta()?;
-    let pattern = read_pattern()?;
-    let mut catalog = read_catalogue()?;
-    println!("############ Plan Generation ############");
-    println!("start generating plan...");
-    let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
-        "extend" => PatMatPlanSpace::ExtendWithIntersection,
-        "hybrid" => PatMatPlanSpace::Hybrid,
+    let patterns = match config.mode.as_str() {
+        "single" => vec![read_pattern()?],
+        "multiple" => read_patterns()?,
         _ => unreachable!(),
     };
-    catalog.set_plan_space(plan_space);
-    // let cost_metric = CostMetric::new(
-    //     config.cost_metric[0],
-    //     config.cost_metric[1],
-    //     config.cost_metric[2],
-    //     config.cost_metric[3],
-    // );
-    let cost_metric = CostMetric::new(config.alpha, config.beta, config.w1, config.w2);
-    let plan_generation_start_time = Instant::now();
-    let mut pb_plan = pattern
-        .generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed, cost_metric)
-        .expect("Failed to generate optimized pattern match plan");
-    println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
+    set_alpha(config.alpha);
+    set_beta(config.beta);
+    set_w1(config.w1);
+    set_w2(config.w2);
+    let mut catalog = read_catalogue()?;
+    for pattern in patterns {
+        println!("############ Plan Generation ############");
+        println!("start generating plan...");
+        let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
+            "extend" => PatMatPlanSpace::ExtendWithIntersection,
+            "hybrid" => PatMatPlanSpace::Hybrid,
+            _ => unreachable!(),
+        };
+        catalog.set_plan_space(plan_space);
+        // let cost_metric = CostMetric::new(
+        //     config.cost_metric[0],
+        //     config.cost_metric[1],
+        //     config.cost_metric[2],
+        //     config.cost_metric[3],
+        // );
+        let plan_generation_start_time = Instant::now();
+        let mut pb_plan = pattern
+            .generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed)
+            .expect("Failed to generate optimized pattern match plan");
+        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
 
-    // if config.print_intermediate_result {
-    //     // split the original logical plan into plans of intermediate results
-    //     println!("############ Print Intermediate Results ############");
-    //     let mut intermediate_pb_plans: Vec<pb::LogicalPlan> = split_intermediate_pb_logical_plan(&pb_plan);
-    //     intermediate_pb_plans
-    //         .iter_mut()
-    //         .for_each(|intermediate_pb_plan| {
-    //             match_pb_plan_add_source(intermediate_pb_plan);
-    //             pb_plan_add_count_sink_operator(intermediate_pb_plan);
-    //             print_pb_logical_plan(&intermediate_pb_plan);
-    //             // Submit Query to get the intermediate results
-    //             let plan: LogicalPlan = intermediate_pb_plan
-    //                 .clone()
-    //                 .try_into()
-    //                 .expect("Failed to convert to logical plan");
-    //             let mut job_builder = JobBuilder::default();
-    //             let mut plan_meta = plan.get_meta().clone().with_partition();
-    //             plan.add_job_builder(&mut job_builder, &mut plan_meta)
-    //                 .unwrap();
-    //             let request = job_builder
-    //                 .build()
-    //                 .expect("Failed at job builder");
-    //             println!("start executing query...");
-    //             submit_query(request, conf.clone()).expect("Failed to submit query");
-    //             println!("\n\n");
-    //         });
-    // }
-    if let PatMatPlanSpace::ExtendWithIntersection = plan_space {
-        match_pb_plan_add_source(&mut pb_plan);
-        pb_plan_add_count_sink_operator(&mut pb_plan);
-    }
-    println!("Final pb logical plan:");
-    print_pb_logical_plan(&pb_plan);
+        // if config.print_intermediate_result {
+        //     // split the original logical plan into plans of intermediate results
+        //     println!("############ Print Intermediate Results ############");
+        //     let mut intermediate_pb_plans: Vec<pb::LogicalPlan> = split_intermediate_pb_logical_plan(&pb_plan);
+        //     intermediate_pb_plans
+        //         .iter_mut()
+        //         .for_each(|intermediate_pb_plan| {
+        //             match_pb_plan_add_source(intermediate_pb_plan);
+        //             pb_plan_add_count_sink_operator(intermediate_pb_plan);
+        //             print_pb_logical_plan(&intermediate_pb_plan);
+        //             // Submit Query to get the intermediate results
+        //             let plan: LogicalPlan = intermediate_pb_plan
+        //                 .clone()
+        //                 .try_into()
+        //                 .expect("Failed to convert to logical plan");
+        //             let mut job_builder = JobBuilder::default();
+        //             let mut plan_meta = plan.get_meta().clone().with_partition();
+        //             plan.add_job_builder(&mut job_builder, &mut plan_meta)
+        //                 .unwrap();
+        //             let request = job_builder
+        //                 .build()
+        //                 .expect("Failed at job builder");
+        //             println!("start executing query...");
+        //             submit_query(request, conf.clone()).expect("Failed to submit query");
+        //             println!("\n\n");
+        //         });
+        // }
+        if let PatMatPlanSpace::ExtendWithIntersection = plan_space {
+            match_pb_plan_add_source(&mut pb_plan);
+            pb_plan_add_count_sink_operator(&mut pb_plan);
+        }
+        println!("Final pb logical plan:");
+        print_pb_logical_plan(&pb_plan);
 
-    if !config.no_query_execution {
-        println!("############ Query Execution ############");
-        let plan: LogicalPlan = pb_plan
-            .try_into()
-            .expect("Failed to convert to logical plan");
-        let mut job_builder = JobBuilder::default();
-        let mut plan_meta = plan.get_meta().clone().with_partition();
-        plan.add_job_builder(&mut job_builder, &mut plan_meta)
-            .unwrap();
-        let request = job_builder
-            .build()
-            .expect("Failed at job builder");
-        println!("start executing query...");
-        submit_query(request, conf.clone()).expect("Failed to submit query");
+        if !config.no_query_execution {
+            println!("############ Query Execution ############");
+            let plan: LogicalPlan = pb_plan
+                .try_into()
+                .expect("Failed to convert to logical plan");
+            let mut job_builder = JobBuilder::default();
+            let mut plan_meta = plan.get_meta().clone().with_partition();
+            plan.add_job_builder(&mut job_builder, &mut plan_meta)
+                .unwrap();
+            let request = job_builder
+                .build()
+                .expect("Failed at job builder");
+            println!("start executing query...");
+            submit_query(request, conf.clone()).expect("Failed to submit query");
+        }
     }
     Ok(())
 }

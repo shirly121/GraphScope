@@ -32,7 +32,7 @@ mod test {
     use ir_common::KeyId;
     use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
     use ir_core::catalogue::pattern::Pattern;
-    use ir_core::catalogue::plan::{get_definite_extend_steps, CostMetric};
+    use ir_core::catalogue::plan::get_definite_extend_steps;
     use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
     use ir_core::catalogue::{PatternDirection, PatternLabelId};
     use ir_core::error::IrResult;
@@ -49,12 +49,7 @@ mod test {
         println!("start generating plan...");
         let plan_generation_start_time = Instant::now();
         let pb_plan: pb::LogicalPlan = pattern
-            .generate_optimized_match_plan(
-                &mut catalogue.clone(),
-                &get_ldbc_pattern_meta(),
-                is_distributed,
-                CostMetric::default(),
-            )
+            .generate_optimized_match_plan(&mut catalogue.clone(), &get_ldbc_pattern_meta(), is_distributed)
             .expect("Failed to generate pattern match plan");
         println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
         print_pb_logical_plan(&pb_plan);
