@@ -344,7 +344,7 @@ impl<D: Data> OutputHandle<D> {
 
         let tag = batch.tag().clone();
         if !batch.is_empty() {
-            trace_worker!(
+            debug_worker!(
                 "output[{:?}] send {}th batch(len={}) of {:?} ;",
                 self.port,
                 batch.get_seq(),
@@ -355,7 +355,7 @@ impl<D: Data> OutputHandle<D> {
         match self.tee.push(batch) {
             Err(e) => {
                 if e.is_would_block() {
-                    trace_worker!("output[{:?}] been blocked when sending batch of {:?};", self.port, tag);
+                    debug_worker!("output[{:?}] been blocked when sending batch of {:?};", self.port, tag);
                     self.blocks.push_back(BlockScope::new(tag));
                 }
                 Err(e)
