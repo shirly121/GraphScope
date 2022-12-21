@@ -339,6 +339,7 @@ impl Operator {
         for (port, input) in self.inputs.iter().enumerate() {
             while let Some(end) = input.extract_end() {
                 let notification = End { port, end };
+                debug_worker!("Operator {:?} start notify to end", self.info);
                 self.core.on_end(notification, &self.outputs)?;
                 debug_worker!("Operator {:?} come to end", self.info);
             }
