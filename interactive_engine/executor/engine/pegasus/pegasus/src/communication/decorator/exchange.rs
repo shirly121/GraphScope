@@ -255,6 +255,10 @@ impl<D: Data> ExchangeByDataPush<D> {
                 self.blocks
                     .get_mut_or_insert(&batch.tag)
                     .push_back(BlockEntry::Batch(batch));
+            } else {
+                if batch.is_empty() {
+                    debug_worker!("block batch is empty now,but is end");
+                }
             }
             would_block!("no buffer available in exchange;")
         } else {
