@@ -149,7 +149,7 @@ impl Catalogue {
                 let (_pre_best_approach, pre_cost) = self
                     .set_node_best_approach_recursively(pre_pattern_index)
                     .expect("Failed to set node best approach recursively");
-                let this_step_cost = self.estimate_approach_cost(&best_approach);
+                let this_step_cost = self.estimate_approach_cost(&approach);
                 let cost = pre_cost + this_step_cost;
                 cost_counts_vec.push((pre_pattern_index, pre_cost, this_step_cost, cost));
                 if cost < min_cost {
@@ -1454,7 +1454,7 @@ fn print_pattern_choose_approach_log(
     pattern: &Pattern, pattern_index: NodeIndex, best_approach: Approach, min_cost: CostCount,
     cost_counts_vec: Vec<(NodeIndex, CostCount, CostCount, CostCount)>,
 ) {
-    info!("Pattern:\n {:?}", pattern.format_edges());
+    info!("Pattern: {:?}", pattern.format_edges());
     info!("Pattern Index: {:?}", pattern_index.index());
     info!("-------------------------------------");
     for (pre_pattern_index, pre_pattern_cost, step_cost, cost) in cost_counts_vec {
