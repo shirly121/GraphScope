@@ -245,15 +245,19 @@ impl<D: Data> ExchangeByDataPush<D> {
         }
 
         if has_block {
-            trace_worker!(
-                "output[{:?}] blocking on push batch(len={}) of {:?} ;",
-                self.port,
-                batch.len(),
-                batch.tag
-            );
-            self.blocks
-                .get_mut_or_insert(&batch.tag)
-                .push_back(BlockEntry::Batch(batch));
+            if !batch.is_empty() {
+                trace_worker!(
+                    "output[{:?}] blocking on push batch(len={}) of {:?} ;",
+                    self.port,
+                    batch.len(),
+                    batch.tag
+                );
+                self.blocks
+                    .get_mut_or_insert(&batch.tag)
+                    .push_back(BlockEntry::Batch(batch));
+            } else if batch.is_last() {
+                debug_worker!("batch with end scope is lost in block");
+            }
             would_block!("no buffer available in exchange;")
         } else {
             if let Some(end) = batch.take_end() {
