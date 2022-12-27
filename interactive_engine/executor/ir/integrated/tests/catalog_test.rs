@@ -315,6 +315,17 @@ mod test {
     }
 
     #[test]
+    fn generate_heuristic_match_plan_for_ldbc_bi3() {
+        let pattern = build_ldbc_bi3().unwrap();
+        let mut catalogue = Catalogue::build_from_pattern(&build_ldbc_basecase1().unwrap(), PatMatPlanSpace::ExtendWithIntersection);
+        let pb_plan = pattern
+            .generate_heuristic_match_plan(&mut catalogue, &get_ldbc_pattern_meta(), false)
+            .unwrap();
+        print_pb_logical_plan(&pb_plan);
+        execute_pb_logical_plan(pb_plan);
+    }
+
+    #[test]
     fn generate_optimized_pattern_match_plan_for_ldbc_bi3() {
         let pattern = build_ldbc_bi3().unwrap();
         // Naive Extend-Based Plan
@@ -340,6 +351,17 @@ mod test {
             .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
             .unwrap();
 
+        print_pb_logical_plan(&pb_plan);
+        execute_pb_logical_plan(pb_plan);
+    }
+
+    #[test]
+    fn generate_heuristic_match_plan_for_ldbc_bi11() {
+        let pattern = build_ldbc_bi11().unwrap();
+        let mut catalogue = Catalogue::build_from_pattern(&build_ldbc_basecase1().unwrap(), PatMatPlanSpace::ExtendWithIntersection);
+        let pb_plan = pattern
+            .generate_heuristic_match_plan(&mut catalogue, &get_ldbc_pattern_meta(), false)
+            .unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
