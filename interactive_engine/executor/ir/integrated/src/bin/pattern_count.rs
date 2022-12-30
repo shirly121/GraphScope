@@ -22,7 +22,7 @@ static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 fn main() -> Result<(), Box<dyn Error>> {
     let pattern = read_pattern()?;
     let pattern_code = pattern.encode_to();
-    let catalog = read_catalogue()?;
+    let mut catalog = read_catalogue()?;
     if let Some(pattern_index) = catalog.get_pattern_index(&pattern_code) {
         let pattern_count = catalog
             .get_pattern_weight(pattern_index)
@@ -32,7 +32,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("Pattern Index: {:?}", pattern_index);
         println!("Estimate pattern count is {}", pattern_count);
     } else {
-        println!("Sorry, don't find pattern's info in the catalog");
+        println!("Don't find pattern's info in the catalog");
+        println!("Estimate pattern count is {}", catalog.estimate_pattern_count(&pattern));
     }
     Ok(())
 }

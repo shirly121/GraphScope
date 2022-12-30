@@ -14,6 +14,7 @@
 //! limitations under the License.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
@@ -769,77 +770,37 @@ impl Catalogue {
         else if let Some(&patten_count) = self.pattern_count_map.get(&pattern_code) {
             patten_count
         } else {
-            // pattern combinations stores
-            // (sub pattern0, sub pattern1, intersect pattern, removed edge0, removed edge1)
-            let mut pattern_combinations = vec![];
-            // Enumarate all (edge0, edge1) pairs to find possible pattern combination
-            let edges: Vec<PatternEdge> = pattern.edges_iter().cloned().collect();
-            for i in 0..edges.len() {
-                for j in (i + 1)..edges.len() {
-                    let edge_0 = edges.get(i).unwrap();
-                    let edge_1 = edges.get(j).unwrap();
-                    // legal sub pattern has to be fully connected after remove an edge
-                    if let (Some(sub_pattern_0), Some(sub_pattern_1)) = (
-                        pattern.clone().remove_edge(edge_0.get_id()),
-                        pattern.clone().remove_edge(edge_1.get_id()),
-                    ) {
-                        if let Some(intersect_pattern) = sub_pattern_0
-                            .clone()
-                            .remove_edge(edge_1.get_id())
-                        {
-                            pattern_combinations.push((
-                                sub_pattern_0,
-                                sub_pattern_1,
-                                intersect_pattern,
-                                edge_0.clone(),
-                                edge_1.clone(),
-                            ));
+            let mut pattern_count_sum = 0;
+            let mut pattern_count_num = 0;
+            for edge in pattern.edges_iter() {
+                if let Some(sub_pattern) = pattern.clone().remove_edge(edge.get_id()) {
+                    let sub_pattern_count = self.estimate_pattern_count(&sub_pattern);
+                    let edge_count =
+                        self.estimate_pattern_count(&Pattern::try_from(vec![edge.clone()]).unwrap());
+                    let mut pattern_count = sub_pattern_count * edge_count;
+                    if pattern.get_vertex_degree(edge.get_start_vertex().get_id()) > 1 {
+                        let start_vertex_count =
+                            self.estimate_pattern_count(&Pattern::from(edge.get_start_vertex()));
+                        if start_vertex_count > 0 {
+                            pattern_count /= start_vertex_count;
                         }
                     }
-                }
-            }
-            // Iterate over all possible pattern combinations to get average estimate pattern count
-            // estimate pattern count = count(sub pattern 0) * count(sub pattern 1) / count(intersect pattern)
-            let mut estimate_count_sum = 0;
-            for (sub_pattern_0, sub_pattern_1, intersect_pattern, edge_0, edge_1) in
-                pattern_combinations.iter()
-            {
-                // Get these sub patterns' counts recursively
-                let sub_pattern_0_count = self.estimate_pattern_count(sub_pattern_0);
-                let sub_pattern_1_count = self.estimate_pattern_count(sub_pattern_1);
-                let mut intersect_pattern_count = self.estimate_pattern_count(intersect_pattern);
-                // Deal with the situation that the intersect pattern is disconnected
-                // the intersect pattern is disconnected if
-                // 1. its vertex number > 1
-                // 2. edge0 and edge1 shares a common vertex
-                if intersect_pattern.get_vertices_num() > 1 {
-                    if let Some(common_vertex) = get_common_vertex_of_edges(edge_0, edge_1) {
-                        let common_vertex_count =
-                            self.estimate_pattern_count(&Pattern::from(common_vertex));
-                        // intersect pattern's count should multiply the common vertex's count
-                        intersect_pattern_count *= common_vertex_count;
+                    if pattern.get_vertex_degree(edge.get_end_vertex().get_id()) > 1 {
+                        let end_vertex_count =
+                            self.estimate_pattern_count(&Pattern::from(edge.get_end_vertex()));
+                        if end_vertex_count > 0 {
+                            pattern_count /= end_vertex_count;
+                        }
                     }
+                    pattern_count_sum += pattern_count;
+                    pattern_count_num += 1;
                 }
-                // Deal with the situation that intersect pattern count is 0
-                let estimate_count = if intersect_pattern_count == 0 {
-                    sub_pattern_0_count * sub_pattern_1_count
-                } else {
-                    sub_pattern_0_count * sub_pattern_1_count / intersect_pattern_count
-                };
-                estimate_count_sum += estimate_count;
             }
-            // If pattern combinations's len is 0, which means
-            // 1. pattern's edge number <= 1
-            // 2. such pattern's count info should be stored in the catalog
-            // 3. therefore, its count is estimated as 0
-            let pattern_count = if pattern_combinations.len() == 0 {
-                0
+            if pattern_count_num > 0 {
+                pattern_count_sum / pattern_count_num
             } else {
-                estimate_count_sum / pattern_combinations.len()
-            };
-            self.pattern_count_map
-                .insert(pattern_code, pattern_count);
-            pattern_count
+                0
+            }
         }
     }
 
