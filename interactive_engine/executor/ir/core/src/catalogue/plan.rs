@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use core::ops::{Add, AddAssign};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 use std::convert::{TryFrom, TryInto};
 use std::sync::RwLock;
 
@@ -77,38 +77,57 @@ impl Pattern {
         Ok(pb_plan)
     }
 
+    /// Generate heuristic plan that is not bad when patterns are not hit in catalog
+    /// 
+    /// The basic idea is to put vertex with predicate or lowest cost to be executed earlier.
+    pub fn generate_heuristic_match_plan(&self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
+    ) -> IrResult<pb::LogicalPlan> {
+        // let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
+        // extend_steps.reverse();
+        // if is_distributed {
+        //     build_distributed_match_plan(self, extend_steps, pattern_meta)
+        // } else {
+        //     build_stand_alone_match_plan(self, extend_steps, pattern_meta)
+        // }
+
+        let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
+        extend_steps.reverse();
+        let mut pb_plan = if is_distributed {
+            build_distributed_match_plan(self, extend_steps, pattern_meta)
+                .expect("Failed to build distributed pattern match plan")
+        } else {
+            build_stand_alone_match_plan(self, extend_steps, pattern_meta)
+                .expect("Failed to build distributed pattern match plan")
+        };
+        match_pb_plan_add_source(&mut pb_plan);
+        pb_plan_add_count_sink_operator(&mut pb_plan);
+        Ok(pb_plan)
+    }
+
     pub fn generate_optimized_match_plan(
         &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
-        let pattern_code: Vec<u8> = self.encode_to();
+        // If pattern not found in catalogue, use heuristic plan
+        if catalog.get_pattern_index(&self.encode_to()).is_none() {
+            return self.generate_heuristic_match_plan(catalog, pattern_meta, is_distributed);
+        }
+
+        // If pattern is in catalogue, optimizatized plan is generated.
         match catalog.get_plan_space() {
             PatMatPlanSpace::BinaryJoin => Err(IrError::Unsupported(
                 "Do not support pure binary join plan with no extend steps".to_string(),
             )),
-            PatMatPlanSpace::Hybrid => {
-                if let Some(_pattern_index) = catalog.get_pattern_index(&pattern_code) {
-                    catalog.set_best_approach_by_pattern(self);
-                    PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
-                        .generate_pattern_match_plan()
-                } else {
-                    Err(IrError::Unsupported("Cannot Locate Pattern in the Catalogue".to_string()))
-                }
-            }
-            PatMatPlanSpace::ExtendWithIntersection => {
-                let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
-                extend_steps.reverse();
-                if is_distributed {
-                    build_distributed_match_plan(self, extend_steps, pattern_meta)
-                } else {
-                    build_stand_alone_match_plan(self, extend_steps, pattern_meta)
-                }
-            }
+            _ => {
+                catalog.set_best_approach_by_pattern(self);
+                PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
+                    .generate_pattern_match_plan()
+            },
         }
     }
 }
 
 impl Catalogue {
-    fn set_best_approach_by_pattern(&mut self, pattern: &Pattern) {
+    pub fn set_best_approach_by_pattern(&mut self, pattern: &Pattern) {
         let node_index = self
             .get_pattern_index(&pattern.encode_to())
             .expect("Pattern not found in catalogue");
@@ -263,10 +282,11 @@ impl Catalogue {
 /// trace_pattern: the pattern traced for plan generator, and it will be changed recursively during generation.
 ///
 /// target_pattern: the reference of the target pattern, fixed after initialization
-///
-/// catalog: the reference of the catalogue
-struct PlanGenerator<'a> {
+/// 
+/// catalog: the reference of the catalogue 
+pub struct PlanGenerator<'a> {
     plan: pb::LogicalPlan,
+    vertex_labels_to_scan: BTreeSet<PatternLabelId>,
     trace_pattern: Pattern,
     target_pattern: &'a Pattern,
     catalog: &'a Catalogue,
@@ -285,7 +305,13 @@ impl<'a> PlanGenerator<'a> {
             trace_pattern: pattern.clone(),
             target_pattern: pattern,
             plan: pb::LogicalPlan::default(),
+            vertex_labels_to_scan: BTreeSet::new(),
         }
+    }
+
+    /// Get the pb logical plan
+    pub fn get_pb_plan(&self) -> pb::LogicalPlan {
+        self.plan.clone()
     }
 
     /// Return the number of nodes in the logical plan
@@ -353,7 +379,7 @@ impl<'a> PlanGenerator<'a> {
         Ok(self.plan.clone())
     }
 
-    fn generate_pattern_match_plan_recursively(&mut self, pattern: &Pattern) -> IrResult<()> {
+    pub fn generate_pattern_match_plan_recursively(&mut self, pattern: &Pattern) -> IrResult<()> {
         // locate the pattern node in the catalog graph
         if let Some(node_index) = self
             .catalog
@@ -478,6 +504,9 @@ impl<'a> PlanGenerator<'a> {
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         self.plan.nodes.push(as_node);
+        // Insert the vertex label to scan
+        self.vertex_labels_to_scan.insert(vertex.get_label());
+        // Set root for pb plan
         self.plan.roots = vec![0];
     }
 
@@ -636,7 +665,7 @@ impl<'a> PlanGenerator<'a> {
     }
 
     /// Join two logical plan builder, resulting in one logical plan builder with join operator
-    fn join(&mut self, mut other: PlanGenerator, join_keys: Vec<Variable>) -> IrResult<()> {
+    pub fn join(&mut self, mut other: PlanGenerator, join_keys: Vec<Variable>) -> IrResult<()> {
         // Add an as node with alias = None for binary join
         let as_node_for_join = {
             let opr = pb::As { alias: None };
@@ -673,7 +702,6 @@ impl<'a> PlanGenerator<'a> {
 
         // Concat two plans to be one
         self.plan.nodes.extend(other.plan.nodes);
-
         // Append join node
         let join_node = {
             let opr = pb::Join {
@@ -685,68 +713,71 @@ impl<'a> PlanGenerator<'a> {
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         self.plan.nodes.push(join_node);
+        // Merge vertex labels to scan
+        self.vertex_labels_to_scan.append(&mut other.vertex_labels_to_scan.clone());
 
         Ok(())
     }
 
-    fn match_pb_plan_add_source(&mut self) {
-        // Iterate through all nodes and collect Select nodes
-        let mut vertex_labels_to_scan: Vec<PatternLabelId> = vec![];
-        self.plan.nodes.iter().for_each(|node| {
-            if let pb::logical_plan::operator::Opr::Select(first_select) = node
-                .opr
-                .as_ref()
-                .unwrap()
-                .opr
-                .as_ref()
-                .unwrap()
-                .clone()
-            {
-                let label_id: PatternLabelId = first_select
-                    .predicate
-                    .as_ref()
-                    .unwrap()
-                    .operators
-                    .get(2)
-                    .and_then(|opr| opr.item.as_ref())
-                    .and_then(|item| {
-                        if let common_pb::expr_opr::Item::Const(value) = item {
-                            Some(value)
-                        } else {
-                            None
-                        }
-                    })
-                    .and_then(|value| {
-                        if let Some(common_pb::value::Item::I64(label_id)) = value.item {
-                            Some(label_id as i32)
-                        } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
-                            Some(label_id)
-                        } else {
-                            None
-                        }
-                    })
-                    .expect("Failed to get vertex label from Select Node");
-                vertex_labels_to_scan.push(label_id);
-            }
-        });
+    pub fn match_pb_plan_add_source(&mut self) {
+        // // Iterate through all nodes and collect Select nodes
+        // let mut vertex_labels_to_scan: Vec<PatternLabelId> = vec![];
+        // self.plan.nodes.iter().for_each(|node| {
+        //     if let pb::logical_plan::operator::Opr::Select(first_select) = node
+        //         .opr
+        //         .as_ref()
+        //         .unwrap()
+        //         .opr
+        //         .as_ref()
+        //         .unwrap()
+        //         .clone()
+        //     {
+        //         let label_id: PatternLabelId = first_select
+        //             .predicate
+        //             .as_ref()
+        //             .unwrap()
+        //             .operators
+        //             .get(2)
+        //             .and_then(|opr| opr.item.as_ref())
+        //             .and_then(|item| {
+        //                 if let common_pb::expr_opr::Item::Const(value) = item {
+        //                     Some(value)
+        //                 } else {
+        //                     None
+        //                 }
+        //             })
+        //             .and_then(|value| {
+        //                 if let Some(common_pb::value::Item::I64(label_id)) = value.item {
+        //                     Some(label_id as i32)
+        //                 } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
+        //                     Some(label_id)
+        //                 } else {
+        //                     None
+        //                 }
+        //             })
+        //             .expect("Failed to get vertex label from Select Node");
+        //         vertex_labels_to_scan.push(label_id);
+        //     }
+        // });
 
         // If the plan is purely extend-based, the first Select node could be removed, and we only need to scan the first vertex
         match self.catalog.get_plan_space() {
             PatMatPlanSpace::ExtendWithIntersection => {
-                vertex_labels_to_scan = vec![vertex_labels_to_scan[0]];
                 self.remove_node(0)
                     .expect("Failed to remove node from pb_plan");
-            }
-            _ => {}
+            },
+            _ => {},
         }
-
+        
         // Append Sink Node
         let scan_node = {
             let opr = pb::Scan {
                 scan_opt: 0,
                 alias: None,
                 params: Some(pb::QueryParams {
-                    tables: vertex_labels_to_scan
+                    tables: self
+                        .vertex_labels_to_scan
+                        .clone()
                         .into_iter()
                         .map(|v_label| v_label.into())
                         .collect(),
@@ -766,7 +797,7 @@ impl<'a> PlanGenerator<'a> {
             .expect("Failed to insert node to pb_plan");
     }
 
-    fn pb_plan_add_count_sink_operator(&mut self) {
+    pub fn pb_plan_add_count_sink_operator(&mut self) {
         let pb_plan_len = self.plan.nodes.len();
         // Modify the children ID of the last node
         self.plan.nodes[pb_plan_len - 1].children = vec![pb_plan_len as i32];
