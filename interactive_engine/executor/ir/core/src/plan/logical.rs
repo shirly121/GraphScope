@@ -422,9 +422,15 @@ impl LogicalPlan {
                         .and_then(|strategy| strategy.build_logical_plan())
                     {
                         if self.nodes.len() == 1 {
-                            if let Some(()) = match_pb_plan_add_source(&mut plan) {
+                            if is_join(&plan) {
+                                self.remove_node(0);
+                            } else if let Some(()) = match_pb_plan_add_source(&mut plan) {
                                 self.remove_node(0);
                             }
+                        }
+                        if is_join(&plan) {
+                            plan.nodes.pop();
+                            plan.nodes.pop();
                         }
                         self.append_plan(plan, parent_ids.clone())
                     } else {
@@ -630,6 +636,19 @@ impl LogicalPlan {
             _ => None,
         }
     }
+}
+
+fn is_join(pb_plan: &pb::LogicalPlan) -> bool {
+    for node in pb_plan.nodes.iter() {
+        if let Some(oprator) = node.opr.as_ref() {
+            if let Some(opr) = oprator.opr.as_ref() {
+                if let pb::logical_plan::operator::Opr::Join(_) = opr {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 pub fn match_pb_plan_add_source(pb_plan: &mut pb::LogicalPlan) -> Option<()> {
