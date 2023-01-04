@@ -340,6 +340,22 @@ impl<'a> PlanGenerator<'a> {
                     .for_each(|child_id| {
                         *child_id += 1;
                     });
+                
+                // Offset the parent node id for each Intersect Node
+                if let pb::logical_plan::operator::Opr::Intersect(intersect) = current_node
+                    .opr
+                    .as_mut()
+                    .unwrap()
+                    .opr
+                    .as_mut()
+                    .unwrap()
+                {
+                    intersect.parents
+                        .iter_mut()
+                        .for_each(|parent_id| {
+                            *parent_id += 1;
+                        });
+                }
             });
         Ok(())
     }
@@ -538,7 +554,7 @@ impl<'a> PlanGenerator<'a> {
         definite_extend_step: DefiniteExtendStep,
     ) -> IrResult<()> {
         // Modify Children ID in the last node of the input plan
-        let mut child_offset = (self.get_node_num() + 1) as i32;
+        let mut child_offset = self.get_node_num() as i32;
         let edge_expands: Vec<pb::EdgeExpand> =
             definite_extend_step.generate_expand_operators(target_pattern);
         let edge_expands_num = edge_expands.len();
@@ -547,12 +563,17 @@ impl<'a> PlanGenerator<'a> {
             .collect();
         // if edge expand num > 1, we need a Intersect Operator
         if edge_expands_num > 1 {
+            // Set the children of the previous node
+            self.plan.nodes.last_mut().unwrap().children = edge_expands_ids.clone();
+            // Append edge expand nodes
+            child_offset += edge_expands.len() as i32;            
             for edge_expand in edge_expands {
                 let edge_expand_node =
                     pb::logical_plan::Node { opr: Some(edge_expand.into()), children: vec![child_offset] };
                 self.plan.nodes.push(edge_expand_node);
-                child_offset += 1;
             }
+            child_offset += 1;
+            // Append Intersect node
             let intersect_node = {
                 let opr = definite_extend_step.generate_intersect_operator(edge_expands_ids);
                 let children: Vec<i32> = vec![child_offset];
@@ -561,6 +582,10 @@ impl<'a> PlanGenerator<'a> {
             self.plan.nodes.push(intersect_node);
             child_offset += 1;
         } else if edge_expands_num == 1 {
+            // Set the children of the previous node
+            self.plan.nodes.last_mut().unwrap().children = edge_expands_ids;
+            // Append edge expand node
+            child_offset += edge_expands.len() as i32;
             let edge_expand_node = {
                 let opr = edge_expands
                     .into_iter()
@@ -682,6 +707,21 @@ impl<'a> PlanGenerator<'a> {
             node.children.iter_mut().for_each(|child| {
                 *child += left_size as i32;
             });
+            // Offset the parent node id for each Intersect Node
+            if let pb::logical_plan::operator::Opr::Intersect(intersect) = node
+                .opr
+                .as_mut()
+                .unwrap()
+                .opr
+                .as_mut()
+                .unwrap()
+            {
+                intersect.parents
+                    .iter_mut()
+                    .for_each(|parent_id| {
+                        *parent_id += left_size as i32;
+                    });
+            }
         });
 
         // Link the last node of both left and right plan to the join node
