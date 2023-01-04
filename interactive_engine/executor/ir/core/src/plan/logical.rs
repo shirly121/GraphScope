@@ -428,10 +428,8 @@ impl LogicalPlan {
                                 self.remove_node(0);
                             }
                         }
-                        if is_join(&plan) {
-                            plan.nodes.pop();
-                            plan.nodes.pop();
-                        }
+                        plan.nodes.pop();
+                        plan.nodes.pop();
                         self.append_plan(plan, parent_ids.clone())
                     } else {
                         println!("Generate Naive Plan");
