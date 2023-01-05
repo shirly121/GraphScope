@@ -241,13 +241,16 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
     };
     let select_comment =
         pb::Select { predicate: Some(str_to_expr_pb("@.~label == 2".to_string()).unwrap()) };
+    let select_shanghai =
+        pb::Select { predicate: Some(str_to_expr_pb("@.~name == Shanghai".to_string()).unwrap()) };
     let pattern = pb::Pattern {
         sentences: vec![
             pb::pattern::Sentence {
                 start: Some(TAG_A.into()),
-                binders: vec![pb::pattern::Binder {
-                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1)),
-                }],
+                binders: vec![
+                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Edge(expand_opr1)) },
+                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Select(select_shanghai)) },
+                ],
                 end: Some(TAG_C.into()),
                 join_kind: 0,
             },
