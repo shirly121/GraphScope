@@ -802,4 +802,15 @@ mod test {
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
+
+    #[test]
+    fn test() {
+        let pattern = build_ldbc_pattern_test().unwrap();
+        let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
+        // let mut pb_plan = pattern.generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), true).unwrap();
+        // print_pb_logical_plan(&pb_plan);
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+            .expect("Failed to generate pattern match plan");
+        // execute_pb_logical_plan(pb_plan);
+    }
 }

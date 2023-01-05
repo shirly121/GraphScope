@@ -767,3 +767,86 @@ pub fn build_ldbc_bi11() -> IrResult<Pattern> {
     };
     Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
 }
+
+pub fn build_ldbc_pattern_test() -> Result<Pattern, IrError> {
+    let ldbc_pattern_mata = get_ldbc_pattern_meta();
+    // define pb pattern message
+    let expand_opr1 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
+        expand_opt: 0,
+        alias: None,
+    };
+    let expand_opr2 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![11.into()], vec![], None)), //ISLOCATEDIN
+        expand_opt: 0,
+        alias: None,
+    };
+    let expand_opr3 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                              // out
+        params: Some(query_params(vec![13.into()], vec![], None)), //LIKES
+        expand_opt: 0,
+        alias: None,
+    };
+    let expand_opr4 = pb::EdgeExpand {
+        v_tag: None,
+        direction: 0,                                             // out
+        params: Some(query_params(vec![0.into()], vec![], None)), //HASCREATOR
+        expand_opt: 0,
+        alias: None,
+    };
+    let select_comment =
+        pb::Select { predicate: Some(str_to_expr_pb("@.~label == 2".to_string()).unwrap()) };
+    let select_shanghai =
+        pb::Select { predicate: Some(str_to_expr_pb("@.~name == 2".to_string()).unwrap()) };
+    let pattern = pb::Pattern {
+        sentences: vec![
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![
+                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Edge(expand_opr1)) },
+                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Select(select_shanghai)) },
+                ],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_B.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr2)),
+                }],
+                end: Some(TAG_C.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_A.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr3)),
+                }],
+                end: Some(TAG_D.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr4)),
+                }],
+                end: Some(TAG_B.into()),
+                join_kind: 0,
+            },
+            pb::pattern::Sentence {
+                start: Some(TAG_D.into()),
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Select(select_comment)),
+                }],
+                end: None,
+                join_kind: 0,
+            },
+        ],
+    };
+    Pattern::from_pb_pattern(&pattern, &ldbc_pattern_mata, &mut PlanMeta::default())
+}
