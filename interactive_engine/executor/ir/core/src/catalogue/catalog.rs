@@ -469,6 +469,23 @@ impl Catalogue {
                 );
             });
     }
+
+    pub fn pick_catalog(&self, pattern_indices: Vec<NodeIndex>) -> Catalogue {
+        let mut picked_catalog = self.clone();
+        for i in 1..pattern_indices.len() {
+            let pre_pattern_index = pattern_indices[i - 1];
+            let pattern_index = pattern_indices[i];
+            let edge_index = self
+                .store
+                .edges_connecting(pre_pattern_index, pattern_index)
+                .next()
+                .unwrap()
+                .id();
+            let best_approach = Approach::new(pre_pattern_index, pattern_index, edge_index);
+            picked_catalog.set_pattern_best_approach(pattern_index, best_approach);
+        }
+        picked_catalog
+    }
 }
 
 fn get_adj_vertex_id_candies(
