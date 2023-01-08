@@ -500,23 +500,37 @@ impl<'a> PlanGenerator<'a> {
 
     fn generate_pattern_match_plan_for_size_one_pattern(&mut self, pattern: &Pattern) {
         // Source operator when there is only one vertex in pattern
+        let mut child_offset: i32 = 1;
         let vertex: &PatternVertex = pattern
             .vertices_iter()
-            .collect::<Vec<&PatternVertex>>()[0];
-        let vertex_label: PatternLabelId = vertex.get_label();
-        // Append select node
+            .next().unwrap();
+        // Append Select Node on Vertex Predicate
+        if let Some(predicate) = pattern.get_vertex_predicate(vertex.get_id()) {
+            let select_predicate_node = {
+                let opr = pb::Select {
+                    predicate: Some(predicate.clone()),
+                };
+                let children: Vec<i32> = vec![child_offset];
+                pb::logical_plan::Node { opr: Some(opr.into()), children }
+            };
+            child_offset += 1;
+            self.plan.nodes.push(select_predicate_node);
+        }
+
+        // Append Select Node on Vertex Label
         let select_node = {
             let opr = pb::Select {
-                predicate: Some(str_to_expr_pb(format!("@.~label == {}", vertex_label)).unwrap()),
+                predicate: Some(str_to_expr_pb(format!("@.~label == {}", vertex.get_label())).unwrap()),
             };
-            let children: Vec<i32> = vec![1];
+            let children: Vec<i32> = vec![child_offset];
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
+        child_offset += 1;
         self.plan.nodes.push(select_node);
         // Append as node
         let as_node = {
             let opr = pb::As { alias: Some((vertex.get_id() as i32).into()) };
-            let children: Vec<i32> = vec![2];
+            let children: Vec<i32> = vec![child_offset];
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         self.plan.nodes.push(as_node);
@@ -619,7 +633,7 @@ impl<'a> PlanGenerator<'a> {
             child_offset += 1;
         }
         // Filter by the predicate of target vertex
-        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(src_pattern) {
+        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(target_pattern) {
             let select_node =
                 pb::logical_plan::Node { opr: Some(filter.into()), children: vec![child_offset] };
             self.plan.nodes.push(select_node);
@@ -677,7 +691,7 @@ impl<'a> PlanGenerator<'a> {
             child_offset += 1;
         }
         // Filter on the predicate of target vertex
-        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(src_pattern) {
+        if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(target_pattern) {
             let select_node = {
                 let opr = filter;
                 let children: Vec<i32> = vec![child_offset];
