@@ -269,8 +269,8 @@ impl BinaryJoinPlan {
         let probe_pattern_vertices_num = self.probe_pattern.get_vertices_num();
         let shared_vertices_num = self.shared_vertices.len();
         let is_plan_valid: bool = shared_vertices_num > 0
-            && build_pattern_vertices_num > shared_vertices_num + 1
-            && probe_pattern_vertices_num > shared_vertices_num + 1;
+            && build_pattern_vertices_num > shared_vertices_num
+            && probe_pattern_vertices_num > shared_vertices_num;
         if !is_plan_valid {
             return false;
         }
