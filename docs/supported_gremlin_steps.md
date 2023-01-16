@@ -1,4 +1,4 @@
-# Tutorials for Gremlin Users
+# The Supported Gremlin Steps and Limitations
 1. [Introduction](#introduction)
 2. [Standard Steps](#standard-steps)
    1. [Source](#source)
@@ -17,7 +17,11 @@
    3. [Aggregate(Group)](#aggregate-group)
 4. [Limitations](#limitations)
 ## Introduction
-This documentation guides you how to work with the [gremlin](https://tinkerpop.apache.org/docs/current/reference) graph traversal language in GraphScope. On the one hand we retain the original syntax of most steps from the standard gremlin, on the other hand the usages of some steps are further extended to denote more complex situations in real-world scenarios.
+This documentation details the supports of the
+[Gremlin](https://tinkerpop.apache.org/docs/current/reference) graph traversal language
+in GraphScope. On the one hand we retain the original syntax of most steps from the
+standard gremlin, on the other hand we attempt to provide syntax sugars and extensions including
+path expand and expression to ease the usage of Gremlin in real-world applications.
 ## Standard Steps
 We retain the original syntax of the following steps from the standard gremlin.
 ### Source
@@ -41,8 +45,10 @@ g.E()
 g.E(1)
 g.E(1,2,3)
 ```
-### Expand
-#### [outE()](https://tinkerpop.apache.org/docs/current/reference/#vertex-steps)
+### Exploring Adjacent Edges and Neighbors
+These steps all together are called the [vertex steps]((https://tinkerpop.apache.org/docs/current/reference/#vertex-steps))
+in Gremlin, which are core for traversing the graph data. 
+#### outE()
 Map the vertex to its outgoing incident edges given the edge labels.
 
 Parameters: </br>
@@ -526,16 +532,23 @@ graphName - the name of the side-effect key that will hold the subgraph.
 g.E().subgraph("all") 
 g.V().has('name', "marko").outE("knows").subgraph("partial")
 ```
-## Syntactic Sugars
-The following steps are extended to denote more complex situations.
+## Syntactic Sugars and Extensions
+The following syntactic sugars and extensions are proposed to ease the use of Gremlin in real-life applications.
 ### PathExpand
-In Graph querying, expanding a multiple-hops path from a starting point is called `PathExpand`, which is commonly used in graph scenarios. In addition, there are different requirements for expanding strategies in different scenarios, i.e. it is required to output a simple path or all vertices explored along the expanding path. We introduce the with()-step to configure the corresponding behaviors of the `PathExpand`-step.
+In Graph querying, `PathExpand` is commonly used to obtain multiple-hop paths from a starting vertex. 
+However, the officially provided `repeat()`-step that can be potentially used for `PathExpand`
+is not quite friendly to users, who mostly care about the **declarative** behaviour of expanding certain edges multiple times,
+rather than repeating **imperatively** the execution of a fragment of Gremlin sub-queries. Therefore, we propose
+the syntactic sugar of `PathExpand`, which reuses the vertex steps of `out()` and `in()` by further
+allowing users to specify a range for how many times to traverse away from the current vertex.
+Options of `PathExpand` can be configured via the `with`-modulator, 
+i.e. to output a simple path or all vertices explored along the traversal. 
 
 #### out()
-Expand a multiple-hops path along the outgoing edges, which length is within the given range.
+Expand multiple-hop paths along the outgoing edges, with the hops contained in the given range.
 
 Parameters: </br>
-lengthRange - the lower and the upper bounds of the path length, </br> edgeLabels - the edge labels to traverse.
+lengthRange - the lower (included) and upper (excluded) bounds of the path length, </br> edgeLabels - the edge labels to traverse.
 
 Usages of the with()-step: </br> 
 keyValuePair - the options to configure the corresponding behaviors of the `PathExpand`-step.
@@ -565,7 +578,7 @@ gremlin> g.V().out("1..3", "knows").with('RESULT_OPT', 'END_V').endV()
 ==>v[4]
 ```
 #### in()
-Expand a multiple-hops path along the incoming edges, which length is within the given range.
+Expand the multiple-hop paths along the incoming edges, with the hops contained the given range.
 ```bash
 g.V().in("1..10").with('PATH_OPT', 'ARBITRARY').with('RESULT_OPT', 'END_V')
 ```
@@ -617,15 +630,19 @@ g.V().out("1..10").with('RESULT_OPT', 'ALL_V')
 g.V().out("1..10").with('RESULT_OPT', 'ALL_V').endV()
 ```
 ### Expression
-Expression is introduced to denote property-based calculations or filters, which consists of the following basic entries:
+Expression is useful for fulfilling projection and filtering, and is a common feature in query languages.
+Nevertheless, our users often find Gremlin's expressions hard to use, especially those
+with arithmetic operations via `math()`-step and logical operations via `and()`, `or()` etc. 
+
+We first introduce the following basic constructs for an expression.
 ```bash
-@ # the value of the current entry
+@ # the reference of the current entry, namely head of a traversal
 @.name # the property value of `name` of the current entry
-@a # the value of the entry `a`
-@a.name # the property value of `name` of the entry `a`
+@a # the value of the entry given by `a`, which is given via the `as()` step
+@a.name # the property value of `name` of the entry of `a`
 ```
 
-And related operations can be performed based on these entries, including:
+Arithmetic and Logical operations can be performed based on these entries, including:
 * arithmetic
     ```bash
     @.age + 10
@@ -660,7 +677,9 @@ And related operations can be performed based on these entries, including:
     @.num ^^ -3
     ```
 
-Expression(s) in project or filter:
+The expression is supported in GIE engine via the newly proposed `expr()`-step, and can either be used
+in `where()`-step for filtering the results, or in `select()`=step for projecting complex values. 
+
 * filter: where(expr("..."))
     ```bash
     g.V().where(expr("@.name == \"marko\"")) # = g.V().has("name", "marko")
@@ -689,9 +708,13 @@ gremlin> g.V().select(expr("@.name"))
 ==>peter
 ```
 ### Aggregate (Group)
-The group()-step in standard gremlin has limited capabilities (i.e. grouping can only be performed based on a single key, and only one aggregate calculation can be applied in each group), which cannot be applied to the requirements of performing group calculations on multiple keys or values; Therefore, we further extend the capabilities of the group()-step, allowing multiple variables to be set and different aliases to be configured in key by()-step and value by()-step respectively.
+The `group()`-step in standard gremlin has limited capabilities (i.e. grouping can only be performed
+based on a single key, and only one aggregate calculation can be applied in each group),
+which can introduce difficulties when users want to group the results on multiple keys.
+Therefore, we extend the capabilities of the `group()`-step, allowing multiple variables
+and aliases to be configured in both key `by()`-step and value `by()`-step respectively.
 
-Usages of the key by()-step:
+Usages of the key `by()`-step:
 ```bash
 # group by the property values of `name` and `age` of the current entry
 group().by(values("name").as("k1"), values("age").as("k2"))
@@ -699,7 +722,7 @@ group().by(values("name").as("k1"), values("age").as("k2"))
 group().by(out().count().as("k1"), values("name").as("k2"))
 ```
 
-Usages of the value by()-step:
+Usages of the value `by()`-step:
 ```bash
 # calculate the count of vertices and the sum of `age` respectively in each group
 group().by("name").by(count().as("v1"), values("age").sum().as("v2"))
