@@ -22,19 +22,19 @@ from the Gremlin console, which is similar to the [official process](https://tin
 In case that the information of endpoint of the Gremlin service remain unknown to this point, 
 it can be obtained using the k8s command as:
 ```bash
-# get external ip of frontend service
+# get external ip and port of frontend service from k8s
 kubectl get service -n graphscope-store-frontend
 
-# get port from configuration (value.yaml)
-gremlinPort: 8182
+NAME         TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)    AGE
+my-service   LoadBalancer   10.3.245.137   104.198.205.71   8080/TCP   54s
 ```
 
 After getting the endpoint, created the file of `remote.yaml` that writes:
 ```yaml 
-# config external ip here
-hosts: []
-# config port
-port: 8182
+# config EXTERNAL-IP here
+hosts: [104.198.205.71]
+# config PORT here
+port: 8080
 serializer: { className: org.apache.tinkerpop.gremlin.driver.ser.GraphBinaryMessageSerializerV1, config: { serializeResultToString: true }}
 ```
 
