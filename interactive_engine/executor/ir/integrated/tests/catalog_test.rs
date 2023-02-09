@@ -804,8 +804,19 @@ mod test {
     }
 
     #[test]
-    fn test() {
-        let pattern = build_ldbc_pattern_test().unwrap();
+    fn generate_optimized_match_plan_extend_case_with_predicate() {
+        let pattern = build_ldbc_pattern_extend_case_with_predicate().unwrap();
+        let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
+        // let mut pb_plan = pattern.generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), true).unwrap();
+        // print_pb_logical_plan(&pb_plan);
+        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+            .expect("Failed to generate pattern match plan");
+        // execute_pb_logical_plan(pb_plan);
+    }
+
+    #[test]
+    fn generate_optimized_match_plan_join_case_with_predicate() {
+        let pattern = build_ldbc_pattern_join_case_with_predicate().unwrap();
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
         // let mut pb_plan = pattern.generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), true).unwrap();
         // print_pb_logical_plan(&pb_plan);

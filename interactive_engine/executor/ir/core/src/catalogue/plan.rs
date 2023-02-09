@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use core::ops::{Add, AddAssign};
-use std::collections::{HashMap, HashSet, BTreeSet};
+use std::collections::{HashMap, HashSet, BTreeSet, BTreeMap};
 use std::convert::{TryFrom, TryInto};
 use std::sync::RwLock;
 
@@ -82,14 +82,6 @@ impl Pattern {
     /// The basic idea is to put vertex with predicate or lowest cost to be executed earlier.
     pub fn generate_heuristic_match_plan(&self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
-        // let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
-        // extend_steps.reverse();
-        // if is_distributed {
-        //     build_distributed_match_plan(self, extend_steps, pattern_meta)
-        // } else {
-        //     build_stand_alone_match_plan(self, extend_steps, pattern_meta)
-        // }
-
         let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
         extend_steps.reverse();
         let mut pb_plan = if is_distributed {
@@ -104,15 +96,12 @@ impl Pattern {
         Ok(pb_plan)
     }
 
+    /// Generate pattern match plan with catalogue optimizer for the given pattern.
+    /// 
+    /// The logic of pattern not hit has been integrated to function set_node_best_approach_recursively.
     pub fn generate_optimized_match_plan(
         &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
-        // If pattern not found in catalogue, use heuristic plan
-        if catalog.get_pattern_index(&self.encode_to()).is_none() {
-            return self.generate_heuristic_match_plan(catalog, pattern_meta, is_distributed);
-        }
-
-        // If pattern is in catalogue, optimizatized plan is generated.
         match catalog.get_plan_space() {
             PatMatPlanSpace::BinaryJoin => Err(IrError::Unsupported(
                 "Do not support pure binary join plan with no extend steps".to_string(),
@@ -128,64 +117,95 @@ impl Pattern {
 
 impl Catalogue {
     pub fn set_best_approach_by_pattern(&mut self, pattern: &Pattern) {
-        let node_index = self
-            .get_pattern_index(&pattern.encode_to())
-            .expect("Pattern not found in catalogue");
-        self.set_node_best_approach_recursively(node_index)
+        self.set_node_best_approach_recursively(pattern)
             .expect("Failed to set node best approach recursively");
     }
 
     /// Given a node in catalogue, find the best approach and the lowest cost to reach to it
     fn set_node_best_approach_recursively(
-        &mut self, node_index: NodeIndex,
+        &mut self, pattern: &Pattern,
     ) -> IrResult<(Option<Approach>, CostCount)> {
-        let pattern_weight = self
-            .get_pattern_weight(node_index)
-            .expect("Failed to get pattern weight");
-        let pattern = pattern_weight.get_pattern().clone();
-        if pattern.get_vertices_num() == 1 {
-            Ok((None, CostCount::from_src_pattern(pattern_weight.get_count())))
-        } else if let Some(best_approach) = pattern_weight.get_best_approach() {
-            // Recursively set best approach
-            let pre_pattern_index = best_approach.get_src_pattern_index();
-            let (_pre_best_approach, mut cost) = self
-                .set_node_best_approach_recursively(pre_pattern_index)
-                .expect("Failed to set node best approach recursively");
-            let this_step_cost = self.estimate_approach_cost(&best_approach);
-            cost += this_step_cost;
-            Ok((Some(best_approach), cost))
-        } else {
-            let mut min_cost = CostCount::max_value();
-            let candidate_approaches: Vec<Approach> = self.collect_candidate_approaches(node_index);
-            if candidate_approaches.len() == 0 {
-                return Err(IrError::Unsupported("No approach found for pattern in catalog".to_string()));
-            }
-
-            let mut best_approach = candidate_approaches[0];
-            let mut cost_counts_vec = vec![];
-            for approach in candidate_approaches {
-                let pre_pattern_index = approach.get_src_pattern_index();
-                let (_pre_best_approach, pre_cost) = self
-                    .set_node_best_approach_recursively(pre_pattern_index)
+        if let Some(node_index) = self.get_pattern_index(&pattern.encode_to()) {
+            // Pattern Hit
+            let pattern_weight = self
+                .get_pattern_weight(node_index)
+                .expect("Failed to get pattern weight");
+            let pattern = pattern_weight.get_pattern().clone();
+            if pattern.get_vertices_num() == 1 {
+                Ok((None, CostCount::from_src_pattern(pattern_weight.get_count())))
+            } else if let Some(best_approach) = pattern_weight.get_best_approach() {
+                // Recursively set best approach
+                let pre_pattern = {
+                    let pre_pattern_index = best_approach.get_src_pattern_index();
+                    self.get_pattern_weight(pre_pattern_index)
+                        .expect("Pattern index not found in catalogue")
+                        .get_pattern()
+                        .clone()
+                };
+                let (_pre_best_approach, mut cost) = self
+                    .set_node_best_approach_recursively(&pre_pattern)
                     .expect("Failed to set node best approach recursively");
-                let this_step_cost = self.estimate_approach_cost(&approach);
-                let cost = pre_cost + this_step_cost;
-                cost_counts_vec.push((pre_pattern_index, pre_cost, this_step_cost, cost));
-                if cost < min_cost {
-                    min_cost = cost;
-                    best_approach = approach;
+                let this_step_cost = self.estimate_approach_cost(&best_approach);
+                cost += this_step_cost;
+                Ok((Some(best_approach), cost))
+            } else {
+                let mut min_cost = CostCount::max_value();
+                let candidate_approaches: Vec<Approach> = self.collect_candidate_approaches(node_index);
+                if candidate_approaches.len() == 0 {
+                    return Err(IrError::Unsupported("No approach found for pattern in catalog".to_string()));
                 }
+
+                let mut best_approach = candidate_approaches[0];
+                let mut cost_counts_vec = vec![];
+                for approach in candidate_approaches {
+                    let pre_pattern_index = approach.get_src_pattern_index();
+                    let pre_pattern = self.get_pattern_weight(pre_pattern_index)
+                        .expect("Pattern index not found in catalogue")
+                        .get_pattern()
+                        .clone();
+                    let (_pre_best_approach, pre_cost) = self
+                        .set_node_best_approach_recursively(&pre_pattern)
+                        .expect("Failed to set node best approach recursively");
+                    let this_step_cost = self.estimate_approach_cost(&approach);
+                    let cost = pre_cost + this_step_cost;
+                    cost_counts_vec.push((pre_pattern_index, pre_cost, this_step_cost, cost));
+                    if cost < min_cost {
+                        min_cost = cost;
+                        best_approach = approach;
+                    }
+                }
+                // Debug, print the detailed log during plan generation
+                print_pattern_choose_approach_log(
+                    &pattern,
+                    node_index,
+                    best_approach,
+                    min_cost,
+                    cost_counts_vec,
+                );
+                // set best approach in the catalogue
+                self.set_pattern_best_approach(node_index, best_approach);
+                Ok((Some(best_approach), min_cost))
             }
-            print_pattern_choose_approach_log(
-                &pattern,
-                node_index,
-                best_approach,
-                min_cost,
-                cost_counts_vec,
-            );
-            // set best approach in the catalogue
-            self.set_pattern_best_approach(node_index, best_approach);
-            Ok((Some(best_approach), min_cost))
+        } else {
+            // Pattern Not Hit, heuristically update the paths and pattern cardinality in catalogue
+            self.update_catalog_by_pattern(pattern);
+            let empty_count_pattern_indices: Vec<NodeIndex> = self
+                .pattern_indices_iter()
+                .filter(|pattern_index| {
+                    if let Some(pattern_weight) = self.get_pattern_weight(pattern_index.clone()) {
+                        return pattern_weight.get_count() == 0;
+                    } else {
+                        return false;
+                    }
+                })
+                .collect();
+            empty_count_pattern_indices
+                .into_iter()
+                .for_each(|pattern_index| {
+                    let pattern = self.get_pattern_weight(pattern_index).unwrap().get_pattern().clone();
+                    self.estimate_pattern_count(&pattern);
+                });
+            self.set_node_best_approach_recursively(pattern)
         }
     }
 
@@ -264,8 +284,8 @@ impl Catalogue {
             .expect("Cannot find pattern weight in catalogue")
             .get_count();
         let (_, probe_pattern_cost) = self
-            .set_node_best_approach_recursively(join_weight.get_probe_pattern_node_index())
-            .unwrap();
+            .set_node_best_approach_recursively(join_weight.get_join_plan().get_probe_pattern())
+            .expect("Failed to set node best approach recursively for the given pattern");
         probe_pattern_cost
             + CostCount::from_join(
                 build_pattern_cardinality,
@@ -774,46 +794,6 @@ impl<'a> PlanGenerator<'a> {
     }
 
     pub fn match_pb_plan_add_source(&mut self) {
-        // // Iterate through all nodes and collect Select nodes
-        // let mut vertex_labels_to_scan: Vec<PatternLabelId> = vec![];
-        // self.plan.nodes.iter().for_each(|node| {
-        //     if let pb::logical_plan::operator::Opr::Select(first_select) = node
-        //         .opr
-        //         .as_ref()
-        //         .unwrap()
-        //         .opr
-        //         .as_ref()
-        //         .unwrap()
-        //         .clone()
-        //     {
-        //         let label_id: PatternLabelId = first_select
-        //             .predicate
-        //             .as_ref()
-        //             .unwrap()
-        //             .operators
-        //             .get(2)
-        //             .and_then(|opr| opr.item.as_ref())
-        //             .and_then(|item| {
-        //                 if let common_pb::expr_opr::Item::Const(value) = item {
-        //                     Some(value)
-        //                 } else {
-        //                     None
-        //                 }
-        //             })
-        //             .and_then(|value| {
-        //                 if let Some(common_pb::value::Item::I64(label_id)) = value.item {
-        //                     Some(label_id as i32)
-        //                 } else if let Some(common_pb::value::Item::I32(label_id)) = value.item {
-        //                     Some(label_id)
-        //                 } else {
-        //                     None
-        //                 }
-        //             })
-        //             .expect("Failed to get vertex label from Select Node");
-        //         vertex_labels_to_scan.push(label_id);
-        //     }
-        // });
-
         // If the plan is purely extend-based, the first Select node could be removed, and we only need to scan the first vertex
         match self.catalog.get_plan_space() {
             PatMatPlanSpace::ExtendWithIntersection => {
