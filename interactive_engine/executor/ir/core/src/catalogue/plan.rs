@@ -783,7 +783,7 @@ impl<'a> PlanGenerator<'a> {
                 right_keys: join_keys,
                 kind: pb::join::JoinKind::Inner as i32,
             };
-            let children: Vec<i32> = vec![];
+            let children: Vec<i32> = vec![(self.plan.nodes.len() + 1) as i32];
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         self.plan.nodes.push(join_node);
