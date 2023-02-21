@@ -420,6 +420,7 @@ impl<'a> PlanGenerator<'a> {
         self.generate_pattern_match_plan_recursively(self.target_pattern)
             .expect("Failed to generate pattern match plan with catalogue");
         self.match_pb_plan_add_source();
+        self.pb_plan_add_count_sink_operator();
         Ok(self.plan.clone())
     }
 

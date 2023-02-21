@@ -242,7 +242,7 @@ pub fn build_ldbc_pattern_from_pb_case4() -> Result<Pattern, IrError> {
     let select_comment =
         pb::Select { predicate: Some(str_to_expr_pb("@.~label == 2".to_string()).unwrap()) };
     let select_shanghai =
-        pb::Select { predicate: Some(str_to_expr_pb("@.~name == Shanghai".to_string()).unwrap()) };
+        pb::Select { predicate: Some(str_to_expr_pb("@.~name == \"Shanghai\"".to_string()).unwrap()) };
     let pattern = pb::Pattern {
         sentences: vec![
             pb::pattern::Sentence {
@@ -864,15 +864,18 @@ pub fn build_ldbc_pattern_join_case_with_predicate() -> Result<Pattern, IrError>
         expand_opt: 0,
         alias: None,
     };
-    let select_person =
-        pb::Select { predicate: Some(str_to_expr_pb("@.~name == 2".to_string()).unwrap()) };
+    let select_person = pb::Select { predicate: Some(str_to_expr_pb("@.~name == 2".to_string()).unwrap()) };
     let pattern = pb::Pattern {
         sentences: vec![
             pb::pattern::Sentence {
                 start: Some(TAG_A.into()),
                 binders: vec![
-                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())) },
-                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Select(select_person.clone())) },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Select(select_person.clone())),
+                    },
                 ],
                 end: Some(TAG_B.into()),
                 join_kind: 0,
@@ -888,17 +891,21 @@ pub fn build_ldbc_pattern_join_case_with_predicate() -> Result<Pattern, IrError>
             pb::pattern::Sentence {
                 start: Some(TAG_C.into()),
                 binders: vec![
-                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())) },
-                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Select(select_person.clone())) },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                    },
+                    pb::pattern::Binder {
+                        item: Some(pb::pattern::binder::Item::Select(select_person.clone())),
+                    },
                 ],
                 end: Some(TAG_D.into()),
                 join_kind: 0,
             },
             pb::pattern::Sentence {
                 start: Some(TAG_D.into()),
-                binders: vec![
-                    pb::pattern::Binder { item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())) },
-                ],
+                binders: vec![pb::pattern::Binder {
+                    item: Some(pb::pattern::binder::Item::Edge(expand_opr1.clone())),
+                }],
                 end: Some(TAG_E.into()),
                 join_kind: 0,
             },
