@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
     let graph = read_graph()?;
     let graph2 = read_graph()?;
-    dump_edge_info(get_edge_distribution(graph2), &config.low_order_path);
+    dump_edge_info(get_edge_distribution(&graph2), &config.low_order_path);
     let executed_command = "SPARSE_RATE=".to_string()
         + &config.sample_rate.to_string()
         + " SPARSE_STATISTIC_PATH="
@@ -69,10 +69,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
     if config.is_unique_rate == "unique" {
-        create_sparsified_graph(graph, sparsify_rate, config.export_path);
+        create_sparsified_graph(&graph, sparsify_rate, config.export_path);
     } else {
         dump_edge_info(naive_sparsify_rate.clone(), &config.sparsify_rate_path);
-        create_sparsified_graph(graph, naive_sparsify_rate, config.export_path);
+        create_sparsified_graph(&graph, naive_sparsify_rate, config.export_path);
     }
     Ok(())
 }
