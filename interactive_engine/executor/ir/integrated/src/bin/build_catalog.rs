@@ -112,6 +112,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         config.thread_num,
     );
     info!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
-    catalog.export(config.export_path)?;
+    info!(
+        "catalog contains {} patterns, {} approaches",
+        catalog.get_patterns_num(),
+        catalog.get_approaches_num()
+    );
+    catalog.simple_export(config.export_path)?;
     Ok(())
 }

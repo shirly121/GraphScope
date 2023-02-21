@@ -978,7 +978,7 @@ impl Catalogue {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableRow {
     src_pattern: Pattern,
     target_pattern: Pattern,
@@ -1024,7 +1024,7 @@ impl TableRow {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TableLogue {
     rows: Vec<TableRow>,
 }
@@ -1151,6 +1151,71 @@ impl TableLogue {
             }
         }
         table_logue
+    }
+}
+
+impl TableLogue {
+    pub fn export<P: AsRef<Path>>(&self, path: P) -> BincodeResult<()> {
+        let mut writer = BufWriter::new(File::create(path)?);
+        serialize_into(&mut writer, self)
+    }
+
+    pub fn import<P: AsRef<Path>>(path: P) -> BincodeResult<Self> {
+        let mut reader = BufReader::new(File::open(path)?);
+        deserialize_from(&mut reader)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SimplePatternWeight {
+    pattern: Pattern,
+    /// Estimate how many such pattern in a graph
+    count: usize,
+}
+
+impl From<PatternWeight> for SimplePatternWeight {
+    fn from(pattern_weight: PatternWeight) -> Self {
+        SimplePatternWeight { pattern: pattern_weight.pattern, count: pattern_weight.count }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SimpleCataTopo {
+    pattern_map: BTreeMap<NodeIndex, SimplePatternWeight>,
+    approach_map: BTreeMap<Approach, ExtendStep>,
+}
+
+impl From<CataTopo> for SimpleCataTopo {
+    fn from(catatopo: CataTopo) -> Self {
+        let pattern_map = catatopo
+            .pattern_map
+            .into_iter()
+            .map(|(node_index, weight)| (node_index, SimplePatternWeight::from(weight)))
+            .collect();
+        let approach_map = catatopo
+            .approach_map
+            .into_iter()
+            .map(|(approach, weight)| {
+                (
+                    approach,
+                    weight
+                        .get_extend_weight()
+                        .unwrap()
+                        .get_extend_step()
+                        .clone(),
+                )
+            })
+            .collect();
+        SimpleCataTopo { pattern_map, approach_map }
+    }
+}
+
+impl Catalogue {
+    pub fn simple_export<P: AsRef<Path>>(&self, path: P) -> BincodeResult<()> {
+        let catatopo = CataTopo::from(self);
+        let simple_catatopo = SimpleCataTopo::from(catatopo);
+        let mut writer = BufWriter::new(File::create(path)?);
+        serialize_into(&mut writer, &simple_catatopo)
     }
 }
 

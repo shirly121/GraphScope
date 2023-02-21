@@ -37,6 +37,8 @@ pub struct Config {
     sample_rate: f64,
     #[structopt(short = "l", long = "medium_results_limit")]
     limit: Option<usize>,
+    #[structopt(short = "p", long = "export_path")]
+    export_path: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -57,5 +59,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     table_log.estimate_graph(sample_graph, config.sample_rate, config.limit, config.thread_num);
     println!("building table log time cost is: {:?} s", table_log_build_start_time.elapsed().as_secs());
     println!("{:?}", table_log.iter().count());
+    table_log.export(config.export_path)?;
     Ok(())
 }

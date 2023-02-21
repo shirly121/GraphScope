@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use core::ops::{Add, AddAssign};
-use std::collections::{HashMap, HashSet, BTreeSet, BTreeMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 use std::sync::RwLock;
 
@@ -78,9 +78,10 @@ impl Pattern {
     }
 
     /// Generate heuristic plan that is not bad when patterns are not hit in catalog
-    /// 
+    ///
     /// The basic idea is to put vertex with predicate or lowest cost to be executed earlier.
-    pub fn generate_heuristic_match_plan(&self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
+    pub fn generate_heuristic_match_plan(
+        &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
         let (mut extend_steps, _) = get_definite_extend_steps(self.clone(), catalog);
         extend_steps.reverse();
@@ -97,7 +98,7 @@ impl Pattern {
     }
 
     /// Generate pattern match plan with catalogue optimizer for the given pattern.
-    /// 
+    ///
     /// The logic of pattern not hit has been integrated to function set_node_best_approach_recursively.
     pub fn generate_optimized_match_plan(
         &self, catalog: &mut Catalogue, pattern_meta: &PatternMeta, is_distributed: bool,
@@ -110,7 +111,7 @@ impl Pattern {
                 catalog.set_best_approach_by_pattern(self);
                 PlanGenerator::new(self, catalog, pattern_meta, is_distributed)
                     .generate_pattern_match_plan()
-            },
+            }
         }
     }
 }
@@ -152,14 +153,17 @@ impl Catalogue {
                 let mut min_cost = CostCount::max_value();
                 let candidate_approaches: Vec<Approach> = self.collect_candidate_approaches(node_index);
                 if candidate_approaches.len() == 0 {
-                    return Err(IrError::Unsupported("No approach found for pattern in catalog".to_string()));
+                    return Err(IrError::Unsupported(
+                        "No approach found for pattern in catalog".to_string(),
+                    ));
                 }
 
                 let mut best_approach = candidate_approaches[0];
                 let mut cost_counts_vec = vec![];
                 for approach in candidate_approaches {
                     let pre_pattern_index = approach.get_src_pattern_index();
-                    let pre_pattern = self.get_pattern_weight(pre_pattern_index)
+                    let pre_pattern = self
+                        .get_pattern_weight(pre_pattern_index)
                         .expect("Pattern index not found in catalogue")
                         .get_pattern()
                         .clone();
@@ -202,7 +206,11 @@ impl Catalogue {
             empty_count_pattern_indices
                 .into_iter()
                 .for_each(|pattern_index| {
-                    let pattern = self.get_pattern_weight(pattern_index).unwrap().get_pattern().clone();
+                    let pattern = self
+                        .get_pattern_weight(pattern_index)
+                        .unwrap()
+                        .get_pattern()
+                        .clone();
                     self.estimate_pattern_count(&pattern);
                 });
             self.set_node_best_approach_recursively(pattern)
@@ -302,8 +310,8 @@ impl Catalogue {
 /// trace_pattern: the pattern traced for plan generator, and it will be changed recursively during generation.
 ///
 /// target_pattern: the reference of the target pattern, fixed after initialization
-/// 
-/// catalog: the reference of the catalogue 
+///
+/// catalog: the reference of the catalogue
 pub struct PlanGenerator<'a> {
     plan: pb::LogicalPlan,
     vertex_labels_to_scan: BTreeSet<PatternLabelId>,
@@ -360,7 +368,7 @@ impl<'a> PlanGenerator<'a> {
                     .for_each(|child_id| {
                         *child_id += 1;
                     });
-                
+
                 // Offset the parent node id for each Intersect Node
                 if let pb::logical_plan::operator::Opr::Intersect(intersect) = current_node
                     .opr
@@ -370,7 +378,8 @@ impl<'a> PlanGenerator<'a> {
                     .as_mut()
                     .unwrap()
                 {
-                    intersect.parents
+                    intersect
+                        .parents
                         .iter_mut()
                         .for_each(|parent_id| {
                             *parent_id += 1;
@@ -411,7 +420,6 @@ impl<'a> PlanGenerator<'a> {
         self.generate_pattern_match_plan_recursively(self.target_pattern)
             .expect("Failed to generate pattern match plan with catalogue");
         self.match_pb_plan_add_source();
-        self.pb_plan_add_count_sink_operator();
         Ok(self.plan.clone())
     }
 
@@ -521,15 +529,11 @@ impl<'a> PlanGenerator<'a> {
     fn generate_pattern_match_plan_for_size_one_pattern(&mut self, pattern: &Pattern) {
         // Source operator when there is only one vertex in pattern
         let mut child_offset: i32 = 1;
-        let vertex: &PatternVertex = pattern
-            .vertices_iter()
-            .next().unwrap();
+        let vertex: &PatternVertex = pattern.vertices_iter().next().unwrap();
         // Append Select Node on Vertex Predicate
         if let Some(predicate) = pattern.get_vertex_predicate(vertex.get_id()) {
             let select_predicate_node = {
-                let opr = pb::Select {
-                    predicate: Some(predicate.clone()),
-                };
+                let opr = pb::Select { predicate: Some(predicate.clone()) };
                 let children: Vec<i32> = vec![child_offset];
                 pb::logical_plan::Node { opr: Some(opr.into()), children }
             };
@@ -555,7 +559,8 @@ impl<'a> PlanGenerator<'a> {
         };
         self.plan.nodes.push(as_node);
         // Insert the vertex label to scan
-        self.vertex_labels_to_scan.insert(vertex.get_label());
+        self.vertex_labels_to_scan
+            .insert(vertex.get_label());
         // Set root for pb plan
         self.plan.roots = vec![0];
     }
@@ -600,7 +605,7 @@ impl<'a> PlanGenerator<'a> {
             // Set the children of the previous node
             self.plan.nodes.last_mut().unwrap().children = edge_expands_ids.clone();
             // Append edge expand nodes
-            child_offset += edge_expands.len() as i32;            
+            child_offset += edge_expands.len() as i32;
             for edge_expand in edge_expands {
                 let edge_expand_node =
                     pb::logical_plan::Node { opr: Some(edge_expand.into()), children: vec![child_offset] };
@@ -742,15 +747,11 @@ impl<'a> PlanGenerator<'a> {
                 *child += left_size as i32;
             });
             // Offset the parent node id for each Intersect Node
-            if let pb::logical_plan::operator::Opr::Intersect(intersect) = node
-                .opr
-                .as_mut()
-                .unwrap()
-                .opr
-                .as_mut()
-                .unwrap()
+            if let pb::logical_plan::operator::Opr::Intersect(intersect) =
+                node.opr.as_mut().unwrap().opr.as_mut().unwrap()
             {
-                intersect.parents
+                intersect
+                    .parents
                     .iter_mut()
                     .for_each(|parent_id| {
                         *parent_id += left_size as i32;
@@ -788,7 +789,8 @@ impl<'a> PlanGenerator<'a> {
         };
         self.plan.nodes.push(join_node);
         // Merge vertex labels to scan
-        self.vertex_labels_to_scan.append(&mut other.vertex_labels_to_scan.clone());
+        self.vertex_labels_to_scan
+            .append(&mut other.vertex_labels_to_scan.clone());
 
         Ok(())
     }
@@ -799,10 +801,10 @@ impl<'a> PlanGenerator<'a> {
             PatMatPlanSpace::ExtendWithIntersection => {
                 self.remove_node(0)
                     .expect("Failed to remove node from pb_plan");
-            },
-            _ => {},
+            }
+            _ => {}
         }
-        
+
         // Append Sink Node
         let scan_node = {
             let opr = pb::Scan {
