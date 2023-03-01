@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         //         });
         // }
         if let PatMatPlanSpace::ExtendWithIntersection = plan_space {
-            match_pb_plan_add_source(&mut pb_plan);
+            pb_plan_add_source_operator(&mut pb_plan);
             pb_plan_add_count_sink_operator(&mut pb_plan);
         }
         println!("Final pb logical plan:");

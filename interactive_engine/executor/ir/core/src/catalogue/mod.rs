@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::fmt;
 
 use graph_store::graph_db::Direction;
 use ir_common::generated::algebra as pb;
@@ -102,6 +103,23 @@ pub(crate) fn query_params(
         extra: HashMap::new(),
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum CatalogError {
+    PatternError(String),
+    PlanError(String),
+}
+
+impl fmt::Display for CatalogError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CatalogError::PatternError(s) => write!(f, "{}", s),
+            CatalogError::PlanError(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl std::error::Error for CatalogError {}
 
 #[allow(dead_code)]
 pub mod catalog;

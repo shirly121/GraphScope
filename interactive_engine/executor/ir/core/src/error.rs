@@ -17,6 +17,7 @@
 use std::fmt;
 use std::sync::PoisonError;
 
+use crate::catalogue::CatalogError;
 use ir_common::error::ParsePbError;
 use ir_common::expr_parse::error::ExprError;
 use ir_common::NameOrId;
@@ -44,6 +45,7 @@ pub enum IrError {
 
     // Catalog Errors
     InvalidCode(String),
+    CatalogError(CatalogError),
 }
 
 pub type IrResult<T> = Result<T, IrError>;
@@ -71,6 +73,7 @@ impl fmt::Display for IrError {
             }
             IrError::Unsupported(s) => write!(f, "{:?}: is not supported", s),
             IrError::InvalidCode(s) => write!(f, "the code for {:?} is invalid", s),
+            IrError::CatalogError(err) => write!(f, "error happened in catalog module: {:?}", err),
         }
     }
 }
@@ -92,6 +95,12 @@ impl From<EncodeError> for IrError {
 impl From<ExprError> for IrError {
     fn from(err: ExprError) -> Self {
         Self::ParseExprError(err)
+    }
+}
+
+impl From<CatalogError> for IrError {
+    fn from(err: CatalogError) -> Self {
+        Self::CatalogError(err)
     }
 }
 

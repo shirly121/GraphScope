@@ -40,19 +40,32 @@ mod test {
     use ir_core::plan::physical::AsPhysical;
     use pegasus_client::builder::JobBuilder;
     use runtime::process::record::{Entry, Record};
+    use runtime_integration::{pb_plan_add_count_sink_operator, pb_plan_add_source_operator};
 
     use crate::common::{pattern_cases::*, test::*};
 
-    fn generate_pattern_match_plan(
+    fn generate_optimized_pattern_match_plan(
         pattern: &Pattern, catalogue: &Catalogue, is_distributed: bool,
     ) -> IrResult<pb::LogicalPlan> {
         println!("start generating plan...");
         let plan_generation_start_time = Instant::now();
-        let pb_plan: pb::LogicalPlan = pattern
+        let mut pb_plan: pb::LogicalPlan = pattern
             .generate_optimized_match_plan(&mut catalogue.clone(), &get_ldbc_pattern_meta(), is_distributed)
             .expect("Failed to generate pattern match plan");
+        pb_plan_add_source_operator(&mut pb_plan);
+        pb_plan_add_count_sink_operator(&mut pb_plan);
         println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
         print_pb_logical_plan(&pb_plan);
+        Ok(pb_plan)
+    }
+
+    fn generate_simple_pattern_match_plan(
+        pattern: &Pattern, is_distributed: bool,
+    ) -> IrResult<pb::LogicalPlan> {
+        let mut pb_plan =
+            pattern.generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), is_distributed)?;
+        pb_plan_add_source_operator(&mut pb_plan);
+        pb_plan_add_count_sink_operator(&mut pb_plan);
         Ok(pb_plan)
     }
 
@@ -126,9 +139,8 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case1() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case1().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
+
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -139,7 +151,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -147,7 +159,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -179,9 +191,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case2() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case2().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -192,7 +202,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -200,7 +210,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -208,9 +218,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case3() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case3().unwrap();
-        let mut pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let mut pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         pb_plan.roots = vec![1];
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
@@ -222,7 +230,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -230,7 +238,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -238,9 +246,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case4() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case4().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -251,7 +257,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -259,7 +265,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -267,9 +273,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case5() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case5().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -280,7 +284,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -288,7 +292,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -296,9 +300,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_pattern_from_pb_case6() {
         let ldbc_pattern = build_ldbc_pattern_from_pb_case6().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -309,7 +311,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -317,7 +319,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -325,9 +327,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_bi3() {
         let ldbc_pattern = build_ldbc_bi3().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -338,7 +338,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -346,7 +346,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -354,9 +354,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_bi4_subtask_1() {
         let ldbc_pattern = build_ldbc_bi4_subtask_1().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -367,7 +365,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -375,7 +373,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -383,9 +381,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_bi4_subtask_2() {
         let ldbc_pattern = build_ldbc_bi4_subtask_2().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
     }
@@ -396,7 +392,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -404,7 +400,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -412,9 +408,7 @@ mod test {
     #[test]
     fn generate_naive_pattern_match_plan_for_ldbc_bi11() {
         let ldbc_pattern = build_ldbc_bi11().unwrap();
-        let pb_plan = ldbc_pattern
-            .generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), false)
-            .unwrap();
+        let pb_plan = generate_simple_pattern_match_plan(&ldbc_pattern, false).unwrap();
 
         print_pb_logical_plan(&pb_plan);
         execute_pb_logical_plan(pb_plan);
@@ -426,7 +420,7 @@ mod test {
         // Naive Extend-Based Plan
         println!("Extend-Based Plan:");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::ExtendWithIntersection);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
         println!("\n\n");
@@ -434,7 +428,7 @@ mod test {
         // Naive Hybrid Plan
         println!("Hybrid Plan: ");
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         execute_pb_logical_plan(pb_plan);
     }
@@ -809,7 +803,7 @@ mod test {
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
         // let mut pb_plan = pattern.generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), true).unwrap();
         // print_pb_logical_plan(&pb_plan);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let _pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         // execute_pb_logical_plan(pb_plan);
     }
@@ -820,7 +814,7 @@ mod test {
         let catalogue = Catalogue::build_from_pattern(&pattern, PatMatPlanSpace::Hybrid);
         // let mut pb_plan = pattern.generate_simple_extend_match_plan(&get_ldbc_pattern_meta(), true).unwrap();
         // print_pb_logical_plan(&pb_plan);
-        let pb_plan = generate_pattern_match_plan(&pattern, &catalogue, false)
+        let _pb_plan = generate_optimized_pattern_match_plan(&pattern, &catalogue, false)
             .expect("Failed to generate pattern match plan");
         // execute_pb_logical_plan(pb_plan);
     }
