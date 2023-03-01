@@ -31,7 +31,7 @@ use crate::catalogue::catalog::{Catalogue, TableLogue};
 use crate::catalogue::extend_step::{DefiniteExtendEdge, DefiniteExtendStep, ExtendStep};
 use crate::catalogue::pattern::Pattern;
 use crate::catalogue::pattern_meta::PatternMeta;
-use crate::catalogue::plan::get_definite_extend_steps;
+use crate::catalogue::plan::get_plan_path;
 use crate::catalogue::{DynIter, PatternId, PatternLabelId};
 use crate::plan::meta::Schema;
 use crate::JsonIO;
@@ -83,8 +83,8 @@ impl Catalogue {
                 .unwrap()
                 .get_pattern()
                 .clone();
-            let (extend_steps, _) = get_definite_extend_steps(pattern.clone(), self);
-            let mut pattern_records = get_src_records(graph, extend_steps, limit);
+            let (plan_path, _) = get_plan_path(pattern.clone(), self);
+            let mut pattern_records = get_src_records(graph, plan_path.to_extend_vec(), limit);
             let pattern_count = pattern_records.len();
             pattern_records = sample_records(pattern_records, rate, limit);
             pattern_nodes.insert(

@@ -32,7 +32,7 @@ mod test {
     use ir_common::KeyId;
     use ir_core::catalogue::catalog::{Catalogue, PatMatPlanSpace};
     use ir_core::catalogue::pattern::Pattern;
-    use ir_core::catalogue::plan::get_definite_extend_steps;
+    use ir_core::catalogue::plan::get_plan_path;
     use ir_core::catalogue::sample::{get_src_records, load_sample_graph};
     use ir_core::catalogue::{PatternDirection, PatternLabelId};
     use ir_core::error::IrResult;
@@ -166,8 +166,8 @@ mod test {
             println!("building catalog time cost is: {:?} s", catalog_build_start_time.elapsed().as_secs());
             println!("start executing query...");
             let query_execution_start_time = Instant::now();
-            let (extend_steps, _) = get_definite_extend_steps(ldbc_pattern.clone(), &mut catalog);
-            let results = get_src_records(&graph, extend_steps, None);
+            let (plan_path, _) = get_plan_path(ldbc_pattern.clone(), &mut catalog);
+            let results = get_src_records(&graph, plan_path.to_extend_vec(), None);
             println!("{}", results.len());
             println!(
                 "executing query time cost is {:?} ms",

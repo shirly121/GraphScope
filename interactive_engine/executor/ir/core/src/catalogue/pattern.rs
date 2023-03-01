@@ -1590,33 +1590,29 @@ impl Pattern {
 
     pub fn remove_edge(mut self, edge_id: PatternId) -> Option<Pattern> {
         if let Some(edge) = self.get_edge(edge_id).cloned() {
-            self.remove_edge_internal(edge_id);
-            let start_vertex = edge.get_start_vertex().get_id();
-            let end_vertex = edge.get_end_vertex().get_id();
-            // update start vertex's info
-            self.vertices_data
-                .get_mut(start_vertex)
-                .unwrap()
-                .out_adjacencies
-                .retain(|adj| adj.get_edge_id() != edge_id);
-            if self.get_vertex_degree(start_vertex) == 0 && self.get_vertices_num() > 1 {
-                self.remove_vertex_internal(start_vertex)
-            }
-            // update end vertex's info
-            self.vertices_data
-                .get_mut(end_vertex)
-                .unwrap()
-                .in_adjacencies
-                .retain(|adj| adj.get_edge_id() != edge_id);
-            if self.get_vertex_degree(end_vertex) == 0 && self.get_vertices_num() > 1 {
-                self.remove_vertex_internal(end_vertex)
-            }
+            self.remove_edge_internal(edge);
             if self.is_connected() {
                 self.canonical_labeling();
                 Some(self)
             } else {
                 None
             }
+        } else {
+            None
+        }
+    }
+
+    pub fn remove_edges<I: Iterator<Item = PatternId>>(mut self, edge_ids: I) -> Option<Pattern> {
+        for edge_id in edge_ids {
+            if let Some(edge) = self.get_edge(edge_id).cloned() {
+                self.remove_edge_internal(edge);
+            } else {
+                return None;
+            }
+        }
+        if self.is_connected() {
+            self.canonical_labeling();
+            Some(self)
         } else {
             None
         }
@@ -1634,9 +1630,10 @@ impl Pattern {
         self.vertices_data.remove(vertex_id);
     }
 
-    fn remove_edge_internal(&mut self, edge_id: PatternId) {
+    fn remove_edge_internal(&mut self, edge: PatternEdge) {
         // delete edge
         // delete in edges
+        let edge_id = edge.get_id();
         self.edges.remove(edge_id);
         // delete in edge tag map
         if let Some(tag) = self.get_edge_tag(edge_id) {
@@ -1644,6 +1641,27 @@ impl Pattern {
         }
         // delete in edges data
         self.edges_data.remove(edge_id);
+        //
+        let start_vertex = edge.get_start_vertex().get_id();
+        let end_vertex = edge.get_end_vertex().get_id();
+        // update start vertex's info
+        self.vertices_data
+            .get_mut(start_vertex)
+            .unwrap()
+            .out_adjacencies
+            .retain(|adj| adj.get_edge_id() != edge_id);
+        if self.get_vertex_degree(start_vertex) == 0 && self.get_vertices_num() > 1 {
+            self.remove_vertex_internal(start_vertex)
+        }
+        // update end vertex's info
+        self.vertices_data
+            .get_mut(end_vertex)
+            .unwrap()
+            .in_adjacencies
+            .retain(|adj| adj.get_edge_id() != edge_id);
+        if self.get_vertex_degree(end_vertex) == 0 && self.get_vertices_num() > 1 {
+            self.remove_vertex_internal(end_vertex)
+        }
     }
 
     // fn is_connected(&self) -> bool {

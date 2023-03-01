@@ -28,7 +28,7 @@ use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
 use crate::catalogue::extend_step::{get_subsets, ExtendEdge, ExtendStep};
-use crate::catalogue::join_step::BinaryJoinPlan;
+use crate::catalogue::join_step::JoinDecomposition;
 use crate::catalogue::pattern::{Adjacency, Pattern, PatternEdge, PatternVertex};
 use crate::catalogue::pattern_meta::PatternMeta;
 use crate::catalogue::{DynIter, PatternDirection, PatternId, PatternLabelId};
@@ -95,7 +95,7 @@ impl PatternWeight {
 pub struct JoinWeight {
     /// Probe Pattern Node Index
     probe_pattern_node_index: NodeIndex,
-    join_plan: BinaryJoinPlan,
+    join_plan: JoinDecomposition,
 }
 
 impl JoinWeight {
@@ -107,11 +107,11 @@ impl JoinWeight {
         self.probe_pattern_node_index = node_index;
     }
 
-    pub fn get_join_plan(&self) -> &BinaryJoinPlan {
+    pub fn get_join_plan(&self) -> &JoinDecomposition {
         &self.join_plan
     }
 
-    pub fn set_join_plan(&mut self, binary_join_plan: BinaryJoinPlan) {
+    pub fn set_join_plan(&mut self, binary_join_plan: JoinDecomposition) {
         self.join_plan = binary_join_plan;
     }
 }

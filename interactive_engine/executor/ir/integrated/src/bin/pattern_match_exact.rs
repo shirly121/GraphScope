@@ -17,7 +17,7 @@
 use graph_proxy::create_exp_store;
 use ir_core::catalogue::extend_step::DefiniteExtendStep;
 use ir_core::catalogue::pattern::Pattern;
-use ir_core::catalogue::plan::{build_distributed_match_plan, build_stand_alone_match_plan};
+use ir_core::catalogue::plan::PlanPath;
 use ir_core::catalogue::PatternId;
 use ir_core::plan::logical::{match_pb_plan_add_source, LogicalPlan};
 use ir_core::plan::physical::AsPhysical;
@@ -72,21 +72,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let order = get_pattern_extend_order(config.order, &config.split)?;
     println!("start generating plan...");
     let plan_generation_start_time = Instant::now();
-    let mut pb_plan = if config.is_distributed {
-        build_distributed_match_plan(
-            &pattern,
-            get_definite_extend_steps_from_pattern_with_order(&pattern, order),
-            &pattern_meta,
-        )
-        .unwrap()
-    } else {
-        build_stand_alone_match_plan(
-            &pattern,
-            get_definite_extend_steps_from_pattern_with_order(&pattern, order),
-            &pattern_meta,
-        )
-        .unwrap()
-    };
+    let mut plan_path = PlanPath::default();
+    for extend_step in get_definite_extend_steps_from_pattern_with_order(&pattern, order) {
+        plan_path.add_plan_step_front(extend_step.into());
+    }
+    let mut pb_plan = plan_path.to_match_plan(config.is_distributed, &pattern, &pattern_meta)?;
     println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
     match_pb_plan_add_source(&mut pb_plan);
     pb_plan_add_count_sink_operator(&mut pb_plan);
