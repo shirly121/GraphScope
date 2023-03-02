@@ -57,27 +57,10 @@ impl DefiniteJoinStep {
         target_pattern: &Pattern, join_step: &JoinStep, v_rank_map: &BTreeMap<PatternId, PatternId>,
         e_rank_map: &BTreeMap<PatternId, PatternId>,
     ) -> Self {
-        let mut new_probe_pattern_edges = vec![];
-        for probe_edge in join_step.probe_pattern.edges_iter() {
-            let probe_edge_rank = join_step
-                .probe_pattern
-                .get_edge_rank(probe_edge.get_id())
-                .expect("Fail to get edge rank with ID");
-            let target_edge_rank = *e_rank_map
-                .get(&probe_edge_rank)
-                .expect("Fail to map probe edge to target edge");
-            let target_edge = target_pattern
-                .get_edge_from_rank(target_edge_rank)
-                .expect("Fail to get edge with rank")
-                .clone();
-            new_probe_pattern_edges.push(target_edge);
-        }
-        let new_probe_pattern =
-            Pattern::try_from(new_probe_pattern_edges).expect("Build pattern from edges fails");
+        let mapped_probe_pattern = target_pattern
+            .map_sub_pattern(&join_step.probe_pattern, e_rank_map)
+            .expect("Fail to map the sub pattern to the target pattern");
         let mut shared_vertices = BTreeSet::new();
-        // println!("v_rank_map: {:?}", v_rank_map);
-        // println!("probe pattern: {:?}", &join_step.probe_pattern);
-        // println!("shared v rank map: {:?}", &join_step.shared_v_rank_map);
         for (&probe_shared_v_rank, _) in join_step.shared_v_rank_map.iter() {
             let target_v_rank = *v_rank_map
                 .get(&probe_shared_v_rank)
@@ -87,7 +70,7 @@ impl DefiniteJoinStep {
                 .expect("Fail to get verte with rank");
             shared_vertices.insert(target_vertex.get_id());
         }
-        DefiniteJoinStep { probe_pattern: new_probe_pattern, shared_vertices }
+        DefiniteJoinStep { probe_pattern: mapped_probe_pattern, shared_vertices }
     }
 
     pub fn get_probe_pattern(&self) -> &Pattern {
@@ -809,32 +792,16 @@ fn get_e_rank_map_between_patterns(
 }
 
 impl Pattern {
-    pub fn de_join(&self, join_step: &DefiniteJoinStep) -> Option<Pattern> {
-        let edges_to_remove: Vec<PatternId> = join_step
-            .probe_pattern
-            .edges_iter()
-            .filter(|edge| {
-                let start_v_id = edge.get_start_vertex().get_id();
-                let end_v_id = edge.get_end_vertex().get_id();
-                !(join_step.shared_vertices.contains(&start_v_id)
-                    && join_step.shared_vertices.contains(&end_v_id))
-            })
-            .map(|edge| edge.get_id())
-            .collect();
-        self.clone()
-            .remove_edges(edges_to_remove.into_iter())
-    }
-
     // ToDo: Add predicate info the the new build pattern
-    pub fn new_build_pattern(
-        &self, build_pattern: &Pattern, build_e_rank_map: &BTreeMap<PatternId, PatternId>,
+    pub fn map_sub_pattern(
+        &self, sub_pattern: &Pattern, e_rank_map: &BTreeMap<PatternId, PatternId>,
     ) -> IrResult<Self> {
         let mut new_build_pattern_edges = vec![];
-        for build_pattern_edge in build_pattern.edges_iter() {
-            let edge_rank = build_pattern
+        for build_pattern_edge in sub_pattern.edges_iter() {
+            let edge_rank = sub_pattern
                 .get_edge_rank(build_pattern_edge.get_id())
                 .expect("Fail to get edge rank with ID");
-            let edge_rank_in_target_pattern = *build_e_rank_map
+            let edge_rank_in_target_pattern = *e_rank_map
                 .get(&edge_rank)
                 .expect("Fail to map build pattern's edge to target pattern edge");
             let new_edge = self

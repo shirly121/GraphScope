@@ -107,7 +107,7 @@ impl JoinWeight {
         self.probe_pattern_node_index = node_index;
     }
 
-    pub fn get_join_plan(&self) -> &JoinDecomposition {
+    pub fn get_join_decomposition(&self) -> &JoinDecomposition {
         &self.join_plan
     }
 

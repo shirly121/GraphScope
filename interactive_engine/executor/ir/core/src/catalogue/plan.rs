@@ -60,11 +60,19 @@ impl PlanStep {
     fn from_join(join_step: DefiniteJoinStep, plan_path: PlanPath) -> Self {
         PlanStep::Join((join_step, Box::new(plan_path)))
     }
+
+    fn to_extend(self) -> Option<DefiniteExtendStep> {
+        if let PlanStep::Extend(extend_step) = self {
+            Some(extend_step)
+        } else {
+            None
+        }
+    }
 }
 
 /// PlanPath contains a series of PlanStep Organized in LinkedList
 ///
-/// Why LinkedList? As we may extend the path at both end or front
+/// Why LinkedList? As we may extend the path at both end or begin
 #[derive(Debug, Default)]
 pub struct PlanPath {
     plan_steps: LinkedList<PlanStep>,
@@ -105,26 +113,14 @@ impl PlanPath {
     pub fn to_match_plan(
         mut self, is_distributed: bool, origin_pattern: &Pattern, pattern_meta: &PatternMeta,
     ) -> IrResult<pb::LogicalPlan> {
-        let mut match_plan = pb::LogicalPlan::default();
-        // Set match plan's root to be 0 (used in pb_plan join function)
-        match_plan.roots = vec![0];
-        // Check source extend step, and add corresponding start nodes to the pb plan
-        if let PlanStep::Extend(src_extend) = self
-            .plan_steps
-            .pop_front()
-            .ok_or(CatalogError::PlanError("Empty Plan Path".to_string()))?
-        {
-            append_start_nodes_to_pb_plan(&mut match_plan, src_extend, origin_pattern)?;
-        } else {
-            return Err(CatalogError::PlanError("Source Plan Step is not Extend".to_string()).into());
-        }
-        // Each time, it pop front a plan step from the LinkedList and generate
-        // some pb operators and add them to the pb logical plan
+        // initialize the match plan
+        let mut match_plan = init_match_pb_plan(&mut self, origin_pattern)?;
+        // iterate over the plan step and add corresponding logical operators to the plan
         while let Some(plan_step) = self.plan_steps.pop_front() {
             match plan_step {
                 PlanStep::Extend(extend_step) => append_extend_to_pb_plan(
                     &mut match_plan,
-                    extend_step,
+                    &extend_step,
                     origin_pattern,
                     pattern_meta,
                     is_distributed,
@@ -315,6 +311,7 @@ fn get_plan_path_in_catalog(
             min_cost,
             cost_counts_vec,
         );
+        // If without predicate, the chosen approach is the real best approach
         if predicate_num == 0 {
             catalog.set_pattern_best_approach(pattern_index, best_approach);
         }
@@ -322,23 +319,38 @@ fn get_plan_path_in_catalog(
     }
 }
 
+/// Given a pattern, and its incoming approach in the catalog, we hope to get
+/// - the definite plan step through the approach, and
+///   the definite plan step can be either extend or join
+/// - the previous pattern of this approach
+/// - the cost count to reach the given pattern through pre pattern and approach
+///
+/// Why don't simply use the plan step and previous pattern stored in the catalog?
+/// - Its ids don't match the given pattern, we have to do id mappings
+/// - It doesn't contain predicate info
+///
+/// Therefore, we roll the pattern back
 fn pattern_roll_back(
     pattern: Pattern, pattern_index: NodeIndex, approach: Approach, catalog: &mut Catalogue,
 ) -> (Pattern, PlanStep, CostCount) {
+    // get the pattern count from catalog
     let pattern_count = catalog
         .get_pattern_weight(pattern_index)
         .unwrap()
         .get_count();
+    // get previous pattern count from catalog
     let pre_pattern_index = approach.get_src_pattern_index();
     let pre_pattern_count = catalog
         .get_pattern_weight(pre_pattern_index)
         .unwrap()
         .get_count();
+    // get approach weight from catalog
     let approach_index = approach.get_approach_index();
     let approach_weight = catalog
         .get_approach_weight(approach_index)
         .unwrap()
         .clone();
+    // according to approach weight's type, roll extend/join back
     match approach_weight {
         ApproachWeight::ExtendStep(extend_weight) => {
             pattern_roll_extend_back(pattern, pattern_count, pre_pattern_count, &extend_weight)
@@ -354,9 +366,11 @@ fn pattern_roll_back(
     }
 }
 
+/// Roll the extend step back of the given pattern
 fn pattern_roll_extend_back(
     pattern: Pattern, pattern_count: usize, pre_pattern_count: usize, extend_weight: &ExtendWeight,
 ) -> (Pattern, PlanStep, CostCount) {
+    // compute the cost of this extend step
     let this_step_cost = CostCount::from_extend(
         pattern_count,
         pre_pattern_count,
@@ -366,112 +380,122 @@ fn pattern_roll_extend_back(
             .get_extend_step()
             .get_extend_edges_num(),
     );
+    // get the definite extend step
     let target_vertex_id = pattern
         .get_vertex_from_rank(extend_weight.get_target_vertex_rank())
         .unwrap()
         .get_id();
-    let extend_step = extend_weight.get_extend_step();
-    let edge_id_map = pattern
-        .adjacencies_iter(target_vertex_id)
-        .map(|adjacency| {
-            (
-                (
-                    adjacency.get_adj_vertex().get_id(),
-                    adjacency.get_edge_label(),
-                    adjacency.get_direction().reverse(),
-                ),
-                adjacency.get_edge_id(),
-            )
-        })
-        .collect();
+    let definite_extend_step = DefiniteExtendStep::from_target_pattern(&pattern, target_vertex_id).unwrap();
+    // get previous pattern
     let pre_pattern = pattern
         .remove_vertex(target_vertex_id)
         .expect("Failed to remove vertex from pattern");
-    let definite_extend_step =
-        DefiniteExtendStep::from_src_pattern(&pre_pattern, &extend_step, target_vertex_id, edge_id_map)
-            .expect("Failed to build DefiniteExtendStep from src pattern");
     (pre_pattern, definite_extend_step.into(), this_step_cost)
 }
 
+/// Roll the join step back of the given pattern
 fn pattern_roll_join_back(
     pattern: Pattern, pattern_count: usize, pre_pattern_index: NodeIndex, pre_pattern_count: usize,
     join_weight: &JoinWeight, catalog: &mut Catalogue,
 ) -> (Pattern, PlanStep, CostCount) {
-    let binary_join_plan = join_weight.get_join_plan().clone();
-    let join_step = JoinStep::from(binary_join_plan);
-    let v_rank_map = join_weight
-        .get_join_plan()
-        .get_probe_v_rank_map();
-    let e_rank_map = join_weight
-        .get_join_plan()
-        .get_probe_e_rank_map();
-    let def_join_step = DefiniteJoinStep::from_target_pattern(&pattern, &join_step, v_rank_map, e_rank_map);
+    let join_decomposition = join_weight.get_join_decomposition();
+    let join_step = JoinStep::from(join_decomposition.clone());
+    // get definite join step
+    let probe_v_rank_map = join_decomposition.get_probe_v_rank_map();
+    let probe_e_rank_map = join_decomposition.get_probe_e_rank_map();
+    let def_join_step =
+        DefiniteJoinStep::from_target_pattern(&pattern, &join_step, probe_v_rank_map, probe_e_rank_map);
+    // build pattern is actually the previoud pattern stored in the catalog
     let build_pattern = catalog
         .get_pattern_weight(pre_pattern_index)
         .unwrap()
         .get_pattern();
+    // but its id can't map the given pattern, so we have to remap it
+    let build_e_rank_map = join_decomposition.get_build_e_rank_map();
     let pre_pattern = pattern
-        .new_build_pattern(
-            build_pattern,
-            join_weight
-                .get_join_plan()
-                .get_build_e_rank_map(),
-        )
+        .map_sub_pattern(build_pattern, build_e_rank_map)
         .expect("Fail to get build pattern");
+    // get the optimal plan path of the probe pattern
     let (probe_plan_path, probe_cost) = get_plan_path(def_join_step.get_probe_pattern().clone(), catalog);
-
+    // compute the join cost
+    // Todo: get probe pattern's count
     let join_cost = CostCount::from_join(pre_pattern_count, 0, pattern_count);
     let this_step_cost = join_cost + probe_cost;
-    (pre_pattern, PlanStep::from_join(def_join_step, probe_plan_path.into()), this_step_cost)
+    (pre_pattern, PlanStep::from_join(def_join_step, probe_plan_path), this_step_cost)
 }
 
-fn append_start_nodes_to_pb_plan(
-    match_plan: &mut pb::LogicalPlan, src_extend: DefiniteExtendStep, origin_pattern: &Pattern,
-) -> IrResult<()> {
-    if match_plan.nodes.len() > 0 {
-        return Err(IrError::Unsupported("Only can add start nodes to empty plan".to_string()));
-    }
+/// A matching logical plan should start with some nodes
+/// - select vertex with the given label
+/// - select vertex with the predicate in the origin pattern
+fn init_match_pb_plan(plan_path: &mut PlanPath, origin_pattern: &Pattern) -> IrResult<pb::LogicalPlan> {
+    // Pick the source definite extend step from plan path
+    let src_extend = plan_path
+        .plan_steps
+        .pop_front()
+        .ok_or(CatalogError::PlanError("Empty Plan Path".to_string()))?
+        .to_extend()
+        .ok_or(CatalogError::PlanError("Source Plan Step is not Extend".to_string()))?;
+    // intialize the pb plan
+    let mut pb_plan = pb::LogicalPlan::default();
+    // set pb plan's root be [0] for join
+    pb_plan.roots = vec![0];
+    // get source vertex of the pattern match
     let src_vertex = src_extend.get_target_vertex();
+    // add label select operator
     let label_select = pb::Select {
         predicate: Some(str_to_expr_pb(format!("@.~label == {}", src_vertex.get_label())).unwrap()),
     };
-    match_plan
+    pb_plan
         .nodes
         .push(pb::logical_plan::Node { opr: Some(label_select.into()), children: vec![1] });
-
     let mut child_offset = 2;
-
+    // check if the source vertex has predicate in the origin pattern
     if let Some(filter) = src_extend.generate_vertex_filter_operator(origin_pattern) {
-        match_plan
+        // add the select operator to pb plan as the predicate
+        pb_plan
             .nodes
             .push(pb::logical_plan::Node { opr: Some(filter.into()), children: vec![2] });
         child_offset += 1;
     }
+    // use source vertex's id as the Tag in pb plan and add As operator
     let as_opr = pb::As { alias: Some((src_vertex.get_id() as i32).into()) };
-    match_plan
+    pb_plan
         .nodes
         .push(pb::logical_plan::Node { opr: Some(as_opr.into()), children: vec![child_offset] });
-    Ok(())
+    Ok(pb_plan)
 }
 
+/// Append an extend step to the pb plan, the extend step contains
+/// - several edge expands
+/// - an intersect operator
+/// - vertex filter
+///
+/// stand-alone and distributed environment have different plan
 fn append_extend_to_pb_plan(
-    pb_plan: &mut pb::LogicalPlan, definite_extend_step: DefiniteExtendStep, target_pattern: &Pattern,
+    pb_plan: &mut pb::LogicalPlan, extend_step: &DefiniteExtendStep, target_pattern: &Pattern,
     pattern_meta: &PatternMeta, is_distributed: bool,
 ) -> IrResult<()> {
     if is_distributed {
-        append_distributed_extend_to_pb_plan(pb_plan, definite_extend_step, target_pattern, pattern_meta)
+        append_distributed_extend_to_pb_plan(pb_plan, extend_step, target_pattern)?;
     } else {
-        append_stand_alone_extend_to_pb_plan(pb_plan, definite_extend_step, target_pattern, pattern_meta)
+        append_stand_alone_extend_to_pb_plan(pb_plan, extend_step, target_pattern)?;
     }
+    append_vertex_filter_to_pb_plan(pb_plan, extend_step, target_pattern, pattern_meta)
 }
 
+/// For distributed environment:
+/// - pb plan diverges, every extend edge corresponds to an edge expand operator
+/// - there's an intersect operator at last to unite these edge expand operators
+//             source
+//           /   |    \
+//           \   |    /
+//            intersect
 fn append_distributed_extend_to_pb_plan(
-    pb_plan: &mut pb::LogicalPlan, definite_extend_step: DefiniteExtendStep, target_pattern: &Pattern,
-    pattern_meta: &PatternMeta,
+    pb_plan: &mut pb::LogicalPlan, extend_step: &DefiniteExtendStep, target_pattern: &Pattern,
 ) -> IrResult<()> {
     // Modify Children ID in the last node of the input plan
     let mut child_offset = pb_plan.nodes.len() as i32;
-    let edge_expands: Vec<pb::EdgeExpand> = definite_extend_step.generate_expand_operators(target_pattern);
+    let edge_expands = extend_step.generate_expand_operators(target_pattern);
     let edge_expands_num = edge_expands.len();
     let edge_expands_ids: Vec<i32> = (0..edge_expands_num as i32)
         .map(|i| i + child_offset)
@@ -490,13 +514,14 @@ fn append_distributed_extend_to_pb_plan(
         child_offset += 1;
         // Append Intersect node
         let intersect_node = {
-            let opr = definite_extend_step.generate_intersect_operator(edge_expands_ids);
+            let opr = extend_step.generate_intersect_operator(edge_expands_ids);
             let children: Vec<i32> = vec![child_offset];
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         pb_plan.nodes.push(intersect_node);
-        child_offset += 1;
-    } else if edge_expands_num == 1 {
+    }
+    // Only one edge expands, there's no need to use ExpandAndIntersect operator
+    else if edge_expands_num == 1 {
         // Set the children of the previous node
         pb_plan.nodes.last_mut().unwrap().children = edge_expands_ids;
         // Append edge expand node
@@ -510,57 +535,33 @@ fn append_distributed_extend_to_pb_plan(
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         pb_plan.nodes.push(edge_expand_node);
-        child_offset += 1;
     } else {
-        return Err(IrError::InvalidPattern(
-            "Build logical plan error: extend step is not source but has 0 edges".to_string(),
-        ));
-    }
-    // Filter by the label of target vertex
-    if check_target_vertex_label_num(&definite_extend_step, pattern_meta) > 1 {
-        let select_node = {
-            let target_vertex_label = definite_extend_step
-                .get_target_vertex()
-                .get_label();
-            let opr = pb::Select {
-                predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
-            };
-            let children: Vec<i32> = vec![child_offset];
-            pb::logical_plan::Node { opr: Some(opr.into()), children }
-        };
-        pb_plan.nodes.push(select_node);
-        child_offset += 1;
-    }
-    // Filter by the predicate of target vertex
-    if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(target_pattern) {
-        let select_node = pb::logical_plan::Node { opr: Some(filter.into()), children: vec![child_offset] };
-        pb_plan.nodes.push(select_node);
+        return Err(CatalogError::PlanError("extend step is not source but has 0 edges".to_string()).into());
     }
     Ok(())
 }
 
+/// For stand-alone enviroment,
+/// we use ExpandAndIntersect Operator for efficiency
 fn append_stand_alone_extend_to_pb_plan(
-    pb_plan: &mut pb::LogicalPlan, definite_extend_step: DefiniteExtendStep, target_pattern: &Pattern,
-    pattern_meta: &PatternMeta,
+    pb_plan: &mut pb::LogicalPlan, extend_step: &DefiniteExtendStep, target_pattern: &Pattern,
 ) -> IrResult<()> {
     // Modify Children ID in the last node of the input plan
-    let mut child_offset = (pb_plan.nodes.len() + 1) as i32;
-    let mut edge_expands: Vec<pb::EdgeExpand> =
-        definite_extend_step.generate_expand_operators(target_pattern);
+    let child_offset = (pb_plan.nodes.len() + 1) as i32;
+    let mut edge_expands: Vec<pb::EdgeExpand> = extend_step.generate_expand_operators(target_pattern);
     let edge_expands_num = edge_expands.len();
     // Append Edge Expand Nodes
     if edge_expands_num == 0 {
-        return Err(IrError::InvalidPattern(
-            "Build logical plan error: extend step is not source but has 0 edges".to_string(),
-        ));
-    } else if edge_expands_num == 1 {
+        return Err(CatalogError::PlanError("extend step is not source but has 0 edges".to_string()).into());
+    }
+    // Only one edge expands, there's no need to use ExpandAndIntersect operator
+    else if edge_expands_num == 1 {
         let edge_expand_node = {
             let opr = edge_expands.remove(0);
             let children: Vec<i32> = vec![child_offset];
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         pb_plan.nodes.push(edge_expand_node);
-        child_offset += 1;
     } else {
         let expand_intersect_node = {
             let opr = pb::ExpandAndIntersect { edge_expands };
@@ -568,14 +569,23 @@ fn append_stand_alone_extend_to_pb_plan(
             pb::logical_plan::Node { opr: Some(opr.into()), children }
         };
         pb_plan.nodes.push(expand_intersect_node);
-        child_offset += 1;
     }
+    Ok(())
+}
+
+/// Append filters for the target vertex after expand and intersect, it may contains:
+/// - a label filter to fix the label of target vertex,
+///   as an edge type may have multiple end points type
+/// - preciate contained in the original target pattern
+fn append_vertex_filter_to_pb_plan(
+    pb_plan: &mut pb::LogicalPlan, extend_step: &DefiniteExtendStep, target_pattern: &Pattern,
+    pattern_meta: &PatternMeta,
+) -> IrResult<()> {
+    let mut child_offset = (pb_plan.nodes.len() + 1) as i32;
     // Filter on the label of target vertex
-    if check_target_vertex_label_num(&definite_extend_step, pattern_meta) > 1 {
+    if check_target_vertex_label_num(&extend_step, pattern_meta) > 1 {
         let select_ndoe = {
-            let target_vertex_label = definite_extend_step
-                .get_target_vertex()
-                .get_label();
+            let target_vertex_label = extend_step.get_target_vertex().get_label();
             let opr = pb::Select {
                 predicate: Some(str_to_expr_pb(format!("@.~label == {}", target_vertex_label)).unwrap()),
             };
@@ -586,7 +596,7 @@ fn append_stand_alone_extend_to_pb_plan(
         child_offset += 1;
     }
     // Filter on the predicate of target vertex
-    if let Some(filter) = definite_extend_step.generate_vertex_filter_operator(target_pattern) {
+    if let Some(filter) = extend_step.generate_vertex_filter_operator(target_pattern) {
         let select_node = {
             let opr = filter;
             let children: Vec<i32> = vec![child_offset];
@@ -594,14 +604,15 @@ fn append_stand_alone_extend_to_pb_plan(
         };
         pb_plan.nodes.push(select_node);
     }
-
     Ok(())
 }
 
+/// Join current pb plan with another pb plan
 fn join_other_pb_plan(
     pb_plan: &mut pb::LogicalPlan, mut other: pb::LogicalPlan, join_keys: Vec<Variable>,
 ) -> IrResult<()> {
     // Add an as node with alias = None for binary join
+    // It is the start node of binary join plan
     let as_node_for_join = {
         let opr = pb::As { alias: None };
         let children: Vec<i32> = vec![pb_plan.roots[0] + 1, pb_plan.nodes.len() as i32 + 1];
@@ -631,19 +642,17 @@ fn join_other_pb_plan(
 
     // Link the last node of both left and right plan to the join node
     let join_node_idx = left_size + right_size;
-    if let Some(node) = pb_plan.nodes.last_mut() {
-        // node.children.push(join_node_idx as i32);
-        node.children = vec![join_node_idx as i32];
-    } else {
-        return Err(IrError::Unsupported("No node in binary join component".to_string()));
-    }
+    let left_node = pb_plan
+        .nodes
+        .last_mut()
+        .ok_or(CatalogError::PlanError("No node in binary join component".to_string()))?;
+    left_node.children = vec![join_node_idx as i32];
 
-    if let Some(node) = pb_plan.nodes.last_mut() {
-        // node.children.push(join_node_idx as i32);
-        node.children = vec![join_node_idx as i32];
-    } else {
-        return Err(IrError::Unsupported("No node in binary join component".to_string()));
-    }
+    let right_node = other
+        .nodes
+        .last_mut()
+        .ok_or(CatalogError::PlanError("No node in binary join component".to_string()))?;
+    right_node.children = vec![join_node_idx as i32];
 
     // Concat two plans to be one
     pb_plan.nodes.extend(other.nodes);
@@ -1946,3 +1955,22 @@ fn print_pattern_choose_approach_log(
 //         self.plan.nodes.push(sink_node);
 //     }
 // }
+
+// let extend_step = extend_weight.get_extend_step();
+// let edge_id_map = pattern
+//     .adjacencies_iter(target_vertex_id)
+//     .map(|adjacency| {
+//         (
+//             (
+//                 adjacency.get_adj_vertex().get_id(),
+//                 adjacency.get_edge_label(),
+//                 adjacency.get_direction().reverse(),
+//             ),
+//             adjacency.get_edge_id(),
+//         )
+//     })
+//     .collect();
+
+// let definite_extend_step =
+//     DefiniteExtendStep::from_src_pattern(&pre_pattern, &extend_step, target_vertex_id, edge_id_map)
+//         .expect("Failed to build DefiniteExtendStep from src pattern");
