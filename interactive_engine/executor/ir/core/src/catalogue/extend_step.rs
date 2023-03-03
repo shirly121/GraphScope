@@ -14,14 +14,14 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
 use ir_common::generated::algebra as pb;
 use serde::{Deserialize, Serialize};
 
-use crate::catalogue::pattern::{Pattern, PatternVertex};
+use crate::catalogue::pattern::{Adjacency, Pattern, PatternVertex};
 use crate::catalogue::{query_params, DynIter, PatternDirection, PatternId, PatternLabelId};
 use crate::error::{IrError, IrResult};
 
@@ -206,9 +206,9 @@ impl DefiniteExtendStep {
         }
     }
 
-    pub fn from_src_pattern(
+    pub fn from_extend(
         src_pattern: &Pattern, extend_step: &ExtendStep, target_vertex_id: PatternId,
-        edge_id_map: HashMap<(PatternId, PatternLabelId, PatternDirection), PatternId>,
+        target_adjacencies: Vec<Adjacency>,
     ) -> Option<Self> {
         let mut definite_extend_edges = Vec::with_capacity(extend_step.get_extend_edges_num());
         let vertex_id_to_assign = target_vertex_id;
@@ -222,14 +222,12 @@ impl DefiniteExtendStep {
                     src_pattern.get_equivalent_vertices(src_vertex_label, src_vertex_group);
                 let mut found_src_vertex = false;
                 for src_vertex_candidate in src_vertex_candidates {
-                    if let Some(edge_id_to_assign) = edge_id_map
-                        .get(&(
-                            src_vertex_candidate.get_id(),
-                            extend_edge.get_edge_label(),
-                            extend_edge.get_direction(),
-                        ))
-                        .cloned()
-                    {
+                    if let Some(edge_id_to_assign) = find_edge_id_in_adjacencies(
+                        src_vertex_candidate.get_id(),
+                        extend_edge.get_edge_label(),
+                        extend_edge.get_direction(),
+                        &target_adjacencies,
+                    ) {
                         definite_extend_edges.push(DefiniteExtendEdge::new(
                             src_vertex_candidate,
                             edge_id_to_assign,
@@ -361,6 +359,21 @@ where
         }
     }
     false
+}
+
+fn find_edge_id_in_adjacencies(
+    src_vertex_id: PatternId, edge_label: PatternLabelId, edge_direciton: PatternDirection,
+    target_adjacencies: &Vec<Adjacency>,
+) -> Option<PatternId> {
+    for adjacency in target_adjacencies {
+        if src_vertex_id == adjacency.get_adj_vertex().get_id()
+            && edge_label == adjacency.get_edge_label()
+            && edge_direciton.reverse() == adjacency.get_direction()
+        {
+            return Some(adjacency.get_edge_id());
+        }
+    }
+    None
 }
 
 #[cfg(test)]

@@ -1137,15 +1137,6 @@ impl Pattern {
     }
 
     pub fn get_connected_components(&self) -> Vec<Pattern> {
-        // // ---debug---
-        // self.vertices_iter()
-        //     .for_each(|vertex| {
-        //         let v_id = vertex.get_id();
-        //         let v_label = vertex.get_label();
-        //         let v_rank = self.get_vertex_rank(v_id).expect("Failed to get vertex rank from id");
-        //         println!("ID: {v_id}, Label: {v_label}, Rank: {v_rank}");
-        //     });
-        // // ---debug---
         let mut visited_vertices: BTreeSet<PatternId> = BTreeSet::new();
         let connected_components: Vec<Pattern> = self
             .vertices_iter()
@@ -1663,23 +1654,6 @@ impl Pattern {
             self.remove_vertex_internal(end_vertex)
         }
     }
-
-    // fn is_connected(&self) -> bool {
-    //     let mut visted_vertices = HashSet::new();
-    //     let start_vertex = self.vertices_iter().next().unwrap().get_id();
-    //     let mut stack = vec![start_vertex];
-    //     while let Some(src_vertex) = stack.pop() {
-    //         visted_vertices.insert(src_vertex);
-    //         for neighbor_vertex in self
-    //             .adjacencies_iter(src_vertex)
-    //             .map(|adj| adj.get_adj_vertex().get_id())
-    //             .filter(|vertex| !visted_vertices.contains(&vertex))
-    //         {
-    //             stack.push(neighbor_vertex);
-    //         }
-    //     }
-    //     visted_vertices.len() == self.get_vertices_num()
-    // }
 }
 
 impl Serialize for Pattern {

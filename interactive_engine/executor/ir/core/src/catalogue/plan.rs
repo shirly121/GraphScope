@@ -136,6 +136,129 @@ impl PlanPath {
     }
 }
 
+/// CostCount contains all the count info
+/// contributing to the cost estimation of a match plan
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, Default)]
+pub struct CostCount {
+    /// The number of intermediate results
+    instance_count: usize,
+    /// The number of adjacent instances
+    adjacency_count: usize,
+    /// The number of intersect operations
+    intersect_count: usize,
+    /// The number of join instances in the left side
+    left_join_count: usize,
+    /// The number of join instances in the right side
+    right_join_count: usize,
+}
+
+impl CostCount {
+    fn from_src_pattern(src_pattern_count: usize) -> CostCount {
+        let mut cost_count = CostCount::default();
+        cost_count.instance_count = src_pattern_count;
+        cost_count
+    }
+
+    fn from_extend(
+        pre_pattern_count: usize, pattern_count: usize, adjacency_count: usize, intersect_count: usize,
+        extend_num: usize,
+    ) -> CostCount {
+        let instance_count = pre_pattern_count
+            + pattern_count
+            + if extend_num <= 1 { 0 } else { pre_pattern_count * extend_num };
+        let adjacency_count = if extend_num <= 1 { 0 } else { adjacency_count };
+        let mut cost_count = CostCount::default();
+        cost_count.instance_count = instance_count;
+        cost_count.adjacency_count = adjacency_count;
+        cost_count.intersect_count = intersect_count;
+        cost_count
+    }
+
+    fn from_join(left_pattern_count: usize, right_pattern_count: usize, pattern_count: usize) -> CostCount {
+        let mut cost_count = CostCount::default();
+        cost_count.instance_count = pattern_count;
+        cost_count.left_join_count = left_pattern_count;
+        cost_count.right_join_count = right_pattern_count;
+        cost_count
+    }
+
+    fn max_value() -> CostCount {
+        CostCount {
+            instance_count: usize::MAX,
+            adjacency_count: usize::MAX,
+            intersect_count: usize::MAX,
+            left_join_count: usize::MAX,
+            right_join_count: usize::MAX,
+        }
+    }
+
+    fn get_cost(&self) -> usize {
+        if *self == CostCount::max_value() {
+            usize::MAX
+        } else {
+            self.instance_count
+                + (self.adjacency_count as f64 * (*ALPHA.read().unwrap())) as usize
+                + (self.intersect_count as f64 * (*BETA.read().unwrap())) as usize
+                + (self.left_join_count as f64 * (*W1.read().unwrap())) as usize
+                + (self.right_join_count as f64 * (*W1.read().unwrap())) as usize
+        }
+    }
+}
+
+impl Add for CostCount {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        CostCount {
+            instance_count: self.instance_count + rhs.instance_count,
+            adjacency_count: self.adjacency_count + rhs.adjacency_count,
+            intersect_count: self.intersect_count + rhs.intersect_count,
+            left_join_count: self.left_join_count + rhs.left_join_count,
+            right_join_count: self.right_join_count + rhs.left_join_count,
+        }
+    }
+}
+
+impl AddAssign for CostCount {
+    fn add_assign(&mut self, rhs: Self) {
+        self.instance_count += rhs.instance_count;
+        self.adjacency_count += rhs.adjacency_count;
+        self.intersect_count += rhs.intersect_count;
+        self.left_join_count += rhs.left_join_count;
+        self.right_join_count += rhs.right_join_count;
+    }
+}
+
+impl PartialOrd for CostCount {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.get_cost().partial_cmp(&other.get_cost())
+    }
+}
+
+pub fn set_alpha(alpha: f64) {
+    if let Ok(mut old_alpha) = ALPHA.write() {
+        *old_alpha = alpha;
+    }
+}
+
+pub fn set_beta(beta: f64) {
+    if let Ok(mut old_beta) = BETA.write() {
+        *old_beta = beta
+    }
+}
+
+pub fn set_w1(w1: f64) {
+    if let Ok(mut old_w1) = W1.write() {
+        *old_w1 = w1
+    }
+}
+
+pub fn set_w2(w2: f64) {
+    if let Ok(mut old_w2) = W2.write() {
+        *old_w2 = w2
+    }
+}
+
 /// Methods for Pattern to generate pb Logical plan of pattern matching
 impl Pattern {
     /// Generate a naive extend based pattern match plan
@@ -380,16 +503,22 @@ fn pattern_roll_extend_back(
             .get_extend_step()
             .get_extend_edges_num(),
     );
-    // get the definite extend step
+    // get the definite extend step and previous pattern
     let target_vertex_id = pattern
         .get_vertex_from_rank(extend_weight.get_target_vertex_rank())
         .unwrap()
         .get_id();
-    let definite_extend_step = DefiniteExtendStep::from_target_pattern(&pattern, target_vertex_id).unwrap();
-    // get previous pattern
+    let target_adjacencies = pattern
+        .adjacencies_iter(target_vertex_id)
+        .cloned()
+        .collect();
+    let extend_step = extend_weight.get_extend_step();
     let pre_pattern = pattern
         .remove_vertex(target_vertex_id)
         .expect("Failed to remove vertex from pattern");
+    let definite_extend_step =
+        DefiniteExtendStep::from_extend(&pre_pattern, &extend_step, target_vertex_id, target_adjacencies)
+            .expect("Failed to build DefiniteExtendStep from src pattern");
     (pre_pattern, definite_extend_step.into(), this_step_cost)
 }
 
@@ -671,39 +800,52 @@ fn join_other_pb_plan(
     Ok(())
 }
 
+/// When pattern is not in catalog, given an extend step, this function:
+/// - estimate the adjacency count
+/// - sort the extend edges in the extend step
 fn get_adjacency_count(
-    sub_pattern: &Pattern, extend_step: &mut DefiniteExtendStep, catalog: &mut Catalogue,
+    pattern: &Pattern, extend_step: &mut DefiniteExtendStep, catalog: &mut Catalogue,
 ) -> usize {
     let target_vertex = extend_step.get_target_vertex();
+    // use a map to store every adjacent pattern's count
+    // Why store in map? For later sorting extend edges
     let mut adjacency_count_map = HashMap::new();
+    // estimate the adjacent pattern count of every extend edge
     for extend_edge in extend_step.iter() {
-        let adjacency_pattern = sub_pattern
+        let adjacency_pattern = pattern
             .extend_definitely(extend_edge, target_vertex)
             .unwrap();
         let sub_target_pattern_count = catalog.estimate_pattern_count(&adjacency_pattern);
         adjacency_count_map.insert(extend_edge.get_edge_id(), sub_target_pattern_count);
     }
+    // sort the extend edges in extend step
+    // those with less count will be ranked first
     extend_step.sort_by(|extend_edge1, extend_edge2| {
         adjacency_count_map
             .get(&extend_edge1.get_edge_id())
             .cmp(&adjacency_count_map.get(&extend_edge2.get_edge_id()))
     });
+    // sum up all adjacent pattern's count
     adjacency_count_map
         .iter()
         .map(|(_, count)| count)
         .sum()
 }
 
+/// When pattern is not in catalog, given an extend step,
+/// this function estimate the intersection count
 fn get_intersect_count(
     sub_pattern: &Pattern, extend_step: &DefiniteExtendStep, catalog: &mut Catalogue,
 ) -> usize {
     let target_vertex = extend_step.get_target_vertex();
     let mut intersect_count = 0;
     let mut adjacency_pattern = sub_pattern.clone();
+    // extend the edges one by one
     for (i, extend_edge) in extend_step.iter().enumerate() {
         if i + 1 == extend_step.get_extend_edges_num() {
             break;
         }
+        // adjacency pattern add one edge every iteration
         adjacency_pattern = adjacency_pattern
             .extend_definitely(extend_edge, target_vertex)
             .unwrap();
@@ -713,29 +855,22 @@ fn get_intersect_count(
     intersect_count
 }
 
-/// Cost estimation functions
-pub fn extend_cost_estimate(
-    pre_pattern_count: usize, pattern_count: usize, adjacency_count: usize, intersect_count: usize,
-    extend_num: usize,
-) -> usize {
-    pre_pattern_count
-        + pattern_count
-        + (if extend_num > 1 {
-            ((adjacency_count as f64) * (*ALPHA.read().unwrap())) as usize
-                + ((intersect_count as f64) * (*BETA.read().unwrap())) as usize
-                + pre_pattern_count * extend_num
-        } else {
-            0
-        })
-}
-
+/// Check whether the target vertex of an extend step have 1 or severl possible
+/// vertex label according pattern meta
+///
+/// We check this mainly because for some edge type, their may correspond to several
+/// different vertex types. If so, we have to add additional vertex label filter to
+/// pb logical plan to determine vertex label of the expanded vertex
 fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta: &PatternMeta) -> usize {
+    // A global set to store all possible vertex labels
     let mut target_vertex_labels = HashSet::new();
     for (i, extend_edge) in extend_step.iter().enumerate() {
+        // A local set to store possible target vertex labels of this extend edge
         let mut target_vertex_label_candis = HashSet::new();
         let src_vertex_label = extend_edge.get_src_vertex().get_label();
         let edge_label = extend_edge.get_edge_label();
         let dir = extend_edge.get_direction();
+        // Add all possible vertex labels as candidates
         for (start_vertex_label, end_vertex_label) in
             pattern_meta.associated_vlabels_iter_by_elabel(edge_label)
         {
@@ -745,9 +880,11 @@ fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta:
                 target_vertex_label_candis.insert(start_vertex_label);
             }
         }
+        // the first edge, initialize the vertex label set
         if i == 0 {
             target_vertex_labels = target_vertex_label_candis;
         } else {
+            // intersect the glocal set and local set to get the new global set
             target_vertex_labels = target_vertex_labels
                 .intersection(&target_vertex_label_candis)
                 .cloned()
@@ -757,6 +894,9 @@ fn check_target_vertex_label_num(extend_step: &DefiniteExtendStep, pattern_meta:
     target_vertex_labels.len()
 }
 
+/// Insert a node to pb logical plan at specific index
+///
+/// We need to modify the nodes' children and parent info
 pub fn insert_node_to_pb_plan(
     pb_plan: &mut pb::LogicalPlan, index: usize, node: pb::logical_plan::Node,
 ) -> IrResult<()> {
@@ -800,6 +940,9 @@ pub fn insert_node_to_pb_plan(
     Ok(())
 }
 
+/// Remove a node from pb logical plan at specific index
+///
+/// We need to modify the nodes' children and parent info
 pub fn remove_node_from_pb_plan(pb_plan: &mut pb::LogicalPlan, index: usize) -> IrResult<()> {
     if pb_plan.nodes.len() < index {
         return Err(IrError::Unsupported(
@@ -826,13 +969,15 @@ pub fn remove_node_from_pb_plan(pb_plan: &mut pb::LogicalPlan, index: usize) -> 
     Ok(())
 }
 
+/// Check whetehr a vertex in the orginal pattern has predicate or not
 fn vertex_has_predicate(pattern: &Pattern, vertex_id: PatternId) -> bool {
     pattern
         .get_vertex_predicate(vertex_id)
         .is_some()
 }
 
-fn get_adj_edges_filter_num(pattern: &Pattern, vertex_id: PatternId) -> usize {
+/// Check the total predicate num of edges adjcent to the given vertex
+fn get_adj_edges_predicate_num(pattern: &Pattern, vertex_id: PatternId) -> usize {
     pattern
         .adjacencies_iter(vertex_id)
         .filter(|adj| {
@@ -843,14 +988,21 @@ fn get_adj_edges_filter_num(pattern: &Pattern, vertex_id: PatternId) -> usize {
         .count()
 }
 
+/// Sort the vertices of a given pattern, in order to select vertex to be extend **late**
+///
+/// Here is the sorting standards about what kind of vertices will be extend late:
+/// - vertex with no predicate
+/// - vertex with less predicates in its adjacent edges
+/// - vertex with less degree
+/// - vertex with less out degree
 fn sort_vertex_ids(vertex_ids: &mut Vec<PatternId>, pattern: &Pattern) {
     vertex_ids.sort_by(|&v1_id, &v2_id| {
         // compare v1 and v2's vertex predicate
         let v1_has_predicate = vertex_has_predicate(pattern, v1_id);
         let v2_has_predicate = vertex_has_predicate(pattern, v2_id);
         // compare v1 and v2's adjacent edges' predicate num
-        let v1_edges_predicate_num = get_adj_edges_filter_num(pattern, v1_id);
-        let v2_edges_predicate_num = get_adj_edges_filter_num(pattern, v2_id);
+        let v1_edges_predicate_num = get_adj_edges_predicate_num(pattern, v1_id);
+        let v2_edges_predicate_num = get_adj_edges_predicate_num(pattern, v2_id);
         // compare v1 and v2's degree
         let v1_degree = pattern.get_vertex_degree(v1_id);
         let v2_degree = pattern.get_vertex_degree(v2_id);
@@ -864,113 +1016,6 @@ fn sort_vertex_ids(vertex_ids: &mut Vec<PatternId>, pattern: &Pattern) {
             v2_out_degree,
         ))
     });
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord)]
-pub struct CostCount {
-    instance_count: usize,
-    adjacency_count: usize,
-    intersect_count: usize,
-    left_join_count: usize,
-    right_join_count: usize,
-}
-
-impl CostCount {
-    fn new(
-        instance_count: usize, adjacency_count: usize, intersect_count: usize, left_join_count: usize,
-        right_join_count: usize,
-    ) -> CostCount {
-        CostCount { instance_count, adjacency_count, intersect_count, left_join_count, right_join_count }
-    }
-
-    fn from_src_pattern(src_pattern_count: usize) -> CostCount {
-        CostCount::new(src_pattern_count, 0, 0, 0, 0)
-    }
-
-    fn from_extend(
-        sub_pattern_count: usize, pattern_count: usize, adjacency_count: usize, intersect_count: usize,
-        extend_num: usize,
-    ) -> CostCount {
-        let instance_count = sub_pattern_count
-            + pattern_count
-            + if extend_num <= 1 { 0 } else { sub_pattern_count * extend_num };
-        let adjacency_count = if extend_num <= 1 { 0 } else { adjacency_count };
-        CostCount::new(instance_count, adjacency_count, intersect_count, 0, 0)
-    }
-
-    fn from_join(left_pattern_count: usize, right_pattern_count: usize, pattern_count: usize) -> CostCount {
-        CostCount::new(pattern_count, 0, 0, left_pattern_count, right_pattern_count)
-    }
-
-    fn max_value() -> CostCount {
-        CostCount::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX, usize::MAX)
-    }
-
-    fn get_cost(&self) -> usize {
-        if *self == CostCount::max_value() {
-            usize::MAX
-        } else {
-            self.instance_count
-                + (self.adjacency_count as f64 * (*ALPHA.read().unwrap())) as usize
-                + (self.intersect_count as f64 * (*BETA.read().unwrap())) as usize
-                + (self.left_join_count as f64 * (*W1.read().unwrap())) as usize
-                + (self.right_join_count as f64 * (*W1.read().unwrap())) as usize
-        }
-    }
-}
-
-impl Add for CostCount {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        CostCount {
-            instance_count: self.instance_count + rhs.instance_count,
-            adjacency_count: self.adjacency_count + rhs.adjacency_count,
-            intersect_count: self.intersect_count + rhs.intersect_count,
-            left_join_count: self.left_join_count + rhs.left_join_count,
-            right_join_count: self.right_join_count + rhs.left_join_count,
-        }
-    }
-}
-
-impl AddAssign for CostCount {
-    fn add_assign(&mut self, rhs: Self) {
-        self.instance_count += rhs.instance_count;
-        self.adjacency_count += rhs.adjacency_count;
-        self.intersect_count += rhs.intersect_count;
-        self.left_join_count += rhs.left_join_count;
-        self.right_join_count += rhs.right_join_count;
-    }
-}
-
-impl PartialOrd for CostCount {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.get_cost().partial_cmp(&other.get_cost())
-    }
-}
-
-pub fn set_alpha(alpha: f64) {
-    if let Ok(mut old_alpha) = ALPHA.write() {
-        *old_alpha = alpha;
-    }
-}
-
-pub fn set_beta(beta: f64) {
-    if let Ok(mut old_beta) = BETA.write() {
-        *old_beta = beta
-    }
-}
-
-pub fn set_w1(w1: f64) {
-    if let Ok(mut old_w1) = W1.write() {
-        *old_w1 = w1
-    }
-}
-
-pub fn set_w2(w2: f64) {
-    if let Ok(mut old_w2) = W2.write() {
-        *old_w2 = w2
-    }
 }
 
 fn print_pattern_choose_approach_log(
