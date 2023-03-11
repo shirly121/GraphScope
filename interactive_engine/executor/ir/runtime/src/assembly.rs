@@ -52,7 +52,7 @@ type RecordFlatMap = Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Re
 type RecordFilter = Box<dyn FilterFunction<Record>>;
 type RecordLeftJoin = Box<dyn ApplyGen<Record, Vec<Record>, Option<Record>>>;
 type RecordShuffle = Box<dyn RouteFunction<Record>>;
-type RecordCompare = Box<dyn CompareFunction<Record>>;
+type RecordCompare = Box<dyn CompareFunction<RecordKey>>;
 type RecordJoin = Box<dyn JoinKeyGen<Record, RecordKey, Record>>;
 type RecordKeySelector = Box<dyn KeyFunction<Record, RecordKey, Record>>;
 type RecordGroup = Box<dyn GroupGen<Record, RecordKey, Record>>;
@@ -106,6 +106,10 @@ impl FnGenerator {
 
     fn gen_cmp(&self, opr: algebra_pb::OrderBy) -> FnGenResult<RecordCompare> {
         Ok(opr.gen_cmp()?)
+    }
+
+    fn gen_order_key(&self, opr: algebra_pb::OrderBy) -> FnGenResult<RecordKeySelector> {
+        Ok(opr.gen_key()?)
     }
 
     fn gen_group(&self, opr: pb::GroupBy) -> FnGenResult<RecordGroup> {
@@ -213,6 +217,7 @@ impl IRJobAssembly {
                 }
                 OpKind::OrderBy(order) => {
                     let cmp = self.udf_gen.gen_cmp(order.clone())?;
+                    let cmp_key = self.udf_gen.gen_order_key(order.clone())?;
                     if let Some(range) = order.limit {
                         if range.upper <= range.lower || range.lower != 1 {
                             Err(FnGenError::from(ParsePbError::ParseError(format!(
@@ -220,10 +225,18 @@ impl IRJobAssembly {
                                 range
                             ))))?;
                         }
+                        // TODO: how about first gen_key, then compare and at last map back into Record?
                         stream = stream
-                            .sort_limit_by((range.upper - 1) as u32, move |a, b| cmp.compare(a, b))?;
+                            .key_by(move |record| cmp_key.get_kv(record))?
+                            .sort_limit_by((range.upper - 1) as u32, move |a, b| {
+                                cmp.compare(&a.key, &b.key)
+                            })?
+                            .map(|pair| Ok(pair.value))?;
                     } else {
-                        stream = stream.sort_by(move |a, b| cmp.compare(a, b))?;
+                        stream = stream
+                            .key_by(move |record| cmp_key.get_kv(record))?
+                            .sort_by(move |a, b| cmp.compare(&a.key, &b.key))?
+                            .map(|pair| Ok(pair.value))?;
                     }
                 }
                 OpKind::GroupBy(group) => {

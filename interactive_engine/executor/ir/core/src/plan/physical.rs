@@ -72,8 +72,6 @@ fn post_process_vars(
                 if columns_opt.len() > 0 {
                     let tag_pb = tag.map(|tag_id| (tag_id as KeyId).into());
                     builder.shuffle(tag_pb.clone());
-                    let auxilia = pb::GetV { tag: tag_pb.clone(), opt: 4, params: None, alias: tag_pb };
-                    builder.get_v(auxilia);
                 }
             } else if len != 0 {
                 for (tag, columns_opt) in tag_columns.into_iter() {

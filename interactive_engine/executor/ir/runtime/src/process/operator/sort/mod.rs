@@ -16,8 +16,8 @@ mod sort;
 
 use crate::error::FnGenResult;
 use crate::process::functions::CompareFunction;
-use crate::process::record::Record;
+use crate::process::record::RecordKey;
 
 pub trait CompareFunctionGen {
-    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record>>>;
+    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<RecordKey>>>;
 }

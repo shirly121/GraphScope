@@ -73,6 +73,7 @@ impl GraphElement for Vertex {
 
     fn get_property(&self, key: &NameOrId) -> Option<PropertyValue> {
         match self.details {
+            // For Vertex with EmptyDetails, fetch property from the graph;
             DynDetails::Empty => {
                 let mut prop = None;
                 if let Some(graph) = get_graph() {
@@ -86,6 +87,7 @@ impl GraphElement for Vertex {
                 }
                 prop
             }
+            // Otherwise, fetch property from Details.
             DynDetails::Default(_) | DynDetails::Lazy(_) => self.details.get_property(key),
         }
     }

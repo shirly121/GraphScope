@@ -14,30 +14,32 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 use ir_common::error::ParsePbError;
 use ir_common::generated::algebra as algebra_pb;
 use ir_common::generated::algebra::order_by::ordering_pair::Order;
 
 use crate::error::FnGenResult;
-use crate::process::functions::CompareFunction;
+use crate::process::functions::{CompareFunction, KeyFunction};
+use crate::process::operator::keyed::{KeyFunctionGen, KeySelector};
 use crate::process::operator::sort::CompareFunctionGen;
-use crate::process::operator::TagKey;
-use crate::process::record::Record;
+use crate::process::record::{Record, RecordKey};
 
 #[derive(Debug)]
 struct RecordCompare {
-    tag_key_order: Vec<(TagKey, Order)>,
+    tag_key_order: Vec<Order>,
 }
 
-impl CompareFunction<Record> for RecordCompare {
-    fn compare(&self, left: &Record, right: &Record) -> Ordering {
+impl CompareFunction<RecordKey> for RecordCompare {
+    fn compare(&self, left: &RecordKey, right: &RecordKey) -> Ordering {
         let mut result = Ordering::Equal;
-        for (tag_key, order) in self.tag_key_order.iter() {
-            let left_obj = tag_key.get_arc_entry(left).ok();
-            let right_obj = tag_key.get_arc_entry(right).ok();
-            let ordering = left_obj.partial_cmp(&right_obj);
+        for (objs, order) in left
+            .iter()
+            .zip(right.iter())
+            .zip(self.tag_key_order.iter())
+        {
+            let ordering = (objs.0).partial_cmp(objs.1);
             if let Some(ordering) = ordering {
                 if Ordering::Equal != ordering {
                     result = {
@@ -54,8 +56,23 @@ impl CompareFunction<Record> for RecordCompare {
     }
 }
 
+impl KeyFunctionGen for algebra_pb::OrderBy {
+    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+        let key_selector = KeySelector::with(
+            self.pairs
+                .iter()
+                .map(|mapping| mapping.key.clone().unwrap())
+                .collect::<Vec<_>>(),
+        )?;
+        if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
+            debug!("Runtime Order operator key_selector: {:?}", key_selector);
+        }
+        Ok(Box::new(key_selector))
+    }
+}
+
 impl CompareFunctionGen for algebra_pb::OrderBy {
-    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<Record>>> {
+    fn gen_cmp(self) -> FnGenResult<Box<dyn CompareFunction<RecordKey>>> {
         let record_compare = RecordCompare::try_from(self)?;
         if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
             debug!("Runtime order operator cmp: {:?}", record_compare);
@@ -68,16 +85,12 @@ impl TryFrom<algebra_pb::OrderBy> for RecordCompare {
     type Error = ParsePbError;
 
     fn try_from(order_pb: algebra_pb::OrderBy) -> Result<Self, Self::Error> {
-        let mut tag_key_order = Vec::with_capacity(order_pb.pairs.len());
+        let mut orders = Vec::with_capacity(order_pb.pairs.len());
         for order_pair in order_pb.pairs {
-            let key = order_pair
-                .key
-                .ok_or(ParsePbError::EmptyFieldError("key is empty in order".to_string()))?
-                .try_into()?;
             let order: Order = unsafe { ::std::mem::transmute(order_pair.order) };
-            tag_key_order.push((key, order));
+            orders.push(order);
         }
-        Ok(RecordCompare { tag_key_order })
+        Ok(RecordCompare { tag_key_order: orders })
     }
 }
 

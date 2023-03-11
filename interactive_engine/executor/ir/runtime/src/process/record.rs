@@ -140,7 +140,7 @@ impl Context<DynEntry> for Record {
 }
 
 /// RecordKey is the key fields of a Record, with each key corresponding to a request column_tag
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd)]
 pub struct RecordKey {
     key_fields: Vec<DynEntry>,
 }
@@ -149,8 +149,11 @@ impl RecordKey {
     pub fn new(key_fields: Vec<DynEntry>) -> Self {
         RecordKey { key_fields }
     }
-    pub fn take(self) -> Vec<DynEntry> {
-        self.key_fields
+    pub fn len(&self) -> usize {
+        self.key_fields.len()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &DynEntry> {
+        self.key_fields.iter()
     }
 }
 
