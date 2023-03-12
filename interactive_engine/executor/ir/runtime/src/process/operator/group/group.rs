@@ -21,11 +21,11 @@ use pegasus::api::function::{FnResult, MapFunction};
 use crate::error::{FnExecError, FnGenResult};
 use crate::process::functions::{GroupGen, KeyFunction};
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
-use crate::process::operator::keyed::KeyFunctionGen;
+use crate::process::operator::keyed::KeyValueFunctionGen;
 use crate::process::record::{Record, RecordKey};
 
-impl GroupGen<Record, RecordKey, Record> for pb::GroupBy {
-    fn gen_group_key(&self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
+impl GroupGen<Record, RecordKey, RecordKey> for pb::GroupBy {
+    fn gen_group_key(&self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, RecordKey>>> {
         self.clone().gen_key()
     }
 
@@ -33,7 +33,7 @@ impl GroupGen<Record, RecordKey, Record> for pb::GroupBy {
         self.clone().gen_accum()
     }
 
-    fn gen_group_map(&self) -> FnGenResult<Box<dyn MapFunction<(RecordKey, Record), Record>>> {
+    fn gen_group_map(&self) -> FnGenResult<Box<dyn MapFunction<(RecordKey, RecordKey), Record>>> {
         let mut key_aliases = Vec::with_capacity(self.mappings.len());
         for key_alias in self.mappings.iter() {
             let alias = key_alias
@@ -41,7 +41,14 @@ impl GroupGen<Record, RecordKey, Record> for pb::GroupBy {
                 .ok_or(ParsePbError::from(format!("key alias cannot be None in group opr {:?}", self)))?;
             key_aliases.push(alias);
         }
-        let group_map = GroupMap { key_aliases };
+        let mut value_aliases = Vec::with_capacity(self.functions.len());
+        for agg_func in self.functions.iter() {
+            let alias = agg_func
+                .alias
+                .ok_or(ParsePbError::from(format!("key alias cannot be None in group opr {:?}", self)))?;
+            value_aliases.push(alias);
+        }
+        let group_map = GroupMap { key_aliases, value_aliases };
         if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
             debug!("Runtime group operator group_map: {:?}", group_map);
         }
@@ -53,24 +60,32 @@ impl GroupGen<Record, RecordKey, Record> for pb::GroupBy {
 struct GroupMap {
     /// aliases for group keys, if some key is not not required to be preserved, give None alias
     key_aliases: Vec<KeyId>,
+    /// aliases for group values, if some value is not not required to be preserved, give None alias
+    value_aliases: Vec<KeyId>,
 }
 
-impl MapFunction<(RecordKey, Record), Record> for GroupMap {
-    fn exec(&self, (group_key, mut group_value): (RecordKey, Record)) -> FnResult<Record> {
-        let group_key_entries = group_key.take();
-        if group_key_entries.len() != self.key_aliases.len() {
+impl MapFunction<(RecordKey, RecordKey), Record> for GroupMap {
+    fn exec(&self, (group_key, group_value): (RecordKey, RecordKey)) -> FnResult<Record> {
+        let mut record = Record::default();
+        if group_key.len() != self.key_aliases.len() || group_value.len() != self.value_aliases.len() {
             Err(FnExecError::unexpected_data_error(&format!(
-                "the number of group_keys and group_key_aliases should be equal: {:?}, {:?}",
-                group_key_entries, self.key_aliases
+                "group_keys.len()!=group_key_aliases.len() or group_value.len()!=group_value_aliases.len() {:?}, {:?}, {:?}, {:?}",
+                group_key, self.key_aliases, group_value, self.value_aliases
             )))?
         }
-        for (entry, alias) in group_key_entries
-            .iter()
+        for (entry, alias) in group_key
+            .into_iter()
             .zip(self.key_aliases.iter())
         {
-            group_value.append_arc_entry(entry.clone(), Some(alias.clone()));
+            record.append_arc_entry(entry, Some(*alias));
         }
-        Ok(group_value)
+        for (entry, alias) in group_value
+            .into_iter()
+            .zip(self.value_aliases.iter())
+        {
+            record.append_arc_entry(entry, Some(*alias));
+        }
+        Ok(record)
     }
 }
 

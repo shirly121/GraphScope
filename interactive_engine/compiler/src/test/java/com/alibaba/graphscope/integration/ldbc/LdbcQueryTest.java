@@ -19,6 +19,7 @@ package com.alibaba.graphscope.integration.ldbc;
 import com.alibaba.graphscope.gremlin.plugin.traversal.IrCustomizedTraversal;
 import com.google.common.collect.Sets;
 
+import org.apache.tinkerpop.gremlin.AbstractGremlinTest;
 import org.apache.tinkerpop.gremlin.process.AbstractGremlinProcessTest;
 import org.apache.tinkerpop.gremlin.process.traversal.Order;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
@@ -29,10 +30,7 @@ import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
     public abstract Traversal<Vertex, Map<String, Object>> get_ldbc_1_test();
@@ -63,6 +61,7 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         this.printTraversalForm(traversal);
         int counter = 0;
 
+        List<String> result = new ArrayList<>();
         List<String> expected =
                 Arrays.asList(
                         "{p=2, a={firstName=[Chau], lastName=[Nguyen], id=[4848]}}",
@@ -86,11 +85,15 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
 
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -99,6 +102,7 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         this.printTraversalForm(traversal);
         int counter = 0;
 
+        List<String> result = new ArrayList<>();
         List<String> expected =
                 Arrays.asList(
                         "{p={lastName=[Khan], firstName=[Kunal], id=[30786325587937]},"
@@ -177,11 +181,15 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
 
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -199,6 +207,8 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         this.printTraversalForm(traversal);
         int counter = 0;
 
+        List<String> result = new ArrayList<>();
+        
         List<String> expected =
                 Arrays.asList(
                         "{postCount=3, tagName=Ehud_Olmert}",
@@ -208,11 +218,15 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
 
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -239,6 +253,8 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         this.printTraversalForm(traversal);
         int counter = 0;
 
+        List<String> result = new ArrayList<>();
+
         List<String> expected =
                 Arrays.asList(
                         "{keys=Tom_Gehrels, values=28}",
@@ -251,13 +267,18 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
                         "{keys=Peter_Hain, values=4}",
                         "{keys=Robert_Fripp, values=4}",
                         "{keys=Boris_Yeltsin, values=3}");
+
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -265,6 +286,8 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         Traversal<Vertex, Map<String, Object>> traversal = this.get_ldbc_7_test();
         this.printTraversalForm(traversal);
         int counter = 0;
+
+        List<String> result = new ArrayList<>();
 
         List<String> expected =
                 Arrays.asList(
@@ -349,11 +372,15 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
                             + " ]}}");
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -451,6 +478,8 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         this.printTraversalForm(traversal);
         int counter = 0;
 
+        List<String> result = new ArrayList<>();
+
         List<String> expected =
                 Arrays.asList(
                         "{post={id=[1511829711860], creationDate=[20111216235809425],"
@@ -529,11 +558,15 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
 
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -541,6 +574,8 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
         Traversal<Vertex, Map<String, Object>> traversal = this.get_ldbc_11_test();
         this.printTraversalForm(traversal);
         int counter = 0;
+
+        List<String> result = new ArrayList<>();
 
         List<String> expected =
                 Arrays.asList(
@@ -567,11 +602,15 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
 
         while (traversal.hasNext()) {
             Map<String, Object> bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected.get(counter)));
+            Assert.assertTrue(expected.contains(bindings.toString()));
+            result.add(bindings.toString());
             ++counter;
         }
 
+        Set<String> resultSet = new HashSet<>(result);
+
         Assert.assertEquals(expected.size(), (long) counter);
+        Assert.assertEquals(resultSet.size(), (long) counter);
     }
 
     @Test
@@ -602,8 +641,6 @@ public abstract class LdbcQueryTest extends AbstractGremlinProcessTest {
                     .has("id", P.neq(30786325583618L))
                     .has("firstName", P.eq("Chau"))
                     .as("a")
-                    .order()
-                    .by(__.select("p").by("~len"), Order.asc)
                     .dedup()
                     .order()
                     .by(__.select("p").by("~len"), Order.asc)

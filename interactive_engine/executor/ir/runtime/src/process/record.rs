@@ -155,6 +155,9 @@ impl RecordKey {
     pub fn iter(&self) -> impl Iterator<Item = &DynEntry> {
         self.key_fields.iter()
     }
+    pub fn into_iter(self) -> impl Iterator<Item = DynEntry> {
+        self.key_fields.into_iter()
+    }
 }
 
 pub struct RecordExpandIter<E> {

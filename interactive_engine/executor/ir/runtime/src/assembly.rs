@@ -55,7 +55,7 @@ type RecordShuffle = Box<dyn RouteFunction<Record>>;
 type RecordCompare = Box<dyn CompareFunction<RecordKey>>;
 type RecordJoin = Box<dyn JoinKeyGen<Record, RecordKey, Record>>;
 type RecordKeySelector = Box<dyn KeyFunction<Record, RecordKey, Record>>;
-type RecordGroup = Box<dyn GroupGen<Record, RecordKey, Record>>;
+type RecordGroup = Box<dyn GroupGen<Record, RecordKey, RecordKey>>;
 type RecordFold = Box<dyn FoldGen<u64, Record>>;
 
 pub struct IRJobAssembly {
@@ -250,16 +250,17 @@ impl IRJobAssembly {
                                 .map(move |cnt| fold_map.exec(cnt))?
                                 .into_stream()?;
                         } else {
-                            let fold_accum = fold.gen_fold_accum()?;
-                            stream = stream
-                                .fold(fold_accum, || {
-                                    |mut accumulator, next| {
-                                        accumulator.accum(next)?;
-                                        Ok(accumulator)
-                                    }
-                                })?
-                                .map(move |mut accum| Ok(accum.finalize()?))?
-                                .into_stream()?;
+                            todo!()
+                            // let fold_accum = fold.gen_fold_accum()?;
+                            // stream = stream
+                            //     .fold(fold_accum, || {
+                            //         |mut accumulator, next| {
+                            //             accumulator.accum(next)?;
+                            //             Ok(accumulator)
+                            //         }
+                            //     })?
+                            //     .map(move |mut accum| Ok(accum.finalize()?))?
+                            //     .into_stream()?;
                         }
                     } else {
                         // group case

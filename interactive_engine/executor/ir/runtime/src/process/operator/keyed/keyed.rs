@@ -21,9 +21,9 @@ use ir_common::generated::common as common_pb;
 use ir_common::generated::physical as pb;
 use pegasus::api::function::FnResult;
 
-use crate::error::FnGenResult;
+use crate::error::{FnGenError, FnGenResult};
 use crate::process::functions::KeyFunction;
-use crate::process::operator::keyed::KeyFunctionGen;
+use crate::process::operator::keyed::{KeyFunctionGen, KeyValueFunctionGen};
 use crate::process::operator::TagKey;
 use crate::process::record::{Record, RecordKey};
 
@@ -53,18 +53,74 @@ impl KeyFunction<Record, RecordKey, Record> for KeySelector {
     }
 }
 
-impl KeyFunctionGen for pb::GroupBy {
-    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>> {
-        let key_selector = KeySelector::with(
-            self.mappings
-                .iter()
-                .map(|mapping| mapping.key.clone().unwrap())
-                .collect::<Vec<_>>(),
-        )?;
-        if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
-            debug!("Runtime group operator key_selector: {:?}", key_selector);
+#[derive(Debug, Default)]
+pub struct GroupKeyValueSelector {
+    keys: Vec<TagKey>,
+    values: Vec<TagKey>,
+}
+
+impl GroupKeyValueSelector {
+    pub fn with_keys(mut self, keys_pb: Vec<common_pb::Variable>) -> Result<Self, ParsePbError> {
+        let keys = keys_pb
+            .into_iter()
+            .map(|tag_key_pb| TagKey::try_from(tag_key_pb))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.keys = keys;
+        Ok(self)
+    }
+
+    pub fn with_values(mut self, values_pb: Vec<common_pb::Variable>) -> Result<Self, ParsePbError> {
+        let values = values_pb
+            .into_iter()
+            .map(|tag_key_pb| TagKey::try_from(tag_key_pb))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.values = values;
+        Ok(self)
+    }
+}
+
+impl KeyFunction<Record, RecordKey, RecordKey> for GroupKeyValueSelector {
+    fn get_kv(&self, mut input: Record) -> FnResult<(RecordKey, RecordKey)> {
+        let keys = self
+            .keys
+            .iter()
+            .map(|key| key.get_arc_entry(&mut input))
+            .collect::<Result<Vec<_>, _>>()?;
+        let values = self
+            .values
+            .iter()
+            .map(|key| key.get_arc_entry(&mut input))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((RecordKey::new(keys), RecordKey::new(values)))
+    }
+}
+
+impl KeyValueFunctionGen for pb::GroupBy {
+    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, RecordKey>>> {
+        let keys = self
+            .mappings
+            .iter()
+            .map(|mapping| mapping.key.clone().unwrap())
+            .collect::<Vec<_>>();
+        let mut values = Vec::with_capacity(self.functions.len());
+        for agg_func in self.functions {
+            if agg_func.vars.len() != 1 {
+                // e.g., count_distinct((a,b));
+                // TODO: to support this, we may need to define MultiTagKey (could define TagKey Trait, and impl for SingleTagKey and MultiTagKey)
+                Err(FnGenError::unsupported_error(&format!(
+                    "aggregate multiple fields in `Accum`, fields are {:?}",
+                    agg_func.vars
+                )))?
+            }
+            values.push(agg_func.vars.first().unwrap().clone());
         }
-        Ok(Box::new(key_selector))
+        let key_value_selector = GroupKeyValueSelector::default()
+            .with_keys(keys)?
+            .with_values(values)?;
+        if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
+            debug!("Runtime group operator key_value_selector: {:?}", key_value_selector);
+        }
+        Ok(Box::new(key_value_selector))
     }
 }
 

@@ -14,24 +14,21 @@
 //! limitations under the License.
 
 use std::collections::HashSet;
-use std::convert::TryFrom;
 use std::ops::Div;
 
 use dyn_type::{Object, Primitives};
 use ir_common::error::ParsePbError;
 use ir_common::generated::physical as pb;
 use ir_common::generated::physical::group_by::agg_func::Aggregate;
-use ir_common::KeyId;
 use pegasus::codec::{Decode, Encode, ReadExt, WriteExt};
 
-use crate::error::{FnExecError, FnExecResult, FnGenError, FnGenResult};
+use crate::error::{FnExecError, FnExecResult, FnGenResult};
 use crate::process::entry::{CollectionEntry, DynEntry, Entry};
 use crate::process::operator::accum::accumulator::{
     Accumulator, Count, DistinctCount, Maximum, Minimum, Sum, ToList, ToSet,
 };
 use crate::process::operator::accum::AccumFactoryGen;
-use crate::process::operator::TagKey;
-use crate::process::record::Record;
+use crate::process::record::RecordKey;
 
 #[derive(Debug, Clone)]
 pub enum EntryAccumulator {
@@ -50,25 +47,24 @@ pub enum EntryAccumulator {
 // TODO: if the none-entry counts, we may further need a flag to identify.
 #[derive(Debug, Clone)]
 pub struct RecordAccumulator {
-    accum_ops: Vec<(EntryAccumulator, TagKey, Option<KeyId>)>,
+    accum_ops: Vec<EntryAccumulator>,
 }
 
-impl Accumulator<Record, Record> for RecordAccumulator {
-    fn accum(&mut self, mut next: Record) -> FnExecResult<()> {
-        for (accumulator, tag_key, _) in self.accum_ops.iter_mut() {
-            let entry = tag_key.get_arc_entry(&mut next)?;
+impl Accumulator<RecordKey, RecordKey> for RecordAccumulator {
+    fn accum(&mut self, next: RecordKey) -> FnExecResult<()> {
+        for (accumulator, entry) in self.accum_ops.iter_mut().zip(next.into_iter()) {
             accumulator.accum(entry)?;
         }
         Ok(())
     }
 
-    fn finalize(&mut self) -> FnExecResult<Record> {
-        let mut record = Record::default();
-        for (accumulator, _, alias) in self.accum_ops.iter_mut() {
+    fn finalize(&mut self) -> FnExecResult<RecordKey> {
+        let mut columns = Vec::with_capacity(self.accum_ops.len());
+        for accumulator in self.accum_ops.iter_mut() {
             let entry = accumulator.finalize()?;
-            record.append_arc_entry(entry, alias.clone());
+            columns.push(entry);
         }
-        Ok(record)
+        Ok(RecordKey::new(columns))
     }
 }
 
@@ -172,20 +168,6 @@ impl AccumFactoryGen for pb::GroupBy {
         for agg_func in self.functions {
             let agg_kind: pb::group_by::agg_func::Aggregate =
                 unsafe { ::std::mem::transmute(agg_func.aggregate) };
-            if agg_func.vars.len() > 1 {
-                // e.g., count_distinct((a,b));
-                // TODO: to support this, we may need to define MultiTagKey (could define TagKey Trait, and impl for SingleTagKey and MultiTagKey)
-                Err(FnGenError::unsupported_error(&format!(
-                    "aggregate multiple fields in `Accum`, fields are {:?}",
-                    agg_func.vars
-                )))?
-            }
-            let tag_key = agg_func
-                .vars
-                .get(0)
-                .map(|v| TagKey::try_from(v.clone()))
-                .transpose()?
-                .unwrap_or(TagKey::default());
             if multi_accum_flag && agg_func.alias.is_none() {
                 Err(ParsePbError::from("accum value alias is missing in MultiAccum"))?
             }
@@ -203,7 +185,7 @@ impl AccumFactoryGen for pb::GroupBy {
                     EntryAccumulator::ToAvg(Sum { seed: None }, Count { value: 0, _ph: Default::default() })
                 }
             };
-            accum_ops.push((entry_accumulator, tag_key, agg_func.alias));
+            accum_ops.push(entry_accumulator);
         }
         if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
             debug!("Runtime accumulator operator: {:?}", accum_ops);
@@ -298,10 +280,8 @@ impl Decode for EntryAccumulator {
 impl Encode for RecordAccumulator {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         writer.write_u32(self.accum_ops.len() as u32)?;
-        for (accumulator, tag_key, alias) in self.accum_ops.iter() {
+        for accumulator in self.accum_ops.iter() {
             accumulator.write_to(writer)?;
-            tag_key.write_to(writer)?;
-            alias.write_to(writer)?
         }
         Ok(())
     }
@@ -313,9 +293,7 @@ impl Decode for RecordAccumulator {
         let mut accum_ops = Vec::with_capacity(len as usize);
         for _ in 0..len {
             let accumulator = <EntryAccumulator>::read_from(reader)?;
-            let tag_key = <TagKey>::read_from(reader)?;
-            let alias = <Option<KeyId>>::read_from(reader)?;
-            accum_ops.push((accumulator, tag_key, alias));
+            accum_ops.push(accumulator);
         }
         Ok(RecordAccumulator { accum_ops })
     }

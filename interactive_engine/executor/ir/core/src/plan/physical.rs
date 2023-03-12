@@ -28,7 +28,7 @@ use ir_physical_client::physical_builder::{JobBuilder, Plan};
 
 use crate::error::{IrError, IrResult};
 use crate::plan::logical::{LogicalPlan, NodeType};
-use crate::plan::meta::{ColumnsOpt, PlanMeta, TagId};
+use crate::plan::meta::PlanMeta;
 
 /// A trait for building physical plan (pegasus) from the logical plan
 pub trait AsPhysical {
@@ -55,14 +55,12 @@ pub trait AsPhysical {
 //    e.g., g.V().out().as("a").out().out().out().order().by(select("a").by("name"))
 //    Although we only need a single property, we still need to cache it since the property would be used remotely (e.g., in global ordering).
 //    Thus, before `order()`, we shuffle to "a", and cache "a.name", and then do the ordering.
-fn post_process_vars(
-    builder: &mut JobBuilder, plan_meta: &mut PlanMeta, is_order_or_group: bool,
-) -> IrResult<()> {
+fn post_process_vars(builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
     if plan_meta.is_partition() {
         if let Some(node_meta) = plan_meta.get_curr_node_meta() {
             let tag_columns = node_meta.get_tag_columns();
             let len = tag_columns.len();
-            if len == 1 && !is_order_or_group {
+            if len == 1 {
                 // There are minor differences between `Order`, `Group` (group_values, actually) with other operators:
                 // For `Order`, we need to carry the properties for global ordering;
                 // and for `Group` (group_values), we need to carry the properties after `Keyed` for Aggregation.
@@ -116,7 +114,7 @@ impl AsPhysical for pb::Project {
     }
 
     fn post_process(&mut self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
-        post_process_vars(builder, plan_meta, false)?;
+        post_process_vars(builder, plan_meta)?;
         Ok(())
     }
 }
@@ -161,7 +159,7 @@ impl AsPhysical for pb::Select {
     }
 
     fn post_process(&mut self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
-        post_process_vars(builder, plan_meta, false)?;
+        post_process_vars(builder, plan_meta)?;
         Ok(())
     }
 }
@@ -230,7 +228,7 @@ impl AsPhysical for pb::PathExpand {
             builder.shuffle(self.start_tag.clone());
         }
         // TODO: for path expand, if condition is to filter on HEAD, no need to save head as it is not the truely head.
-        post_process_vars(builder, plan_meta, false)?;
+        post_process_vars(builder, plan_meta)?;
         Ok(())
     }
 }
@@ -312,7 +310,7 @@ impl AsPhysical for pb::OrderBy {
     }
 
     fn post_process(&mut self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
-        post_process_vars(builder, plan_meta, true)?;
+        post_process_vars(builder, plan_meta)?;
         Ok(())
     }
 }
@@ -326,7 +324,7 @@ impl AsPhysical for pb::Dedup {
     }
 
     fn post_process(&mut self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
-        post_process_vars(builder, plan_meta, false)?;
+        post_process_vars(builder, plan_meta)?;
         Ok(())
     }
 }
@@ -339,7 +337,7 @@ impl AsPhysical for pb::GroupBy {
         Ok(())
     }
     fn post_process(&mut self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
-        post_process_vars(builder, plan_meta, true)?;
+        post_process_vars(builder, plan_meta)?;
         Ok(())
     }
 }
@@ -589,7 +587,7 @@ impl AsPhysical for LogicalPlan {
                             let left_plan = plans.get(0).unwrap().clone();
                             let right_plan = plans.get(1).unwrap().clone();
 
-                            post_process_vars(builder, plan_meta, false)?;
+                            post_process_vars(builder, plan_meta)?;
 
                             builder.join(
                                 unsafe { std::mem::transmute(join_opr.kind) },

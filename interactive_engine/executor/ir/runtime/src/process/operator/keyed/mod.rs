@@ -24,3 +24,7 @@ use crate::process::record::{Record, RecordKey};
 pub trait KeyFunctionGen {
     fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, Record>>>;
 }
+
+pub trait KeyValueFunctionGen {
+    fn gen_key(self) -> FnGenResult<Box<dyn KeyFunction<Record, RecordKey, RecordKey>>>;
+}
