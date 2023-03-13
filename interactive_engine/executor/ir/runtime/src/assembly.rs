@@ -56,7 +56,7 @@ type RecordCompare = Box<dyn CompareFunction<RecordKey>>;
 type RecordJoin = Box<dyn JoinKeyGen<Record, RecordKey, Record>>;
 type RecordKeySelector = Box<dyn KeyFunction<Record, RecordKey, Record>>;
 type RecordGroup = Box<dyn GroupGen<Record, RecordKey, RecordKey>>;
-type RecordFold = Box<dyn FoldGen<u64, Record>>;
+type RecordFold = Box<dyn FoldGen<Record, RecordKey>>;
 
 pub struct IRJobAssembly {
     udf_gen: FnGenerator,
@@ -243,24 +243,27 @@ impl IRJobAssembly {
                     if group.mappings.is_empty() {
                         // fold case
                         let fold = self.udf_gen.gen_fold(group)?;
+                        let fold_values = fold.gen_fold_value()?;
+                        let fold_map = fold.gen_fold_map()?;
                         if let server_pb::AccumKind::Cnt = fold.get_accum_kind() {
-                            let fold_map = fold.gen_fold_map()?;
                             stream = stream
                                 .count()?
+                                .map(|cnt| Ok(RecordKey::new(vec![object!(cnt).into()])))?
                                 .map(move |cnt| fold_map.exec(cnt))?
                                 .into_stream()?;
                         } else {
-                            todo!()
-                            // let fold_accum = fold.gen_fold_accum()?;
-                            // stream = stream
-                            //     .fold(fold_accum, || {
-                            //         |mut accumulator, next| {
-                            //             accumulator.accum(next)?;
-                            //             Ok(accumulator)
-                            //         }
-                            //     })?
-                            //     .map(move |mut accum| Ok(accum.finalize()?))?
-                            //     .into_stream()?;
+                            let fold_accum = fold.gen_fold_accum()?;
+                            stream = stream
+                                .map(move |record| fold_values.exec(record))?
+                                .fold(fold_accum, || {
+                                    |mut accumulator, next| {
+                                        accumulator.accum(next)?;
+                                        Ok(accumulator)
+                                    }
+                                })?
+                                .map(move |mut accum| Ok(accum.finalize()?))?
+                                .map(move |cnt| fold_map.exec(cnt))?
+                                .into_stream()?;
                         }
                     } else {
                         // group case

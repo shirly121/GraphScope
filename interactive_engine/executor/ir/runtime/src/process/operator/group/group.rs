@@ -66,13 +66,13 @@ struct GroupMap {
 
 impl MapFunction<(RecordKey, RecordKey), Record> for GroupMap {
     fn exec(&self, (group_key, group_value): (RecordKey, RecordKey)) -> FnResult<Record> {
-        let mut record = Record::default();
         if group_key.len() != self.key_aliases.len() || group_value.len() != self.value_aliases.len() {
             Err(FnExecError::unexpected_data_error(&format!(
                 "group_keys.len()!=group_key_aliases.len() or group_value.len()!=group_value_aliases.len() {:?}, {:?}, {:?}, {:?}",
                 group_key, self.key_aliases, group_value, self.value_aliases
             )))?
         }
+        let mut record = Record::default();
         for (entry, alias) in group_key
             .into_iter()
             .zip(self.key_aliases.iter())

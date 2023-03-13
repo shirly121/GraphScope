@@ -13,17 +13,67 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use ir_common::generated::common as common_pb;
 use ir_common::generated::physical as pb;
 use ir_common::KeyId;
 use pegasus::api::function::{FnResult, MapFunction};
 use pegasus_server::job_pb as server_pb;
 
-use crate::error::{FnGenError, FnGenResult};
+use crate::error::{FnExecError, FnGenError, FnGenResult};
 use crate::process::functions::FoldGen;
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
-use crate::process::record::Record;
+use crate::process::operator::TagKey;
+use crate::process::record::{Record, RecordKey};
+use ir_common::error::ParsePbError;
+use std::convert::TryFrom;
 
-impl FoldGen<u64, Record> for pb::GroupBy {
+#[derive(Debug, Default)]
+pub struct FoldValue {
+    values: Vec<TagKey>,
+}
+
+impl FoldValue {
+    pub fn with(values_pb: Vec<common_pb::Variable>) -> Result<Self, ParsePbError> {
+        let values = values_pb
+            .into_iter()
+            .map(|tag_key_pb| TagKey::try_from(tag_key_pb))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(FoldValue { values })
+    }
+}
+
+impl MapFunction<Record, RecordKey> for FoldValue {
+    fn exec(&self, mut input: Record) -> FnResult<RecordKey> {
+        let values = self
+            .values
+            .iter()
+            .map(|key| key.get_arc_entry(&mut input))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(RecordKey::new(values))
+    }
+}
+
+impl FoldGen<Record, RecordKey> for pb::GroupBy {
+    fn gen_fold_value(&self) -> FnGenResult<Box<dyn MapFunction<Record, RecordKey>>> {
+        let mut values = Vec::with_capacity(self.functions.len());
+        for agg_func in &self.functions {
+            if agg_func.vars.len() != 1 {
+                // e.g., count_distinct((a,b));
+                // TODO: to support this, we may need to define MultiTagKey (could define TagKey Trait, and impl for SingleTagKey and MultiTagKey)
+                Err(FnGenError::unsupported_error(&format!(
+                    "aggregate multiple fields in `Accum`, fields are {:?}",
+                    agg_func.vars
+                )))?
+            }
+            values.push(agg_func.vars.first().unwrap().clone());
+        }
+        let fold_values = FoldValue::with(values)?;
+        if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
+            debug!("Runtime fold operator fold_values: {:?}", fold_values);
+        }
+        Ok(Box::new(fold_values))
+    }
+
     fn get_accum_kind(&self) -> server_pb::AccumKind {
         let accum_functions = &self.functions;
         if accum_functions.len() == 1 {
@@ -38,13 +88,17 @@ impl FoldGen<u64, Record> for pb::GroupBy {
         }
     }
 
-    fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<u64, Record>>> {
-        if self.get_accum_kind() == server_pb::AccumKind::Cnt {
-            let count_alias = self.functions[0].alias;
-            Ok(Box::new(CountAlias { alias: count_alias }))
-        } else {
-            Err(FnGenError::unsupported_error(&format!("fold_map in `Accum` {:?}", self)))
+    fn gen_fold_map(&self) -> FnGenResult<Box<dyn MapFunction<RecordKey, Record>>> {
+        let value_aliases = self
+            .functions
+            .iter()
+            .map(|func| func.alias)
+            .collect();
+        let fold_map = FoldMap { value_aliases };
+        if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
+            debug!("Runtime fold operator fold_map: {:?}", fold_map);
         }
+        Ok(Box::new(fold_map))
     }
 
     fn gen_fold_accum(&self) -> FnGenResult<RecordAccumulator> {
@@ -53,14 +107,27 @@ impl FoldGen<u64, Record> for pb::GroupBy {
 }
 
 #[derive(Debug)]
-struct CountAlias {
-    alias: Option<KeyId>,
+struct FoldMap {
+    /// aliases for fold values, if some value is not not required to be preserved, give None alias
+    value_aliases: Vec<Option<KeyId>>,
 }
 
-impl MapFunction<u64, Record> for CountAlias {
-    fn exec(&self, cnt: u64) -> FnResult<Record> {
-        let cnt_entry = object!(cnt);
-        Ok(Record::new(cnt_entry, self.alias.clone()))
+impl MapFunction<RecordKey, Record> for FoldMap {
+    fn exec(&self, values: RecordKey) -> FnResult<Record> {
+        if values.len() != self.value_aliases.len() {
+            Err(FnExecError::unexpected_data_error(&format!(
+                "fold_value.len()!=fold_value_aliases.len() {:?}, {:?}",
+                values, self.value_aliases
+            )))?
+        }
+        let mut record = Record::default();
+        for (entry, alias) in values
+            .into_iter()
+            .zip(self.value_aliases.iter())
+        {
+            record.append_arc_entry(entry, alias.clone());
+        }
+        Ok(record)
     }
 }
 
