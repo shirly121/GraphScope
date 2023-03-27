@@ -193,7 +193,7 @@ public class FfiLogicalPlan extends LogicalPlan<Pointer, byte[]> {
                         "each group key should have an alias if need dedup");
             }
             checkFfiResult(
-                    LIB.addProjectExprAliasWithPb(
+                    LIB.addProjectExprPbAlias(
                             ptrProject,
                             new FfiPbPointer.ByValue(expr.toByteArray()),
                             ArgUtils.asAlias(aliasId)));
@@ -208,7 +208,7 @@ public class FfiLogicalPlan extends LogicalPlan<Pointer, byte[]> {
                             .getOperators(0)
                             .getVar();
             checkFfiResult(
-                    LIB.addDedupKeyWithPb(
+                    LIB.addDedupKeyPb(
                             ptrDedup, new FfiPbPointer.ByValue(exprVar.toByteArray())));
         }
         checkFfiResult(LIB.appendProjectOperator(ptrPlan, ptrProject, oprIdx.getValue(), oprIdx));
