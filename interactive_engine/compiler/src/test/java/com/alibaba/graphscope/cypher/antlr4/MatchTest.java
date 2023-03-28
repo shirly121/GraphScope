@@ -63,4 +63,22 @@ public class MatchTest {
                         "]}])",
                 match.explain().trim());
     }
+
+    // g.V().match(as("x").hasLabel("person").ouE("knows").as("y"),
+    // as("x").hasLabel("person").outE("knows").as("z"))
+    @Test
+    public void match_4_test() {
+        RelNode match =
+                Utils.eval("Match (a)-[:knows]->(b) Return Count(*)").build();
+        Assert.assertEquals(
+                "GraphLogicalProject(a=[a], b=[b], c=[c], isAppend=[false])\n" +
+                        "  GraphLogicalMultiMatch(input=[null], sentences=[{s0=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software, person]}], alias=[b], opt=[END])\n" +
+                        "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}], alias=[DEFAULT], opt=[OUT])\n" +
+                        "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software, person]}], alias=[a], opt=[VERTEX])\n" +
+                        "], s1=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software, person]}], alias=[c], opt=[END])\n" +
+                        "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}], alias=[DEFAULT], opt=[OUT])\n" +
+                        "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software, person]}], alias=[b], opt=[VERTEX])\n" +
+                        "]}])",
+                match.explain().trim());
+    }
 }

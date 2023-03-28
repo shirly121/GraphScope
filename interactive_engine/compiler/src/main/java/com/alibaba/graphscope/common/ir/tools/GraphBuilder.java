@@ -266,16 +266,17 @@ public class GraphBuilder extends RelBuilder {
      */
     public GraphBuilder match(RelNode single, GraphOpt.Match opt) {
         RelNode input = size() > 0 ? peek() : null;
-        // there is only one source operator in the sentence -> skip match
-        if (input == null && single.getInputs().isEmpty()) {
-            push(single);
-        } else {
-            RelNode match =
-                    GraphLogicalSingleMatch.create(
-                            (GraphOptCluster) cluster, null, input, single, opt);
-            if (size() > 0) pop();
-            push(match);
-        }
+        push(single);
+//        // there is only one source operator in the sentence -> skip match
+//        if (input == null && single.getInputs().isEmpty()) {
+//            push(single);
+//        } else {
+//            RelNode match =
+//                    GraphLogicalSingleMatch.create(
+//                            (GraphOptCluster) cluster, null, input, single, opt);
+//            if (size() > 0) pop();
+//            push(match);
+//        }
         return this;
     }
 
