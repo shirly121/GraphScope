@@ -242,7 +242,7 @@ public class GraphBuilder extends RelBuilder {
         }
     }
 
-    /** f
+    /**
      * generate a new alias id for the given alias name
      *
      * @param alias
@@ -266,17 +266,16 @@ public class GraphBuilder extends RelBuilder {
      */
     public GraphBuilder match(RelNode single, GraphOpt.Match opt) {
         RelNode input = size() > 0 ? peek() : null;
-        push(single);
-//        // there is only one source operator in the sentence -> skip match
-//        if (input == null && single.getInputs().isEmpty()) {
-//            push(single);
-//        } else {
-//            RelNode match =
-//                    GraphLogicalSingleMatch.create(
-//                            (GraphOptCluster) cluster, null, input, single, opt);
-//            if (size() > 0) pop();
-//            push(match);
-//        }
+        // there is only one source operator in the sentence -> skip match
+        if (input == null && single.getInputs().isEmpty()) {
+            push(single);
+        } else {
+            RelNode match =
+                    GraphLogicalSingleMatch.create(
+                            (GraphOptCluster) cluster, null, input, single, opt);
+            if (size() > 0) pop();
+            push(match);
+        }
         return this;
     }
 
@@ -407,18 +406,16 @@ public class GraphBuilder extends RelBuilder {
     private RelDataTypeField getAliasField(String alias) {
         Objects.requireNonNull(alias);
         Set<String> aliases = new HashSet<>();
-        int nodeIdx = 0;
         for (int inputOrdinal = 0; inputOrdinal < size(); ++inputOrdinal) {
             List<RelNode> inputQueue = Lists.newArrayList(peek(inputOrdinal));
             while (!inputQueue.isEmpty()) {
                 RelNode cur = inputQueue.remove(0);
                 List<RelDataTypeField> fields = cur.getRowType().getFieldList();
-                // to support `head` in gremlin
-                if (nodeIdx++ == 0 && alias == AliasInference.DEFAULT_NAME && fields.size() == 1) {
-                    return new RelDataTypeFieldImpl(AliasInference.DEFAULT_NAME, AliasInference.DEFAULT_ID, fields.get(0).getType());
+                if (alias == AliasInference.DEFAULT_NAME && fields.size() == 1) {
+                    return fields.get(0);
                 }
                 for (RelDataTypeField field : fields) {
-                    if (alias != AliasInference.DEFAULT_NAME && field.getName().equals(alias)) {
+                    if (field.getName().equals(alias)) {
                         return field;
                     }
                     aliases.add(AliasInference.SIMPLE_NAME(field.getName()));
