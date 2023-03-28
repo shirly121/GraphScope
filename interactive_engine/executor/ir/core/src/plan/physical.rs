@@ -311,9 +311,7 @@ impl AsPhysical for pb::GetV {
                     alias: getv.alias,
                     meta_data: None,
                 };
-                params.predicate.take();
-                params.is_all_columns = false;
-                params.columns.clear();
+                getv.params = None;
                 getv.alias = None;
                 // opt = 4 means applying the filter to the vertex itself
                 // It only happens when previous EdgeExpand is ExpandV
