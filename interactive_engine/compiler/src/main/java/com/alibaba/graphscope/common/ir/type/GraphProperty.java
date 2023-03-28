@@ -48,14 +48,6 @@ public class GraphProperty {
     }
 
     @Override
-    public String toString() {
-        return "GraphProperty{" +
-                "opt=" + opt +
-                ", key=" + key +
-                '}';
-    }
-
-    @Override
     public int hashCode() {
         return Objects.hash(opt, key);
     }

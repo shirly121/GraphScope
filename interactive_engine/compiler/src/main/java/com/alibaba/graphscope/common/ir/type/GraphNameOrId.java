@@ -52,15 +52,6 @@ public class GraphNameOrId {
         return name;
     }
 
-    @Override
-    public String toString() {
-        return "GraphNameOrId{" +
-                "name='" + name + '\'' +
-                ", id=" + id +
-                ", opt=" + opt +
-                '}';
-    }
-
     public int getId() {
         return id;
     }

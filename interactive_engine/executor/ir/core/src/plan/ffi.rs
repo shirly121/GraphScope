@@ -654,7 +654,6 @@ pub extern "C" fn build_physical_plan(
 fn append_operator(
     ptr_plan: *const c_void, operator: pb::logical_plan::Operator, parent_ids: Vec<i32>, id: *mut i32,
 ) -> FfiResult {
-    // println!("{:?}", operator);
     let mut plan = unsafe { Box::from_raw(ptr_plan as *mut LogicalPlan) };
     let result = plan.append_operator_as_node(
         operator,
@@ -1059,7 +1058,7 @@ mod project {
     /// To add a mapping for the project operator, which maps a pb pointer to represent an
     /// expression, and a `NameOrId` parameter that represents an alias.
     #[no_mangle]
-    pub extern "C" fn add_project_expr_pb_alias(
+    pub extern "C" fn add_project_expr_pb_alia(
         ptr_project: *const c_void, pb_expr: FfiPbPointer, alias: FfiAlias,
     ) -> FfiResult {
         let mut result = FfiResult::success();

@@ -440,12 +440,12 @@ impl IRJobAssembly {
                     //     2) on distributed graph database, the intersect op exists together with the `Repartition` op in subplans.
                     let mut intersected_expands = vec![];
                     for mut subplan in intersect.sub_plans {
-                        // if subplan.plan.len() > 2 {
-                        //     Err(FnGenError::unsupported_error(&format!(
-                        //         "subplan in pb::Intersect::plan {:?}",
-                        //         subplan,
-                        //     )))?
-                        // }
+                        if subplan.plan.len() > 2 {
+                            Err(FnGenError::unsupported_error(&format!(
+                                "subplan in pb::Intersect::plan {:?}",
+                                subplan,
+                            )))?
+                        }
                         let last_op =
                             subplan
                                 .plan
