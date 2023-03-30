@@ -19,15 +19,19 @@
 //! protobuf structure.
 //!
 
+use ir_common::error::ParsePbError;
+use std::convert::TryInto;
+
 use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 use ir_common::generated::common::expr_opr::Item;
+use ir_common::generated::physical as physical_pb;
 use ir_common::KeyId;
 use ir_physical_client::physical_builder::{JobBuilder, Plan};
 
 use crate::error::{IrError, IrResult};
-use crate::glogue::query_params_to_get_v;
+use crate::glogue::combine_get_v_by_query_params;
 use crate::plan::logical::{LogicalPlan, NodeType};
 use crate::plan::meta::PlanMeta;
 
@@ -60,50 +64,56 @@ fn post_process_vars(
     builder: &mut JobBuilder, plan_meta: &mut PlanMeta, is_order_or_group: bool,
 ) -> IrResult<()> {
     if plan_meta.is_partition() {
-        let node_meta = plan_meta.get_curr_node_meta().unwrap();
-        let tag_columns = node_meta.get_tag_columns();
-        let len = tag_columns.len();
-        if len == 1 && !is_order_or_group {
-            // There are minor differences between `Order`, `Group` (group_values, actually) with other operators:
-            // For `Order`, we need to carry the properties for global ordering;
-            // and for `Group` (group_values), we need to carry the properties after `Keyed` for Aggregation.
-            // While for other operators, we can shuffle to the partition where the vertex locates,
-            // and directly query the properties (without saving the properties).
-            let (tag, columns_opt) = tag_columns.into_iter().next().unwrap();
-            if columns_opt.len() > 0 {
-                let tag_pb = tag.map(|tag_id| (tag_id as KeyId).into());
-                builder.shuffle(tag_pb.clone());
-                let auxilia =
-                    pb::GetV { tag: tag_pb.clone(), opt: 4, params: None, alias: tag_pb, meta_data: None };
-                builder.get_v(auxilia);
-            }
-        } else if len != 0 {
-            for (tag, columns_opt) in tag_columns.into_iter() {
+        if let Some(node_meta) = plan_meta.get_curr_node_meta() {
+            let tag_columns = node_meta.get_tag_columns();
+            let len = tag_columns.len();
+            if len == 1 && !is_order_or_group {
+                // There are minor differences between `Order`, `Group` (group_values, actually) with other operators:
+                // For `Order`, we need to carry the properties for global ordering;
+                // and for `Group` (group_values), we need to carry the properties after `Keyed` for Aggregation.
+                // While for other operators, we can shuffle to the partition where the vertex locates,
+                // and directly query the properties (without saving the properties).
+                let (tag, columns_opt) = tag_columns.into_iter().next().unwrap();
                 if columns_opt.len() > 0 {
-                    let tag_pb = tag.map(|tag_id| (tag_id as i32).into());
+                    let tag_pb = tag.map(|tag_id| (tag_id as KeyId).into());
                     builder.shuffle(tag_pb.clone());
-                    let params = pb::QueryParams {
-                        tables: vec![],
-                        columns: columns_opt
-                            .get()
-                            .into_iter()
-                            .map(|column| column.into())
-                            .collect(),
-                        is_all_columns: columns_opt.is_all(),
-                        limit: None,
-                        predicate: None,
-                        sample_ratio: 1.0,
-                        extra: Default::default(),
-                    };
-                    // opt = 4 denotes that to get vertex itself. The same as the followings.
                     let auxilia = pb::GetV {
                         tag: tag_pb.clone(),
                         opt: 4,
-                        params: Some(params),
-                        alias: tag_pb.clone(),
+                        params: None,
+                        alias: tag_pb,
                         meta_data: None,
                     };
                     builder.get_v(auxilia);
+                }
+            } else if len != 0 {
+                for (tag, columns_opt) in tag_columns.into_iter() {
+                    if columns_opt.len() > 0 {
+                        let tag_pb = tag.map(|tag_id| (tag_id as KeyId).into());
+                        builder.shuffle(tag_pb.clone());
+                        let params = pb::QueryParams {
+                            tables: vec![],
+                            columns: columns_opt
+                                .get()
+                                .into_iter()
+                                .map(|column| column.into())
+                                .collect(),
+                            is_all_columns: columns_opt.is_all(),
+                            limit: None,
+                            predicate: None,
+                            sample_ratio: 1.0,
+                            extra: Default::default(),
+                        };
+                        // opt = 4 denotes that to get vertex itself. The same as the followings.
+                        let auxilia = pb::GetV {
+                            tag: tag_pb.clone(),
+                            opt: 4,
+                            params: Some(params),
+                            alias: tag_pb.clone(),
+                            meta_data: None,
+                        };
+                        builder.get_v(auxilia);
+                    }
                 }
             }
         }
@@ -240,20 +250,21 @@ impl AsPhysical for pb::PathExpand {
             if edge_expand.is_some() && getv.is_none() {
                 // Must be the case of EdgeExpand with Opt=Vertex
                 if edge_expand.unwrap().expand_opt != pb::edge_expand::ExpandOpt::Vertex as i32 {
-                    return Err(IrError::Unsupported(
-                        "Single EdgeExpand with Opt not Vertex in PathExpand".to_string(),
-                    ));
+                    return Err(IrError::Unsupported(format!(
+                        "ExpandBase in PathExpand {:?}",
+                        expand_base
+                    )));
                 }
             } else if edge_expand.is_some() && getv.is_some() {
                 let edge_expand = edge_expand.unwrap();
                 let getv = getv.unwrap();
                 if edge_expand.expand_opt == pb::edge_expand::ExpandOpt::Edge as i32 {
-                    let has_predicate = if let Some(params) = getv.params.as_ref() {
-                        params.predicate.is_some()
+                    let has_getv_filter = if let Some(params) = getv.params.as_ref() {
+                        params.is_queryable() || !params.tables.is_empty()
                     } else {
                         false
                     };
-                    if has_predicate {
+                    if has_getv_filter {
                         // The case of EdgeExpand(Opt=Edge) + GetV(Filter)
                         // --> EdgeExpand(Opt=Vertex) + GetV(Self with Filter)
                         edge_expand.expand_opt = pb::edge_expand::ExpandOpt::Vertex as i32;
@@ -282,11 +293,58 @@ impl AsPhysical for pb::PathExpand {
     }
 
     fn post_process(&mut self, builder: &mut JobBuilder, plan_meta: &mut PlanMeta) -> IrResult<()> {
+        post_process_vars(builder, plan_meta, false)?;
         if plan_meta.is_partition() {
             builder.shuffle(self.start_tag.clone());
         }
         Ok(())
     }
+}
+
+// Try to apply the optimize rule: ExpandE + GetV = ExpandV, it it satisfies:
+// 1. the previous op is ExpandE, and with no alias (which means that the edges won't be accessed later).
+// 2. `GetV` is GetV(Adj) (i.e., opt=Start/End/Other) without any filters or further query semantics.
+// 3. the direction should be: outE + inV = out; inE + outV = in; and bothE + otherV = both
+fn build_and_try_fuse_get_v(builder: &mut JobBuilder, mut get_v: pb::GetV) -> IrResult<()> {
+    if get_v.opt == 4 {
+        return Err(IrError::Unsupported("Try to fuse GetV with Opt=Self into ExpandE".to_string()));
+    }
+    if let Some(params) = get_v.params.as_mut() {
+        if params.is_queryable() {
+            return Err(IrError::Unsupported("Try to fuse GetV with predicates into ExpandE".to_string()));
+        } else if !params.tables.is_empty() {
+            // although this doesn't need query, it cannot be fused into ExpandExpand since we cannot specify vertex labels in ExpandV
+            builder.get_v(get_v);
+            return Ok(());
+        }
+    }
+    // Try to fuse: ExpandE + GetV(Adj) = ExpandV
+    if let Some(last_op) = builder.get_last_op_mut() {
+        let op_kind = last_op
+            .opr
+            .as_mut()
+            .ok_or(IrError::MissingData(format!("PhysicalOpr")))?
+            .op_kind
+            .as_mut()
+            .ok_or(IrError::MissingData(format!("PhysicalOpr OpKind")))?;
+        if let physical_pb::physical_opr::operator::OpKind::Edge(ref mut edge) = op_kind {
+            if edge.alias.is_none() {
+                // outE + inV || inE + outV || bothE + otherV
+                if (edge.direction == 0 && get_v.opt == 1)
+                    || (edge.direction == 1 && get_v.opt == 0)
+                    || (edge.direction == 2 && get_v.opt == 2)
+                {
+                    edge.alias = get_v
+                        .alias
+                        .map(|alias| alias.try_into().unwrap());
+                    edge.expand_opt = 0; // expandV
+                    return Ok(());
+                }
+            }
+        }
+    }
+    builder.get_v(get_v);
+    Ok(())
 }
 
 impl AsPhysical for pb::GetV {
@@ -311,15 +369,14 @@ impl AsPhysical for pb::GetV {
                     alias: getv.alias,
                     meta_data: None,
                 };
-                getv.params = None;
+                params.tables.clear();
+                params.predicate.take();
+                params.is_all_columns = false;
+                params.columns.clear();
                 getv.alias = None;
-                // opt = 4 means applying the filter to the vertex itself
-                // It only happens when previous EdgeExpand is ExpandV
-                // Therefore, GetV(Adj) only when opt != 4
-                if getv.opt != 4 {
-                    builder.get_v(getv);
-                }
-                // Suffle + GetV(Self)
+                // GetV(Adj) and try to fuse it with ExpandE
+                build_and_try_fuse_get_v(builder, getv)?;
+                // Shuffle + GetV(Self)
                 if plan_meta.is_partition() {
                     builder.shuffle(None);
                 }
@@ -327,8 +384,8 @@ impl AsPhysical for pb::GetV {
                 return Ok(());
             }
         }
-        // Otherwise, fetches adjacent vertex ids from an edge directly.
-        builder.get_v(getv);
+        // Otherwise, fetches adjacent vertex ids from an edge directly; and try to fuse it with ExpandE
+        build_and_try_fuse_get_v(builder, getv)?;
         Ok(())
     }
 }
@@ -724,56 +781,93 @@ fn add_intersect_job_builder(
         .key
         .as_ref()
         .ok_or(IrError::ParsePbError("Empty tag in `Intersect` opr".into()))?;
-    let mut vertex_params: Option<pb::QueryParams> = None;
+    let mut auxilia: Option<pb::GetV> = None;
     let mut intersect_plans: Vec<Plan> = vec![];
     for subplan in subplans {
         // subplan would be like:
         // 1. vec![ExpandE, GetV] for edge expand to intersect;
-        // 2. vec![PathExpand, ExpandE, GetV] for path expand to intersect
-        let len = subplan.len();
-        if len < 2 {
-            Err(IrError::InvalidPattern(
-                "Subplan of Intersect at least has two operators: ExpandE + GetV".to_string(),
-            ))?
+        // 2. vec![PathExpand, GetV] for path expand to intersect
+        if subplan.len() != 2 {
+            Err(IrError::InvalidPattern(format!(
+                "Subplan of Intersect should should beExpandE + GetV or PathExpand + GetV, while it is {:?}",
+                subplan
+            )))?
         }
         let mut sub_bldr = JobBuilder::new(builder.conf.clone());
-        for (idx, (_, opr)) in subplan.nodes.iter().enumerate() {
-            if idx + 2 < len {
-                opr.add_job_builder(builder, plan_meta)?;
+        let first_opr = subplan
+            .get_first_node()
+            .ok_or(IrError::InvalidPattern("First node missing for Intersection's subplan".to_string()))?;
+        let last_opr = subplan
+            .get_last_node()
+            .ok_or(IrError::InvalidPattern("Last node Missing for Intersection's subplan".to_string()))?;
+        if let Some(Vertex(get_v)) = last_opr.borrow().opr.opr.as_ref() {
+            let mut get_v = get_v.clone();
+            if get_v.alias.is_none() || !get_v.alias.as_ref().unwrap().eq(intersect_tag) {
+                Err(IrError::InvalidPattern("Cannot intersect on different tags".to_string()))?
             }
-            // Handle outE + GetV
-            else if idx + 2 == len {
-                // idx >= 0, len >= 1, so unwrap is safe here
-                let last_opr = subplan.get_last_node().unwrap();
-                // check whether the last two operators are ExpandExpand and GetV
-                if let (Some(Edge(edgexpd)), Some(Vertex(get_v))) =
-                    (opr.borrow().opr.opr.as_ref(), last_opr.borrow().opr.opr.as_ref())
+            let mut edge_expand = if let Some(Edge(edge_expand)) = first_opr.borrow().opr.opr.as_ref() {
+                Ok(edge_expand.clone())
+            } else if let Some(Path(path_expand)) = first_opr.borrow().opr.opr.as_ref() {
+                let mut path_expand = path_expand.clone();
+                let path_expand_base = path_expand
+                    .base
+                    .as_ref()
+                    .ok_or(ParsePbError::EmptyFieldError("PathExpand::base in Pattern".to_string()))?;
+                let path_get_v_opt = path_expand_base.get_v.clone();
+                let base_edge_expand =
+                    path_expand_base
+                        .edge_expand
+                        .as_ref()
+                        .ok_or(ParsePbError::EmptyFieldError(
+                            "PathExpand::base::edge_expand in Pattern".to_string(),
+                        ))?;
+                // Ensure the base is ExpandV or ExpandE + GetV
+                if path_get_v_opt == None
+                    && base_edge_expand.expand_opt == pb::edge_expand::ExpandOpt::Edge as i32
                 {
-                    if get_v.alias.is_none() || !get_v.alias.as_ref().unwrap().eq(intersect_tag) {
-                        Err(IrError::InvalidPattern("Cannot intersect on different tags".to_string()))?
-                    }
-                    if let Some(params) = get_v.params.as_ref() {
-                        vertex_params = Some(params.clone());
-                    }
-                    if plan_meta.is_partition() {
-                        sub_bldr.shuffle(edgexpd.v_tag.clone());
-                    }
-                    let mut edgexpd = edgexpd.clone();
-                    edgexpd.expand_opt = pb::edge_expand::ExpandOpt::Vertex as i32;
-                    edgexpd.alias = get_v.alias.clone();
-                    if plan_meta.is_partition() {
-                        sub_bldr.shuffle(edgexpd.v_tag.clone());
-                    }
-                    sub_bldr.edge_expand(edgexpd);
-                    break;
+                    Err(IrError::Unsupported(
+                        "Edge Only PathExpand in Intersection's subplan has not been supported yet"
+                            .to_string(),
+                    ))?;
+                }
+                if let Some(path_get_v) = path_get_v_opt {
+                    get_v = combine_get_v_by_query_params(get_v, path_get_v);
+                }
+                let mut last_edge_expand = base_edge_expand.clone();
+                last_edge_expand.v_tag = None;
+                last_edge_expand.alias = None;
+                let hop_range = path_expand
+                    .hop_range
+                    .as_mut()
+                    .ok_or(ParsePbError::EmptyFieldError("pb::PathExpand::hop_range".to_string()))?;
+                if hop_range.lower == 1 && hop_range.upper == 2 {
+                    last_edge_expand.v_tag = path_expand.start_tag;
                 } else {
-                    Err(IrError::Unsupported(format!(
-                        "Should be `EdgeExpand` opr on Vertex for intersection, but the opr is {:?}",
-                        opr
-                    )))?
-                };
+                    hop_range.lower -= 1;
+                    hop_range.upper -= 1;
+                    let mut end_v = pb::GetV::default();
+                    end_v.opt = pb::get_v::VOpt::End as i32;
+                    path_expand.add_job_builder(builder, plan_meta)?;
+                    end_v.add_job_builder(builder, plan_meta)?;
+                }
+                Ok(last_edge_expand)
+            } else {
+                Err(IrError::InvalidPattern(
+                    "First node of Intersection's subplan is neither EdgeExpand or PathExpand".to_string(),
+                ))
+            }?;
+            edge_expand.expand_opt = pb::edge_expand::ExpandOpt::Vertex as i32;
+            edge_expand.alias = get_v.alias.clone();
+            edge_expand.add_job_builder(&mut sub_bldr, plan_meta)?;
+
+            if let Some(params) = get_v.params.as_ref() {
+                // the case that we need to further process getV's filter.
+                if params.is_queryable() || !params.tables.is_empty() {
+                    get_v.opt = 4;
+                    auxilia = Some(get_v.clone());
+                }
             }
-        }
+        };
         let sub_plan = sub_bldr.take_plan();
         intersect_plans.push(sub_plan);
     }
@@ -784,9 +878,9 @@ fn add_intersect_job_builder(
         meta_data: None,
     };
     unfold.add_job_builder(builder, plan_meta)?;
-    if vertex_params.is_some() {
-        let get_v_filter = query_params_to_get_v(vertex_params, None, 4);
-        get_v_filter.add_job_builder(builder, plan_meta)?;
+    if let Some(mut auxilia) = auxilia {
+        auxilia.tag = Some(intersect_tag.clone());
+        builder.get_v(auxilia);
     }
     Ok(())
 }
@@ -1224,8 +1318,8 @@ mod test {
 
         let mut expected_builder = JobBuilder::default();
         expected_builder.add_scan_source(build_scan(vec![]));
-        expected_builder.edge_expand(build_edgexpd(1, vec![], None));
-        expected_builder.get_v(build_getv(Some(0.into())));
+        // a fused ExpandV
+        expected_builder.edge_expand(build_edgexpd(0, vec![], Some(0.into())));
         expected_builder.project(build_project("{@0.name, @0.id, @0.age}"));
         expected_builder.sink(build_sink());
 
@@ -1240,8 +1334,8 @@ mod test {
         let mut expected_builder = JobBuilder::default();
         expected_builder.add_scan_source(build_scan(vec![]));
         expected_builder.shuffle(None);
-        expected_builder.edge_expand(build_edgexpd(1, vec![], None));
-        expected_builder.get_v(build_getv(Some(0.into())));
+        // a fused ExpandV
+        expected_builder.edge_expand(build_edgexpd(0, vec![], Some(0.into())));
         expected_builder.shuffle(Some(0.into()));
         expected_builder.get_v(build_auxilia_with_tag_alias_columns(
             Some(0.into()),
@@ -1291,8 +1385,8 @@ mod test {
 
         let mut expected_builder = JobBuilder::default();
         expected_builder.add_scan_source(build_scan(vec![]));
-        expected_builder.edge_expand(build_edgexpd(1, vec![], None));
-        expected_builder.get_v(build_getv(None));
+        // a fused ExpandV
+        expected_builder.edge_expand(build_edgexpd(0, vec![], None));
         expected_builder.get_v(build_auxilia_with_predicates("@.age > 10"));
         expected_builder.sink(build_sink());
         assert_eq!(job_builder, expected_builder);
@@ -1416,6 +1510,7 @@ mod test {
             hop_range: Some(pb::Range { lower: 1, upper: 4 }),
             path_opt: 0,
             result_opt: 0,
+            condition: None,
         };
 
         let mut logical_plan = LogicalPlan::with_root(Node::new(0, source_opr.clone().into()));
@@ -1486,6 +1581,7 @@ mod test {
             hop_range: Some(pb::Range { lower: 1, upper: 4 }),
             path_opt: 0,
             result_opt: 0,
+            condition: None,
         };
 
         let fused_edge_expand = pb::EdgeExpand {
@@ -1503,6 +1599,7 @@ mod test {
             hop_range: Some(pb::Range { lower: 1, upper: 4 }),
             path_opt: 0,
             result_opt: 0,
+            condition: None,
         };
 
         let mut logical_plan = LogicalPlan::with_root(Node::new(0, source_opr.clone().into()));
@@ -1581,6 +1678,7 @@ mod test {
             hop_range: Some(pb::Range { lower: 1, upper: 4 }),
             path_opt: 0,
             result_opt: 0,
+            condition: None,
         };
 
         let fused_edge_expand = pb::EdgeExpand {
@@ -1613,6 +1711,7 @@ mod test {
             hop_range: Some(pb::Range { lower: 1, upper: 4 }),
             path_opt: 0,
             result_opt: 0,
+            condition: None,
         };
 
         let mut logical_plan = LogicalPlan::with_root(Node::new(0, source_opr.clone().into()));
@@ -2053,11 +2152,18 @@ mod test {
             .unwrap();
 
         let unfold_opr = pb::Unfold { tag: Some(2.into()), alias: Some(2.into()), meta_data: None };
-
+        // extend 0->1
+        let fused_expand_ab_opr_vertex = pb::EdgeExpand {
+            v_tag: Some(0.into()),
+            direction: 0,
+            params: None,
+            expand_opt: pb::edge_expand::ExpandOpt::Vertex as i32,
+            alias: Some(1.into()),
+            meta_data: None,
+        };
         let mut expected_builder = JobBuilder::default();
         expected_builder.add_scan_source(source_opr);
-        expected_builder.edge_expand(expand_ab_opr_edge);
-        expected_builder.get_v(get_b);
+        expected_builder.edge_expand(fused_expand_ab_opr_vertex);
 
         let mut sub_builder_1 = JobBuilder::default();
         let mut sub_builder_2 = JobBuilder::default();
@@ -2132,8 +2238,8 @@ mod test {
         };
 
         let mut get_c_filter = get_c.clone();
+        get_c_filter.tag = Some(2.into());
         get_c_filter.opt = 4;
-        get_c_filter.alias = None;
 
         // parents are expand_ac_opr and expand_bc_opr
         let intersect_opr = pb::Intersect { parents: vec![4, 6], key: Some(2.into()) };
@@ -2167,11 +2273,18 @@ mod test {
             .unwrap();
 
         let unfold_opr = pb::Unfold { tag: Some(2.into()), alias: Some(2.into()), meta_data: None };
-
+        // extend 0->1
+        let fused_expand_ab_opr_vertex = pb::EdgeExpand {
+            v_tag: Some(0.into()),
+            direction: 0,
+            params: None,
+            expand_opt: pb::edge_expand::ExpandOpt::Vertex as i32,
+            alias: Some(1.into()),
+            meta_data: None,
+        };
         let mut expected_builder = JobBuilder::default();
         expected_builder.add_scan_source(source_opr);
-        expected_builder.edge_expand(expand_ab_opr_edge);
-        expected_builder.get_v(get_b);
+        expected_builder.edge_expand(fused_expand_ab_opr_vertex);
 
         let mut sub_builder_1 = JobBuilder::default();
         let mut sub_builder_2 = JobBuilder::default();

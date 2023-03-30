@@ -618,6 +618,10 @@ impl pb::QueryParams {
             && self.columns.is_empty()
             && !self.is_all_columns)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.eq(&pb::QueryParams::default())
+    }
 }
 
 impl pb::edge_expand::Direction {
@@ -761,6 +765,7 @@ impl From<pb::PathExpand> for physical_pb::PathExpand {
             hop_range: path.hop_range,
             path_opt: path.path_opt,
             result_opt: path.result_opt,
+            condition: path.condition,
         }
     }
 }
