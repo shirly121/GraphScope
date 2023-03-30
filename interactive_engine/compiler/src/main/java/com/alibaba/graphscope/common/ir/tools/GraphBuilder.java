@@ -324,7 +324,7 @@ public class GraphBuilder extends RelBuilder {
      * @return
      */
     public RexGraphVariable variable(@Nullable String alias, String property) {
-         alias = (alias == null) ? AliasInference.DEFAULT_NAME : alias;
+        alias = (alias == null) ? AliasInference.DEFAULT_NAME : alias;
         Objects.requireNonNull(property);
         String varName = AliasInference.SIMPLE_NAME(alias) + AliasInference.DELIMITER + property;
         RelDataTypeField aliasField = getAliasField(alias);
@@ -531,8 +531,7 @@ public class GraphBuilder extends RelBuilder {
                     tableScan.setFilters(
                             ImmutableList.of(
                                     RexUtil.composeConjunction(
-                                            this.getRexBuilder(),
-                                            listBuilder.build())));
+                                            this.getRexBuilder(), listBuilder.build())));
                 }
                 // pop the filter from the inner stack
                 replaceTop(tableScan);
