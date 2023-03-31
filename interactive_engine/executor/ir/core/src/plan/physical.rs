@@ -805,6 +805,7 @@ fn add_intersect_job_builder(
             if get_v.alias.is_none() || !get_v.alias.as_ref().unwrap().eq(intersect_tag) {
                 Err(IrError::InvalidPattern("Cannot intersect on different tags".to_string()))?
             }
+            // If the first operator is PathExpand, pick its last expand out fron the path
             let mut edge_expand = if let Some(Edge(edge_expand)) = first_opr.borrow().opr.opr.as_ref() {
                 Ok(edge_expand.clone())
             } else if let Some(Path(path_expand)) = first_opr.borrow().opr.opr.as_ref() {
@@ -830,22 +831,28 @@ fn add_intersect_job_builder(
                             .to_string(),
                     ))?;
                 }
+                // Fuse the path_get_v and get_v of the target vertex
+                // the later get_v will be used after the intersection
                 if let Some(path_get_v) = path_get_v_opt {
                     get_v = combine_get_v_by_query_params(get_v, path_get_v);
                 }
+                // pick the last edge expand out from the path expand
                 let mut last_edge_expand = base_edge_expand.clone();
                 last_edge_expand.v_tag = None;
                 let hop_range = path_expand
                     .hop_range
                     .as_mut()
                     .ok_or(ParsePbError::EmptyFieldError("pb::PathExpand::hop_range".to_string()))?;
+                // out(1..2) = out, so don't need to do path expansion
                 if hop_range.lower == 1 && hop_range.upper == 2 {
                     last_edge_expand.v_tag = path_expand.start_tag;
                 } else {
+                    // last expand is picked out, reduce the hop
                     hop_range.lower -= 1;
                     hop_range.upper -= 1;
                     let mut end_v = pb::GetV::default();
                     end_v.opt = pb::get_v::VOpt::End as i32;
+                    // execute the path expansion
                     path_expand.add_job_builder(builder, plan_meta)?;
                     end_v.add_job_builder(builder, plan_meta)?;
                 }
@@ -855,10 +862,12 @@ fn add_intersect_job_builder(
                     "First node of Intersection's subplan is neither EdgeExpand or PathExpand".to_string(),
                 ))
             }?;
+            // execute the edge expansion
+            // the opt should be vertex because now only intersection on vertex is supported
             edge_expand.expand_opt = pb::edge_expand::ExpandOpt::Vertex as i32;
             edge_expand.alias = get_v.alias.clone();
             edge_expand.add_job_builder(&mut sub_bldr, plan_meta)?;
-
+            // vertex parameter after the intersection
             if let Some(params) = get_v.params.as_ref() {
                 // the case that we need to further process getV's filter.
                 if params.is_queryable() || !params.tables.is_empty() {
@@ -870,13 +879,16 @@ fn add_intersect_job_builder(
         let sub_plan = sub_bldr.take_plan();
         intersect_plans.push(sub_plan);
     }
+    // intersect
     builder.intersect(intersect_plans, intersect_tag.clone());
+    // unfold the intersection
     let unfold = pb::Unfold {
         tag: Some(intersect_tag.clone()),
         alias: Some(intersect_tag.clone()),
         meta_data: None,
     };
     unfold.add_job_builder(builder, plan_meta)?;
+    // add vertex filters
     if let Some(mut auxilia) = auxilia {
         auxilia.tag = Some(intersect_tag.clone());
         builder.get_v(auxilia);
