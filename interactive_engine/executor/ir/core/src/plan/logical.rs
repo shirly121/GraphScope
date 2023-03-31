@@ -1328,10 +1328,7 @@ impl AsLogical for pb::Pattern {
             if let Some(alias) = sentence.start.as_mut() {
                 let tag_id = get_or_set_tag_id(alias, plan_meta)?;
                 if plan_meta.has_tag(tag_id) {
-                    return Err(IrError::InvalidPattern(format!(
-                        "`pb::Pattern` cannot reference existing tag: {:?}",
-                        alias
-                    )));
+                    warn!("`pb::Pattern` reference existing tag: {:?}", alias);
                 }
             } else {
                 return Err(IrError::InvalidPattern(
@@ -1341,10 +1338,7 @@ impl AsLogical for pb::Pattern {
             if let Some(alias) = sentence.end.as_mut() {
                 let tag_id = get_or_set_tag_id(alias, plan_meta)?;
                 if plan_meta.has_tag(tag_id) {
-                    return Err(IrError::InvalidPattern(format!(
-                        "`pb::Pattern` cannot reference existing tag: {:?}",
-                        alias
-                    )));
+                    warn!("`pb::Pattern` reference existing tag: {:?}", alias);
                 }
             }
             for binder_opt in &mut sentence.binders {
