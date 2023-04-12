@@ -49,6 +49,10 @@ impl Vertex {
     pub fn get_details_mut(&mut self) -> &mut DynDetails {
         &mut self.details
     }
+
+    pub fn get_details(&self) -> &DynDetails {
+        &self.details
+    }
 }
 
 impl Element for Vertex {
@@ -72,19 +76,19 @@ impl GraphElement for Vertex {
     }
 
     fn get_property(&self, key: &NameOrId) -> Option<PropertyValue> {
-        let mut fetch_prop = false;
+        let mut fetch_prop_from_store = false;
         let mut prop = None;
         match self.details {
             // For Vertex with EmptyDetails, fetch property from the Graph;
             DynDetails::Empty => {
-                fetch_prop = true;
+                fetch_prop_from_store = true;
             }
             // For Vertex with DefaultDetails, you may either fetch property from the Details or the Graph;
             DynDetails::Default(_) => {
                 if let Some(default_prop) = self.details.get_property(key) {
                     prop = Some(default_prop);
                 } else {
-                    fetch_prop = true;
+                    fetch_prop_from_store = true;
                 }
             }
             // For Vertex with LazyDetails,fetch property from the Details;
@@ -92,20 +96,20 @@ impl GraphElement for Vertex {
                 prop = self.details.get_property(key);
             }
         }
-        if fetch_prop {
+        if fetch_prop_from_store {
             if let Some(graph) = get_graph() {
                 if let Ok(mut iter) = graph.get_vertex(&[self.id], &QueryParams::default()) {
                     if let Some(v) = iter.next() {
-                        prop = v
-                            .get_property(key)
-                            .map(|prop| PropertyValue::Owned(prop.try_to_owned().unwrap()));
+                        if let Some(store_prop) = v.get_property(key) {
+                            prop = store_prop
+                                .try_to_owned()
+                                .map(|owned_prop| PropertyValue::Owned(owned_prop));
+                        }
                     }
                 }
             }
-            prop
-        } else {
-            prop
         }
+        prop
     }
 
     fn get_all_properties(&self) -> Option<HashMap<NameOrId, Object>> {
@@ -180,7 +184,7 @@ impl Ord for Vertex {
 }
 
 impl From<ID> for Vertex {
-    fn from(id: u64) -> Self {
+    fn from(id: ID) -> Self {
         Vertex::new(id, None, DynDetails::default())
     }
 }

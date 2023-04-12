@@ -10,7 +10,7 @@
               "tables": [
                 {
                   "item": {
-                    "Name": "knows"
+                    "Id": 0
                   }
                 }
               ],
@@ -22,7 +22,8 @@
               "extra": {}
             },
             "alias": null,
-            "expand_opt": 1
+            "expand_opt": 1,
+            "meta_data": null
           }
         }
       },

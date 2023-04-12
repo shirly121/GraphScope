@@ -206,20 +206,20 @@ impl IRJobAssembly {
                         .ok_or(FnGenError::from(ParsePbError::EmptyFieldError(
                             "pb::Limit::range".to_string(),
                         )))?;
-                    // e.g., `limit(10)` would be translate as `Range{lower=1, upper=11}`
-                    if range.upper <= range.lower || range.lower != 1 {
+                    // e.g., `limit(10)` would be translate as `Range{lower=0, upper=10}`
+                    if range.upper <= range.lower || range.lower != 0 {
                         Err(FnGenError::from(ParsePbError::ParseError(format!(
                             "range {:?} in Limit Operator",
                             range
                         ))))?;
                     }
-                    stream = stream.limit((range.upper - 1) as u32)?;
+                    stream = stream.limit(range.upper as u32)?;
                 }
                 OpKind::OrderBy(order) => {
                     let cmp = self.udf_gen.gen_cmp(order.clone())?;
                     let cmp_key = self.udf_gen.gen_order_key(order.clone())?;
                     if let Some(range) = order.limit {
-                        if range.upper <= range.lower || range.lower != 1 {
+                        if range.upper <= range.lower || range.lower != 0 {
                             Err(FnGenError::from(ParsePbError::ParseError(format!(
                                 "range {:?} in Order Operator",
                                 range
@@ -228,9 +228,7 @@ impl IRJobAssembly {
                         // TODO: how about first gen_key, then compare and at last map back into Record?
                         stream = stream
                             .key_by(move |record| cmp_key.get_kv(record))?
-                            .sort_limit_by((range.upper - 1) as u32, move |a, b| {
-                                cmp.compare(&a.key, &b.key)
-                            })?
+                            .sort_limit_by(range.upper as u32, move |a, b| cmp.compare(&a.key, &b.key))?
                             .map(|pair| Ok(pair.value))?;
                     } else {
                         stream = stream
@@ -532,9 +530,9 @@ impl IRJobAssembly {
                     stream = stream.flat_map_with_name("EdgeExpand", move |input| func.exec(input))?;
                 }
                 OpKind::Path(path) => {
-                    let base =
+                    let mut base =
                         path.base
-                            .as_ref()
+                            .clone()
                             .ok_or(FnGenError::from(ParsePbError::EmptyFieldError(
                                 "pb::PathExpand::base".to_string(),
                             )))?;
@@ -556,16 +554,29 @@ impl IRJobAssembly {
                         .filter_map_with_name("PathStart", move |input| path_start_func.exec(input))?;
                     // path base expand
                     let mut base_expand_plan = vec![];
-                    base_expand_plan.push(base.clone().into());
-                    let repartition = pb::Repartition {
-                        strategy: Some(pb::repartition::Strategy::ToAnother(pb::repartition::Shuffle {
-                            shuffle_key: None,
-                        })),
-                    };
+                    if let Some(edge_expand) = base.edge_expand.take() {
+                        base_expand_plan.push(edge_expand.into());
+                    } else {
+                        Err(FnGenError::from(ParsePbError::ParseError(format!(
+                            "empty EdgeExpand of ExpandBase in PathExpand Operator {:?}",
+                            base
+                        ))))?;
+                    }
                     if let OpKind::Repartition(_) = &prev_op_kind {
                         // the case when base expand needs repartition
-                        base_expand_plan.push(repartition.clone().into());
+                        base_expand_plan.push(
+                            pb::Repartition {
+                                strategy: Some(pb::repartition::Strategy::ToAnother(
+                                    pb::repartition::Shuffle { shuffle_key: None },
+                                )),
+                            }
+                            .into(),
+                        );
                     }
+                    if let Some(getv) = base.get_v.take() {
+                        base_expand_plan.push(getv.clone().into());
+                    }
+
                     for _ in 0..range.lower {
                         stream = self.install(stream, &base_expand_plan)?;
                     }
@@ -577,10 +588,14 @@ impl IRJobAssembly {
                                 .udf_gen
                                 .gen_filter(algebra_pb::Select { predicate: Some(condition.clone()) })?;
                             until.set_until(func);
+                            // Notice that if UNTIL condition set, we expand path without `Emit`
+                            stream = stream
+                                .iterate_until(until, |start| self.install(start, &base_expand_plan[..]))?;
+                        } else {
+                            stream = stream.iterate_emit_until(until, EmitKind::Before, |start| {
+                                self.install(start, &base_expand_plan[..])
+                            })?;
                         }
-                        stream = stream.iterate_emit_until(until, EmitKind::Before, |start| {
-                            self.install(start, &base_expand_plan[..])
-                        })?;
                     }
                     // path end
                     let path_end_func = self.udf_gen.gen_path_end(path)?;

@@ -160,7 +160,15 @@ impl TryFrom<pb::pattern::Sentence> for BaseSentence {
                         if let Some(range) = &p.hop_range {
                             num_hops += range.upper as usize;
                             if let Some(base) = &p.base {
-                                num_filters += detect_filters(base.params.as_ref()) * range.upper as usize;
+                                num_filters += (detect_filters(
+                                    base.edge_expand
+                                        .as_ref()
+                                        .and_then(|expand| expand.params.as_ref()),
+                                ) + detect_filters(
+                                    base.get_v
+                                        .as_ref()
+                                        .and_then(|get_v| get_v.params.as_ref()),
+                                )) * range.upper as usize;
                             }
                         }
                         Ok(p.into())
@@ -318,7 +326,11 @@ impl BasicSentence for BaseSentence {
                             edge.direction = reverse_dir(edge.direction);
                         }
                         Opr::Path(path) => {
-                            if let Some(base) = path.base.as_mut() {
+                            if let Some(base) = path
+                                .base
+                                .as_mut()
+                                .and_then(|expand_base| expand_base.edge_expand.as_mut())
+                            {
                                 base.direction = reverse_dir(base.direction);
                             }
                         }
@@ -649,6 +661,7 @@ impl MatchingStrategy for CompoSentence {
                                 alias: None,
                             }],
                             is_append: true,
+                            meta_data: vec![],
                         })),
                     }),
                     children: vec![],
@@ -850,7 +863,11 @@ impl MatchingStrategy for JoinSentence {
                 .common_tags
                 .iter()
                 .cloned()
-                .map(|tag| common_pb::Variable { tag: tag.try_into().ok(), property: None })
+                .map(|tag| common_pb::Variable {
+                    tag: tag.try_into().ok(),
+                    property: None,
+                    node_type: None,
+                })
                 .collect::<Vec<_>>();
             plan.nodes.push(pb::logical_plan::Node {
                 opr: Some(
@@ -1206,6 +1223,7 @@ mod test {
                     params: Some(query_params()),
                     alias: None,
                     expand_opt: if is_edge { 1 } else { 0 },
+                    meta_data: None,
                 })),
             }],
             end: y.and_then(|s| s.try_into().ok()),
@@ -1228,6 +1246,7 @@ mod test {
                     params: Some(params),
                     expand_opt: 0,
                     alias: None,
+                    meta_data: None,
                 })),
             }],
             end: y.and_then(|s| s.try_into().ok()),
@@ -1247,6 +1266,7 @@ mod test {
                     opt: 0,
                     params: Some(query_params()),
                     alias: None,
+                    meta_data: None,
                 })),
             }],
             end: y.and_then(|s| s.try_into().ok()),
@@ -1375,12 +1395,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("b".into()), property: None }
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None }
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("b".into()), property: None }
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None }
                 ],
                 kind: 0
             }
@@ -1448,12 +1468,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("b".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None }
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None }
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("b".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None }
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None }
                 ],
                 kind: 0
             }
@@ -1488,12 +1508,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None }
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None }
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None }
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None }
                 ],
                 kind: 0 // inner join
             }
@@ -1528,7 +1548,8 @@ mod test {
                 direction: 1, // check this has been reversed from 0 to 1
                 params: Some(query_params()),
                 expand_opt: 0,
-                alias: None
+                alias: None,
+                meta_data: None
             }
             .into()
         );
@@ -1538,12 +1559,12 @@ mod test {
             plan.nodes.get(11).unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("d".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("d".into()), property: None, node_type: None },
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("d".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("d".into()), property: None, node_type: None },
                 ],
                 kind: 0 // inner join
             }
@@ -1555,12 +1576,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("b".into()), property: None },
-                    common_pb::Variable { tag: Some("d".into()), property: None }
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("d".into()), property: None, node_type: None }
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("b".into()), property: None },
-                    common_pb::Variable { tag: Some("d".into()), property: None }
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("d".into()), property: None, node_type: None }
                 ],
                 kind: 0 // inner join
             }
@@ -1593,12 +1614,12 @@ mod test {
             plan.nodes.get(11).unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None },
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None },
                 ],
                 kind: 0 // inner join
             }
@@ -1610,12 +1631,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("b".into()), property: None },
-                    common_pb::Variable { tag: Some("d".into()), property: None }
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("d".into()), property: None, node_type: None }
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("b".into()), property: None },
-                    common_pb::Variable { tag: Some("d".into()), property: None }
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("d".into()), property: None, node_type: None }
                 ],
                 kind: 0 // inner join
             }
@@ -1641,12 +1662,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("b".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("b".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
                 ],
                 kind: 0 // inner join
             }
@@ -1674,12 +1695,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("b".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("b".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("b".into()), property: None, node_type: None },
                 ],
                 kind: 5 // anti join
             }
@@ -1706,12 +1727,12 @@ mod test {
             plan.nodes.last().unwrap().opr.clone().unwrap(),
             pb::Join {
                 left_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None },
                 ],
                 right_keys: vec![
-                    common_pb::Variable { tag: Some("a".into()), property: None },
-                    common_pb::Variable { tag: Some("c".into()), property: None },
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None },
                 ],
                 kind: 0 // inner join
             }
@@ -1742,8 +1763,16 @@ mod test {
         assert_eq!(
             plan.nodes.get(7).unwrap().opr.clone().unwrap(),
             pb::Join {
-                left_keys: vec![common_pb::Variable { tag: Some("a".into()), property: None },],
-                right_keys: vec![common_pb::Variable { tag: Some("a".into()), property: None },],
+                left_keys: vec![common_pb::Variable {
+                    tag: Some("a".into()),
+                    property: None,
+                    node_type: None
+                },],
+                right_keys: vec![common_pb::Variable {
+                    tag: Some("a".into()),
+                    property: None,
+                    node_type: None
+                },],
                 kind: 0 // inner join
             }
             .into()
@@ -1754,8 +1783,16 @@ mod test {
         assert_eq!(
             plan.nodes.get(11).unwrap().opr.clone().unwrap(),
             pb::Join {
-                left_keys: vec![common_pb::Variable { tag: Some("a".into()), property: None },],
-                right_keys: vec![common_pb::Variable { tag: Some("a".into()), property: None },],
+                left_keys: vec![common_pb::Variable {
+                    tag: Some("a".into()),
+                    property: None,
+                    node_type: None
+                },],
+                right_keys: vec![common_pb::Variable {
+                    tag: Some("a".into()),
+                    property: None,
+                    node_type: None
+                },],
                 kind: 0 // inner join
             }
             .into()

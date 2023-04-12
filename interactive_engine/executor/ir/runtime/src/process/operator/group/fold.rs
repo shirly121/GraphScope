@@ -13,6 +13,9 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::convert::TryFrom;
+
+use ir_common::error::ParsePbError;
 use ir_common::generated::common as common_pb;
 use ir_common::generated::physical as pb;
 use ir_common::KeyId;
@@ -24,8 +27,6 @@ use crate::process::functions::FoldGen;
 use crate::process::operator::accum::{AccumFactoryGen, RecordAccumulator};
 use crate::process::operator::TagKey;
 use crate::process::record::{Record, RecordKey};
-use ir_common::error::ParsePbError;
-use std::convert::TryFrom;
 
 #[derive(Debug, Default)]
 pub struct FoldValue {

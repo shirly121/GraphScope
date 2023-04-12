@@ -62,7 +62,7 @@ public class GraphLogicalMultiMatch extends AbstractLogicalMatch {
 
     @Override
     public RelWriter explainTerms(RelWriter pw) {
-        Map<String, String> strMap = new HashMap<>();
+        Map<String, String> strMap = new LinkedHashMap<>();
         for (int i = 0; i < sentences.size(); ++i) {
             strMap.put(
                     String.format("s%d", i),
@@ -83,5 +83,9 @@ public class GraphLogicalMultiMatch extends AbstractLogicalMatch {
         }
         List<RelDataTypeField> dedup = fields.stream().distinct().collect(Collectors.toList());
         return new RelRecordType(StructKind.FULLY_QUALIFIED, dedup);
+    }
+
+    public List<RelNode> getSentences() {
+        return Collections.unmodifiableList(sentences);
     }
 }

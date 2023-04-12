@@ -191,7 +191,7 @@ def get_lib_path(app_dir: str, app_name: str) -> str:
 def get_app_sha256(attr, java_class_path: str):
     (
         app_type,
-        _,
+        app_header,
         app_class,
         vd_type,
         _,
@@ -200,6 +200,13 @@ def get_app_sha256(attr, java_class_path: str):
         java_app_class,
     ) = _codegen_app_info(attr, DEFAULT_GS_CONFIG_FILE, java_class_path)
     graph_header, graph_type, _ = _codegen_graph_info(attr)
+    logger.info(
+        "app type: %s (%s), graph type: %s (%s)",
+        app_class,
+        app_header,
+        graph_type,
+        graph_header,
+    )
 
     if app_type == "cpp_pie":
         app_sha256 = hashlib.sha256(
@@ -493,6 +500,8 @@ def compile_app(
             logger.info(
                 "Skip running llvm4jni since env var LLVM4JNI_HOME not found or run.sh not found under LLVM4JNI_HOME"
             )
+    elif app_type == "cpp_flash":
+        cmake_commands += ["-DFLASH_APP=ON"]
     elif app_type not in ("cpp_pie", "cpp_pregel"):
         if app_type == "cython_pregel":
             pxd_name = "pregel"
@@ -1538,11 +1547,12 @@ def _codegen_app_info(attr, meta_file: str, java_class_path: str):
             "{}<{}>".format(real_algo, java_app_template_str),
         )
 
+    app_info = None
     for app in config_yaml["app"]:
         if app["algo"] == algo:
             app_type = app["type"]  # cpp_pie or cython_pregel or cython_pie, java_pie
-            if app_type in ("cpp_pie", "cpp_pregel"):
-                return (
+            if app_type in ("cpp_pie", "cpp_pregel", "cpp_flash"):
+                app_info = (
                     app_type,
                     app["src"],
                     f"{app['class_name']}<_GRAPH_TYPE>",
@@ -1552,9 +1562,10 @@ def _codegen_app_info(attr, meta_file: str, java_class_path: str):
                     None,
                     None,
                 )
+                break
             if app_type in ("cython_pregel", "cython_pie"):
                 # cython app doesn't have c-header file
-                return (
+                app_info = (
                     app_type,
                     "",
                     "",
@@ -1564,8 +1575,11 @@ def _codegen_app_info(attr, meta_file: str, java_class_path: str):
                     None,
                     None,
                 )
+                break
 
-    raise KeyError("Algorithm does not exist in the gar resource.")
+    if app_info is None:
+        raise KeyError("Algorithm does not exist in the gar resource.")
+    return app_info
 
 
 # a mapping for class name to header file.
@@ -1663,7 +1677,6 @@ def _codegen_graph_info(attr):
         raise ValueError(
             f"Unknown graph type: {graph_def_pb2.GraphTypePb.Name(graph_type)}"
         )
-    logger.info("Codegened graph type: %s, Graph header: %s", graph_fqn, graph_header)
     return graph_header, graph_fqn, oid_type()
 
 
@@ -1747,7 +1760,7 @@ def parse_as_glog_level(log_level):
         else:
             log_level = getattr(logging, log_level.upper())
     python_to_glog = {0: 100, 10: 10, 20: 1}
-    return python_to_glog.get(log_level, 1)
+    return python_to_glog.get(log_level, 0)
 
 
 def str2bool(s):
