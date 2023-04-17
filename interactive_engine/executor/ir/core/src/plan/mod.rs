@@ -16,5 +16,6 @@
 pub mod ffi;
 pub mod logical;
 pub mod meta;
+pub mod partition_meta;
 pub mod patmat;
 pub mod physical;
