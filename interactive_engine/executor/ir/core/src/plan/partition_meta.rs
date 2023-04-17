@@ -1,5 +1,6 @@
-use crate::error::IrResult;
+use crate::error::{IrError, IrResult};
 use ir_common::LabelId;
+use std::collections::HashMap;
 
 /// Define the visibility of vertices.
 /// AllVisible indicates that the vertex info can be visible on any partition,
@@ -47,7 +48,97 @@ pub type ETripLabel = (LabelId, LabelId, LabelId);
 /// 3) Properties Visibility
 pub trait QueryVisibility {
     fn get_vertex_visibility(&self, vlabel: &LabelId) -> IrResult<VertexVisibility>;
-    fn get_vertex_property_visibility(&self, label: &LabelId) -> IrResult<PropertyVisibility>;
+    fn get_vertex_property_visibility(&self, vlabel: &LabelId) -> IrResult<PropertyVisibility>;
     fn get_edge_visibility(&self, elabel: &ETripLabel) -> IrResult<EdgeVisibility>;
-    fn get_edge_property_visibility(&self, label: &ETripLabel) -> IrResult<PropertyVisibility>;
+    fn get_edge_property_visibility(&self, elabel: &ETripLabel) -> IrResult<PropertyVisibility>;
+}
+
+/// the topology partition strategy over graph
+pub enum GraphTopoPartitionStrategy {
+    AllReplicaStrategy,
+    // ECutStrategy, which is to partition vertices into partitions, and edges may follow src, dst, or both.
+    ECutStrategy(EdgeVisibility),
+    // VCutStrategy
+    VCutStrategy,
+    // HybridStrategy, i.e., the topology partition strategy are defined per label.
+    HybridStrategy(HybridTopoVisibility),
+}
+
+/// the property partition strategy over graph
+pub enum GraphPropPartitionStrategy {
+    // EntityPropPartition, i.e., (VertexPropertyVisibility, EdgePropertyVisibility)
+    EntityPropStrategy((PropertyVisibility, PropertyVisibility)),
+    // HybridPropStrategy, i.e., the property partition strategy are defined per label.
+    HybridPropStrategy(HybridPropVisibility),
+}
+
+/// Hybrid Topology Visibility, where the visibility for topology and defined per label.
+pub struct HybridTopoVisibility {
+    vertex_topology_visibility: HashMap<LabelId, VertexVisibility>,
+    edge_topology_visibility: HashMap<ETripLabel, EdgeVisibility>,
+}
+
+/// Hybrid Property Visibility, where the visibility for property and defined per label.
+pub struct HybridPropVisibility {
+    vertex_property_visibility: HashMap<LabelId, PropertyVisibility>,
+    edge_property_visibility: HashMap<ETripLabel, PropertyVisibility>,
+}
+
+pub struct GraphPartitionStrategy {
+    topo_strategy: GraphTopoPartitionStrategy,
+    prop_strategy: GraphPropPartitionStrategy,
+}
+
+impl QueryVisibility for GraphPartitionStrategy {
+    fn get_vertex_visibility(&self, vlabel: &LabelId) -> IrResult<VertexVisibility> {
+        match &self.topo_strategy {
+            GraphTopoPartitionStrategy::AllReplicaStrategy => Ok(VertexVisibility::AllVisible),
+            GraphTopoPartitionStrategy::ECutStrategy(_) => Ok(VertexVisibility::OneVisible),
+            GraphTopoPartitionStrategy::VCutStrategy => Ok(VertexVisibility::AdjVisible),
+            GraphTopoPartitionStrategy::HybridStrategy(hybrid) => hybrid
+                .vertex_topology_visibility
+                .get(vlabel)
+                .cloned()
+                .ok_or(IrError::TableNotExist(vlabel.clone().into())),
+        }
+    }
+
+    fn get_vertex_property_visibility(&self, vlabel: &LabelId) -> IrResult<PropertyVisibility> {
+        match &self.prop_strategy {
+            GraphPropPartitionStrategy::EntityPropStrategy((vprop_visibility, _)) => {
+                Ok(vprop_visibility.clone())
+            }
+            GraphPropPartitionStrategy::HybridPropStrategy(hybrid) => hybrid
+                .vertex_property_visibility
+                .get(vlabel)
+                .cloned()
+                .ok_or(IrError::TableNotExist(vlabel.clone().into())),
+        }
+    }
+
+    fn get_edge_visibility(&self, elabel: &ETripLabel) -> IrResult<EdgeVisibility> {
+        match &self.topo_strategy {
+            GraphTopoPartitionStrategy::AllReplicaStrategy => Ok(EdgeVisibility::AllVisible),
+            GraphTopoPartitionStrategy::ECutStrategy(e_topo_visibility) => Ok(e_topo_visibility.clone()),
+            GraphTopoPartitionStrategy::VCutStrategy => Ok(EdgeVisibility::OneVisible),
+            GraphTopoPartitionStrategy::HybridStrategy(hybrid) => hybrid
+                .edge_topology_visibility
+                .get(elabel)
+                .cloned()
+                .ok_or(IrError::TableNotExist(elabel.1.clone().into())),
+        }
+    }
+
+    fn get_edge_property_visibility(&self, elabel: &ETripLabel) -> IrResult<PropertyVisibility> {
+        match &self.prop_strategy {
+            GraphPropPartitionStrategy::EntityPropStrategy((_, eprop_visibility)) => {
+                Ok(eprop_visibility.clone())
+            }
+            GraphPropPartitionStrategy::HybridPropStrategy(hybrid) => hybrid
+                .edge_property_visibility
+                .get(elabel)
+                .cloned()
+                .ok_or(IrError::TableNotExist(elabel.1.clone().into())),
+        }
+    }
 }
