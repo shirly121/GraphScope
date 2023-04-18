@@ -20,7 +20,7 @@ use std::fmt::Debug;
 use std::io;
 use std::ops::Deref;
 use std::rc::Rc;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use ir_common::generated::schema as schema_pb;
 use ir_common::{KeyId, OneOrMany};
@@ -28,13 +28,30 @@ use ir_common::{LabelId, NameOrId};
 
 use crate::error::{IrError, IrResult};
 use crate::plan::logical::NodeId;
+use crate::plan::partition_meta::QueryVisibility;
 use crate::JsonIO;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 pub static INVALID_META_ID: KeyId = -1;
 pub type TagId = u32;
 
 lazy_static! {
     pub static ref STORE_META: RwLock<StoreMeta> = RwLock::new(StoreMeta::default());
+    pub static ref STORE_PARTITION_META: AtomicPtr<Arc<dyn QueryVisibility>> = AtomicPtr::default();
+}
+
+pub fn register_store_partition_meta(query_visibility: Arc<dyn QueryVisibility>) {
+    let ptr = Box::into_raw(Box::new(query_visibility));
+    STORE_PARTITION_META.store(ptr, Ordering::SeqCst);
+}
+
+pub fn get_store_partition_meta() -> Option<Arc<dyn QueryVisibility>> {
+    let ptr = STORE_PARTITION_META.load(Ordering::SeqCst);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(unsafe { (*ptr).clone() })
+    }
 }
 
 pub fn set_schema_from_json<R: io::Read>(read: R) {

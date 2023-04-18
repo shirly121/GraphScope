@@ -64,7 +64,7 @@ use prost::Message;
 
 use crate::error::IrError;
 use crate::plan::logical::{LogicalPlan, NodeId};
-use crate::plan::meta::{set_schema_from_json, KeyType};
+use crate::plan::meta::{get_store_partition_meta, set_schema_from_json, KeyType};
 use crate::plan::physical::AsPhysical;
 
 #[repr(i32)]
@@ -624,7 +624,9 @@ pub extern "C" fn build_physical_plan(
     }
     let mut plan_meta = plan.meta.clone();
     let mut builder = PlanBuilder::default();
-    let build_result = plan.add_job_builder(&mut builder, &mut plan_meta);
+    // todo: do not unwrap
+    let store_partition_meta = get_store_partition_meta().unwrap();
+    let build_result = plan.add_job_builder(&mut builder, &store_partition_meta, &mut plan_meta);
     let result = match build_result {
         Ok(_) => {
             let physical_plan = builder.build();

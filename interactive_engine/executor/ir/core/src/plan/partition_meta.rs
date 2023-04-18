@@ -46,7 +46,7 @@ pub type ETripLabel = (LabelId, LabelId, LabelId);
 /// 1) Vertex Topology Visibility,
 /// 2) Edge Topology Visibility, and
 /// 3) Properties Visibility
-pub trait QueryVisibility {
+pub trait QueryVisibility: Send + Sync {
     fn get_vertex_visibility(&self, vlabel: &LabelId) -> IrResult<VertexVisibility>;
     fn get_vertex_property_visibility(&self, vlabel: &LabelId) -> IrResult<PropertyVisibility>;
     fn get_edge_visibility(&self, elabel: &ETripLabel) -> IrResult<EdgeVisibility>;
