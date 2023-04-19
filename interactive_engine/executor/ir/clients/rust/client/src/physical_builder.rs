@@ -85,9 +85,8 @@ impl PlanBuilder {
     }
 
     pub fn broadcast(&mut self) -> &mut Self {
-        let repartition = pb::Repartition {
-            strategy: Some(pb::repartition::Strategy::ToOthers(pb::repartition::Broadcast {})),
-        };
+        let repartition =
+            pb::Repartition { strategy: Some(pb::repartition::Strategy::ToOthers(pb::Broadcast {})) };
         self.repartition(repartition)
     }
 

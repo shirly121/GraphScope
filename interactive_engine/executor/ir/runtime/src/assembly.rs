@@ -194,6 +194,9 @@ impl<P: PartitionInfo, C: ClusterInfo> IRJobAssembly<P, C> {
                             stream = stream.repartition(move |t| router.route(t));
                         }
                         pb::repartition::Strategy::ToOthers(_) => stream = stream.broadcast(),
+                        pb::repartition::Strategy::Hybrid(_) => {
+                            todo!()
+                        }
                     }
                 }
                 OpKind::Project(project) => {
@@ -581,9 +584,9 @@ impl<P: PartitionInfo, C: ClusterInfo> IRJobAssembly<P, C> {
                         // the case when base expand needs repartition
                         base_expand_plan.push(
                             pb::Repartition {
-                                strategy: Some(pb::repartition::Strategy::ToAnother(
-                                    pb::repartition::Shuffle { shuffle_key: None },
-                                )),
+                                strategy: Some(pb::repartition::Strategy::ToAnother(pb::Shuffle {
+                                    shuffle_key: None,
+                                })),
                             }
                             .into(),
                         );
