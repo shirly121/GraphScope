@@ -966,6 +966,18 @@ fn get_or_set_tag_id(tag_pb: &mut common_pb::NameOrId, plan_meta: &mut PlanMeta)
     }
 }
 
+/// Process the node's meta in `plan_meta` such that the nodes can be attached to
+/// corresponding labels.
+fn process_node_meta(plan_meta: &mut PlanMeta, node_meta_data: Option<pb::MetaData>) -> IrResult<()> {
+    let mut node_meta = plan_meta.curr_node_meta_mut();
+    let mut labels = vec![];
+    if let Some(node_meta_type) = node_meta_data.and_then(|node_meta_data| node_meta_data.r#type) {
+        labels = node_meta_type.extract_labels();
+    }
+    node_meta.set_tables(labels);
+    Ok(())
+}
+
 /// Process the columns' meta in `plan_meta` such that the columns can be added to
 /// corresponding nodes.
 fn process_columns_meta(plan_meta: &mut PlanMeta, is_late_project: bool) -> IrResult<()> {
@@ -1103,6 +1115,7 @@ impl AsLogical for pb::Scan {
         }
 
         process_columns_meta(plan_meta, false)?;
+        process_node_meta(plan_meta, self.meta_data.clone())?;
 
         Ok(())
     }
@@ -1123,6 +1136,7 @@ impl AsLogical for pb::EdgeExpand {
         if expand_opt == pb::edge_expand::ExpandOpt::Vertex {
             process_columns_meta(plan_meta, false)?;
         }
+        process_node_meta(plan_meta, self.meta_data.clone())?;
 
         Ok(())
     }
@@ -1152,6 +1166,10 @@ impl AsLogical for pb::PathExpand {
         plan_meta
             .curr_node_meta_mut()
             .set_columns_opt(ColumnsOpt::None);
+        // PathExpand would never require getting tag labels
+        plan_meta
+            .curr_node_meta_mut()
+            .set_tables(vec![]);
 
         Ok(())
     }
@@ -1170,6 +1188,7 @@ impl AsLogical for pb::GetV {
         }
 
         process_columns_meta(plan_meta, false)?;
+        process_node_meta(plan_meta, self.meta_data.clone())?;
 
         Ok(())
     }

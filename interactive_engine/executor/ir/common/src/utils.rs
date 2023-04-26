@@ -23,6 +23,7 @@ use dyn_type::{Object, Primitives};
 use crate::error::ParsePbError;
 use crate::generated::algebra as pb;
 use crate::generated::common as common_pb;
+use crate::generated::common::ir_data_type::Type;
 use crate::generated::physical as physical_pb;
 use crate::generated::physical::PhysicalOpr;
 use crate::NameOrId;
@@ -836,6 +837,25 @@ impl TryFrom<physical_pb::PhysicalOpr> for physical_pb::physical_opr::operator::
             .op_kind
             .ok_or(ParsePbError::EmptyFieldError("algebra op_kind is empty".to_string()))?;
         Ok(op_kind)
+    }
+}
+
+impl common_pb::IrDataType {
+    pub fn extract_labels(&self) -> Vec<common_pb::GraphElementLabel> {
+        let mut labels = vec![];
+        if let Some(t) = &self.r#type {
+            match t {
+                Type::DataType(_) => {}
+                Type::GraphType(graph_type) => {
+                    labels = graph_type
+                        .graph_data_type
+                        .iter()
+                        .map(|graph_data_type| graph_data_type.label.clone().unwrap())
+                        .collect()
+                }
+            }
+        }
+        labels
     }
 }
 

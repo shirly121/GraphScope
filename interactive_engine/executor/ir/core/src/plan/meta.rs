@@ -23,6 +23,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, RwLock};
 
+use ir_common::generated::common as common_pb;
 use ir_common::generated::schema as schema_pb;
 use ir_common::{KeyId, OneOrMany};
 use ir_common::{LabelId, NameOrId};
@@ -504,11 +505,11 @@ impl ColumnsOpt {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 /// Record the runtime schema of the node in the logical plan, for it being the vertex/edge
 pub struct NodeMeta {
     /// The table names (labels)
-    tables: BTreeSet<NameOrId>,
+    tables: Vec<common_pb::GraphElementLabel>,
     /// The required columns of current node
     columns: ColumnsOpt,
     /// The required columns of the nodes with certain tags. `None` tag means the columns
@@ -517,15 +518,16 @@ pub struct NodeMeta {
 }
 
 impl NodeMeta {
-    pub fn insert_table(&mut self, table: NameOrId) {
-        self.tables.insert(table);
+    pub fn insert_table(&mut self, table: common_pb::GraphElementLabel) {
+        self.tables.push(table);
     }
 
-    pub fn get_tables(&self) -> &BTreeSet<NameOrId> {
+    pub fn get_tables(&self) -> &Vec<common_pb::GraphElementLabel> {
         &self.tables
     }
 }
 
+// TODO: is OneOrMany necessary here? or One is enough?
 pub struct NodeMetaOpt {
     inner: OneOrMany<Rc<RefCell<NodeMeta>>>,
 }
@@ -639,6 +641,23 @@ impl NodeMetaOpt {
 
     pub fn get_tag_columns(&self) -> BTreeMap<Option<TagId>, ColumnsOpt> {
         self[0].borrow().tag_columns.clone()
+    }
+
+    pub fn set_tables(&mut self, tables: Vec<common_pb::GraphElementLabel>) {
+        match self.as_ref() {
+            // The number 256 is given arbitrarily, which however should be determined by the number
+            // of actual columns for the given node.
+            OneOrMany::One(meta) => meta[0].borrow_mut().tables = tables,
+            OneOrMany::Many(metas) => {
+                for meta in metas {
+                    meta.borrow_mut().tables = tables.clone();
+                }
+            }
+        }
+    }
+
+    pub fn get_tables(&self) -> Vec<common_pb::GraphElementLabel> {
+        self[0].borrow().tables.clone()
     }
 }
 
@@ -856,6 +875,16 @@ impl PlanMeta {
     /// Get curr node's metadata. If the metadata does not exist, create one and return.
     pub fn curr_node_meta_mut(&mut self) -> NodeMetaOpt {
         self.get_or_insert_nodes_meta(&vec![self.curr_node])
+    }
+
+    pub fn get_tag_labels(&self, tag: TagId) -> Vec<common_pb::GraphElementLabel> {
+        let mut tables = vec![];
+        if let Some(nodes) = self.tag_nodes.get(&tag) {
+            if let Some(node_meta) = self.get_nodes_meta(nodes.as_slice()) {
+                tables = node_meta.get_tables()
+            }
+        }
+        tables
     }
 
     pub fn is_partition(&self) -> bool {
