@@ -264,7 +264,7 @@ message Broadcast {}
 message Pipeline {}
 
 message HybridRepartition {
-  message SingleRepartition {
+  message RepartitionType {
     oneof Strategy {
       Shuffle to_another  = 1;
       Broadcast to_others  = 2;
@@ -272,8 +272,8 @@ message HybridRepartition {
     }
   }
   message LabeledRepartition {
-    int32 label_id = 1;
-    SingleRepartition single_repartition = 2;
+    common.GraphElementLabel element_label = 1;
+    RepartitionType single_repartition = 2;
   }
   repeated LabeledRepartition labeled_repartition = 1;
 }
