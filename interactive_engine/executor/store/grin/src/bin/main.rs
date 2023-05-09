@@ -24,8 +24,8 @@ pub struct Edge {
 }
 
 fn main() {
-    let rust_str_1 = "/home/graphscope/gie-grin/temp/vineyard.sock";
-    let rust_str_2 = "130878194502466848";
+    let rust_str_1 = "/home/graphscope/gie-grin/v6d/build/tmp.sock";
+    let rust_str_2 = "134785075056209698";
 
     unsafe {
         let mut arr: [*const c_char; 2] = [string_rust2c(rust_str_1), string_rust2c(rust_str_2)];
@@ -51,7 +51,7 @@ unsafe fn scan_vertex(
         let vlist = grin_get_vertex_list(local_graph);
         for label in &labels {
             let vtype = grin_get_vertex_type_from_id(local_graph, *label);
-            if vtype.is_null() {
+            if vtype == GRIN_NULL_VERTEX_TYPE {
                 continue; // return some error
             }
             let vtypelist = grin_select_type_for_vertex_list(local_graph, vtype, vlist);
