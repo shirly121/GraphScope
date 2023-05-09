@@ -1,16 +1,54 @@
+use std::ffi::{c_char, CStr, CString};
+use std::fmt;
+
+use ahash::{HashMap, HashMapExt};
+use dyn_type::Object;
+use graph_proxy::apis::graph::ID;
+use graph_proxy::apis::{DynDetails, Vertex as RuntimeVertex};
+use graph_proxy::{GraphProxyError, GraphProxyResult};
+use ir_common::{LabelId, NameOrId};
+
+use crate::grin_details::LazyVertexDetails;
 use crate::grin_v6d::*;
 use crate::native_utils::*;
-use dyn_type::Object;
-use graph_proxy::{GraphProxyError, GraphProxyResult};
-use std::collections::HashMap;
-use std::ffi::{c_char, CStr, CString};
+
+#[inline]
+fn get_vertex_propoerty_as_object(
+    graph: GrinGraph, vertex: GrinVertex, prop_table: GrinVertexPropertyTable,
+    prop_handle: GrinVertexProperty,
+) -> GraphProxyResult<Object> {
+    unsafe {
+        let prop_type = grin_get_vertex_property_data_type(graph, prop_handle);
+        let prop_value = grin_get_value_from_vertex_property_table(graph, prop_table, vertex, prop_handle);
+
+        let result = grin_data_to_object(graph, prop_value, prop_type);
+        grin_destroy_value(graph, prop_type, prop_value);
+
+        result
+    }
+}
+
+#[inline]
+fn get_edge_property_as_object(
+    graph: GrinGraph, edge: GrinEdge, prop_table: GrinEdgePropertyTable, prop_handle: GrinEdgeProperty,
+) -> GraphProxyResult<Object> {
+    unsafe {
+        let prop_type = grin_get_edge_property_data_type(graph, prop_handle);
+        let prop_value = grin_get_value_from_edge_property_table(graph, prop_table, edge, prop_handle);
+
+        let result = grin_data_to_object(graph, prop_value, prop_type);
+        grin_destroy_value(graph, prop_type, prop_value);
+
+        result
+    }
+}
 
 pub struct GrinVertexProxy {
     graph: GrinGraph,
     vertex: GrinVertex,
-    prop_table: MutGrinHandle,
-    vertex_id: i64,
     vertex_type: GrinVertexType,
+    prop_table: GrinVertexPropertyTable,
+    vertex_id: i64,
     vertex_type_id: GrinVertexTypeId,
 }
 
@@ -24,28 +62,45 @@ impl Drop for GrinVertexProxy {
     }
 }
 
+impl fmt::Debug for GrinVertexProxy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GrinVertexProxy")
+            // .field("graph", &self.graph)
+            // .field("vertex", &self.vertex)
+            // .field("vertex_type", &self.vertex_type)
+            // .field("prop_table", &self.prop_table)
+            .field("vertex_id", &self.vertex_id)
+            .field("vertex_type_id", &self.vertex_type_id)
+            .finish()
+    }
+}
+
 impl GrinVertexProxy {
     // type PI = FFIPropertiesIter;
 
-    pub fn new(graph: GrinGraph, vertex: GrinVertex) -> Self {
+    pub fn new(graph: GrinGraph, vertex: GrinVertex) -> GraphProxyResult<Self> {
         unsafe {
             let vertex_type = grin_get_vertex_type(graph, vertex);
-
             // A vertex must have a type
             assert!(!vertex_type.is_null());
+            let vertex_type_id = grin_get_vertex_type_id(graph, vertex_type);
 
             let prop_table = grin_get_vertex_property_table_by_type(graph, vertex_type);
+            if prop_table.is_null() {
+                return Err(GraphProxyError::QueryStoreError(format!(
+                    "`grin_get_vertex_property_table_by_type`: {:?} returns null",
+                    vertex_type_id
+                )));
+            }
 
-            let vertex_type_id = grin_get_vertex_type_id(graph, vertex_type);
             let vid_handle = grin_get_vertex_original_id(graph, vertex);
-
             // A vertex must have an id
             assert!(!vid_handle.is_null());
 
             let vertex_id = grin_get_int64(vid_handle);
             grin_destroy_vertex_original_id(graph, vid_handle);
 
-            GrinVertexProxy { graph, vertex, prop_table, vertex_id, vertex_type, vertex_type_id }
+            Ok(GrinVertexProxy { graph, vertex, vertex_type, prop_table, vertex_id, vertex_type_id })
         }
     }
 
@@ -57,39 +112,33 @@ impl GrinVertexProxy {
         self.vertex_type_id
     }
 
-    pub fn get_property(&self, prop_id: GrinVertexPropertyId) -> GraphProxyResult<Object> {
+    pub fn get_property(&self, prop_key: &NameOrId) -> GraphProxyResult<Object> {
         unsafe {
-            if self.prop_table.is_null() {
-                return Err(GraphProxyError::QueryStoreError(format!(
-                    "`grin_get_vertex_property_table_by_type`: {:?} returns null",
-                    self.vertex_type_id
-                )));
-            }
-            let prop_handle = grin_get_vertex_property_from_id(self.graph, self.vertex_type, prop_id);
+            let prop_handle = match prop_key {
+                NameOrId::Id(prop_id) => grin_get_vertex_property_from_id(
+                    self.graph,
+                    self.vertex_type,
+                    *prop_id as GrinVertexPropertyId,
+                ),
+                NameOrId::Str(prop_str) => {
+                    grin_get_vertex_property_by_name(self.graph, self.vertex_type, string_rust2c(prop_str))
+                }
+            };
+
             if prop_handle.is_null() {
                 return Err(GraphProxyError::QueryStoreError(format!(
-                    "`grin_get_vertex_property_from_id`: {:?} returns null",
-                    prop_id
+                    "`grin_get_vertex_property`: {:?} returns null",
+                    prop_key
                 )));
             }
-
-            let prop_type = grin_get_vertex_property_data_type(self.graph, prop_handle);
-            let prop_value = grin_get_value_from_vertex_property_table(
-                self.graph,
-                self.prop_table,
-                self.vertex,
-                prop_handle,
-            );
-
-            let result = grin_data_to_object(self.graph, prop_value, prop_type);
-            grin_destroy_value(self.graph, prop_type, prop_value);
-            grin_destroy_vertex_property(self.graph, prop_handle);
+            let result =
+                get_vertex_propoerty_as_object(self.graph, self.vertex, self.prop_table, prop_handle);
 
             result
         }
     }
 
-    pub fn get_properties(&self) -> GraphProxyResult<HashMap<String, Object>> {
+    pub fn get_properties(&self) -> GraphProxyResult<HashMap<NameOrId, Object>> {
         unsafe {
             if self.prop_table.is_null() {
                 return Err(GraphProxyError::QueryStoreError(format!(
@@ -105,7 +154,7 @@ impl GrinVertexProxy {
                 )));
             }
             let prop_list_size = grin_get_vertex_property_list_size(self.graph, prop_list);
-            let mut result = HashMap::with_capacity(prop_list_size);
+            let mut result = HashMap::with_capacity(prop_list_size as usize);
 
             for i in 0..prop_list_size {
                 let prop_handle = grin_get_vertex_property_from_list(self.graph, prop_list, i);
@@ -115,26 +164,27 @@ impl GrinVertexProxy {
                         i
                     )));
                 }
-                let prop_name = grin_get_vertex_property_name(self.graph, prop_handle);
-                let prop_type = grin_get_vertex_property_data_type(self.graph, prop_handle);
-                let prop_c_value = grin_get_value_from_vertex_property_table(
-                    self.graph,
-                    self.prop_table,
-                    self.vertex,
-                    prop_handle,
-                );
-                let prop_value = grin_data_to_object(self.graph, prop_c_value, prop_type)?;
+                let prop_id = grin_get_vertex_property_id(self.graph, self.vertex_type, prop_handle);
 
-                grin_destroy_value(self.graph, prop_type, prop_c_value);
+                let prop_value =
+                    get_vertex_propoerty_as_object(self.graph, self.vertex, self.prop_table, prop_handle)?;
+                result.insert(NameOrId::Id(prop_id as i32), prop_value);
+
                 grin_destroy_vertex_property(self.graph, prop_handle);
-
-                result.insert(string_c2rust(prop_name), prop_value);
             }
 
             grin_destroy_vertex_property_list(self.graph, prop_list);
 
             Ok(result)
         }
+    }
+
+    #[inline]
+    pub fn into_runtime_vertex(self, prop_keys: Option<Vec<NameOrId>>) -> RuntimeVertex {
+        let id = self.vertex_id as ID;
+        let label = Some(self.vertex_type_id as LabelId);
+        let details = LazyVertexDetails::new(self, prop_keys);
+        RuntimeVertex::new(id, label, DynDetails::lazy(details))
     }
 }
 

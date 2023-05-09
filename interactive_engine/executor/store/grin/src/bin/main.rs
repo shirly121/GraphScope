@@ -1,25 +1,26 @@
-use grin::grin_graph_proxy::GrinVertexProxy;
-use grin::grin_v6d::*;
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
-use grin::native_utils::*;
-use dyn_type::Object;
 
+use ahash::HashMap;
+use dyn_type::Object;
+use grin::grin_graph_proxy::GrinVertexProxy;
+use grin::grin_v6d::*;
+use grin::native_utils::*;
+use ir_common::NameOrId;
 
 #[derive(Debug)]
 pub struct Vertex {
-  id: u64,
-  label: Option<GrinVertexTypeId>,
-  properties: HashMap<String, Object>
+    id: u64,
+    label: Option<GrinVertexTypeId>,
+    properties: HashMap<NameOrId, Object>,
 }
 
 #[derive(Debug)]
 pub struct Edge {
-  id: u64,
-  label: Option<GrinEdgeTypeId>,
-  src_id: u64,
-  dst_id: u64,
+    id: u64,
+    label: Option<GrinEdgeTypeId>,
+    src_id: u64,
+    dst_id: u64,
 }
 
 fn main() {
@@ -41,43 +42,41 @@ fn main() {
 }
 
 unsafe fn scan_vertex(
-  pg: GrinPartitionedGraph,
-  partition_ids: Vec<GrinPartitionId>,
-  labels: Vec<GrinVertexTypeId>,
+    pg: GrinPartitionedGraph, partition_ids: Vec<GrinPartitionId>, labels: Vec<GrinVertexTypeId>,
 ) -> Vec<Vertex> {
-  let mut vec = vec![];
-  for partition_id in partition_ids {
-    let partition = grin_get_partition_from_id(pg, partition_id);
-    let local_graph = grin_get_local_graph_from_partition(pg, partition);
-    let vlist = grin_get_vertex_list(local_graph);
-    for label in &labels {
-      let vtype = grin_get_vertex_type_from_id(local_graph, *label);
-      if vtype.is_null() {
-        continue;  // return some error
-      }
-      let vtypelist = grin_select_type_for_vertex_list(local_graph, vtype, vlist);
-      if vtypelist.is_null() {
-        continue;  // return some error
-      }
-      let vtypelist_size = grin_get_vertex_list_size(local_graph, vtypelist);
-      for i in 0..vtypelist_size {
-        let v = grin_get_vertex_from_list(local_graph, vtypelist, i);
-        let vertex_proxy = GrinVertexProxy::new(local_graph, v);
+    let mut vec = vec![];
+    for partition_id in partition_ids {
+        let partition = grin_get_partition_from_id(pg, partition_id);
+        let local_graph = grin_get_local_graph_from_partition(pg, partition);
+        let vlist = grin_get_vertex_list(local_graph);
+        for label in &labels {
+            let vtype = grin_get_vertex_type_from_id(local_graph, *label);
+            if vtype.is_null() {
+                continue; // return some error
+            }
+            let vtypelist = grin_select_type_for_vertex_list(local_graph, vtype, vlist);
+            if vtypelist.is_null() {
+                continue; // return some error
+            }
+            let vtypelist_size = grin_get_vertex_list_size(local_graph, vtypelist);
+            for i in 0..vtypelist_size {
+                let v = grin_get_vertex_from_list(local_graph, vtypelist, i);
+                let vertex_proxy = GrinVertexProxy::new(local_graph, v).unwrap();
 
-        vec.push(Vertex {
-          id: vertex_proxy.get_id() as u64,
-          label: Some(vertex_proxy.get_label_id()),
-          properties: vertex_proxy.get_properties().unwrap(),
-        });
-      }
-      grin_destroy_vertex_list(local_graph, vtypelist);
-      grin_destroy_vertex_type(local_graph, vtype);
+                vec.push(Vertex {
+                    id: vertex_proxy.get_id() as u64,
+                    label: Some(vertex_proxy.get_label_id()),
+                    properties: vertex_proxy.get_properties().unwrap(),
+                });
+            }
+            grin_destroy_vertex_list(local_graph, vtypelist);
+            grin_destroy_vertex_type(local_graph, vtype);
+        }
+        grin_destroy_vertex_list(local_graph, vlist);
+        grin_destroy_partition(pg, partition);
     }
-    grin_destroy_vertex_list(local_graph, vlist);
-    grin_destroy_partition(pg, partition);
-  }
 
-  vec
+    vec
 }
 
 /*
