@@ -3,7 +3,8 @@ use std::os::raw::{c_char, c_void};
 
 use ahash::HashMap;
 use dyn_type::Object;
-use grin::grin_graph_proxy::GrinVertexProxy;
+use graph_proxy::apis::{ReadGraph, QueryParams, GraphElement};
+use grin::grin_graph_proxy::*;
 use grin::grin_v6d::*;
 use grin::native_utils::*;
 use ir_common::NameOrId;
@@ -33,24 +34,42 @@ fn main() {
         let arr_mut_ptr: *mut *mut c_char = arr.as_mut_ptr() as *mut *mut c_char;
         let pg = grin_get_partitioned_graph_from_storage(2, arr_mut_ptr);
 
-        // traverse(pgraph)
-        let vertices = scan_vertex(pg, vec![0], vec![0, 1]);
-        println!("{:?}", vertices);
+        let graph = GrinGraphRuntime::from(GrinGraphProxy::new(pg).unwrap());
 
-        grin_destroy_partitioned_graph(pg);
+        let vertices = graph
+            .scan_vertex(&QueryParams {
+                labels: vec![0, 1],
+                limit: None,
+                columns: Some(vec![NameOrId::Id(0)]),
+                partitions: Some(vec![0]),
+                filter: None,
+                sample_ratio: None,
+                extra_params: None,
+            }).unwrap();
+
+        /*
+        let graph = GrinGraphProxy::new(pg).unwrap();
+        let vertices = graph.get_all_vertices(&vec![0], &vec![0, 1], None).unwrap();
+                  */
+
+        for vertex in vertices {
+            println!("{:?}", vertex);
+            println!("{:?}", vertex.get_property(&NameOrId::Id(0)).unwrap());
+        }
     }
 }
 
+/*
 unsafe fn scan_vertex(
     pg: GrinPartitionedGraph, partition_ids: Vec<GrinPartitionId>, labels: Vec<GrinVertexTypeId>,
 ) -> Vec<Vertex> {
     let mut vec = vec![];
     for partition_id in partition_ids {
-        let partition = grin_get_partition_from_id(pg, partition_id);
-        let local_graph = grin_get_local_graph_from_partition(pg, partition);
+        let partition = grin_get_partition_by_id(pg, partition_id);
+        let local_graph = grin_get_local_graph_by_partition(pg, partition);
         let vlist = grin_get_vertex_list(local_graph);
         for label in &labels {
-            let vtype = grin_get_vertex_type_from_id(local_graph, *label);
+            let vtype = grin_get_vertex_type_by_id(local_graph, *label);
             if vtype == GRIN_NULL_VERTEX_TYPE {
                 continue; // return some error
             }
@@ -61,7 +80,7 @@ unsafe fn scan_vertex(
             let vtypelist_size = grin_get_vertex_list_size(local_graph, vtypelist);
             for i in 0..vtypelist_size {
                 let v = grin_get_vertex_from_list(local_graph, vtypelist, i);
-                let vertex_proxy = GrinVertexProxy::new(local_graph, v).unwrap();
+                let vertex_proxy = GrinVertexProxy::new(local_graph, v);
 
                 vec.push(Vertex {
                     id: vertex_proxy.get_id() as u64,
@@ -79,7 +98,6 @@ unsafe fn scan_vertex(
     vec
 }
 
-/*
 unsafe fn scan_edge(
   pg: GrinPartitionedGraph,
   partition_ids: Vec<GrinPartitionId>,

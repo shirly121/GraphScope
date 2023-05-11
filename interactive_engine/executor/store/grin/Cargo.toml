@@ -13,7 +13,7 @@ ir_common = {path = "../../ir/common"}
 graph_proxy = { path = "../../ir/graph_proxy" }
 lazy_static = "1.3.0"
 pegasus_common = { path = "../../engine/pegasus/common" }
-
+rand = "0.8.5"
 
 [build-dependencies]
 cc = "1.0"

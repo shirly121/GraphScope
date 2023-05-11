@@ -83,6 +83,7 @@ impl Details for LazyVertexDetails {
     }
 }
 
+/*
 impl Drop for LazyVertexDetails {
     fn drop(&mut self) {
         let ptr = self.inner.load(Ordering::SeqCst);
@@ -93,3 +94,4 @@ impl Drop for LazyVertexDetails {
         }
     }
 }
+*/

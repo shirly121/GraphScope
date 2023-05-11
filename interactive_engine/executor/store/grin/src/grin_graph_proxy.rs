@@ -1,10 +1,12 @@
 use std::ffi::{c_char, CStr, CString};
 use std::fmt;
+use std::sync::Arc;
 
 use ahash::{HashMap, HashMapExt};
 use dyn_type::Object;
 use graph_proxy::apis::graph::ID;
-use graph_proxy::apis::{DynDetails, Vertex as RuntimeVertex};
+use graph_proxy::apis::{DynDetails, ReadGraph, Vertex as RuntimeVertex};
+use graph_proxy::utils::expr::eval_pred::PEvaluator;
 use graph_proxy::{GraphProxyError, GraphProxyResult};
 use ir_common::{LabelId, NameOrId};
 
@@ -49,45 +51,129 @@ fn get_vertex_propoerty_as_object(
     }
 }
 
+/*
+/// This is an `enum` type to wrap `GrinVertexPropertyId` and `GrinEdgePropertyId`
+#[derive(Clone, Copy, Debug)]
+enum GrinPropertyId {
+    Vertex(GrinVertexPropertyId),
+    Edge(GrinEdgePropertyId),
+}
+
+impl GrinPropertyId {
+    #[inline]
+    pub fn encode_runtime_property_key(property_key: &NameOrId, is_vertex: bool) -> GraphProxyResult<Self> {
+        match property_key {
+            NameOrId::Id(prop_id) => {
+                if is_vertex {
+                    Ok(Self::Vertex(*prop_id as GrinVertexPropertyId))
+                } else {
+                    Ok(Self::Edge(*prop_id as GrinEdgePropertyId))
+                }
+            }
+            NameOrId::Str(_) => Err(GraphProxyError::QueryStoreError(format!(
+                "encode runtime property key: {:?} error, should provide id instead of `string`",
+                property_key
+            ))),
+        }
+    }
+
+    /// In ir, None means we do not need any properties,
+    /// and Some means we need given properties (and Some(vec![]) means we need all properties)
+    #[inline]
+    fn encode_runtime_property_keys(
+        property_keys: Option<&Vec<NameOrId>>, is_vertex: bool,
+    ) -> GraphProxyResult<Option<Vec<GrinPropertyId>>> {
+        if let Some(property_keys) = property_keys {
+            let ids = property_keys
+                .iter()
+                .map(move |prop_key| Self::encode_runtime_property_key(prop_key, is_vertex))
+                .collect::<Result<Vec<GrinPropertyId>, _>>()?;
+            Ok(Some(ids))
+        } else {
+            Ok(None)
+        }
+    }
+}
+*/
+
+/// This is an `enum` type to wrap `GrinVertexTypeId` and `GrinEdgeTypeId`
+#[derive(Clone, Copy, Debug)]
+pub enum GrinTypeId {
+    Vertex(GrinVertexTypeId),
+    Edge(GrinEdgeTypeId),
+}
+
+impl GrinTypeId {
+    // At GIE runtime, `LabelId` represents `TypeId` in grin
+    pub fn encode_runtime_label_id(label_id: LabelId, is_vertex: bool) -> Self {
+        if is_vertex {
+            Self::Vertex(label_id as GrinVertexTypeId)
+        } else {
+            Self::Edge(label_id as GrinEdgeTypeId)
+        }
+    }
+
+    pub fn encode_runtime_label_ids(label_ids: &Vec<LabelId>, is_vertex: bool) -> Vec<GrinTypeId> {
+        label_ids
+            .iter()
+            .cloned()
+            .map(|label_id| Self::encode_runtime_label_id(label_id, is_vertex))
+            .collect()
+    }
+
+    pub fn get_vertex_label_id(&self) -> GrinVertexTypeId {
+        match self {
+            GrinTypeId::Vertex(id) => *id,
+            GrinTypeId::Edge(_) => unreachable!(),
+        }
+    }
+
+    pub fn get_edge_label_id(&self) -> GrinEdgeTypeId {
+        match self {
+            GrinTypeId::Vertex(_) => unreachable!(),
+            GrinTypeId::Edge(id) => *id,
+        }
+    }
+}
+
 #[inline]
 fn get_edge_property_as_object(
     graph: GrinGraph, edge: GrinEdge, prop_table: GrinEdgePropertyTable, prop_handle: GrinEdgeProperty,
 ) -> GraphProxyResult<Object> {
     unsafe {
         let prop_type = grin_get_edge_property_data_type(graph, prop_handle);
-        unsafe {
-            let prop_type = grin_get_edge_property_data_type(graph, prop_handle);
-            let result = if prop_type == GRIN_DATATYPE_INT32 {
-                Ok(grin_get_int32_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
-            } else if prop_type == GRIN_DATATYPE_INT64 {
-                Ok(grin_get_int64_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
-            } else if prop_type == GRIN_DATATYPE_UINT32 {
-                Ok((grin_get_uint32_from_edge_property_table(graph, prop_table, edge, prop_handle) as u64)
-                    .into())
-            } else if prop_type == GRIN_DATATYPE_UINT64 {
-                Ok(grin_get_uint64_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
-            } else if prop_type == GRIN_DATATYPE_FLOAT {
-                Ok((grin_get_float_from_edge_property_table(graph, prop_table, edge, prop_handle) as f64)
-                    .into())
-            } else if prop_type == GRIN_DATATYPE_DOUBLE {
-                Ok(grin_get_double_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
-            } else if prop_type == GRIN_DATATYPE_STRING {
-                let c_str =
-                    grin_get_string_from_edge_property_table(graph, prop_table, edge, prop_handle).into();
-                let rust_str = string_c2rust(c_str);
-                grin_destroy_name(graph, c_str);
-                Ok(Object::String(rust_str))
-            } else if prop_type == GRIN_DATATYPE_UNDEFINED {
-                Err(GraphProxyError::QueryStoreError("`grin_data_type is undefined`".to_string()))
-            } else {
-                Err(GraphProxyError::UnSupported(format!("Unsupported grin data type: {:?}", prop_type)))
-            };
+        let result = if prop_type == GRIN_DATATYPE_INT32 {
+            Ok(grin_get_int32_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+        } else if prop_type == GRIN_DATATYPE_INT64 {
+            Ok(grin_get_int64_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+        } else if prop_type == GRIN_DATATYPE_UINT32 {
+            Ok((grin_get_uint32_from_edge_property_table(graph, prop_table, edge, prop_handle) as u64)
+                .into())
+        } else if prop_type == GRIN_DATATYPE_UINT64 {
+            Ok(grin_get_uint64_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+        } else if prop_type == GRIN_DATATYPE_FLOAT {
+            Ok((grin_get_float_from_edge_property_table(graph, prop_table, edge, prop_handle) as f64)
+                .into())
+        } else if prop_type == GRIN_DATATYPE_DOUBLE {
+            Ok(grin_get_double_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+        } else if prop_type == GRIN_DATATYPE_STRING {
+            let c_str =
+                grin_get_string_from_edge_property_table(graph, prop_table, edge, prop_handle).into();
+            let rust_str = string_c2rust(c_str);
+            grin_destroy_name(graph, c_str);
+            Ok(Object::String(rust_str))
+        } else if prop_type == GRIN_DATATYPE_UNDEFINED {
+            Err(GraphProxyError::QueryStoreError("`grin_data_type is undefined`".to_string()))
+        } else {
+            Err(GraphProxyError::UnSupported(format!("Unsupported grin data type: {:?}", prop_type)))
+        };
 
-            result
-        }
+        result
     }
 }
 
+/// A proxy for better handling Grin's vertex related operations.
+#[derive(Clone)]
 pub struct GrinVertexProxy {
     graph: GrinGraph,
     vertex: GrinVertex,
@@ -123,31 +209,23 @@ impl fmt::Debug for GrinVertexProxy {
 impl GrinVertexProxy {
     // type PI = FFIPropertiesIter;
 
-    pub fn new(graph: GrinGraph, vertex: GrinVertex) -> GraphProxyResult<Self> {
+    pub fn new(graph: GrinGraph, vertex: GrinVertex) -> Self {
         unsafe {
             let vertex_type = grin_get_vertex_type(graph, vertex);
             // A vertex must have a type
-            assert!(vertex_type != GRIN_NULL_VERTEX_TYPE);
+            assert_ne!(vertex_type, GRIN_NULL_VERTEX_TYPE);
             let vertex_type_id = grin_get_vertex_type_id(graph, vertex_type);
 
             let prop_table = grin_get_vertex_property_table_by_type(graph, vertex_type);
-            if prop_table.is_null() {
-                return Err(GraphProxyError::QueryStoreError(format!(
-                    "`grin_get_vertex_property_table_by_type`: {:?} returns null",
-                    vertex_type_id
-                )));
-            }
+            assert!(!prop_table.is_null());
 
-            let vertex_ref = grin_get_vertex_ref_for_vertex(graph, vertex);
-            if vertex_ref == GRIN_NULL_VERTEX_REF {
-                return Err(GraphProxyError::QueryStoreError(format!(
-                    "`grin_get_vertex_ref_for_vertex` return null"
-                )));
-            }
+            let vertex_ref = grin_get_vertex_ref_by_vertex(graph, vertex);
+            assert_ne!(vertex_ref, GRIN_NULL_VERTEX_REF);
+
             let vertex_id = grin_serialize_vertex_ref_as_int64(graph, vertex_ref);
             grin_destroy_vertex_ref(graph, vertex_ref);
 
-            Ok(GrinVertexProxy { graph, vertex, vertex_type, prop_table, vertex_id, vertex_type_id })
+            GrinVertexProxy { graph, vertex, vertex_type, prop_table, vertex_id, vertex_type_id }
         }
     }
 
@@ -162,7 +240,7 @@ impl GrinVertexProxy {
     pub fn get_property(&self, prop_key: &NameOrId) -> GraphProxyResult<Object> {
         unsafe {
             let prop_handle = match prop_key {
-                NameOrId::Id(prop_id) => grin_get_vertex_property_from_id(
+                NameOrId::Id(prop_id) => grin_get_vertex_property_by_id(
                     self.graph,
                     self.vertex_type,
                     *prop_id as GrinVertexPropertyId,
@@ -221,28 +299,315 @@ impl GrinVertexProxy {
     }
 
     #[inline]
-    pub fn into_runtime_vertex(self, prop_keys: Option<Vec<NameOrId>>) -> RuntimeVertex {
+    pub fn get_runtime_vertex(&self, prop_keys: Option<&Vec<NameOrId>>) -> RuntimeVertex {
         let id = self.vertex_id as ID;
         let label = Some(self.vertex_type_id as LabelId);
-        let details = LazyVertexDetails::new(self, prop_keys);
+        let details = LazyVertexDetails::new(self.clone(), prop_keys.cloned());
         RuntimeVertex::new(id, label, DynDetails::lazy(details))
     }
 }
 
-pub struct GrinGraphProxy {
+pub struct GrinVertexIter {
     graph: GrinGraph,
+    vertex_list: GrinVertexList,
+    vertex_iter: GrinVertexListIterator,
+    vertex_type_list: HashMap<GrinVertexTypeId, GrinVertexList>,
+    vertex_type_iter: HashMap<GrinVertexTypeId, GrinVertexListIterator>,
+    vertex_type_ids: Vec<GrinVertexTypeId>,
+    current_vertex_type_id: GrinVertexTypeId,
+}
+
+impl GrinVertexIter {
+    pub fn new(graph: GrinGraph, vertex_type_ids: &Vec<GrinVertexTypeId>) -> GraphProxyResult<Self> {
+        unsafe {
+            let vertex_list = grin_get_vertex_list(graph);
+            if vertex_list.is_null() {
+                return Err(GraphProxyError::QueryStoreError(
+                    "`grin_get_vertex_list` returns null".to_string(),
+                ));
+            }
+            let vertex_iter = grin_get_vertex_list_begin(graph, vertex_list);
+            if vertex_iter == GRIN_NULL_LIST_ITERATOR {
+                return Err(GraphProxyError::QueryStoreError(
+                    "`grin_get_vertex_list_begin` returns null".to_string(),
+                ));
+            }
+
+            let mut vertex_type_list = HashMap::new();
+            let mut vertex_type_iter = HashMap::new();
+            let mut current_vertex_type_id = GRIN_NULL_VERTEX_TYPE;
+            let mut vertex_type_ids = vertex_type_ids.clone();
+
+            if !vertex_type_ids.is_empty() {
+                for vertex_type_id in &vertex_type_ids {
+                    let vertex_type = grin_get_vertex_type_by_id(graph, *vertex_type_id);
+                    if vertex_type == GRIN_NULL_VERTEX_TYPE {
+                        return Err(GraphProxyError::QueryStoreError(format!(
+                            "`grin_get_vertex_type_by_id`: {:?}, returns null",
+                            vertex_type_id
+                        )));
+                    }
+                    let vtype_list = grin_select_type_for_vertex_list(graph, vertex_type, vertex_list);
+                    if vtype_list.is_null() {
+                        return Err(GraphProxyError::QueryStoreError(format!(
+                            "`grin_select_type_for_vertex_list`: {:?}, returns null",
+                            vertex_type_id
+                        )));
+                    }
+                    let vtype_iter = grin_get_vertex_list_begin(graph, vtype_list);
+                    if vtype_iter == GRIN_NULL_LIST_ITERATOR {
+                        return Err(GraphProxyError::QueryStoreError(
+                            "`grin_get_vertex_list_begin` returns null".to_string(),
+                        ));
+                    }
+                    vertex_type_list.insert(*vertex_type_id, vtype_list);
+                    vertex_type_iter.insert(*vertex_type_id, vtype_iter);
+
+                    grin_destroy_vertex_type(graph, vertex_type);
+                }
+                current_vertex_type_id = vertex_type_ids.pop().unwrap();
+            }
+            Ok(Self {
+                graph,
+                vertex_list,
+                vertex_iter,
+                vertex_type_list,
+                vertex_type_iter,
+                vertex_type_ids,
+                current_vertex_type_id,
+            })
+        }
+    }
+
+    pub fn get_current_vertex_iter(&self) -> GrinVertexListIterator {
+        if !self.vertex_type_iter.is_empty() {
+            self.vertex_type_iter[&self.current_vertex_type_id].clone()
+        } else {
+            self.vertex_iter.clone()
+        }
+    }
+}
+
+impl Drop for GrinVertexIter {
+    fn drop(&mut self) {
+        unsafe {
+            grin_destroy_vertex_list(self.graph, self.vertex_list);
+            grin_destroy_vertex_list_iter(self.graph, self.vertex_iter);
+
+            for (_, list) in self.vertex_type_list.iter() {
+                grin_destroy_vertex_list(self.graph, *list);
+            }
+            for (_, iter) in self.vertex_type_iter.iter() {
+                grin_destroy_vertex_list_iter(self.graph, *iter);
+            }
+        }
+    }
+}
+
+impl Iterator for GrinVertexIter {
+    type Item = GrinVertexProxy;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let mut current_vertex_iter = self.get_current_vertex_iter();
+            while grin_is_vertex_list_end(self.graph, current_vertex_iter) {
+                if let Some(next_vertex_type_id) = self.vertex_type_ids.pop() {
+                    self.current_vertex_type_id = next_vertex_type_id;
+                    current_vertex_iter = self.get_current_vertex_iter();
+                } else {
+                    return None;
+                }
+            }
+
+            let vertex_handle = grin_get_vertex_from_iter(self.graph, current_vertex_iter);
+            grin_get_next_vertex_list_iter(self.graph, current_vertex_iter);
+            assert_ne!(vertex_handle, GRIN_NULL_VERTEX);
+
+            Some(GrinVertexProxy::new(self.graph, vertex_handle))
+        }
+    }
+}
+
+unsafe impl Send for GrinVertexIter {}
+unsafe impl Sync for GrinVertexIter {}
+
+/// A proxy for better handling Grin's graph related operations.
+pub struct GrinGraphProxy {
+    /// The partitioned graph handle in the current process
+    partitioned_graph: GrinPartitionedGraph,
+    /// The graph handles managed in the current partition
+    graphs: HashMap<GrinPartitionId, GrinGraph>,
 }
 
 impl Drop for GrinGraphProxy {
     fn drop(&mut self) {
         unsafe {
-            grin_destroy_graph(self.graph);
+            grin_destroy_partitioned_graph(self.partitioned_graph);
+            for (_, graph) in self.graphs.iter() {
+                grin_destroy_graph(*graph);
+            }
         }
     }
 }
 
 impl GrinGraphProxy {
-    pub fn get_graph(&self) -> GrinGraph {
-        self.graph
+    pub fn new(partitioned_graph: GrinPartitionedGraph) -> GraphProxyResult<Self> {
+        let mut graphs = HashMap::new();
+        unsafe {
+            let partition_list = grin_get_local_partition_list(partitioned_graph);
+            if partition_list == GRIN_NULL_LIST {
+                return Err(GraphProxyError::QueryStoreError(format!(
+                    "`grin_get_local_partition_list` returns `null`"
+                )));
+            }
+
+            let partition_size = grin_get_partition_list_size(partitioned_graph, partition_list);
+            for i in 0..partition_size {
+                let partition = grin_get_partition_from_list(partitioned_graph, partition_list, i);
+                if partition == GRIN_NULL_PARTITION {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_partition_from_list`: {:?} returns `null`",
+                        i
+                    )));
+                }
+                let partition_id = grin_get_partition_id(partitioned_graph, partition);
+                let graph = grin_get_local_graph_by_partition(partitioned_graph, partition);
+                graphs.insert(partition_id, graph);
+                grin_destroy_partition(partitioned_graph, partition);
+            }
+            grin_destroy_partition_list(partitioned_graph, partition_list);
+        }
+
+        Ok(GrinGraphProxy { partitioned_graph, graphs })
+    }
+
+    pub fn get_partitioned_graph(&self) -> GrinPartitionedGraph {
+        self.partitioned_graph
+    }
+
+    pub fn get_local_graph(&self, partition_id: GrinPartitionId) -> Option<GrinGraph> {
+        self.graphs.get(&partition_id).cloned()
+    }
+
+    pub fn get_all_vertices(
+        &self, partitions: &Vec<GrinPartitionId>, label_ids: &Vec<GrinVertexTypeId>,
+        _row_filter: Option<Arc<PEvaluator>>,
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinVertexProxy> + Send>> {
+        let mut results = Vec::new();
+        for partition in partitions {
+            if let Some(graph) = self.graphs.get(partition).cloned() {
+                let vertex_iter = GrinVertexIter::new(graph, label_ids)?;
+                results.push(vertex_iter);
+            } else {
+                return Err(GraphProxyError::QueryStoreError(format!(
+                    "Partition {:?} is not found in the current process",
+                    partition
+                )));
+            }
+        }
+
+        Ok(Box::new(
+            results
+                .into_iter()
+                .flat_map(move |vertex_iter| vertex_iter),
+        ))
+    }
+}
+
+pub struct GrinGraphRuntime {
+    store: Arc<GrinGraphProxy>,
+}
+
+impl From<GrinGraphProxy> for GrinGraphRuntime {
+    fn from(graph: GrinGraphProxy) -> Self {
+        GrinGraphRuntime {
+            store: Arc::new(graph),
+        }
+    }
+}
+
+unsafe impl Send for GrinGraphRuntime {}
+unsafe impl Sync for GrinGraphRuntime {}
+
+impl ReadGraph for GrinGraphRuntime {
+    fn scan_vertex(
+        &self, params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeVertex> + Send>> {
+        if let Some(partitions) = params.partitions.as_ref() {
+            let store = self.store.clone();
+            /*
+            let si = params
+                .get_extra_param(SNAPSHOT_ID)
+                .map(|s| {
+                    s.parse::<SnapshotId>()
+                        .unwrap_or(DEFAULT_SNAPSHOT_ID)
+                })
+                .unwrap_or(DEFAULT_SNAPSHOT_ID);
+            */
+            let label_ids: Vec<GrinVertexTypeId> = params
+                .labels
+                .iter()
+                .map(|label| *label as GrinVertexTypeId)
+                .collect();
+            let row_filter = params.filter.clone();
+
+            let partitions: Vec<GrinPartitionId> = partitions
+                .iter()
+                .map(|pid| *pid as GrinPartitionId)
+                .collect();
+
+            let columns = params.columns.clone();
+
+            let result_iter = store
+                .get_all_vertices(partitions.as_ref(), &label_ids, row_filter)?
+                .map(move |graph_proxy| {
+                    graph_proxy.get_runtime_vertex(columns.as_ref())
+                });
+
+            Ok(sample_limit!(result_iter, params.sample_ratio, params.limit))
+        } else {
+            Ok(Box::new(std::iter::empty()))
+        }
+    }
+
+    fn index_scan_vertex(
+        &self, label: LabelId, primary_key: &graph_proxy::apis::graph::PKV,
+        params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Option<RuntimeVertex>> {
+        todo!()
+    }
+
+    fn scan_edge(
+        &self, params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = graph_proxy::apis::Edge> + Send>> {
+        todo!()
+    }
+
+    fn get_vertex(
+        &self, ids: &[ID], params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeVertex> + Send>> {
+        todo!()
+    }
+
+    fn get_edge(
+        &self, ids: &[ID], params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = graph_proxy::apis::Edge> + Send>> {
+        todo!()
+    }
+
+    fn prepare_explore_vertex(
+        &self, direction: graph_proxy::apis::Direction, params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Box<dyn graph_proxy::apis::Statement<ID, RuntimeVertex>>> {
+        todo!()
+    }
+
+    fn prepare_explore_edge(
+        &self, direction: graph_proxy::apis::Direction, params: &graph_proxy::apis::QueryParams,
+    ) -> GraphProxyResult<Box<dyn graph_proxy::apis::Statement<ID, graph_proxy::apis::Edge>>> {
+        todo!()
+    }
+
+    fn get_primary_key(&self, id: &ID) -> GraphProxyResult<Option<graph_proxy::apis::graph::PKV>> {
+        todo!()
     }
 }
