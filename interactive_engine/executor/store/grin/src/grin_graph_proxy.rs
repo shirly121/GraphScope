@@ -173,7 +173,6 @@ fn get_edge_property_as_object(
 }
 
 /// A proxy for better handling Grin's vertex related operations.
-#[derive(Clone)]
 pub struct GrinVertexProxy {
     graph: GrinGraph,
     vertex: GrinVertex,
@@ -186,6 +185,7 @@ pub struct GrinVertexProxy {
 impl Drop for GrinVertexProxy {
     fn drop(&mut self) {
         unsafe {
+            println!("drop vertex: {:?}", self.vertex_id);
             grin_destroy_vertex_type(self.graph, self.vertex_type);
             grin_destroy_vertex(self.graph, self.vertex);
             grin_destroy_vertex_property_table(self.graph, self.prop_table);
@@ -299,10 +299,10 @@ impl GrinVertexProxy {
     }
 
     #[inline]
-    pub fn get_runtime_vertex(&self, prop_keys: Option<&Vec<NameOrId>>) -> RuntimeVertex {
+    pub fn into_runtime_vertex(self, prop_keys: Option<&Vec<NameOrId>>) -> RuntimeVertex {
         let id = self.vertex_id as ID;
         let label = Some(self.vertex_type_id as LabelId);
-        let details = LazyVertexDetails::new(self.clone(), prop_keys.cloned());
+        let details = LazyVertexDetails::new(self, prop_keys.cloned());
         RuntimeVertex::new(id, label, DynDetails::lazy(details))
     }
 }
@@ -520,9 +520,7 @@ pub struct GrinGraphRuntime {
 
 impl From<GrinGraphProxy> for GrinGraphRuntime {
     fn from(graph: GrinGraphProxy) -> Self {
-        GrinGraphRuntime {
-            store: Arc::new(graph),
-        }
+        GrinGraphRuntime { store: Arc::new(graph) }
     }
 }
 
@@ -560,9 +558,7 @@ impl ReadGraph for GrinGraphRuntime {
 
             let result_iter = store
                 .get_all_vertices(partitions.as_ref(), &label_ids, row_filter)?
-                .map(move |graph_proxy| {
-                    graph_proxy.get_runtime_vertex(columns.as_ref())
-                });
+                .map(move |graph_proxy| graph_proxy.into_runtime_vertex(columns.as_ref()));
 
             Ok(sample_limit!(result_iter, params.sample_ratio, params.limit))
         } else {

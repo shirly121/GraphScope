@@ -3,7 +3,7 @@ use std::os::raw::{c_char, c_void};
 
 use ahash::HashMap;
 use dyn_type::Object;
-use graph_proxy::apis::{ReadGraph, QueryParams, GraphElement};
+use graph_proxy::apis::{GraphElement, QueryParams, ReadGraph};
 use grin::grin_graph_proxy::*;
 use grin::grin_v6d::*;
 use grin::native_utils::*;
@@ -40,17 +40,13 @@ fn main() {
             .scan_vertex(&QueryParams {
                 labels: vec![0, 1],
                 limit: None,
-                columns: Some(vec![NameOrId::Id(0)]),
+                columns: Some(vec![NameOrId::Id(0), NameOrId::Id(1)]),
                 partitions: Some(vec![0]),
                 filter: None,
                 sample_ratio: None,
                 extra_params: None,
-            }).unwrap();
-
-        /*
-        let graph = GrinGraphProxy::new(pg).unwrap();
-        let vertices = graph.get_all_vertices(&vec![0], &vec![0, 1], None).unwrap();
-                  */
+            })
+            .unwrap();
 
         for vertex in vertices {
             println!("{:?}", vertex);
