@@ -14,6 +14,8 @@ use crate::grin_details::LazyVertexDetails;
 use crate::grin_v6d::*;
 use crate::native_utils::*;
 
+/// Get value of certain type of vertex property from the grin-enabled graph, and turn it into
+/// `Object` accessible to the runtime.
 #[inline]
 fn get_vertex_propoerty_as_object(
     graph: GrinGraph, vertex: GrinVertex, prop_table: GrinVertexPropertyTable,
@@ -51,91 +53,8 @@ fn get_vertex_propoerty_as_object(
     }
 }
 
-/*
-/// This is an `enum` type to wrap `GrinVertexPropertyId` and `GrinEdgePropertyId`
-#[derive(Clone, Copy, Debug)]
-enum GrinPropertyId {
-    Vertex(GrinVertexPropertyId),
-    Edge(GrinEdgePropertyId),
-}
-
-impl GrinPropertyId {
-    #[inline]
-    pub fn encode_runtime_property_key(property_key: &NameOrId, is_vertex: bool) -> GraphProxyResult<Self> {
-        match property_key {
-            NameOrId::Id(prop_id) => {
-                if is_vertex {
-                    Ok(Self::Vertex(*prop_id as GrinVertexPropertyId))
-                } else {
-                    Ok(Self::Edge(*prop_id as GrinEdgePropertyId))
-                }
-            }
-            NameOrId::Str(_) => Err(GraphProxyError::QueryStoreError(format!(
-                "encode runtime property key: {:?} error, should provide id instead of `string`",
-                property_key
-            ))),
-        }
-    }
-
-    /// In ir, None means we do not need any properties,
-    /// and Some means we need given properties (and Some(vec![]) means we need all properties)
-    #[inline]
-    fn encode_runtime_property_keys(
-        property_keys: Option<&Vec<NameOrId>>, is_vertex: bool,
-    ) -> GraphProxyResult<Option<Vec<GrinPropertyId>>> {
-        if let Some(property_keys) = property_keys {
-            let ids = property_keys
-                .iter()
-                .map(move |prop_key| Self::encode_runtime_property_key(prop_key, is_vertex))
-                .collect::<Result<Vec<GrinPropertyId>, _>>()?;
-            Ok(Some(ids))
-        } else {
-            Ok(None)
-        }
-    }
-}
-*/
-
-/// This is an `enum` type to wrap `GrinVertexTypeId` and `GrinEdgeTypeId`
-#[derive(Clone, Copy, Debug)]
-pub enum GrinTypeId {
-    Vertex(GrinVertexTypeId),
-    Edge(GrinEdgeTypeId),
-}
-
-impl GrinTypeId {
-    // At GIE runtime, `LabelId` represents `TypeId` in grin
-    pub fn encode_runtime_label_id(label_id: LabelId, is_vertex: bool) -> Self {
-        if is_vertex {
-            Self::Vertex(label_id as GrinVertexTypeId)
-        } else {
-            Self::Edge(label_id as GrinEdgeTypeId)
-        }
-    }
-
-    pub fn encode_runtime_label_ids(label_ids: &Vec<LabelId>, is_vertex: bool) -> Vec<GrinTypeId> {
-        label_ids
-            .iter()
-            .cloned()
-            .map(|label_id| Self::encode_runtime_label_id(label_id, is_vertex))
-            .collect()
-    }
-
-    pub fn get_vertex_label_id(&self) -> GrinVertexTypeId {
-        match self {
-            GrinTypeId::Vertex(id) => *id,
-            GrinTypeId::Edge(_) => unreachable!(),
-        }
-    }
-
-    pub fn get_edge_label_id(&self) -> GrinEdgeTypeId {
-        match self {
-            GrinTypeId::Vertex(_) => unreachable!(),
-            GrinTypeId::Edge(id) => *id,
-        }
-    }
-}
-
+/// Get value of certain type of edge property from the grin-enabled graph, and turn it into
+/// `Object` accessible to the runtime.
 #[inline]
 fn get_edge_property_as_object(
     graph: GrinGraph, edge: GrinEdge, prop_table: GrinEdgePropertyTable, prop_handle: GrinEdgeProperty,
@@ -172,13 +91,19 @@ fn get_edge_property_as_object(
     }
 }
 
-/// A proxy for better handling Grin's vertex related operations.
+/// A proxy for handling a vertex in a grin-enabled store.
 pub struct GrinVertexProxy {
+    /// The grin graph handle, only local to the current process
     graph: GrinGraph,
+    /// The vertex handle, only local to the current process
     vertex: GrinVertex,
+    /// The vertex type handle, for the `vertex`
     vertex_type: GrinVertexType,
+    /// The vertex property table handle, for accessing properties of the `vertex`
     prop_table: GrinVertexPropertyTable,
+    /// The decoded identifier of the `vertex`, currently obtained via `grin_get_vertex_ref_by_vertex()`
     vertex_id: i64,
+    /// The vertex type identifier of the `vertex`
     vertex_type_id: GrinVertexTypeId,
 }
 
@@ -207,8 +132,6 @@ impl fmt::Debug for GrinVertexProxy {
 }
 
 impl GrinVertexProxy {
-    // type PI = FFIPropertiesIter;
-
     pub fn new(graph: GrinGraph, vertex: GrinVertex) -> Self {
         unsafe {
             let vertex_type = grin_get_vertex_type(graph, vertex);
@@ -237,6 +160,7 @@ impl GrinVertexProxy {
         self.vertex_type_id
     }
 
+    /// Get a certain property of the vertex
     pub fn get_property(&self, prop_key: &NameOrId) -> GraphProxyResult<Object> {
         unsafe {
             let prop_handle = match prop_key {
@@ -263,6 +187,7 @@ impl GrinVertexProxy {
         }
     }
 
+    /// Get all properties of the vertex
     pub fn get_properties(&self) -> GraphProxyResult<HashMap<NameOrId, Object>> {
         unsafe {
             let prop_list = grin_get_vertex_property_list_by_type(self.graph, self.vertex_type);
@@ -298,6 +223,9 @@ impl GrinVertexProxy {
         }
     }
 
+    /// Turn the `VertexProxy` into a `RuntimeVertex` processed by GIE's runtime, for lazily
+    /// accessing the data of the vertex, including identifier, label, and properties.
+    /// The `prop_keys` parameter is used to specify which properties to be loaded lazily.
     #[inline]
     pub fn into_runtime_vertex(self, prop_keys: Option<&Vec<NameOrId>>) -> RuntimeVertex {
         let id = self.vertex_id as ID;
@@ -307,13 +235,21 @@ impl GrinVertexProxy {
     }
 }
 
+/// A structure to easily handle scanning various types of vertices in a grin-enabled store.
 pub struct GrinVertexIter {
+    /// A grin graph handle, only local to the current process
     graph: GrinGraph,
+    /// A vertex list handle, used as an entry for accessing all vertices of the graph
     vertex_list: GrinVertexList,
+    /// A vertex list iterator handle, used to iterate over the vertex list
     vertex_iter: GrinVertexListIterator,
+    /// A per-type map of vertex list handles, used as an entry for accessing all vertices of specific type
     vertex_type_list: HashMap<GrinVertexTypeId, GrinVertexList>,
+    /// A per-type map of vertex list iterator handles, used iterate vertices of specific type
     vertex_type_iter: HashMap<GrinVertexTypeId, GrinVertexListIterator>,
+    /// **All** (exclude `current_vertex_type`) types of vertices to scan
     vertex_type_ids: Vec<GrinVertexTypeId>,
+    /// The current vertex type that is under scanning
     current_vertex_type_id: GrinVertexTypeId,
 }
 
@@ -382,7 +318,7 @@ impl GrinVertexIter {
     pub fn get_current_vertex_iter(&self) -> GrinVertexListIterator {
         if !self.vertex_type_iter.is_empty() {
             self.vertex_type_iter[&self.current_vertex_type_id].clone()
-        } else {
+        } else {  // empty vertex_type_iter means scan all vertex types
             self.vertex_iter.clone()
         }
     }
@@ -411,16 +347,19 @@ impl Iterator for GrinVertexIter {
         unsafe {
             let mut current_vertex_iter = self.get_current_vertex_iter();
             while grin_is_vertex_list_end(self.graph, current_vertex_iter) {
+                // complete scanning the current type of vertices, switch to the next one
                 if let Some(next_vertex_type_id) = self.vertex_type_ids.pop() {
                     self.current_vertex_type_id = next_vertex_type_id;
                     current_vertex_iter = self.get_current_vertex_iter();
                 } else {
+                    // no more vertex type to scan
                     return None;
                 }
             }
 
             let vertex_handle = grin_get_vertex_from_iter(self.graph, current_vertex_iter);
             grin_get_next_vertex_list_iter(self.graph, current_vertex_iter);
+            // a null vertex handle is unacceptable at the current stage
             assert_ne!(vertex_handle, GRIN_NULL_VERTEX);
 
             Some(GrinVertexProxy::new(self.graph, vertex_handle))
@@ -489,6 +428,9 @@ impl GrinGraphProxy {
         self.graphs.get(&partition_id).cloned()
     }
 
+    /// Get all vertices in the given partitions and vertex types, with optional some
+    /// filtering conditions that may be pushed down to the store (TODO(longbin)).
+    /// Return an iterator for scanning the vertices.
     pub fn get_all_vertices(
         &self, partitions: &Vec<GrinPartitionId>, label_ids: &Vec<GrinVertexTypeId>,
         _row_filter: Option<Arc<PEvaluator>>,
@@ -514,6 +456,7 @@ impl GrinGraphProxy {
     }
 }
 
+/// An arc wrapper of GrinGraphRuntime to free it from unexpected (double) pointer destory.
 pub struct GrinGraphRuntime {
     store: Arc<GrinGraphProxy>,
 }
