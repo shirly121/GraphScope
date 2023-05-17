@@ -1,10 +1,5 @@
 use std::ffi::{c_char, c_void, CStr, CString};
 
-use dyn_type::Object;
-use graph_proxy::{GraphProxyError, GraphProxyResult};
-
-use crate::grin_v6d::*;
-
 pub type CStrPtr = *const c_char;
 pub type GrinHandle = *const c_void;
 pub type MutGrinHandle = *mut c_void;

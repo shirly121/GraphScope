@@ -1,9 +1,11 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
+use std::sync::Arc;
 
 use ahash::HashMap;
-use dyn_type::Object;
-use graph_proxy::apis::{GraphElement, QueryParams, ReadGraph};
+use dyn_type::{object, Object};
+use graph_proxy::apis::graph::PKV;
+use graph_proxy::apis::{get_graph, register_graph, GraphElement, QueryParams, ReadGraph};
 use grin::grin_graph_proxy::*;
 use grin::grin_v6d::*;
 use grin::native_utils::*;
@@ -34,9 +36,26 @@ fn main() {
         let arr_mut_ptr: *mut *mut c_char = arr.as_mut_ptr() as *mut *mut c_char;
         let pg = grin_get_partitioned_graph_from_storage(2, arr_mut_ptr);
 
-        let graph = GrinGraphRuntime::from(GrinGraphProxy::new(pg).unwrap());
+        let grin_graph = GrinGraphRuntime::from(GrinGraphProxy::new(pg).unwrap());
 
-        let vertices = graph
+        register_graph(Arc::new(grin_graph));
+
+        let graph = get_graph().unwrap();
+
+        // gid -> oid -> vertex
+        // 0 -> 2 -> vadas
+        // 1 -> 6 -> peter
+        // 2 -> 4 -> josh
+        // 3 -> 1 -> marko
+        // 72057594037927936 -> 3 -> lop
+        // 72057594037927937 -> 5 -> ripple
+
+        // label -> label_id
+        // person -> 0
+        // software -> 1
+
+        println!("========== test scan_vertex =========");
+        let scan_vertices = graph
             .scan_vertex(&QueryParams {
                 labels: vec![0, 1],
                 limit: None,
@@ -48,9 +67,111 @@ fn main() {
             })
             .unwrap();
 
+        for vertex in scan_vertices {
+            println!("{:?}", vertex);
+            println!("{:?}", vertex.get_property(&NameOrId::Id(0)).unwrap());
+        }
+
+        println!("========== test get_vertex =========");
+        let vertices = graph
+            .get_vertex(
+                &[0, 1, 2, 3],
+                &QueryParams {
+                    labels: vec![],
+                    limit: None,
+                    columns: Some(vec![NameOrId::Id(0), NameOrId::Id(1)]),
+                    partitions: None,
+                    filter: None,
+                    sample_ratio: None,
+                    extra_params: None,
+                },
+            )
+            .unwrap();
+
         for vertex in vertices {
             println!("{:?}", vertex);
             println!("{:?}", vertex.get_property(&NameOrId::Id(0)).unwrap());
+            println!("{:?}", vertex.get_property(&NameOrId::Id(1)).unwrap());
+            println!("{:?}", vertex.get_property(&NameOrId::Id(2)).unwrap());
+        }
+
+        println!("========== test index_scan_vertex =========");
+        let index_scan_vertex = graph
+            .index_scan_vertex(
+                0,
+                &PKV::from((NameOrId::Id(2), Object::Primitive(dyn_type::Primitives::Long(1)))),
+                &QueryParams::default(),
+            )
+            .unwrap();
+
+        if let Some(vertex) = index_scan_vertex {
+            println!("{:?}", vertex);
+            // TODO: this is to fetch from the storage;
+            // But it can be optimized as once we fetch the vertex, we can cache it in the graph proxy
+            println!("{:?}", vertex.get_property(&NameOrId::Id(0)).unwrap());
+            println!("{:?}", vertex.get_property(&NameOrId::Id(1)).unwrap());
+            println!("{:?}", vertex.get_property(&NameOrId::Id(2)).unwrap());
+        }
+
+        println!("========== test get_adj_list =========");
+        let neighbor_stmt = graph
+            .prepare_explore_vertex(
+                graph_proxy::apis::Direction::Both,
+                &QueryParams {
+                    labels: vec![0, 1],
+                    limit: None,
+                    columns: None,
+                    partitions: None,
+                    filter: None,
+                    sample_ratio: None,
+                    extra_params: None,
+                },
+            )
+            .unwrap();
+
+        // out results
+        // vadas's None
+        // peter's lop
+        // josh's lop, ripple
+        // marko's vadas, josh, lop
+
+        // in results
+        // vadas's marko
+        // peter's None
+        // josh's marko
+        // marko's None
+
+        for gid in &[0, 1, 2, 3] {
+            let neighbor_list = neighbor_stmt.exec(*gid).unwrap();
+            println!("gid: {}, ", gid);
+            for neighbor in neighbor_list {
+                println!("neighbor {:?}", neighbor);
+                println!("neighbor name {:?}", neighbor.get_property(&NameOrId::Id(0)).unwrap());
+            }
+        }
+
+        println!("========== test get_adj_edge_list =========");
+        let neighbor_stmt = graph
+            .prepare_explore_edge(
+                graph_proxy::apis::Direction::Both,
+                &QueryParams {
+                    labels: vec![0, 1],
+                    limit: None,
+                    columns: None,
+                    partitions: None,
+                    filter: None,
+                    sample_ratio: None,
+                    extra_params: None,
+                },
+            )
+            .unwrap();
+
+        for gid in &[0, 1, 2, 3] {
+            let neighbor_list = neighbor_stmt.exec(*gid).unwrap();
+            println!("gid: {}, ", gid);
+            for neighbor in neighbor_list {
+                println!("neighbor {:?}", neighbor);
+            }
         }
     }
 }
