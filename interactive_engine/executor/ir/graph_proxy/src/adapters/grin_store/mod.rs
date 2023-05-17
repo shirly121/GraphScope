@@ -1,5 +1,5 @@
 //
-//! Copyright 2021 Alibaba Group Holding Limited.
+//! Copyright 2023 Alibaba Group Holding Limited.
 //!
 //! Licensed under the Apache License, Version 2.0 (the "License");
 //! you may not use this file except in compliance with the License.
@@ -13,18 +13,9 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-mod csr_store;
-mod exp_store;
-mod grin_store;
-#[cfg(feature = "with_global_query")]
-mod gs_store;
-#[cfg(feature = "with_global_query")]
-mod vineyard_store;
+mod details;
+mod native_utils;
+mod partitioner;
+mod read_graph;
 
-pub use csr_store::create_csr_store;
-pub use exp_store::{create_exp_store, SimplePartition};
-pub use grin_store::create_grin_store;
-#[cfg(feature = "with_global_query")]
-pub use gs_store::{create_gs_store, GraphScopeStore, GrootMultiPartition, VineyardMultiPartition};
-#[cfg(feature = "with_global_query")]
-pub use vineyard_store::VineyardGraphWriter;
+pub use read_graph::create_grin_store;

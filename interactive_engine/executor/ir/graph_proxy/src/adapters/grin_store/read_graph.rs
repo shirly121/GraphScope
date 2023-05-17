@@ -1,21 +1,45 @@
+//
+//! Copyright 2023 Alibaba Group Holding Limited.
+//!
+//! Licensed under the Apache License, Version 2.0 (the "License");
+//! you may not use this file except in compliance with the License.
+//! You may obtain a copy of the License at
+//!
+//! http://www.apache.org/licenses/LICENSE-2.0
+//!
+//! Unless required by applicable law or agreed to in writing, software
+//! distributed under the License is distributed on an "AS IS" BASIS,
+//! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//! See the License for the specific language governing permissions and
+//! limitations under the License.
+
 use std::sync::Arc;
 use std::{fmt, vec};
 
 use ahash::{HashMap, HashMapExt};
 use dyn_type::{Object, Primitives};
-use graph_proxy::apis::graph::ID;
-use graph_proxy::apis::{
-    from_fn, Direction, DynDetails, Edge as RuntimeEdge, QueryParams, ReadGraph, Vertex as RuntimeVertex,
-};
-use graph_proxy::utils::expr::eval_pred::PEvaluator;
-use graph_proxy::{GraphProxyError, GraphProxyResult};
+use grin::grin_v6d::*;
 use ir_common::{LabelId, NameOrId, OneOrMany};
 
-use crate::grin_details::{LazyEdgeDetails, LazyVertexDetails};
-use crate::grin_v6d::*;
-use crate::native_utils::*;
+use crate::adapters::grin_store::details::{LazyEdgeDetails, LazyVertexDetails};
+use crate::adapters::grin_store::native_utils::*;
+use crate::apis::graph::{ID, PKV};
+use crate::apis::{
+    from_fn, register_graph, Direction, DynDetails, Edge as RuntimeEdge, QueryParams, ReadGraph, Statement,
+    Vertex as RuntimeVertex,
+};
+use crate::utils::expr::eval_pred::PEvaluator;
+use crate::{filter_limit, filter_sample_limit, limit_n, sample_limit};
+use crate::{GraphProxyError, GraphProxyResult};
 
 const FAKE_EDGE_ID: i64 = 0;
+
+#[allow(dead_code)]
+pub fn create_grin_store(store: GrinPartitionedGraph) {
+    let grin_graph_proxy = GrinGraphProxy::new(store).unwrap();
+    let graph = GrinGraphRuntime::from(grin_graph_proxy);
+    register_graph(Arc::new(graph));
+}
 
 /// Get value of certain type of vertex property from the grin-enabled graph, and turn it into
 /// `Object` accessible to the runtime.
@@ -920,7 +944,7 @@ impl GrinGraphProxy {
     }
 
     pub fn get_vertex_by_index(
-        &self, grin_type_id: GrinVertexTypeId, primary_key: &graph_proxy::apis::graph::PKV,
+        &self, grin_type_id: GrinVertexTypeId, primary_key: &PKV,
     ) -> GraphProxyResult<Option<GrinIdVertexProxy>> {
         unsafe {
             let any_grin_graph = self
@@ -1084,7 +1108,7 @@ impl ReadGraph for GrinGraphRuntime {
     }
 
     fn index_scan_vertex(
-        &self, label: LabelId, primary_key: &graph_proxy::apis::graph::PKV, _params: &QueryParams,
+        &self, label: LabelId, primary_key: &PKV, _params: &QueryParams,
     ) -> GraphProxyResult<Option<RuntimeVertex>> {
         // TODO(bingqing): confirm partition
         let store = self.store.clone();
@@ -1097,7 +1121,7 @@ impl ReadGraph for GrinGraphRuntime {
 
     fn scan_edge(
         &self, _params: &QueryParams,
-    ) -> GraphProxyResult<Box<dyn Iterator<Item = graph_proxy::apis::Edge> + Send>> {
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeEdge> + Send>> {
         Err(GraphProxyError::unsupported_error("scan_edge() in GrinGraphRuntime"))
     }
 
@@ -1125,13 +1149,13 @@ impl ReadGraph for GrinGraphRuntime {
 
     fn get_edge(
         &self, _ids: &[ID], _params: &QueryParams,
-    ) -> GraphProxyResult<Box<dyn Iterator<Item = graph_proxy::apis::Edge> + Send>> {
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeEdge> + Send>> {
         Err(GraphProxyError::unsupported_error("get_edge() in GrinGraphRuntime"))
     }
 
     fn prepare_explore_vertex(
         &self, direction: Direction, params: &QueryParams,
-    ) -> GraphProxyResult<Box<dyn graph_proxy::apis::Statement<ID, RuntimeVertex>>> {
+    ) -> GraphProxyResult<Box<dyn Statement<ID, RuntimeVertex>>> {
         let store = self.store.clone();
         let edge_type_ids: Vec<GrinEdgeTypeId> = params
             .labels
@@ -1177,8 +1201,8 @@ impl ReadGraph for GrinGraphRuntime {
     }
 
     fn prepare_explore_edge(
-        &self, direction: graph_proxy::apis::Direction, params: &QueryParams,
-    ) -> GraphProxyResult<Box<dyn graph_proxy::apis::Statement<ID, graph_proxy::apis::Edge>>> {
+        &self, direction: Direction, params: &QueryParams,
+    ) -> GraphProxyResult<Box<dyn Statement<ID, RuntimeEdge>>> {
         let store = self.store.clone();
         let edge_type_ids: Vec<GrinEdgeTypeId> = params
             .labels
@@ -1234,7 +1258,7 @@ impl ReadGraph for GrinGraphRuntime {
         Ok(stmt)
     }
 
-    fn get_primary_key(&self, _id: &ID) -> GraphProxyResult<Option<graph_proxy::apis::graph::PKV>> {
+    fn get_primary_key(&self, _id: &ID) -> GraphProxyResult<Option<PKV>> {
         todo!()
     }
 }

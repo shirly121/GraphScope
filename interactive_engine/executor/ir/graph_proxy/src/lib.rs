@@ -17,11 +17,12 @@
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
-pub use adapters::{create_csr_store, create_exp_store, SimplePartition};
 #[cfg(feature = "with_global_query")]
 pub use adapters::{
-    create_gs_store, GraphScopeStore, GrootMultiPartition, VineyardGraphWriter, VineyardMultiPartition,
+    create_csr_store, create_exp_store, create_grin_store, create_gs_store, CsrPartition, GraphScopeStore,
+    GrootMultiPartition, SimplePartition, VineyardGraphWriter, VineyardMultiPartition,
 };
+pub use adapters::{create_csr_store, create_exp_store, SimplePartition};
 pub use errors::{GraphProxyError, GraphProxyResult};
 
 mod adapters;
