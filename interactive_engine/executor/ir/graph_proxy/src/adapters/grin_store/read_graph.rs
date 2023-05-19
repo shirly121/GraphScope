@@ -19,25 +19,23 @@ use std::{fmt, vec};
 use ahash::{HashMap, HashMapExt};
 use dyn_type::{Object, Primitives};
 use grin::grin_v6d::*;
+use grin::{string_c2rust, string_rust2c};
 use ir_common::{LabelId, NameOrId, OneOrMany};
 
 use crate::adapters::grin_store::details::{LazyEdgeDetails, LazyVertexDetails};
-use crate::adapters::grin_store::native_utils::*;
 use crate::apis::graph::{ID, PKV};
 use crate::apis::{
     from_fn, register_graph, Direction, DynDetails, Edge as RuntimeEdge, QueryParams, ReadGraph, Statement,
     Vertex as RuntimeVertex,
 };
-use crate::utils::expr::eval_pred::PEvaluator;
 use crate::{filter_limit, filter_sample_limit, limit_n, sample_limit};
 use crate::{GraphProxyError, GraphProxyResult};
 
 const FAKE_EDGE_ID: i64 = 0;
 
 #[allow(dead_code)]
-pub fn create_grin_store(store: GrinPartitionedGraph) {
-    let grin_graph_proxy = GrinGraphProxy::new(store).unwrap();
-    let graph = GrinGraphRuntime::from(grin_graph_proxy);
+pub fn create_grin_store(store: Arc<GrinGraphProxy>) {
+    let graph = GrinGraphRuntime::from(store);
     register_graph(Arc::new(graph));
 }
 
@@ -480,6 +478,7 @@ unsafe impl Send for GrinVertexIter {}
 unsafe impl Sync for GrinVertexIter {}
 
 /// A proxy for handling an id-only-vertex (the vertex with no properties) in a grin-enabled store.
+/// TODO: may not necessary. can directly build RuntimeVertex instead of GrinIdVertexProxy
 pub struct GrinIdVertexProxy {
     /// The decoded identifier of the `vertex`, currently obtained via `grin_get_vertex_ref_by_vertex()`
     vertex_id: i64,
@@ -689,8 +688,8 @@ impl Iterator for GrinAdjEdgeIter {
                 if let Some(ref mut iter) = self.curr_iter {
                     if !grin_is_adjacent_list_end(self.graph, *iter) {
                         let edge_handle = grin_get_edge_from_adjacent_list_iter(self.graph, *iter);
-                        // a null vertex handle is unacceptable at the current stage
-                        assert_ne!(edge_handle, GRIN_NULL_VERTEX);
+                        // a null edge handle is unacceptable at the current stage
+                        assert_ne!(edge_handle, GRIN_NULL_EDGE);
                         grin_get_next_adjacent_list_iter(self.graph, *iter);
                         return Some(GrinEdgeProxy::new(self.graph, edge_handle));
                     } else {
@@ -836,7 +835,8 @@ impl GrinEdgeProxy {
             let dst_vertex_type_id = get_vertex_type_id(self.graph, dst_vertex)?;
             grin_destroy_vertex(self.graph, src_vertex);
             grin_destroy_vertex(self.graph, dst_vertex);
-            let edge_id = FAKE_EDGE_ID;
+            // TODO(bingqing): this is a hack eid, we may use `edge_id` returned by storage if supported.
+            let edge_id = src_vertex_id << 32 | dst_vertex_id;
             let edge_type_id = grin_get_edge_type_id(self.graph, self.edge_type);
             let details = LazyEdgeDetails::new(self, prop_keys.cloned());
             let mut edge = RuntimeEdge::with_from_src(
@@ -855,6 +855,7 @@ impl GrinEdgeProxy {
 }
 
 /// A proxy for better handling Grin's graph related operations.
+// TODO(bingqing): optimize if only one partition in current process.
 pub struct GrinGraphProxy {
     /// The partitioned graph handle in the current process
     partitioned_graph: GrinPartitionedGraph,
@@ -916,12 +917,14 @@ impl GrinGraphProxy {
         self.graphs.values().next().cloned()
     }
 
-    /// Get all vertices in the given partitions and vertex types, with optional some
-    /// filtering conditions that may be pushed down to the store (TODO(longbin)).
+    pub fn get_local_partition_ids(&self) -> Vec<GrinPartitionId> {
+        self.graphs.keys().cloned().collect()
+    }
+
+    /// Get all vertices in the given partitions and vertex types.
     /// Return an iterator for scanning the vertices.
     pub fn get_all_vertices(
         &self, partitions: &Vec<GrinPartitionId>, label_ids: &Vec<GrinVertexTypeId>,
-        _row_filter: Option<Arc<PEvaluator>>,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinVertexProxy> + Send>> {
         let mut results = Vec::new();
         for partition in partitions {
@@ -1041,16 +1044,17 @@ impl GrinGraphProxy {
         }
     }
 
-    fn get_partition_id_by_vertex_id(&self, vertex_id: i64) -> GraphProxyResult<GrinPartitionId> {
+    pub fn get_partition_id_by_vertex_id(&self, vertex_id: i64) -> GraphProxyResult<GrinPartitionId> {
         unsafe {
             let any_grin_graph = self
                 .get_any_local_graph()
                 .ok_or(GraphProxyError::QueryStoreError(
                     "No graph is found in the current process".to_string(),
                 ))?;
-            let partition = grin_get_master_partition_from_vertex_ref(any_grin_graph, vertex_id);
+            let vertex_ref = grin_deserialize_int64_to_vertex_ref(any_grin_graph, vertex_id);
+            let partition = grin_get_master_partition_from_vertex_ref(any_grin_graph, vertex_ref);
             let partition_id = grin_get_partition_id(self.partitioned_graph, partition);
-            grin_destroy_partition(any_grin_graph, partition);
+            grin_destroy_partition(self.partitioned_graph, partition);
             Ok(partition_id)
         }
     }
@@ -1064,9 +1068,9 @@ pub struct GrinGraphRuntime {
     store: Arc<GrinGraphProxy>,
 }
 
-impl From<GrinGraphProxy> for GrinGraphRuntime {
-    fn from(graph: GrinGraphProxy) -> Self {
-        GrinGraphRuntime { store: Arc::new(graph) }
+impl From<Arc<GrinGraphProxy>> for GrinGraphRuntime {
+    fn from(graph: Arc<GrinGraphProxy>) -> Self {
+        GrinGraphRuntime { store: graph }
     }
 }
 
@@ -1077,6 +1081,7 @@ impl ReadGraph for GrinGraphRuntime {
     fn scan_vertex(
         &self, params: &QueryParams,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeVertex> + Send>> {
+        // TODO(bingqing): confirm no duplicated vertex in the result
         if let Some(partitions) = params.partitions.as_ref() {
             let store = self.store.clone();
             let label_ids: Vec<GrinVertexTypeId> = params
@@ -1094,14 +1099,14 @@ impl ReadGraph for GrinGraphRuntime {
             let columns = params.columns.clone();
 
             let result_iter = store
-                .get_all_vertices(partitions.as_ref(), &label_ids, row_filter)?
+                .get_all_vertices(partitions.as_ref(), &label_ids)?
                 .map(move |graph_proxy| {
                     graph_proxy
                         .into_runtime_vertex(columns.as_ref())
                         .unwrap()
                 });
 
-            Ok(sample_limit!(result_iter, params.sample_ratio, params.limit))
+            Ok(filter_sample_limit!(result_iter, row_filter, params.sample_ratio, params.limit))
         } else {
             Ok(Box::new(std::iter::empty()))
         }
@@ -1110,7 +1115,7 @@ impl ReadGraph for GrinGraphRuntime {
     fn index_scan_vertex(
         &self, label: LabelId, primary_key: &PKV, _params: &QueryParams,
     ) -> GraphProxyResult<Option<RuntimeVertex>> {
-        // TODO(bingqing): confirm partition
+        // TODO(bingqing): confirm no duplicated vertex in the result
         let store = self.store.clone();
         let vertex_type_id = label as GrinVertexTypeId;
         let result = store
@@ -1142,9 +1147,8 @@ impl ReadGraph for GrinGraphRuntime {
                 .into_runtime_vertex(columns.as_ref())
                 .unwrap()
         });
-        // TODO: filter_limit!
-        // Ok(filter_limit!(result_iter, row_filter, None))
-        Ok(sample_limit!(result_iter, params.sample_ratio, params.limit))
+
+        Ok(filter_limit!(result_iter, row_filter, None))
     }
 
     fn get_edge(
@@ -1157,6 +1161,7 @@ impl ReadGraph for GrinGraphRuntime {
         &self, direction: Direction, params: &QueryParams,
     ) -> GraphProxyResult<Box<dyn Statement<ID, RuntimeVertex>>> {
         let store = self.store.clone();
+        let row_filter = params.filter.clone();
         let edge_type_ids: Vec<GrinEdgeTypeId> = params
             .labels
             .iter()
@@ -1164,38 +1169,28 @@ impl ReadGraph for GrinGraphRuntime {
             .collect();
         let stmt = from_fn(move |vertex_id: ID| match direction {
             Direction::Out => {
-                let neighbor_vertex_iter =
-                    store.get_neighbor_vertices(vertex_id, GRIN_DIRECTION_OUT, &edge_type_ids)?;
-                Ok(Box::new(
-                    neighbor_vertex_iter
-                        .into_iter()
-                        .map(|vertex_proxy| vertex_proxy.into_runtime_vertex()),
-                ))
+                let neighbor_vertex_iter = store
+                    .get_neighbor_vertices(vertex_id, GRIN_DIRECTION_OUT, &edge_type_ids)?
+                    .map(|vertex_proxy| vertex_proxy.into_runtime_vertex());
+                Ok(filter_limit!(neighbor_vertex_iter, row_filter, None))
             }
             Direction::In => {
-                let neighbor_vertex_iter =
-                    store.get_neighbor_vertices(vertex_id, GRIN_DIRECTION_IN, &edge_type_ids)?;
-                Ok(Box::new(
-                    neighbor_vertex_iter
-                        .into_iter()
-                        .map(|vertex_proxy| vertex_proxy.into_runtime_vertex()),
-                ))
+                let neighbor_vertex_iter = store
+                    .get_neighbor_vertices(vertex_id, GRIN_DIRECTION_IN, &edge_type_ids)?
+                    .map(|vertex_proxy| vertex_proxy.into_runtime_vertex());
+                Ok(filter_limit!(neighbor_vertex_iter, row_filter, None))
             }
             Direction::Both => {
                 let out_neighbor_vertex_iter =
                     store.get_neighbor_vertices(vertex_id, GRIN_DIRECTION_OUT, &edge_type_ids)?;
                 let in_neighbor_vertex_iter =
                     store.get_neighbor_vertices(vertex_id, GRIN_DIRECTION_IN, &edge_type_ids)?;
-                Ok(Box::new(
-                    out_neighbor_vertex_iter
-                        .chain(in_neighbor_vertex_iter)
-                        .into_iter()
-                        .map(|vertex_proxy| vertex_proxy.into_runtime_vertex()),
-                ))
+                let neighbor_vertex_iter = out_neighbor_vertex_iter
+                    .chain(in_neighbor_vertex_iter)
+                    .map(|vertex_proxy| vertex_proxy.into_runtime_vertex());
+                Ok(filter_limit!(neighbor_vertex_iter, row_filter, None))
             }
         });
-
-        // TODO: filter_limit!
         // TODO: may not reasonable to assume GrinIdVertexProxy; But can also be GrinVertexProxy
         Ok(stmt)
     }
@@ -1204,6 +1199,7 @@ impl ReadGraph for GrinGraphRuntime {
         &self, direction: Direction, params: &QueryParams,
     ) -> GraphProxyResult<Box<dyn Statement<ID, RuntimeEdge>>> {
         let store = self.store.clone();
+        let row_filter = params.filter.clone();
         let edge_type_ids: Vec<GrinEdgeTypeId> = params
             .labels
             .iter()
@@ -1222,7 +1218,7 @@ impl ReadGraph for GrinGraphRuntime {
                                 .into_runtime_edge(columns.as_ref(), true)
                                 .unwrap()
                         });
-                    Ok(Box::new(neighbor_edge_iter))
+                    Ok(filter_limit!(neighbor_edge_iter, row_filter, None))
                 }
                 Direction::In => {
                     let neighbor_edge_iter = store
@@ -1232,7 +1228,7 @@ impl ReadGraph for GrinGraphRuntime {
                                 .into_runtime_edge(columns.as_ref(), false)
                                 .unwrap()
                         });
-                    Ok(Box::new(neighbor_edge_iter))
+                    Ok(filter_limit!(neighbor_edge_iter, row_filter, None))
                 }
                 Direction::Both => {
                     let out_neighbor_edge_iter = store
@@ -1249,7 +1245,7 @@ impl ReadGraph for GrinGraphRuntime {
                                 .into_runtime_edge(columns_clone.as_ref(), false)
                                 .unwrap()
                         });
-                    Ok(Box::new(out_neighbor_edge_iter.chain(in_neighbor_edge_iter)))
+                    Ok(filter_limit!(out_neighbor_edge_iter.chain(in_neighbor_edge_iter), row_filter, None))
                 }
             }
         });

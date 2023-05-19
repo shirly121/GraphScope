@@ -23,7 +23,7 @@ mod vineyard_store;
 
 pub use csr_store::create_csr_store;
 pub use exp_store::{create_exp_store, SimplePartition};
-pub use grin_store::create_grin_store;
+pub use grin_store::{create_grin_store, GrinGraphProxy, GrinPartition};
 #[cfg(feature = "with_global_query")]
 pub use gs_store::{create_gs_store, GraphScopeStore, GrootMultiPartition, VineyardMultiPartition};
 #[cfg(feature = "with_global_query")]

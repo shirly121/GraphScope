@@ -14,8 +14,8 @@
 //! limitations under the License.
 
 mod details;
-mod native_utils;
 mod partitioner;
 mod read_graph;
 
-pub use read_graph::create_grin_store;
+pub use partitioner::GrinPartition;
+pub use read_graph::{create_grin_store, GrinGraphProxy};
