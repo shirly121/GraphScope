@@ -109,8 +109,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .clone();
         let partition_server_index_map = compute_partition_server_mapping(process_partition_lists)?;
         info!(
-            "server_index: {:?}, partition_server_index_map: {:?}",
-            server_index, partition_server_index_map
+            "server_index: {:?}, partition_server_index_map: {:?}, computed_process_partition_list {:?}",
+            server_index, partition_server_index_map, computed_process_partition_list
         );
 
         let query_grin = QueryGrin::new(Arc::new(grin_graph_proxy), partition_server_index_map, computed_process_partition_list);

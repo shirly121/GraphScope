@@ -31,8 +31,6 @@ use crate::apis::{
 use crate::{filter_limit, filter_sample_limit, limit_n, sample_limit};
 use crate::{GraphProxyError, GraphProxyResult};
 
-const FAKE_EDGE_ID: i64 = 0;
-
 #[allow(dead_code)]
 pub fn create_grin_store(store: Arc<GrinGraphProxy>) {
     let graph = GrinGraphRuntime::from(store);
@@ -225,7 +223,7 @@ pub struct GrinVertexProxy {
 impl Drop for GrinVertexProxy {
     fn drop(&mut self) {
         unsafe {
-            println!("drop vertex...");
+            //  println!("drop vertex...");
             grin_destroy_vertex_type(self.graph, self.vertex_type);
             grin_destroy_vertex(self.graph, self.vertex);
             grin_destroy_vertex_property_table(self.graph, self.prop_table);
@@ -362,10 +360,16 @@ pub struct GrinVertexIter {
 impl GrinVertexIter {
     pub fn new(graph: GrinGraph, vertex_type_ids: &Vec<GrinVertexTypeId>) -> GraphProxyResult<Self> {
         unsafe {
-            let vertex_list = grin_get_vertex_list(graph);
-            if vertex_list.is_null() {
+            let master_mirror_vertex_list = grin_get_vertex_list(graph);
+            if master_mirror_vertex_list == GRIN_NULL_LIST {
                 return Err(GraphProxyError::QueryStoreError(
                     "`grin_get_vertex_list` returns null".to_string(),
+                ));
+            }
+            let vertex_list = grin_select_master_for_vertex_list(graph, master_mirror_vertex_list);
+            if vertex_list == GRIN_NULL_LIST {
+                return Err(GraphProxyError::QueryStoreError(
+                    "`grin_select_master_for_vertex_list` returns null".to_string(),
                 ));
             }
             let vertex_iter = grin_get_vertex_list_begin(graph, vertex_list);
@@ -742,7 +746,7 @@ pub struct GrinEdgeProxy {
 impl Drop for GrinEdgeProxy {
     fn drop(&mut self) {
         unsafe {
-            println!("drop edge ...");
+            //   println!("drop edge ...");
             grin_destroy_edge_type(self.graph, self.edge_type);
             grin_destroy_edge(self.graph, self.edge);
             grin_destroy_edge_property_table(self.graph, self.prop_table);
@@ -913,8 +917,12 @@ impl GrinGraphProxy {
         self.graphs.get(&partition_id).cloned()
     }
 
-    pub fn get_any_local_graph(&self) -> Option<GrinGraph> {
-        self.graphs.values().next().cloned()
+    pub fn get_any_local_graph(&self) -> GraphProxyResult<GrinGraph> {
+        self.graphs
+            .values()
+            .next()
+            .cloned()
+            .ok_or(GraphProxyError::QueryStoreError("No local graph found in current process".to_string()))
     }
 
     pub fn get_local_partition_ids(&self) -> Vec<GrinPartitionId> {
@@ -950,11 +958,7 @@ impl GrinGraphProxy {
         &self, grin_type_id: GrinVertexTypeId, primary_key: &PKV,
     ) -> GraphProxyResult<Option<GrinIdVertexProxy>> {
         unsafe {
-            let any_grin_graph = self
-                .get_any_local_graph()
-                .ok_or(GraphProxyError::QueryStoreError(
-                    "No graph is found in the current process".to_string(),
-                ))?;
+            let any_grin_graph = self.get_any_local_graph()?;
 
             let grin_vertex_type = grin_get_vertex_type_by_id(any_grin_graph, grin_type_id);
             let grin_row = grin_create_row(any_grin_graph);
@@ -981,9 +985,9 @@ impl GrinGraphProxy {
     pub fn get_neighbor_vertices(
         &self, vertex_id: i64, grin_direction: GrinDirection, edge_type_ids: &Vec<GrinEdgeTypeId>,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinIdVertexProxy> + Send>> {
-        let grin_vertex = self.get_vertex_by_id(vertex_id)?;
         let partition_id = self.get_partition_id_by_vertex_id(vertex_id)?;
         if let Some(graph) = self.graphs.get(&partition_id).cloned() {
+            let grin_vertex = self.get_vertex_by_id(graph, vertex_id)?;
             let neighbor_vertices_iter =
                 GrinAdjVertexIter::new(graph, grin_vertex, grin_direction, edge_type_ids)?;
             Ok(Box::new(neighbor_vertices_iter))
@@ -998,9 +1002,9 @@ impl GrinGraphProxy {
     pub fn get_neighbor_edges(
         &self, vertex_id: i64, grin_direction: GrinDirection, edge_type_ids: &Vec<GrinEdgeTypeId>,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinEdgeProxy> + Send>> {
-        let grin_vertex = self.get_vertex_by_id(vertex_id)?;
         let partition_id = self.get_partition_id_by_vertex_id(vertex_id)?;
         if let Some(graph) = self.graphs.get(&partition_id).cloned() {
+            let grin_vertex = self.get_vertex_by_id(graph, vertex_id)?;
             let neighbor_edges_iter =
                 GrinAdjEdgeIter::new(graph, grin_vertex, grin_direction, edge_type_ids)?;
             Ok(Box::new(neighbor_edges_iter))
@@ -1016,7 +1020,7 @@ impl GrinGraphProxy {
     pub fn get_vertex(&self, vertex_id: i64) -> GraphProxyResult<GrinVertexProxy> {
         let partition_id = self.get_partition_id_by_vertex_id(vertex_id)?;
         if let Some(graph) = self.graphs.get(&partition_id).cloned() {
-            let grin_vertex = self.get_vertex_by_id(vertex_id)?;
+            let grin_vertex = self.get_vertex_by_id(graph, vertex_id)?;
             let grin_vertex_proxy = GrinVertexProxy::new(graph, grin_vertex);
             Ok(grin_vertex_proxy)
         } else {
@@ -1027,33 +1031,24 @@ impl GrinGraphProxy {
         }
     }
 
-    fn get_vertex_by_id(&self, vertex_id: i64) -> GraphProxyResult<GrinVertex> {
+    pub fn get_vertex_by_id(&self, grin_graph: GrinGraph, vertex_id: i64) -> GraphProxyResult<GrinVertex> {
         unsafe {
-            let any_grin_graph = self
-                .get_any_local_graph()
-                .ok_or(GraphProxyError::QueryStoreError(
-                    "No graph is found in the current process".to_string(),
-                ))?;
-
-            let vertex_ref = grin_deserialize_int64_to_vertex_ref(any_grin_graph, vertex_id);
+            let vertex_ref = grin_deserialize_int64_to_vertex_ref(grin_graph, vertex_id);
             assert_ne!(vertex_ref, GRIN_NULL_VERTEX_REF);
-            let vertex = grin_get_vertex_from_vertex_ref(any_grin_graph, vertex_ref);
+            let vertex = grin_get_vertex_from_vertex_ref(grin_graph, vertex_ref);
             assert_ne!(vertex, GRIN_NULL_VERTEX);
-            grin_destroy_vertex_ref(any_grin_graph, vertex_ref);
+            grin_destroy_vertex_ref(grin_graph, vertex_ref);
             Ok(vertex)
         }
     }
 
     pub fn get_partition_id_by_vertex_id(&self, vertex_id: i64) -> GraphProxyResult<GrinPartitionId> {
         unsafe {
-            let any_grin_graph = self
-                .get_any_local_graph()
-                .ok_or(GraphProxyError::QueryStoreError(
-                    "No graph is found in the current process".to_string(),
-                ))?;
+            let any_grin_graph = self.get_any_local_graph()?;
             let vertex_ref = grin_deserialize_int64_to_vertex_ref(any_grin_graph, vertex_id);
             let partition = grin_get_master_partition_from_vertex_ref(any_grin_graph, vertex_ref);
             let partition_id = grin_get_partition_id(self.partitioned_graph, partition);
+            grin_destroy_vertex_ref(any_grin_graph, vertex_ref);
             grin_destroy_partition(self.partitioned_graph, partition);
             Ok(partition_id)
         }
