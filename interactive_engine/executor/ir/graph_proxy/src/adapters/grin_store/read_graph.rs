@@ -41,28 +41,24 @@ pub fn create_grin_store(store: Arc<GrinGraphProxy>) {
 /// `Object` accessible to the runtime.
 #[inline]
 fn get_vertex_propoerty_as_object(
-    graph: GrinGraph, vertex: GrinVertex, prop_table: GrinVertexPropertyTable,
-    prop_handle: GrinVertexProperty,
+    graph: GrinGraph, vertex: GrinVertex, prop_handle: GrinVertexProperty,
 ) -> GraphProxyResult<Object> {
     unsafe {
         let prop_type = grin_get_vertex_property_datatype(graph, prop_handle);
         let result = if prop_type == GRIN_DATATYPE_INT32 {
-            Ok(grin_get_int32_from_vertex_property_table(graph, prop_table, vertex, prop_handle).into())
+            Ok(grin_get_vertex_property_value_of_int32(graph, vertex, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_INT64 {
-            Ok(grin_get_int64_from_vertex_property_table(graph, prop_table, vertex, prop_handle).into())
+            Ok(grin_get_vertex_property_value_of_int64(graph, vertex, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_UINT32 {
-            Ok((grin_get_uint32_from_vertex_property_table(graph, prop_table, vertex, prop_handle) as u64)
-                .into())
+            Ok((grin_get_vertex_property_value_of_uint32(graph, vertex, prop_handle) as u64).into())
         } else if prop_type == GRIN_DATATYPE_UINT64 {
-            Ok(grin_get_uint64_from_vertex_property_table(graph, prop_table, vertex, prop_handle).into())
+            Ok(grin_get_vertex_property_value_of_uint64(graph, vertex, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_FLOAT {
-            Ok((grin_get_float_from_vertex_property_table(graph, prop_table, vertex, prop_handle) as f64)
-                .into())
+            Ok((grin_get_vertex_property_value_of_float(graph, vertex, prop_handle) as f64).into())
         } else if prop_type == GRIN_DATATYPE_DOUBLE {
-            Ok(grin_get_double_from_vertex_property_table(graph, prop_table, vertex, prop_handle).into())
+            Ok(grin_get_vertex_property_value_of_double(graph, vertex, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_STRING {
-            let c_str =
-                grin_get_string_from_vertex_property_table(graph, prop_table, vertex, prop_handle).into();
+            let c_str = grin_get_vertex_property_value_of_string(graph, vertex, prop_handle).into();
             let rust_str = string_c2rust(c_str);
             grin_destroy_string_value(graph, c_str);
             Ok(Object::String(rust_str))
@@ -80,27 +76,24 @@ fn get_vertex_propoerty_as_object(
 /// `Object` accessible to the runtime.
 #[inline]
 fn get_edge_property_as_object(
-    graph: GrinGraph, edge: GrinEdge, prop_table: GrinEdgePropertyTable, prop_handle: GrinEdgeProperty,
+    graph: GrinGraph, edge: GrinEdge, prop_handle: GrinEdgeProperty,
 ) -> GraphProxyResult<Object> {
     unsafe {
         let prop_type = grin_get_edge_property_datatype(graph, prop_handle);
         let result = if prop_type == GRIN_DATATYPE_INT32 {
-            Ok(grin_get_int32_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+            Ok(grin_get_edge_property_value_of_int32(graph, edge, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_INT64 {
-            Ok(grin_get_int64_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+            Ok(grin_get_edge_property_value_of_int64(graph, edge, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_UINT32 {
-            Ok((grin_get_uint32_from_edge_property_table(graph, prop_table, edge, prop_handle) as u64)
-                .into())
+            Ok((grin_get_edge_property_value_of_uint32(graph, edge, prop_handle) as u64).into())
         } else if prop_type == GRIN_DATATYPE_UINT64 {
-            Ok(grin_get_uint64_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+            Ok(grin_get_edge_property_value_of_uint64(graph, edge, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_FLOAT {
-            Ok((grin_get_float_from_edge_property_table(graph, prop_table, edge, prop_handle) as f64)
-                .into())
+            Ok((grin_get_edge_property_value_of_float(graph, edge, prop_handle) as f64).into())
         } else if prop_type == GRIN_DATATYPE_DOUBLE {
-            Ok(grin_get_double_from_edge_property_table(graph, prop_table, edge, prop_handle).into())
+            Ok(grin_get_edge_property_value_of_double(graph, edge, prop_handle).into())
         } else if prop_type == GRIN_DATATYPE_STRING {
-            let c_str =
-                grin_get_string_from_edge_property_table(graph, prop_table, edge, prop_handle).into();
+            let c_str = grin_get_edge_property_value_of_string(graph, edge, prop_handle).into();
             let rust_str = string_c2rust(c_str);
             grin_destroy_string_value(graph, c_str);
             Ok(Object::String(rust_str))
@@ -216,8 +209,6 @@ pub struct GrinVertexProxy {
     vertex: GrinVertex,
     /// The vertex type handle, for the `vertex`
     vertex_type: GrinVertexType,
-    /// The vertex property table handle, for accessing properties of the `vertex`
-    prop_table: GrinVertexPropertyTable,
 }
 
 impl Drop for GrinVertexProxy {
@@ -226,7 +217,6 @@ impl Drop for GrinVertexProxy {
             //  println!("drop vertex...");
             grin_destroy_vertex_type(self.graph, self.vertex_type);
             grin_destroy_vertex(self.graph, self.vertex);
-            grin_destroy_vertex_property_table(self.graph, self.prop_table);
         }
     }
 }
@@ -243,7 +233,6 @@ impl fmt::Debug for GrinVertexProxy {
             // .field("graph", &self.graph)
             // .field("vertex", &self.vertex)
             // .field("vertex_type", &self.vertex_type)
-            // .field("prop_table", &self.prop_table)
             .field("vertex_id", &vertex_id)
             .field("vertex_type_id", &vertex_type_id)
             .finish()
@@ -256,9 +245,8 @@ impl GrinVertexProxy {
             let vertex_type = grin_get_vertex_type(graph, vertex);
             // A vertex must have a type
             assert_ne!(vertex_type, GRIN_NULL_VERTEX_TYPE);
-            let prop_table = grin_get_vertex_property_table_by_type(graph, vertex_type);
-            assert!(!prop_table.is_null());
-            GrinVertexProxy { graph, vertex, vertex_type, prop_table }
+
+            GrinVertexProxy { graph, vertex, vertex_type }
         }
     }
 
@@ -282,8 +270,7 @@ impl GrinVertexProxy {
                     prop_key
                 )));
             }
-            let result =
-                get_vertex_propoerty_as_object(self.graph, self.vertex, self.prop_table, prop_handle);
+            let result = get_vertex_propoerty_as_object(self.graph, self.vertex, prop_handle);
             grin_destroy_vertex_property(self.graph, prop_handle);
 
             result
@@ -314,8 +301,7 @@ impl GrinVertexProxy {
                 }
                 let prop_id = grin_get_vertex_property_id(self.graph, self.vertex_type, prop_handle);
 
-                let prop_value =
-                    get_vertex_propoerty_as_object(self.graph, self.vertex, self.prop_table, prop_handle)?;
+                let prop_value = get_vertex_propoerty_as_object(self.graph, self.vertex, prop_handle)?;
                 result.insert(NameOrId::Id(prop_id as i32), prop_value);
 
                 grin_destroy_vertex_property(self.graph, prop_handle);
@@ -739,8 +725,6 @@ pub struct GrinEdgeProxy {
     edge: GrinEdge,
     /// The edge type handle, for the `edge`
     edge_type: GrinEdgeType,
-    /// The edge property table handle, for accessing properties of the `edge`
-    prop_table: GrinEdgePropertyTable,
 }
 
 impl Drop for GrinEdgeProxy {
@@ -749,7 +733,6 @@ impl Drop for GrinEdgeProxy {
             //   println!("drop edge ...");
             grin_destroy_edge_type(self.graph, self.edge_type);
             grin_destroy_edge(self.graph, self.edge);
-            grin_destroy_edge_property_table(self.graph, self.prop_table);
         }
     }
 }
@@ -762,9 +745,7 @@ impl GrinEdgeProxy {
         unsafe {
             let edge_type = grin_get_edge_type(graph, edge);
             assert_ne!(edge_type, GRIN_NULL_EDGE_TYPE);
-            let prop_table = grin_get_edge_property_table_by_type(graph, edge_type);
-            assert!(!prop_table.is_null());
-            Self { graph, edge, edge_type, prop_table }
+            Self { graph, edge, edge_type }
         }
     }
 
@@ -786,7 +767,7 @@ impl GrinEdgeProxy {
                 )));
             }
 
-            let result = get_edge_property_as_object(self.graph, self.edge, self.prop_table, prop_handle);
+            let result = get_edge_property_as_object(self.graph, self.edge, prop_handle);
             grin_destroy_edge_property(self.graph, prop_handle);
             result
         }
@@ -814,8 +795,7 @@ impl GrinEdgeProxy {
                 }
                 let prop_id = grin_get_edge_property_id(self.graph, self.edge_type, prop_handle);
 
-                let prop_value =
-                    get_edge_property_as_object(self.graph, self.edge, self.prop_table, prop_handle)?;
+                let prop_value = get_edge_property_as_object(self.graph, self.edge, prop_handle)?;
                 result.insert(NameOrId::Id(prop_id as i32), prop_value);
 
                 grin_destroy_edge_property(self.graph, prop_handle);
