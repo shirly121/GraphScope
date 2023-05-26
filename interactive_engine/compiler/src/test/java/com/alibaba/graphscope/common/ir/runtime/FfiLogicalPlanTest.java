@@ -22,6 +22,7 @@ import com.alibaba.graphscope.common.ir.runtime.ffi.FfiLogicalPlan;
 import com.alibaba.graphscope.common.ir.runtime.ffi.RelToFfiConverter;
 import com.alibaba.graphscope.common.ir.runtime.type.LogicalPlan;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+import com.alibaba.graphscope.common.ir.tools.GraphRexBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphStdOperatorTable;
 import com.alibaba.graphscope.common.ir.tools.config.*;
 import com.alibaba.graphscope.common.jna.type.FfiData;
@@ -39,7 +40,7 @@ import java.util.List;
 public class FfiLogicalPlanTest {
     // Match (x:person)-[:knows*1..3]->(:person {age: 10})
     @Test
-    public void logical_plan_test() throws Exception {
+    public void logical_plan_1_test() throws Exception {
         GraphBuilder builder = Utils.mockGraphBuilder();
         PathExpandConfig.Builder pxdBuilder = PathExpandConfig.newBuilder(builder);
         GetVConfig getVConfig =
@@ -92,7 +93,40 @@ public class FfiLogicalPlanTest {
                                         builder.getCluster(), Utils.schemaMeta, getMockPlanHints()))
                         .go(aggregate)) {
             Assert.assertEquals(
-                    FileUtils.readJsonFromResource("ffi_logical_plan.json"), ffiPlan.explain());
+                    FileUtils.readJsonFromResource("ffi_logical_plan_1.json"), ffiPlan.explain());
+        }
+    }
+
+    // Match (x:person) where x.age = $age
+    @Test
+    public void logical_plan_2_test() throws Exception {
+        GraphBuilder builder = Utils.mockGraphBuilder();
+        RelNode filter =
+                builder.source(
+                                new SourceConfig(
+                                        GraphOpt.Source.VERTEX,
+                                        new LabelConfig(false).addLabel("person"),
+                                        "x"))
+                        .filter(
+                                builder.call(
+                                        GraphStdOperatorTable.EQUALS,
+                                        builder.variable("x", "age"),
+                                        ((GraphRexBuilder) builder.getRexBuilder())
+                                                .makeGraphDynamicParam("age", 0)))
+                        .build();
+        Assert.assertEquals(
+                "GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}], alias=[x],"
+                        + " fusedFilter=[[=(DEFAULT.age, ?0)]], opt=[VERTEX])",
+                filter.explain().trim());
+        boolean isColumnId = Utils.schemaMeta.getSchema().isColumnId();
+        try (LogicalPlan<Pointer, FfiData.ByValue> ffiPlan =
+                new LogicalPlanConverter(
+                                new GraphRelShuttleWrapper(new RelToFfiConverter(isColumnId)),
+                                new FfiLogicalPlan(
+                                        builder.getCluster(), Utils.schemaMeta, getMockPlanHints()))
+                        .go(filter)) {
+            Assert.assertEquals(
+                    FileUtils.readJsonFromResource("ffi_logical_plan_2.json"), ffiPlan.explain());
         }
     }
 
