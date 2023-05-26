@@ -28,6 +28,7 @@ graph_store = {path = "../../store/exp_store"}
 dyn_type = {path = "../../common/dyn_type"}
 global_query = {path = "../../store/global_query"}
 bloom = "0.2.0"
+rand = "0.8.5"
 
 [features]
 default = []
