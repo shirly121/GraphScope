@@ -214,7 +214,7 @@ pub struct GrinVertexProxy {
 impl Drop for GrinVertexProxy {
     fn drop(&mut self) {
         unsafe {
-            //  println!("drop vertex...");
+            // println!("drop vertex...");
             grin_destroy_vertex_type(self.graph, self.vertex_type);
             grin_destroy_vertex(self.graph, self.vertex);
         }
@@ -329,12 +329,8 @@ impl GrinVertexProxy {
 pub struct GrinVertexIter {
     /// A grin graph handle, only local to the current process
     graph: GrinGraph,
-    /// A vertex list handle, used as an entry for accessing all vertices of the graph
-    vertex_list: GrinVertexList,
     /// A vertex list iterator handle, used to iterate over the vertex list
     vertex_iter: GrinVertexListIterator,
-    /// A per-type map of vertex list handles, used as an entry for accessing all vertices of specific type
-    vertex_type_list: HashMap<GrinVertexTypeId, GrinVertexList>,
     /// A per-type map of vertex list iterator handles, used iterate vertices of specific type
     vertex_type_iter: HashMap<GrinVertexTypeId, GrinVertexListIterator>,
     /// **All** (exclude `current_vertex_type`) types of vertices to scan
@@ -353,6 +349,7 @@ impl GrinVertexIter {
                 ));
             }
             let vertex_list = grin_select_master_for_vertex_list(graph, master_mirror_vertex_list);
+            grin_destroy_vertex_list(graph, master_mirror_vertex_list);
             if vertex_list == GRIN_NULL_LIST {
                 return Err(GraphProxyError::QueryStoreError(
                     "`grin_select_master_for_vertex_list` returns null".to_string(),
@@ -365,7 +362,6 @@ impl GrinVertexIter {
                 ));
             }
 
-            let mut vertex_type_list = HashMap::new();
             let mut vertex_type_iter = HashMap::new();
             let mut current_vertex_type_id = GRIN_NULL_VERTEX_TYPE;
             let mut vertex_type_ids = vertex_type_ids.clone();
@@ -392,22 +388,14 @@ impl GrinVertexIter {
                             "`grin_get_vertex_list_begin` returns null".to_string(),
                         ));
                     }
-                    vertex_type_list.insert(*vertex_type_id, vtype_list);
                     vertex_type_iter.insert(*vertex_type_id, vtype_iter);
-
+                    grin_destroy_vertex_list(graph, vtype_list);
                     grin_destroy_vertex_type(graph, vertex_type);
                 }
                 current_vertex_type_id = vertex_type_ids.pop().unwrap();
             }
-            Ok(Self {
-                graph,
-                vertex_list,
-                vertex_iter,
-                vertex_type_list,
-                vertex_type_iter,
-                vertex_type_ids,
-                current_vertex_type_id,
-            })
+            grin_destroy_vertex_list(graph, vertex_list);
+            Ok(Self { graph, vertex_iter, vertex_type_iter, vertex_type_ids, current_vertex_type_id })
         }
     }
 
@@ -424,14 +412,10 @@ impl GrinVertexIter {
 impl Drop for GrinVertexIter {
     fn drop(&mut self) {
         unsafe {
-            grin_destroy_vertex_list(self.graph, self.vertex_list);
+            println!("drop GrinVertexIter...");
             grin_destroy_vertex_list_iter(self.graph, self.vertex_iter);
-
-            for (_, list) in self.vertex_type_list.iter() {
-                grin_destroy_vertex_list(self.graph, *list);
-            }
-            for (_, iter) in self.vertex_type_iter.iter() {
-                grin_destroy_vertex_list_iter(self.graph, *iter);
+            for (_, iter) in self.vertex_type_iter.drain() {
+                grin_destroy_vertex_list_iter(self.graph, iter);
             }
         }
     }
