@@ -27,6 +27,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+extern crate bloom;
+
 pub trait JsonIO {
     /// Write the logical plan to a json via the given `writer`.
     fn into_json<W: io::Write>(self, writer: W) -> io::Result<()>;

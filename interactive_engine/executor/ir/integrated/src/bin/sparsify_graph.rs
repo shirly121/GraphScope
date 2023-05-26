@@ -44,8 +44,7 @@ pub struct Config {
 fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::from_args();
     let graph = read_graph()?;
-    let graph2 = read_graph()?;
-    dump_edge_info(get_edge_distribution(&graph2), &config.low_order_path);
+    dump_edge_info(get_edge_distribution(&graph), &config.low_order_path);
     let executed_command = "SPARSE_RATE=".to_string()
         + &config.sample_rate.to_string()
         + " SPARSE_STATISTIC_PATH="
@@ -65,9 +64,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let sparsify_rate = read_sparsify_config(&config.sparsify_rate_path);
     let mut naive_sparsify_rate = HashMap::new();
     for (key, value) in sparsify_rate.clone() {
-        naive_sparsify_rate.insert(key, value);
+        naive_sparsify_rate.insert(key, config.sample_rate);
     }
-    dump_edge_info(sparsify_rate.clone(), &config.sparsify_rate_path);
     if config.is_unique_rate == "unique" {
         create_sparsified_graph(&graph, sparsify_rate, config.export_path);
     } else {

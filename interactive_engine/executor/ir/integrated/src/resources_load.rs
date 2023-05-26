@@ -58,6 +58,11 @@ pub fn read_graph() -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error
     read_graph_from_path(&graph_path)
 }
 
+pub fn read_sparsify_graph() -> Result<LargeGraphDB<DefaultId, InternalId>, Box<dyn Error>> {
+    let graph_path = std::env::var("SPARSIFY_PATH")?;
+    read_graph_from_path(&graph_path)
+}
+
 pub fn read_graphs() -> Result<Vec<LargeGraphDB<DefaultId, InternalId>>, Box<dyn Error>> {
     let graphs_path = std::env::var("GRAPHS_PATH")?;
     let mut graphs = vec![];

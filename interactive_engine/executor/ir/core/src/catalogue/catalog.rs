@@ -349,19 +349,19 @@ impl Catalogue {
         match self.plan_space {
             PatMatPlanSpace::ExtendWithIntersection => {
                 self.update_extend_steps_by_pattern(pattern);
-                println!("Extend Pattern Num: {}", self.get_patterns_num());
-                println!("ExtendStep Num: {}", self.get_approaches_num());
+                // println!("Extend Pattern Num: {}", self.get_patterns_num());
+                // println!("ExtendStep Num: {}", self.get_approaches_num());
             }
             PatMatPlanSpace::BinaryJoin => {
                 self.update_join_steps_by_pattern(pattern);
             }
             PatMatPlanSpace::Hybrid => {
                 self.update_extend_steps_by_pattern(pattern);
-                println!("Extend Pattern Num: {}", self.get_patterns_num());
-                println!("ExtendStep Num: {}", self.get_approaches_num());
+                // println!("Extend Pattern Num: {}", self.get_patterns_num());
+                // println!("ExtendStep Num: {}", self.get_approaches_num());
                 self.update_join_steps_by_pattern(pattern);
-                println!("Extend Pattern Num: {}", self.get_patterns_num());
-                println!("ExtendStep Num: {}", self.get_approaches_num());
+                // println!("Extend Pattern Num: {}", self.get_patterns_num());
+                // println!("ExtendStep Num: {}", self.get_approaches_num());
             }
         }
     }

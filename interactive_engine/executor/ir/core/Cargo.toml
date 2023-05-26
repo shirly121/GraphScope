@@ -27,6 +27,7 @@ bimap = "0.6.2"
 crossbeam-channel = "0.4.4"
 bincode = "1.0.1"
 graph_store = { path = "../../store/exp_store" }
+bloom = "0.2.0"
 
 [features]
 default = []

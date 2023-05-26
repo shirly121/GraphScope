@@ -141,3 +141,7 @@ pub mod plan;
 pub mod sample;
 
 pub mod sparsify;
+
+pub mod dfs_match;
+
+pub mod gallop;

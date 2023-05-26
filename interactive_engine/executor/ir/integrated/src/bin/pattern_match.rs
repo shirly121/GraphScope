@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     pegasus_common::logs::init_log();
     create_exp_store();
     let config = Config::from_args();
-    print_config(&config);
+    // print_config(&config);
     let server_config = if let Some(config_dir) = config.config_dir {
         pegasus_server::config::load_configs(config_dir)?.0
     } else {
@@ -107,8 +107,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     set_w2(config.w2);
     let mut catalog = read_catalogue()?;
     for pattern in patterns {
-        println!("############ Plan Generation ############");
-        println!("start generating plan...");
         let plan_space: PatMatPlanSpace = match config.plan_space.as_str() {
             "extend" => PatMatPlanSpace::ExtendWithIntersection,
             "hybrid" => PatMatPlanSpace::Hybrid,
@@ -125,7 +123,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut pb_plan = pattern
             .generate_optimized_match_plan(&mut catalog, &pattern_meta, config.is_distributed)
             .expect("Failed to generate optimized pattern match plan");
-        println!("generating plan time cost is: {:?} ms", plan_generation_start_time.elapsed().as_millis());
 
         // if config.print_intermediate_result {
         //     // split the original logical plan into plans of intermediate results
@@ -158,8 +155,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             pb_plan_add_source_operator(&mut pb_plan);
             pb_plan_add_count_sink_operator(&mut pb_plan);
         }
-        println!("Final pb logical plan:");
-        print_pb_logical_plan(&pb_plan);
+        // println!("Final pb logical plan:");
+        // print_pb_logical_plan(&pb_plan);
 
         if !config.no_query_execution {
             println!("############ Query Execution ############");
