@@ -26,7 +26,8 @@
 package com.alibaba.graphscope.gremlin.plugin.processor;
 
 import com.alibaba.graphscope.common.IrPlan;
-import com.alibaba.graphscope.common.client.*;
+import com.alibaba.graphscope.common.client.RpcBroadcastProcessor;
+import com.alibaba.graphscope.common.client.RpcChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.PlannerConfig;
@@ -40,6 +41,7 @@ import com.alibaba.graphscope.common.ir.runtime.type.LogicalPlan;
 import com.alibaba.graphscope.common.ir.schema.GraphOptSchema;
 import com.alibaba.graphscope.common.ir.schema.StatisticSchema;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+import com.alibaba.graphscope.common.ir.tools.GraphRexBuilder;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.common.store.IrMetaFetcher;
@@ -57,7 +59,6 @@ import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.sun.jna.Pointer;
-
 import org.apache.calcite.jdbc.JavaTypeFactoryImpl;
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -88,6 +89,7 @@ import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.script.SimpleBindings;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -96,8 +98,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Supplier;
-
-import javax.script.SimpleBindings;
 
 public class IrStandardOpProcessor extends StandardOpProcessor {
     private static Logger metricLogger = LoggerFactory.getLogger("MetricLog");
@@ -129,7 +129,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         this.broadcastProcessor = new RpcBroadcastProcessor(fetcher);
         this.metaQueryCallback = metaQueryCallback;
 
-        RexBuilder rexBuilder = new RexBuilder(new JavaTypeFactoryImpl());
+        RexBuilder rexBuilder = new GraphRexBuilder(new JavaTypeFactoryImpl());
         this.graphBuilderGenerator =
                 (StatisticSchema schema) -> {
                     Objects.requireNonNull(schema);
