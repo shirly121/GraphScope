@@ -15,7 +15,6 @@
 
 use std::any::Any;
 use std::fmt;
-use std::sync::atomic::{AtomicPtr, Ordering};
 
 use ahash::HashMap;
 use dyn_type::Object;
@@ -35,24 +34,14 @@ pub struct LazyVertexDetails {
     // Specifically, Some(vec![]) indicates we need all properties
     // and None indicates we do not need any property
     prop_keys: Option<Vec<NameOrId>>,
-    inner: AtomicPtr<GrinVertexProxy>,
+    inner: GrinVertexProxy,
 }
 
 impl_as_any!(LazyVertexDetails);
 
 impl LazyVertexDetails {
     pub fn new(v: GrinVertexProxy, prop_keys: Option<Vec<NameOrId>>) -> Self {
-        let ptr = Box::into_raw(Box::new(v));
-        LazyVertexDetails { prop_keys, inner: AtomicPtr::new(ptr) }
-    }
-
-    fn get_vertex_ptr(&self) -> Option<*mut GrinVertexProxy> {
-        let ptr = self.inner.load(Ordering::SeqCst);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(ptr)
-        }
+        LazyVertexDetails { prop_keys, inner: v }
     }
 }
 
@@ -67,28 +56,16 @@ impl fmt::Debug for LazyVertexDetails {
 
 impl Details for LazyVertexDetails {
     fn get_property(&self, key: &NameOrId) -> Option<PropertyValue> {
-        if let Some(ptr) = self.get_vertex_ptr() {
-            unsafe {
-                if let Ok(prop_value) = (*ptr).get_property(key) {
-                    Some(PropertyValue::Owned(prop_value))
-                } else {
-                    None
-                }
-            }
+        if let Ok(prop_value) = self.inner.get_property(key) {
+            Some(PropertyValue::Owned(prop_value))
         } else {
             None
         }
     }
 
     fn get_all_properties(&self) -> Option<HashMap<NameOrId, Object>> {
-        if let Some(ptr) = self.get_vertex_ptr() {
-            unsafe {
-                if let Ok(prop_values) = (*ptr).get_properties() {
-                    Some(prop_values)
-                } else {
-                    None
-                }
-            }
+        if let Ok(prop_values) = self.inner.get_properties() {
+            Some(prop_values)
         } else {
             None
         }
@@ -96,17 +73,6 @@ impl Details for LazyVertexDetails {
 
     fn get_property_keys(&self) -> Option<Vec<NameOrId>> {
         self.prop_keys.clone()
-    }
-}
-
-impl Drop for LazyVertexDetails {
-    fn drop(&mut self) {
-        let ptr = self.inner.load(Ordering::SeqCst);
-        if !ptr.is_null() {
-            unsafe {
-                std::ptr::drop_in_place(ptr);
-            }
-        }
     }
 }
 
@@ -119,24 +85,14 @@ pub struct LazyEdgeDetails {
     // Specifically, Some(vec![]) indicates we need all properties
     // and None indicates we do not need any property
     prop_keys: Option<Vec<NameOrId>>,
-    inner: AtomicPtr<GrinEdgeProxy>,
+    inner: GrinEdgeProxy,
 }
 
 impl_as_any!(LazyEdgeDetails);
 
 impl LazyEdgeDetails {
-    pub fn new(v: GrinEdgeProxy, prop_keys: Option<Vec<NameOrId>>) -> Self {
-        let ptr = Box::into_raw(Box::new(v));
-        LazyEdgeDetails { prop_keys, inner: AtomicPtr::new(ptr) }
-    }
-
-    fn get_edge_ptr(&self) -> Option<*mut GrinEdgeProxy> {
-        let ptr = self.inner.load(Ordering::SeqCst);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(ptr)
-        }
+    pub fn new(grin_edge_proxy: GrinEdgeProxy, prop_keys: Option<Vec<NameOrId>>) -> Self {
+        LazyEdgeDetails { prop_keys, inner: grin_edge_proxy }
     }
 }
 
@@ -144,35 +100,22 @@ impl fmt::Debug for LazyEdgeDetails {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LazyEdgeDetails")
             .field("properties", &self.prop_keys)
-            .field("inner", &self.inner)
             .finish()
     }
 }
 
 impl Details for LazyEdgeDetails {
     fn get_property(&self, key: &NameOrId) -> Option<PropertyValue> {
-        if let Some(ptr) = self.get_edge_ptr() {
-            unsafe {
-                if let Ok(prop_value) = (*ptr).get_property(key) {
-                    Some(PropertyValue::Owned(prop_value))
-                } else {
-                    None
-                }
-            }
+        if let Ok(prop_value) = self.inner.get_property(key) {
+            Some(PropertyValue::Owned(prop_value))
         } else {
             None
         }
     }
 
     fn get_all_properties(&self) -> Option<HashMap<NameOrId, Object>> {
-        if let Some(ptr) = self.get_edge_ptr() {
-            unsafe {
-                if let Ok(prop_values) = (*ptr).get_properties() {
-                    Some(prop_values)
-                } else {
-                    None
-                }
-            }
+        if let Ok(prop_values) = self.inner.get_properties() {
+            Some(prop_values)
         } else {
             None
         }
@@ -180,16 +123,5 @@ impl Details for LazyEdgeDetails {
 
     fn get_property_keys(&self) -> Option<Vec<NameOrId>> {
         self.prop_keys.clone()
-    }
-}
-
-impl Drop for LazyEdgeDetails {
-    fn drop(&mut self) {
-        let ptr = self.inner.load(Ordering::SeqCst);
-        if !ptr.is_null() {
-            unsafe {
-                std::ptr::drop_in_place(ptr);
-            }
-        }
     }
 }
