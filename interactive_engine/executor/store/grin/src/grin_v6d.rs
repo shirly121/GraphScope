@@ -71,12 +71,6 @@ pub type GrinRow = *mut ::std::os::raw::c_void;
 extern "C" {
     #[cfg(feature = "grin_enable_adjacent_list")]
     #[allow(unused)]
-    pub fn grin_get_adjacent_list(
-        arg1: GrinGraph, arg2: GrinDirection, arg3: GrinVertex,
-    ) -> GrinAdjacentList;
-
-    #[cfg(feature = "grin_enable_adjacent_list")]
-    #[allow(unused)]
     pub fn grin_destroy_adjacent_list(arg1: GrinGraph, arg2: GrinAdjacentList);
 
     #[cfg(feature = "grin_enable_adjacent_list_array")]
@@ -140,12 +134,6 @@ extern "C" {
     pub fn grin_is_multigraph(arg1: GrinGraph) -> bool;
 
     #[allow(unused)]
-    pub fn grin_get_vertex_num(arg1: GrinGraph) -> usize;
-
-    #[allow(unused)]
-    pub fn grin_get_edge_num(arg1: GrinGraph) -> usize;
-
-    #[allow(unused)]
     pub fn grin_destroy_vertex(arg1: GrinGraph, arg2: GrinVertex);
 
     #[allow(unused)]
@@ -159,10 +147,6 @@ extern "C" {
 
     #[allow(unused)]
     pub fn grin_get_dst_vertex_from_edge(arg1: GrinGraph, arg2: GrinEdge) -> GrinVertex;
-
-    #[cfg(feature = "grin_enable_vertex_list")]
-    #[allow(unused)]
-    pub fn grin_get_vertex_list(arg1: GrinGraph) -> GrinVertexList;
 
     #[cfg(feature = "grin_enable_vertex_list")]
     #[allow(unused)]
@@ -315,13 +299,15 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_deserialize_int64_to_vertex_ref(arg1: GrinGraph, arg2: i64) -> GrinVertexRef;
 
-    #[cfg(feature = "grin_trait_select_master_for_vertex_list")]
     #[allow(unused)]
-    pub fn grin_select_master_for_vertex_list(arg1: GrinGraph, arg2: GrinVertexList) -> GrinVertexList;
+    pub fn grin_get_vertex_list_by_type_select_master(
+        arg1: GrinGraph, arg2: GrinVertexType,
+    ) -> GrinVertexList;
 
-    #[cfg(feature = "grin_trait_select_master_for_vertex_list")]
     #[allow(unused)]
-    pub fn grin_select_mirror_for_vertex_list(arg1: GrinGraph, arg2: GrinVertexList) -> GrinVertexList;
+    pub fn grin_get_vertex_list_by_type_select_mirror(
+        arg1: GrinGraph, arg2: GrinVertexType,
+    ) -> GrinVertexList;
 
     #[doc = " @brief get the vertex types with primary keys\n @param GrinGraph the graph"]
     #[cfg(feature = "grin_enable_vertex_primary_keys")]
@@ -459,12 +445,6 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_get_vertex_type_from_property(arg1: GrinGraph, arg2: GrinVertexProperty) -> GrinVertexType;
 
-    #[cfg(all(feature = "grin_with_vertex_property", feature = "grin_trait_const_value_ptr"))]
-    #[allow(unused)]
-    pub fn grin_get_vertex_property_value(
-        arg1: GrinGraph, arg2: GrinVertex, arg3: GrinVertexProperty,
-    ) -> *const ::std::os::raw::c_void;
-
     #[cfg(feature = "grin_with_edge_property")]
     #[allow(unused)]
     pub fn grin_equal_edge_property(
@@ -536,12 +516,6 @@ extern "C" {
     #[cfg(feature = "grin_with_edge_property")]
     #[allow(unused)]
     pub fn grin_get_edge_type_from_property(arg1: GrinGraph, arg2: GrinEdgeProperty) -> GrinEdgeType;
-
-    #[cfg(all(feature = "grin_with_edge_property", feature = "grin_trait_const_value_ptr"))]
-    #[allow(unused)]
-    pub fn grin_get_edge_property_value(
-        arg1: GrinGraph, arg2: GrinEdge, arg3: GrinEdgeProperty,
-    ) -> *const ::std::os::raw::c_void;
 
     #[cfg(feature = "grin_with_vertex_property")]
     #[allow(unused)]
@@ -712,13 +686,6 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_insert_timestamp64_to_row(arg1: GrinGraph, arg2: GrinRow, arg3: i64) -> bool;
 
-    #[doc = " @brief the value of a property from row by its position in row"]
-    #[cfg(all(feature = "grin_enable_row", feature = "grin_trait_const_value_ptr"))]
-    #[allow(unused)]
-    pub fn grin_get_value_from_row(
-        arg1: GrinGraph, arg2: GrinRow, arg3: GrinDatatype, arg4: usize,
-    ) -> *const ::std::os::raw::c_void;
-
     #[doc = " @brief get vertex row directly from the graph, this API only works for row store system\n @param GrinGraph the graph\n @param GrinVertex the vertex which is the row index"]
     #[cfg(all(feature = "grin_with_vertex_property", feature = "grin_enable_row"))]
     #[allow(unused)]
@@ -737,16 +704,12 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_get_edge_num_by_type(arg1: GrinGraph, arg2: GrinEdgeType) -> usize;
 
-    #[cfg(feature = "grin_trait_select_type_for_vertex_list")]
     #[allow(unused)]
-    pub fn grin_select_type_for_vertex_list(
-        arg1: GrinGraph, arg2: GrinVertexType, arg3: GrinVertexList,
-    ) -> GrinVertexList;
+    pub fn grin_get_vertex_list_by_type(arg1: GrinGraph, arg2: GrinVertexType) -> GrinVertexList;
 
-    #[cfg(feature = "grin_trait_select_edge_type_for_adjacent_list")]
     #[allow(unused)]
-    pub fn grin_select_edge_type_for_adjacent_list(
-        arg1: GrinGraph, arg2: GrinEdgeType, arg3: GrinAdjacentList,
+    pub fn grin_get_adjacent_list_by_edge_type(
+        arg1: GrinGraph, arg2: GrinDirection, arg3: GrinVertex, arg4: GrinEdgeType,
     ) -> GrinAdjacentList;
 
     #[cfg(feature = "grin_with_vertex_property")]
@@ -895,7 +858,20 @@ extern "C" {
     ) -> usize;
 
     #[allow(unused)]
+    pub fn grin_get_vertex_original_id_datatype(arg1: GrinGraph) -> GrinDatatype;
+
+    #[allow(unused)]
+    pub fn grin_get_vertex_original_id_of_int64(arg1: GrinGraph, arg2: GrinVertex) -> i64;
+
+    #[cfg(feature = "grin_enable_vertex_original_id_of_int64")]
+    #[allow(unused)]
+    pub fn grin_get_vertex_by_original_id_of_int64(arg1: GrinGraph, arg2: i64) -> GrinVertex;
+
+    #[allow(unused)]
     pub fn grin_get_last_error_code() -> GrinErrorCode;
+
+    #[allow(unused)]
+    pub fn grin_get_static_storage_feature_msg() -> *const ::std::os::raw::c_char;
 
 }
 
