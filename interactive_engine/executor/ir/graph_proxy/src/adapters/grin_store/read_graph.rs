@@ -13,8 +13,8 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, vec};
 
 use ahash::{HashMap, HashMapExt};
 use dyn_type::{Object, Primitives};
@@ -329,8 +329,6 @@ impl GrinVertexProxy {
 pub struct GrinVertexIter {
     /// A grin graph handle, only local to the current process
     graph: GrinGraph,
-    /// A vertex list iterator handle, used to iterate over the vertex list
-    vertex_iter: GrinVertexListIterator,
     /// A per-type map of vertex list iterator handles, used iterate vertices of specific type
     vertex_type_iter: HashMap<GrinVertexTypeId, GrinVertexListIterator>,
     /// **All** (exclude `current_vertex_type`) types of vertices to scan
@@ -342,70 +340,41 @@ pub struct GrinVertexIter {
 impl GrinVertexIter {
     pub fn new(graph: GrinGraph, vertex_type_ids: &Vec<GrinVertexTypeId>) -> GraphProxyResult<Self> {
         unsafe {
-            let master_mirror_vertex_list = grin_get_vertex_list(graph);
-            if master_mirror_vertex_list == GRIN_NULL_LIST {
-                return Err(GraphProxyError::QueryStoreError(
-                    "`grin_get_vertex_list` returns null".to_string(),
-                ));
-            }
-            let vertex_list = grin_select_master_for_vertex_list(graph, master_mirror_vertex_list);
-            grin_destroy_vertex_list(graph, master_mirror_vertex_list);
-            if vertex_list == GRIN_NULL_LIST {
-                return Err(GraphProxyError::QueryStoreError(
-                    "`grin_select_master_for_vertex_list` returns null".to_string(),
-                ));
-            }
-            let vertex_iter = grin_get_vertex_list_begin(graph, vertex_list);
-            if vertex_iter == GRIN_NULL_LIST_ITERATOR {
-                return Err(GraphProxyError::QueryStoreError(
-                    "`grin_get_vertex_list_begin` returns null".to_string(),
-                ));
-            }
-
             let mut vertex_type_iter = HashMap::new();
-            let mut current_vertex_type_id = GRIN_NULL_VERTEX_TYPE;
             let mut vertex_type_ids = vertex_type_ids.clone();
-
-            if !vertex_type_ids.is_empty() {
-                for vertex_type_id in &vertex_type_ids {
-                    let vertex_type = grin_get_vertex_type_by_id(graph, *vertex_type_id);
-                    if vertex_type == GRIN_NULL_VERTEX_TYPE {
-                        return Err(GraphProxyError::QueryStoreError(format!(
-                            "`grin_get_vertex_type_by_id`: {:?}, returns null",
-                            vertex_type_id
-                        )));
-                    }
-                    let vtype_list = grin_select_type_for_vertex_list(graph, vertex_type, vertex_list);
-                    if vtype_list.is_null() {
-                        return Err(GraphProxyError::QueryStoreError(format!(
-                            "`grin_select_type_for_vertex_list`: {:?}, returns null",
-                            vertex_type_id
-                        )));
-                    }
-                    let vtype_iter = grin_get_vertex_list_begin(graph, vtype_list);
-                    if vtype_iter == GRIN_NULL_LIST_ITERATOR {
-                        return Err(GraphProxyError::QueryStoreError(
-                            "`grin_get_vertex_list_begin` returns null".to_string(),
-                        ));
-                    }
-                    vertex_type_iter.insert(*vertex_type_id, vtype_iter);
-                    grin_destroy_vertex_list(graph, vtype_list);
-                    grin_destroy_vertex_type(graph, vertex_type);
+            for vertex_type_id in &vertex_type_ids {
+                let vertex_type = grin_get_vertex_type_by_id(graph, *vertex_type_id);
+                if vertex_type == GRIN_NULL_VERTEX_TYPE {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_vertex_type_by_id`: {:?}, returns null",
+                        vertex_type_id
+                    )));
                 }
-                current_vertex_type_id = vertex_type_ids.pop().unwrap();
+                let vtype_list = grin_get_vertex_list_by_type_select_master(graph, vertex_type);
+                if vtype_list.is_null() {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_select_type_for_vertex_list`: {:?}, returns null",
+                        vertex_type_id
+                    )));
+                }
+                let vtype_iter = grin_get_vertex_list_begin(graph, vtype_list);
+                if vtype_iter == GRIN_NULL_LIST_ITERATOR {
+                    return Err(GraphProxyError::QueryStoreError(
+                        "`grin_get_vertex_list_begin` returns null".to_string(),
+                    ));
+                }
+                vertex_type_iter.insert(*vertex_type_id, vtype_iter);
+                grin_destroy_vertex_list(graph, vtype_list);
+                grin_destroy_vertex_type(graph, vertex_type);
             }
-            grin_destroy_vertex_list(graph, vertex_list);
-            Ok(Self { graph, vertex_iter, vertex_type_iter, vertex_type_ids, current_vertex_type_id })
+            let current_vertex_type_id = vertex_type_ids.pop().unwrap();
+
+            Ok(Self { graph, vertex_type_iter, vertex_type_ids, current_vertex_type_id })
         }
     }
 
     pub fn get_current_vertex_iter(&self) -> GrinVertexListIterator {
-        if !self.vertex_type_iter.is_empty() {
-            self.vertex_type_iter[&self.current_vertex_type_id].clone()
-        } else {
-            // empty vertex_type_iter means scan all vertex types
-            self.vertex_iter.clone()
-        }
+        self.vertex_type_iter[&self.current_vertex_type_id].clone()
     }
 }
 
@@ -413,7 +382,6 @@ impl Drop for GrinVertexIter {
     fn drop(&mut self) {
         unsafe {
             println!("drop GrinVertexIter...");
-            grin_destroy_vertex_list_iter(self.graph, self.vertex_iter);
             for (_, iter) in self.vertex_type_iter.drain() {
                 grin_destroy_vertex_list_iter(self.graph, iter);
             }
@@ -487,54 +455,36 @@ impl GrinAdjVertexIter {
         edge_type_ids: &Vec<GrinEdgeTypeId>,
     ) -> GraphProxyResult<Self> {
         unsafe {
-            let grin_adj_list = grin_get_adjacent_list(graph, direction, vertex_handle);
-            if grin_adj_list.eq(&GRIN_NULL_LIST) {
-                return Err(GraphProxyError::QueryStoreError(format!(
-                    "`grin_get_adjacent_list`: {:?}, returns null",
-                    vertex_handle
-                )));
-            }
-            if !edge_type_ids.is_empty() {
-                let mut grin_adj_list_iter_vec = Vec::with_capacity(edge_type_ids.len());
-                for edge_type_id in edge_type_ids {
-                    let edge_type = grin_get_edge_type_by_id(graph, *edge_type_id);
-                    if edge_type == GRIN_NULL_EDGE_TYPE {
-                        return Err(GraphProxyError::QueryStoreError(format!(
-                            "`grin_get_edge_type_by_id`: {:?}, returns null",
-                            edge_type_id
-                        )));
-                    }
-                    let grin_typed_adj_list =
-                        grin_select_edge_type_for_adjacent_list(graph, edge_type, grin_adj_list);
-                    if grin_typed_adj_list == GRIN_NULL_LIST {
-                        return Err(GraphProxyError::QueryStoreError(format!(
-                            "`grin_select_edge_type_for_adjacent_list`: {:?}, returns null",
-                            edge_type_id
-                        )));
-                    }
-                    let grin_typed_adj_list_iter = grin_get_adjacent_list_begin(graph, grin_typed_adj_list);
-                    if grin_typed_adj_list_iter == GRIN_NULL_LIST_ITERATOR {
-                        return Err(GraphProxyError::QueryStoreError(
-                            "`grin_get_adjacent_list_begin` returns null".to_string(),
-                        ));
-                    }
-                    grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
-
-                    grin_destroy_adjacent_list(graph, grin_typed_adj_list);
+            let mut grin_adj_list_iter_vec = Vec::with_capacity(edge_type_ids.len());
+            for edge_type_id in edge_type_ids {
+                let edge_type = grin_get_edge_type_by_id(graph, *edge_type_id);
+                if edge_type == GRIN_NULL_EDGE_TYPE {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_edge_type_by_id`: {:?}, returns null",
+                        edge_type_id
+                    )));
                 }
-                grin_destroy_adjacent_list(graph, grin_adj_list);
-                Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
-            } else {
-                // empty edge_type_ids means scan all edge types
-                let grin_adj_list_iter = grin_get_adjacent_list_begin(graph, grin_adj_list);
-                grin_destroy_adjacent_list(graph, grin_adj_list);
-                if grin_adj_list_iter == GRIN_NULL_LIST_ITERATOR {
+                let grin_typed_adj_list =
+                    grin_get_adjacent_list_by_edge_type(graph, direction, vertex_handle, edge_type);
+
+                if grin_typed_adj_list == GRIN_NULL_LIST {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_select_edge_type_for_adjacent_list`: {:?}, returns null",
+                        edge_type_id
+                    )));
+                }
+                let grin_typed_adj_list_iter = grin_get_adjacent_list_begin(graph, grin_typed_adj_list);
+                if grin_typed_adj_list_iter == GRIN_NULL_LIST_ITERATOR {
                     return Err(GraphProxyError::QueryStoreError(
                         "`grin_get_adjacent_list_begin` returns null".to_string(),
                     ));
                 }
-                Ok(Self { graph, grin_adj_list_iter_vec: vec![grin_adj_list_iter], curr_iter: None })
+                grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
+                grin_destroy_edge_type(graph, edge_type);
+                grin_destroy_adjacent_list(graph, grin_typed_adj_list);
             }
+
+            Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
         }
     }
 }
@@ -600,55 +550,35 @@ impl GrinAdjEdgeIter {
         edge_type_ids: &Vec<GrinEdgeTypeId>,
     ) -> GraphProxyResult<Self> {
         unsafe {
-            let grin_adj_list = grin_get_adjacent_list(graph, direction, vertex_handle);
-            if grin_adj_list.eq(&GRIN_NULL_LIST) {
-                return Err(GraphProxyError::QueryStoreError(format!(
-                    "`grin_get_adjacent_list`: {:?}, returns null",
-                    vertex_handle
-                )));
-            }
-            if !edge_type_ids.is_empty() {
-                let mut grin_adj_list_iter_vec = Vec::with_capacity(edge_type_ids.len());
-                for edge_type_id in edge_type_ids {
-                    let edge_type = grin_get_edge_type_by_id(graph, *edge_type_id);
-                    if edge_type == GRIN_NULL_EDGE_TYPE {
-                        return Err(GraphProxyError::QueryStoreError(format!(
-                            "`grin_get_edge_type_by_id`: {:?}, returns null",
-                            edge_type_id
-                        )));
-                    }
-                    let grin_typed_adj_list =
-                        grin_select_edge_type_for_adjacent_list(graph, edge_type, grin_adj_list);
-                    if grin_typed_adj_list == GRIN_NULL_LIST {
-                        return Err(GraphProxyError::QueryStoreError(format!(
-                            "`grin_select_edge_type_for_adjacent_list`: {:?}, returns null",
-                            edge_type_id
-                        )));
-                    }
-                    let grin_typed_adj_list_iter = grin_get_adjacent_list_begin(graph, grin_typed_adj_list);
-                    if grin_typed_adj_list_iter == GRIN_NULL_LIST_ITERATOR {
-                        return Err(GraphProxyError::QueryStoreError(
-                            "`grin_get_adjacent_list_begin` returns null".to_string(),
-                        ));
-                    }
-                    grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
-
-                    grin_destroy_adjacent_list(graph, grin_typed_adj_list);
+            let mut grin_adj_list_iter_vec = Vec::with_capacity(edge_type_ids.len());
+            for edge_type_id in edge_type_ids {
+                let edge_type = grin_get_edge_type_by_id(graph, *edge_type_id);
+                if edge_type == GRIN_NULL_EDGE_TYPE {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_edge_type_by_id`: {:?}, returns null",
+                        edge_type_id
+                    )));
                 }
-
-                grin_destroy_adjacent_list(graph, grin_adj_list);
-                Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
-            } else {
-                // empty edge_type_ids means scan all edge types
-                let grin_adj_list_iter = grin_get_adjacent_list_begin(graph, grin_adj_list);
-                grin_destroy_adjacent_list(graph, grin_adj_list);
-                if grin_adj_list_iter == GRIN_NULL_LIST_ITERATOR {
+                let grin_typed_adj_list =
+                    grin_get_adjacent_list_by_edge_type(graph, direction, vertex_handle, edge_type);
+                if grin_typed_adj_list == GRIN_NULL_LIST {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_select_edge_type_for_adjacent_list`: {:?}, returns null",
+                        edge_type_id
+                    )));
+                }
+                let grin_typed_adj_list_iter = grin_get_adjacent_list_begin(graph, grin_typed_adj_list);
+                if grin_typed_adj_list_iter == GRIN_NULL_LIST_ITERATOR {
                     return Err(GraphProxyError::QueryStoreError(
                         "`grin_get_adjacent_list_begin` returns null".to_string(),
                     ));
                 }
-                Ok(Self { graph, grin_adj_list_iter_vec: vec![grin_adj_list_iter], curr_iter: None })
+                grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
+                grin_destroy_edge_type(graph, edge_type);
+                grin_destroy_adjacent_list(graph, grin_typed_adj_list);
             }
+
+            Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
         }
     }
 }
@@ -822,6 +752,192 @@ impl GrinEdgeProxy {
     }
 }
 
+#[allow(dead_code)]
+pub struct Schema {
+    vertex_types: Vec<GrinVertexTypeId>,
+    edge_types: Vec<GrinEdgeTypeId>,
+    vertex_out_edge_types: HashMap<GrinVertexTypeId, Vec<GrinEdgeTypeId>>,
+    vertex_in_edge_types: HashMap<GrinVertexTypeId, Vec<GrinEdgeTypeId>>,
+}
+
+impl Schema {
+    pub fn new(graph: GrinGraph) -> GraphProxyResult<Self> {
+        unsafe {
+            let vertex_type_list = grin_get_vertex_type_list(graph);
+            if vertex_type_list == GRIN_NULL_LIST {
+                return Err(GraphProxyError::QueryStoreError(
+                    "`grin_get_vertex_type_list`: returns null".to_string(),
+                ));
+            }
+            let vertex_type_list_size = grin_get_vertex_type_list_size(graph, vertex_type_list);
+            let mut vertex_type_id_list = Vec::with_capacity(vertex_type_list_size);
+            for i in 0..vertex_type_list_size {
+                let vertex_type = grin_get_vertex_type_from_list(graph, vertex_type_list, i);
+                if vertex_type == GRIN_NULL_VERTEX_TYPE {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_vertex_type_from_list`: {:?}, returns null",
+                        i
+                    )));
+                }
+                let vertex_type_id = grin_get_vertex_type_id(graph, vertex_type);
+                if vertex_type_id == GRIN_NULL_NATURAL_ID {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_vertex_type_id`: {:?}, returns null",
+                        vertex_type
+                    )));
+                }
+                vertex_type_id_list.push(vertex_type_id);
+                grin_destroy_vertex_type(graph, vertex_type);
+            }
+            grin_destroy_vertex_type_list(graph, vertex_type_list);
+
+            let edge_type_list = grin_get_edge_type_list(graph);
+            if edge_type_list == GRIN_NULL_LIST {
+                return Err(GraphProxyError::QueryStoreError(
+                    "`grin_get_edge_type_list`: returns null".to_string(),
+                ));
+            }
+            let edge_type_list_size = grin_get_edge_type_list_size(graph, edge_type_list);
+            let mut edge_type_id_list = Vec::with_capacity(edge_type_list_size);
+            let mut edge_types = Vec::with_capacity(edge_type_list_size);
+            for i in 0..edge_type_list_size {
+                let edge_type = grin_get_edge_type_from_list(graph, edge_type_list, i);
+                if edge_type == GRIN_NULL_EDGE_TYPE {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_edge_type_from_list`: {:?}, returns null",
+                        i
+                    )));
+                }
+                let edge_type_id = grin_get_edge_type_id(graph, edge_type);
+                if edge_type_id == GRIN_NULL_NATURAL_ID {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_edge_type_id`: {:?}, returns null",
+                        edge_type
+                    )));
+                }
+                edge_type_id_list.push(edge_type_id);
+                edge_types.push(edge_type);
+
+                grin_destroy_edge_type(graph, edge_type);
+            }
+            grin_destroy_edge_type_list(graph, edge_type_list);
+
+            let mut vertex_out_edge_types = HashMap::new();
+            let mut vertex_in_edge_types = HashMap::new();
+
+            for (edge_type_id, edge_type) in edge_type_id_list.iter().zip(edge_types.iter()) {
+                let src_vertex_types = grin_get_src_types_by_edge_type(graph, *edge_type);
+                if src_vertex_types == GRIN_NULL_LIST {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_src_types_by_edge_type`: {:?}, returns null",
+                        edge_type
+                    )));
+                }
+                let src_vertex_types_size = grin_get_vertex_type_list_size(graph, src_vertex_types);
+                let dst_vertex_types = grin_get_dst_types_by_edge_type(graph, *edge_type);
+                if dst_vertex_types == GRIN_NULL_LIST {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_dst_types_by_edge_type`: {:?}, returns null",
+                        edge_type
+                    )));
+                }
+                let dst_vertex_types_size = grin_get_vertex_type_list_size(graph, dst_vertex_types);
+                if src_vertex_types_size != dst_vertex_types_size {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "src_vertex_types_size != dst_vertex_types_size: {:?} != {:?}",
+                        src_vertex_types_size, dst_vertex_types_size
+                    )));
+                }
+                for i in 0..src_vertex_types_size {
+                    let src_vertex_type = grin_get_vertex_type_from_list(graph, src_vertex_types, i);
+                    if src_vertex_type == GRIN_NULL_VERTEX_TYPE {
+                        return Err(GraphProxyError::QueryStoreError(format!(
+                            "`grin_get_vertex_type_from_list`: {:?}, returns null",
+                            i
+                        )));
+                    }
+                    let src_vertex_type_id = grin_get_vertex_type_id(graph, src_vertex_type);
+                    if src_vertex_type_id == GRIN_NULL_NATURAL_ID {
+                        return Err(GraphProxyError::QueryStoreError(format!(
+                            "`grin_get_vertex_type_id`: {:?}, returns null",
+                            src_vertex_type
+                        )));
+                    }
+                    let src_vertex_out_edge_types = vertex_out_edge_types
+                        .entry(src_vertex_type_id)
+                        .or_insert(Vec::new());
+                    src_vertex_out_edge_types.push(*edge_type_id);
+                    grin_destroy_vertex_type(graph, src_vertex_type);
+                    let dst_vertex_type = grin_get_vertex_type_from_list(graph, dst_vertex_types, i);
+                    if dst_vertex_type == GRIN_NULL_VERTEX_TYPE {
+                        return Err(GraphProxyError::QueryStoreError(format!(
+                            "`grin_get_vertex_type_from_list`: {:?}, returns null",
+                            i
+                        )));
+                    }
+                    let dst_vertex_type_id = grin_get_vertex_type_id(graph, dst_vertex_type);
+                    if dst_vertex_type_id == GRIN_NULL_NATURAL_ID {
+                        return Err(GraphProxyError::QueryStoreError(format!(
+                            "`grin_get_vertex_type_id`: {:?}, returns null",
+                            dst_vertex_type
+                        )));
+                    }
+                    let dst_vertex_in_edge_types = vertex_in_edge_types
+                        .entry(dst_vertex_type_id)
+                        .or_insert(Vec::new());
+                    dst_vertex_in_edge_types.push(*edge_type_id);
+                    grin_destroy_vertex_type(graph, dst_vertex_type);
+                }
+                grin_destroy_vertex_type_list(graph, src_vertex_types);
+                grin_destroy_vertex_type_list(graph, dst_vertex_types);
+            }
+
+            Ok(Self {
+                vertex_types: vertex_type_id_list,
+                edge_types: edge_type_id_list,
+                vertex_out_edge_types,
+                vertex_in_edge_types,
+            })
+        }
+    }
+    fn get_all_vertex_type_ids(&self) -> Vec<GrinVertexTypeId> {
+        self.vertex_types.clone()
+    }
+    fn get_all_edge_type_ids(&self) -> Vec<GrinEdgeTypeId> {
+        self.edge_types.clone()
+    }
+    // Return the out edge types of a vertex type,
+    // and empty vector means no out edge types.
+    fn get_out_edge_type_ids(&self, vertex_type_id: GrinVertexTypeId) -> Vec<GrinEdgeTypeId> {
+        self.vertex_out_edge_types
+            .get(&vertex_type_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+    // Return the in edge types of a vertex type,
+    // and empty vector means no in edge types.
+    fn get_in_edge_type_ids(&self, vertex_type_id: GrinVertexTypeId) -> Vec<GrinEdgeTypeId> {
+        self.vertex_in_edge_types
+            .get(&vertex_type_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+    // Return the adjacent edge types of a vertex type,
+    // and empty vector means no adjacent edge types.
+    fn get_adjacent_type_ids(
+        &self, vertex_type_id: GrinVertexTypeId, direction: GrinDirection,
+    ) -> Vec<GrinEdgeTypeId> {
+        if direction == GRIN_DIRECTION_OUT {
+            self.get_out_edge_type_ids(vertex_type_id)
+        } else if direction == GRIN_DIRECTION_IN {
+            self.get_in_edge_type_ids(vertex_type_id)
+        } else {
+            let mut out_edge_type_ids = self.get_out_edge_type_ids(vertex_type_id);
+            out_edge_type_ids.extend(self.get_in_edge_type_ids(vertex_type_id));
+            out_edge_type_ids
+        }
+    }
+}
 /// A proxy for better handling Grin's graph related operations.
 // TODO(bingqing): optimize if only one partition in current process.
 pub struct GrinGraphProxy {
@@ -829,6 +945,9 @@ pub struct GrinGraphProxy {
     partitioned_graph: GrinPartitionedGraph,
     /// The graph handles managed in the current partition
     graphs: HashMap<GrinPartitionId, GrinGraph>,
+    /// The schema of the graph
+    // TODO: this is a temporary solution, schema related info would be given in the query plan. Then this would be removed.
+    schema: Arc<Schema>,
 }
 
 impl Drop for GrinGraphProxy {
@@ -869,8 +988,9 @@ impl GrinGraphProxy {
             }
             grin_destroy_partition_list(partitioned_graph, partition_list);
         }
+        let schema = Schema::new(graphs.get(&0).unwrap().clone())?;
 
-        Ok(GrinGraphProxy { partitioned_graph, graphs })
+        Ok(GrinGraphProxy { partitioned_graph, graphs, schema: Arc::new(schema) })
     }
 
     pub fn get_partitioned_graph(&self) -> GrinPartitionedGraph {
@@ -899,9 +1019,14 @@ impl GrinGraphProxy {
         &self, partitions: &Vec<GrinPartitionId>, label_ids: &Vec<GrinVertexTypeId>,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinVertexProxy> + Send>> {
         let mut results = Vec::new();
+        // TODO: GRIN needs to specify type ids to scan, while GIE-Gremlin doesn't support if to scan all types.
+        // For now, we query the types in GraphProxy.
+        // It should be specified in the `QueryParams` given in query plan later.
+        let vertex_type_ids =
+            if label_ids.is_empty() { self.schema.get_all_vertex_type_ids() } else { label_ids.clone() };
         for partition in partitions {
             if let Some(graph) = self.graphs.get(partition).cloned() {
-                let vertex_iter = GrinVertexIter::new(graph, label_ids)?;
+                let vertex_iter = GrinVertexIter::new(graph, &vertex_type_ids)?;
                 results.push(vertex_iter);
             } else {
                 return Err(GraphProxyError::QueryStoreError(format!(
@@ -923,7 +1048,6 @@ impl GrinGraphProxy {
     ) -> GraphProxyResult<Option<GrinIdVertexProxy>> {
         unsafe {
             let any_grin_graph = self.get_any_local_graph()?;
-
             let grin_vertex_type = grin_get_vertex_type_by_id(any_grin_graph, grin_type_id);
             let grin_row = grin_create_row(any_grin_graph);
             match primary_key {
@@ -946,15 +1070,36 @@ impl GrinGraphProxy {
         }
     }
 
+    fn fill_in_adjacent_edge_types(
+        &self, graph: GrinGraph, grin_vertex: GrinVertex, grin_direction: GrinDirection,
+        edge_type_ids: &Vec<GrinEdgeTypeId>,
+    ) -> GraphProxyResult<Vec<GrinEdgeTypeId>> {
+        let mut adjacent_edge_type_ids = edge_type_ids.clone();
+        if edge_type_ids.is_empty() {
+            let vertex_type_id = self.get_vertex_type_id(graph, grin_vertex)?;
+            adjacent_edge_type_ids = self
+                .schema
+                .get_adjacent_type_ids(vertex_type_id, grin_direction);
+        }
+        Ok(adjacent_edge_type_ids)
+    }
+
     pub fn get_neighbor_vertices(
         &self, vertex_id: i64, grin_direction: GrinDirection, edge_type_ids: &Vec<GrinEdgeTypeId>,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinIdVertexProxy> + Send>> {
         let partition_id = self.get_partition_id_by_vertex_id(vertex_id)?;
         if let Some(graph) = self.graphs.get(&partition_id).cloned() {
             let grin_vertex = self.get_vertex_by_id(graph, vertex_id)?;
-            let neighbor_vertices_iter =
-                GrinAdjVertexIter::new(graph, grin_vertex, grin_direction, edge_type_ids)?;
-            Ok(Box::new(neighbor_vertices_iter))
+            let edge_type_ids =
+                self.fill_in_adjacent_edge_types(graph, grin_vertex, grin_direction, edge_type_ids)?;
+            if edge_type_ids.is_empty() {
+                // no adjacent edge types in schema, return empty iterator
+                Ok(Box::new(std::iter::empty()))
+            } else {
+                let neighbor_vertices_iter =
+                    GrinAdjVertexIter::new(graph, grin_vertex, grin_direction, &edge_type_ids)?;
+                Ok(Box::new(neighbor_vertices_iter))
+            }
         } else {
             Err(GraphProxyError::QueryStoreError(format!(
                 "Partition {:?} is not found in the current process",
@@ -969,9 +1114,16 @@ impl GrinGraphProxy {
         let partition_id = self.get_partition_id_by_vertex_id(vertex_id)?;
         if let Some(graph) = self.graphs.get(&partition_id).cloned() {
             let grin_vertex = self.get_vertex_by_id(graph, vertex_id)?;
-            let neighbor_edges_iter =
-                GrinAdjEdgeIter::new(graph, grin_vertex, grin_direction, edge_type_ids)?;
-            Ok(Box::new(neighbor_edges_iter))
+            let edge_type_ids =
+                self.fill_in_adjacent_edge_types(graph, grin_vertex, grin_direction, edge_type_ids)?;
+            if edge_type_ids.is_empty() {
+                // no adjacent edge types in schema, return empty iterator
+                Ok(Box::new(std::iter::empty()))
+            } else {
+                let neighbor_edges_iter =
+                    GrinAdjEdgeIter::new(graph, grin_vertex, grin_direction, &edge_type_ids)?;
+                Ok(Box::new(neighbor_edges_iter))
+            }
         } else {
             Err(GraphProxyError::QueryStoreError(format!(
                 "Partition {:?} is not found in the current process",
@@ -1003,6 +1155,17 @@ impl GrinGraphProxy {
             assert_ne!(vertex, GRIN_NULL_VERTEX);
             grin_destroy_vertex_ref(grin_graph, vertex_ref);
             Ok(vertex)
+        }
+    }
+
+    fn get_vertex_type_id(
+        &self, grin_graph: GrinGraph, grin_vertex: GrinVertex,
+    ) -> GraphProxyResult<GrinVertexTypeId> {
+        unsafe {
+            let vertex_type = grin_get_vertex_type(grin_graph, grin_vertex);
+            let vertex_type_id = grin_get_vertex_type_id(grin_graph, vertex_type);
+            grin_destroy_vertex_type(grin_graph, vertex_type);
+            Ok(vertex_type_id)
         }
     }
 
