@@ -66,7 +66,7 @@ impl Partitioner for GrinPartition {
         // 4. `server_index * worker_num_per_server + worker_index` computes the worker index in server R
         // to do the computation.
         let vid = *id as i64;
-        let worker_num_per_server = worker_num_per_server as u64;
+        let worker_num_per_server = worker_num_per_server as i64;
         let partition_id = self.get_partition_id_by_vertex_id(vid)?;
         let server_index = *self
             .partition_server_index_mapping
@@ -74,9 +74,9 @@ impl Partitioner for GrinPartition {
             .ok_or(GraphProxyError::query_store_error(&format!(
                 "get server id failed on GRIN with vid of {:?}, partition_id of {:?}",
                 vid, partition_id
-            )))? as u64;
-        let worker_index = partition_id as u64 % worker_num_per_server;
-        Ok(server_index * worker_num_per_server + worker_index)
+            )))? as i64;
+        let worker_index = vid.rem_euclid(worker_num_per_server);
+        Ok((server_index * worker_num_per_server + worker_index) as u64)
     }
 
     fn get_worker_partitions(
