@@ -16,11 +16,15 @@
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use graph_proxy::apis::PegasusClusterInfo;
+use graph_proxy::GrinPartition;
+use graph_proxy::{create_grin_store, GrinGraphProxy};
 use grin::grin_v6d::*;
 use grin::{string_c2rust, string_rust2c};
 use log::info;
-use runtime_integration::{InitializeJobAssembly, QueryGrin};
+use runtime::initialize_job_assembly;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -45,14 +49,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let arr_mut_ptr: *mut *mut c_char = arr.as_mut_ptr() as *mut *mut c_char;
         let pg = grin_get_partitioned_graph_from_storage(2, arr_mut_ptr);
 
-        let num_servers = server_config.servers_size();
-        let mut fake_partition_server_index_mapping = HashMap::new();
-        let fake_num_partitions = 10;
+        let mut partition_server_index_mapping = HashMap::new();
+        let fake_num_partitions = 4;
         for partition_id in 0..fake_num_partitions {
-            fake_partition_server_index_mapping.insert(partition_id, 0);
+            partition_server_index_mapping.insert(partition_id, 0);
         }
-        let query_grin_graph = QueryGrin::new(pg, fake_partition_server_index_mapping);
-        let job_assembly = query_grin_graph.initialize_job_assembly();
+
+        let cluster_info = Arc::new(PegasusClusterInfo::default());
+
+        let partitioned_graph = Arc::new(GrinGraphProxy::new(pg).unwrap());
+
+        let partitioner =
+            GrinPartition::new(partitioned_graph.clone(), partition_server_index_mapping.clone());
+        let grin_graph =
+            create_grin_store(partitioned_graph.clone(), vec![0, 1, 2, 3], cluster_info.clone());
+        let job_assembly = initialize_job_assembly(grin_graph, Arc::new(partitioner), cluster_info);
+
         info!("try to start rpc server;");
 
         pegasus_server::cluster::standalone::start(rpc_config, server_config, job_assembly).await?;

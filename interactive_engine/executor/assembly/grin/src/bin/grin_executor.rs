@@ -14,21 +14,23 @@
 //! limitations under the License.
 
 use std::collections::HashMap;
+use std::ffi::c_char;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use grin_runtime::error::{StartServerError, StartServerResult};
+use graph_proxy::apis::PegasusClusterInfo;
 use graph_proxy::GrinGraphProxy;
+use graph_proxy::{create_grin_store, GrinPartition};
+use grin::grin_v6d::grin_get_partitioned_graph_from_storage;
+use grin::string_rust2c;
+use grin_runtime::error::{StartServerError, StartServerResult};
 use log::info;
-use pegasus::api::{ Sink};
+use pegasus::api::Sink;
 use pegasus::{wait_servers_ready, Configuration, JobConf, ServerConf};
 use pegasus_network::config::NetworkConfig;
 use pegasus_network::config::ServerAddr;
 use pegasus_server::rpc::{start_rpc_server, RPCServerConfig, ServiceStartListener};
-use runtime_integration::{InitializeJobAssembly, QueryGrin};
-use std::ffi::{c_char};
-use grin::{string_rust2c};
-use grin::grin_v6d::grin_get_partitioned_graph_from_storage;
+use runtime::initialize_job_assembly;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -113,8 +115,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             server_index, partition_server_index_map, computed_process_partition_list
         );
 
-        let query_grin = QueryGrin::new(Arc::new(grin_graph_proxy), partition_server_index_map, computed_process_partition_list);
-        let job_assembly = query_grin.initialize_job_assembly();
+        let grin_graph_proxy_arc = Arc::new(grin_graph_proxy);
+        let cluster_info = Arc::new(PegasusClusterInfo::default());
+        let partitioner =
+            GrinPartition::new(grin_graph_proxy_arc.clone(), partition_server_index_map.clone());
+        let grin_store =
+            create_grin_store(grin_graph_proxy_arc, computed_process_partition_list, cluster_info.clone());
+        let job_assembly = initialize_job_assembly(grin_store, Arc::new(partitioner), cluster_info);
+
         start_rpc_server(server_id, rpc_config, job_assembly, GaiaServiceListener).await?;
         Ok(())
     }

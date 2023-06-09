@@ -24,17 +24,20 @@ use ir_common::{LabelId, NameOrId, OneOrMany};
 
 use crate::adapters::grin_store::details::{LazyEdgeDetails, LazyVertexDetails};
 use crate::apis::graph::{ID, PKV};
+use crate::apis::partitioner::PartitionId;
 use crate::apis::{
-    from_fn, register_graph, Direction, DynDetails, Edge as RuntimeEdge, QueryParams, ReadGraph, Statement,
+    from_fn, ClusterInfo, Direction, DynDetails, Edge as RuntimeEdge, QueryParams, ReadGraph, Statement,
     Vertex as RuntimeVertex,
 };
 use crate::{filter_limit, filter_sample_limit, limit_n, sample_limit};
 use crate::{GraphProxyError, GraphProxyResult};
 
 #[allow(dead_code)]
-pub fn create_grin_store(store: Arc<GrinGraphProxy>) {
-    let graph = GrinGraphRuntime::from(store);
-    register_graph(Arc::new(graph));
+pub fn create_grin_store(
+    store: Arc<GrinGraphProxy>, server_partitions: Vec<PartitionId>, cluster_info: Arc<dyn ClusterInfo>,
+) -> Arc<GrinGraphRuntime> {
+    let graph = GrinGraphRuntime::new(store, server_partitions, cluster_info);
+    Arc::new(graph)
 }
 
 /// Get value of certain type of vertex property from the grin-enabled graph, and turn it into
@@ -1188,11 +1191,31 @@ unsafe impl Sync for GrinGraphProxy {}
 /// An arc wrapper of GrinGraphRuntime to free it from unexpected (double) pointer destory.
 pub struct GrinGraphRuntime {
     store: Arc<GrinGraphProxy>,
+    server_partitions: Vec<GrinPartitionId>,
+    cluster_info: Arc<dyn ClusterInfo>,
 }
 
-impl From<Arc<GrinGraphProxy>> for GrinGraphRuntime {
-    fn from(graph: Arc<GrinGraphProxy>) -> Self {
-        GrinGraphRuntime { store: graph }
+impl GrinGraphRuntime {
+    pub fn new(
+        store: Arc<GrinGraphProxy>, server_partitions: Vec<PartitionId>, cluster_info: Arc<dyn ClusterInfo>,
+    ) -> Self {
+        GrinGraphRuntime { store, server_partitions, cluster_info }
+    }
+
+    fn assign_worker_partitions(&self) -> GraphProxyResult<Vec<PartitionId>> {
+        let workers_num = self.cluster_info.get_local_worker_num()?;
+        let worker_idx = self.cluster_info.get_worker_index()?;
+        let mut worker_partition_list = vec![];
+        for pid in &self.server_partitions {
+            if *pid % workers_num == worker_idx % workers_num {
+                worker_partition_list.push(*pid as PartitionId)
+            }
+        }
+        debug!(
+            "workers_num {:?}, worker_idx: {:?},  worker_partition_list {:?}",
+            workers_num, worker_idx, worker_partition_list
+        );
+        Ok(worker_partition_list)
     }
 }
 
@@ -1203,8 +1226,8 @@ impl ReadGraph for GrinGraphRuntime {
     fn scan_vertex(
         &self, params: &QueryParams,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeVertex> + Send>> {
-        // TODO(bingqing): confirm no duplicated vertex in the result
-        if let Some(partitions) = params.partitions.as_ref() {
+        let worker_partitions = self.assign_worker_partitions()?;
+        if !worker_partitions.is_empty() {
             let store = self.store.clone();
             let label_ids: Vec<GrinVertexTypeId> = params
                 .labels
@@ -1213,7 +1236,7 @@ impl ReadGraph for GrinGraphRuntime {
                 .collect();
             let row_filter = params.filter.clone();
 
-            let partitions: Vec<GrinPartitionId> = partitions
+            let partitions: Vec<GrinPartitionId> = worker_partitions
                 .iter()
                 .map(|pid| *pid as GrinPartitionId)
                 .collect();

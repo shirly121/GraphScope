@@ -20,5 +20,5 @@ grin =  {path = "../../store/grin"}
 pegasus = { path = "../../engine/pegasus/pegasus", package = "pegasus" }
 pegasus_network = { path = "../../engine/pegasus/network" }
 pegasus_server = { path = "../../engine/pegasus/server" }
-runtime_integration =  { path = "../../ir/integrated" }
 graph_proxy = { path = "../../ir/graph_proxy" }
+runtime = {path = "../../ir/runtime", features = ["with_v6d"]}
