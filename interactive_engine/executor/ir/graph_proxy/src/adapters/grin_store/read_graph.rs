@@ -756,6 +756,7 @@ impl GrinEdgeProxy {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct Schema {
     vertex_types: Vec<GrinVertexTypeId>,
     edge_types: Vec<GrinEdgeTypeId>,
@@ -869,7 +870,10 @@ impl Schema {
                     let src_vertex_out_edge_types = vertex_out_edge_types
                         .entry(src_vertex_type_id)
                         .or_insert(Vec::new());
-                    src_vertex_out_edge_types.push(*edge_type_id);
+                    // be carefully that edge_type_id could be duplicated
+                    if !src_vertex_out_edge_types.contains(edge_type_id) {
+                        src_vertex_out_edge_types.push(*edge_type_id);
+                    }
                     grin_destroy_vertex_type(graph, src_vertex_type);
                     let dst_vertex_type = grin_get_vertex_type_from_list(graph, dst_vertex_types, i);
                     if dst_vertex_type == GRIN_NULL_VERTEX_TYPE {
@@ -888,7 +892,9 @@ impl Schema {
                     let dst_vertex_in_edge_types = vertex_in_edge_types
                         .entry(dst_vertex_type_id)
                         .or_insert(Vec::new());
-                    dst_vertex_in_edge_types.push(*edge_type_id);
+                    if !dst_vertex_in_edge_types.contains(edge_type_id) {
+                        dst_vertex_in_edge_types.push(*edge_type_id);
+                    }
                     grin_destroy_vertex_type(graph, dst_vertex_type);
                 }
                 grin_destroy_vertex_type_list(graph, src_vertex_types);
