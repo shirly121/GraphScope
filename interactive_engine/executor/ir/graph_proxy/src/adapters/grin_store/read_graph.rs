@@ -435,6 +435,7 @@ impl GrinIdVertexProxy {
     pub fn new(graph: GrinGraph, vertex: GrinVertex) -> GraphProxyResult<Self> {
         let vertex_id = get_vertex_ref_id(graph, vertex)?;
         let vertex_type_id = get_vertex_type_id(graph, vertex)?;
+        unsafe { grin_destroy_vertex(graph, vertex) };
         Ok(Self { vertex_id, vertex_type_id })
     }
 
@@ -485,6 +486,7 @@ impl GrinAdjVertexIter {
                 grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
                 grin_destroy_edge_type(graph, edge_type);
                 grin_destroy_adjacent_list(graph, grin_typed_adj_list);
+                grin_destroy_vertex(graph, vertex_handle);
             }
 
             Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
@@ -507,6 +509,7 @@ impl Iterator for GrinAdjVertexIter {
                         return Some(GrinIdVertexProxy::new(self.graph, vertex_handle).unwrap());
                     } else {
                         if let Some(iter_val) = self.grin_adj_list_iter_vec.pop() {
+                            grin_destroy_vertex_list_iter(self.graph, *iter);
                             self.curr_iter = Some(iter_val);
                         } else {
                             return None;
@@ -527,8 +530,8 @@ impl Iterator for GrinAdjVertexIter {
 impl Drop for GrinAdjVertexIter {
     fn drop(&mut self) {
         unsafe {
-            for iter in self.grin_adj_list_iter_vec.iter() {
-                grin_destroy_adjacent_list_iter(self.graph, *iter);
+            for iter in self.grin_adj_list_iter_vec.drain(..) {
+                grin_destroy_adjacent_list_iter(self.graph, iter);
             }
             if let Some(curr) = self.curr_iter {
                 grin_destroy_adjacent_list_iter(self.graph, curr);
@@ -579,6 +582,7 @@ impl GrinAdjEdgeIter {
                 grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
                 grin_destroy_edge_type(graph, edge_type);
                 grin_destroy_adjacent_list(graph, grin_typed_adj_list);
+                grin_destroy_vertex(graph, vertex_handle);
             }
 
             Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
@@ -601,6 +605,7 @@ impl Iterator for GrinAdjEdgeIter {
                         return Some(GrinEdgeProxy::new(self.graph, edge_handle));
                     } else {
                         if let Some(iter_val) = self.grin_adj_list_iter_vec.pop() {
+                            grin_destroy_adjacent_list_iter(self.graph, *iter);
                             self.curr_iter = Some(iter_val);
                         } else {
                             return None;
@@ -621,8 +626,8 @@ impl Iterator for GrinAdjEdgeIter {
 impl Drop for GrinAdjEdgeIter {
     fn drop(&mut self) {
         unsafe {
-            for iter in self.grin_adj_list_iter_vec.iter() {
-                grin_destroy_adjacent_list_iter(self.graph, *iter);
+            for iter in self.grin_adj_list_iter_vec.drain(..) {
+                grin_destroy_adjacent_list_iter(self.graph, iter);
             }
             if let Some(curr) = self.curr_iter {
                 grin_destroy_adjacent_list_iter(self.graph, curr);
