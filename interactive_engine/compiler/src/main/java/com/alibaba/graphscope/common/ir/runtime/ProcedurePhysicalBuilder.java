@@ -19,36 +19,36 @@ package com.alibaba.graphscope.common.ir.runtime;
 import com.alibaba.graphscope.common.ir.runtime.proto.Utils;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.gaia.proto.Common;
-import com.alibaba.graphscope.gaia.proto.Hqps;
 
+import com.alibaba.graphscope.gaia.proto.StoredProcedure;
 import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlOperator;
 
 import java.util.List;
 
 public class ProcedurePhysicalBuilder extends PhysicalBuilder<byte[]> {
-    private final Hqps.HighQPSQuery.Builder builder;
+    private final StoredProcedure.Query.Builder builder;
 
     public ProcedurePhysicalBuilder(LogicalPlan logicalPlan) {
         super(logicalPlan);
-        this.builder = Hqps.HighQPSQuery.newBuilder();
+        this.builder = StoredProcedure.Query.newBuilder();
         RexCall procedureCall = (RexCall) logicalPlan.getProcedureCall();
         setHQPSQueryProcedureName(procedureCall, builder);
         setHQPSQueryProcedureArgs(procedureCall, builder);
     }
 
     private void setHQPSQueryProcedureName(
-            RexCall procedureCall, Hqps.HighQPSQuery.Builder builder) {
+            RexCall procedureCall, StoredProcedure.Query.Builder builder) {
         SqlOperator operator = procedureCall.getOperator();
         builder.setQueryName(Common.NameOrId.newBuilder().setName(operator.getName()).build());
     }
 
     private void setHQPSQueryProcedureArgs(
-            RexCall procedureCall, Hqps.HighQPSQuery.Builder builder) {
+            RexCall procedureCall, StoredProcedure.Query.Builder builder) {
         List<RexNode> operands = procedureCall.getOperands();
         for (int i = 0; i < operands.size(); ++i) {
             builder.addArguments(
-                    Hqps.Argument.newBuilder()
+                    StoredProcedure.Argument.newBuilder()
                             .setParamInd(i)
                             .setValue(Utils.protoValue((RexLiteral) operands.get(i)))
                             .build());
