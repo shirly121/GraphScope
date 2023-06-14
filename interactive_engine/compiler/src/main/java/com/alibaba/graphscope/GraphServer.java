@@ -38,7 +38,7 @@ import org.neo4j.server.CommunityBootstrapper;
 import java.nio.file.Path;
 
 public class GraphServer {
-    private final IrGremlinServer gremlinServer;
+//    private final IrGremlinServer gremlinServer;
     private final CommunityBootstrapper cypherBootstrapper;
 
     public GraphServer(
@@ -48,22 +48,22 @@ public class GraphServer {
             GraphProperties testGraph) {
         ExecutionClient executionClient = ExecutionClient.Factory.create(configs, channelFetcher);
         GraphPlanner graphPlanner = new GraphPlanner(configs);
-        this.gremlinServer =
-                new IrGremlinServer(configs, graphPlanner, channelFetcher, metaQueryCallback, testGraph);
+//        this.gremlinServer =
+//                new IrGremlinServer(configs, graphPlanner, channelFetcher, metaQueryCallback, testGraph);
         this.cypherBootstrapper =
                 new CypherBootstrapper(configs, graphPlanner, metaQueryCallback, executionClient);
     }
 
     public void start() throws Exception {
-        this.gremlinServer.start();
+//        this.gremlinServer.start();
         this.cypherBootstrapper.start(
                 Path.of("/tmp/neo4j"), Path.of("conf/neo4j.conf"), ImmutableMap.of(), false);
     }
 
     public void close() throws Exception {
-        if (this.gremlinServer != null) {
-            this.gremlinServer.close();
-        }
+//        if (this.gremlinServer != null) {
+//            this.gremlinServer.close();
+//        }
     }
 
     public static void main(String[] args) throws Exception {
