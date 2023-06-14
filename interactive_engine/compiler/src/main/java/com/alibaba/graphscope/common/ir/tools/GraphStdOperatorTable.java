@@ -17,7 +17,6 @@
 package com.alibaba.graphscope.common.ir.tools;
 
 import com.alibaba.graphscope.common.ir.procedure.StoredProcedureMeta;
-
 import org.apache.calcite.sql.*;
 import org.apache.calcite.sql.fun.SqlMonotonicBinaryOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -131,6 +130,56 @@ public class GraphStdOperatorTable extends SqlStdOperatorTable {
                     GraphInferTypes.FIRST_KNOWN,
                     OperandTypes.COMPARABLE_UNORDERED_COMPARABLE_UNORDERED);
 
+    public static final SqlBinaryOperator NOT_EQUALS =
+            new SqlBinaryOperator(
+                    "<>",
+                    SqlKind.NOT_EQUALS,
+                    30,
+                    true,
+                    ReturnTypes.BOOLEAN_NULLABLE,
+                    GraphInferTypes.FIRST_KNOWN,
+                    OperandTypes.COMPARABLE_UNORDERED_COMPARABLE_UNORDERED);
+
+    public static final SqlBinaryOperator GREATER_THAN =
+            new SqlBinaryOperator(
+                    ">",
+                    SqlKind.GREATER_THAN,
+                    30,
+                    true,
+                    ReturnTypes.BOOLEAN_NULLABLE,
+                    GraphInferTypes.FIRST_KNOWN,
+                    OperandTypes.COMPARABLE_ORDERED_COMPARABLE_ORDERED);
+
+    public static final SqlBinaryOperator GREATER_THAN_OR_EQUAL =
+            new SqlBinaryOperator(
+                    ">=",
+                    SqlKind.GREATER_THAN_OR_EQUAL,
+                    30,
+                    true,
+                    ReturnTypes.BOOLEAN_NULLABLE,
+                    GraphInferTypes.FIRST_KNOWN,
+                    OperandTypes.COMPARABLE_ORDERED_COMPARABLE_ORDERED);
+
+    public static final SqlBinaryOperator LESS_THAN =
+            new SqlBinaryOperator(
+                    "<",
+                    SqlKind.LESS_THAN,
+                    30,
+                    true,
+                    ReturnTypes.BOOLEAN_NULLABLE,
+                    GraphInferTypes.FIRST_KNOWN,
+                    OperandTypes.COMPARABLE_ORDERED_COMPARABLE_ORDERED);
+
+    public static final SqlBinaryOperator LESS_THAN_OR_EQUAL =
+            new SqlBinaryOperator(
+                    "<=",
+                    SqlKind.LESS_THAN_OR_EQUAL,
+                    30,
+                    true,
+                    ReturnTypes.BOOLEAN_NULLABLE,
+                    GraphInferTypes.FIRST_KNOWN,
+                    OperandTypes.COMPARABLE_ORDERED_COMPARABLE_ORDERED);
+
     public static final SqlFunction USER_DEFINED_PROCEDURE(StoredProcedureMeta meta) {
         SqlReturnTypeInference returnTypeInference = ReturnTypes.explicit(meta.getReturnType());
         List<StoredProcedureMeta.Parameter> parameters = meta.getParameters();
@@ -154,3 +203,5 @@ public class GraphStdOperatorTable extends SqlStdOperatorTable {
                 SqlFunctionCategory.USER_DEFINED_PROCEDURE);
     }
 }
+
+
