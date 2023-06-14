@@ -16,9 +16,10 @@ lru_time_cache = "0.11"
 dotproperties = "0.1.0"
 tokio = { version = "1.24", features = ["macros", "sync"] }
 
-grin =  {path = "../../store/grin"}
+# todo: remove default-features = false when default features are removed in grin.
+grin =  {path = "../../store/grin", default-features = false, features = ["grin_enable_graph_partition"]}
 pegasus = { path = "../../engine/pegasus/pegasus", package = "pegasus" }
 pegasus_network = { path = "../../engine/pegasus/network" }
 pegasus_server = { path = "../../engine/pegasus/server" }
-graph_proxy = { path = "../../ir/graph_proxy" }
-runtime = {path = "../../ir/runtime", features = ["with_v6d"]}
+graph_proxy = { path = "../../ir/graph_proxy", features = ["grin_v6d"] }
+runtime = {path = "../../ir/runtime"}

@@ -15,6 +15,7 @@
 
 mod csr_store;
 mod exp_store;
+#[cfg(feature = "with_grin")]
 mod grin_store;
 #[cfg(feature = "with_global_query")]
 mod gs_store;
@@ -23,6 +24,7 @@ mod vineyard_store;
 
 pub use csr_store::create_csr_store;
 pub use exp_store::{create_exp_store, SimplePartition};
+#[cfg(feature = "with_grin")]
 pub use grin_store::{create_grin_store, GrinGraphProxy, GrinPartition};
 #[cfg(feature = "with_global_query")]
 pub use gs_store::{create_gs_store, GraphScopeStore, GrootMultiPartition, VineyardMultiPartition};
