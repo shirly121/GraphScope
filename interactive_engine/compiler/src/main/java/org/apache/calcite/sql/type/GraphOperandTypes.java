@@ -31,7 +31,7 @@ import java.util.function.Predicate;
  * to create validation functions based on {@link org.apache.calcite.rex.RexNode},
  * Meanwhile, we re-use functions from {@link OperandTypes} as much as possible
  */
-public abstract class RexOperandTypes {
+public abstract class GraphOperandTypes {
     public static final SqlSingleOperandTypeChecker NUMERIC_NUMERIC =
             family(SqlTypeFamily.NUMERIC, SqlTypeFamily.NUMERIC);
 
@@ -73,7 +73,7 @@ public abstract class RexOperandTypes {
      * @return
      */
     public static FamilyOperandTypeChecker family(SqlTypeFamily... families) {
-        return new RexFamilyOperandTypeChecker(ImmutableList.copyOf(families), i -> false);
+        return new GraphFamilyOperandTypeChecker(ImmutableList.copyOf(families), i -> false);
     }
 
     public static final SqlSingleOperandTypeChecker PLUS_OPERATOR =
@@ -94,6 +94,6 @@ public abstract class RexOperandTypes {
             Function<RelDataTypeFactory, List<RelDataType>> typesFactory,
             IntFunction<String> operandName,
             Predicate<Integer> optional) {
-        return new RexOperandMetaDataImpl(families, typesFactory, operandName, optional);
+        return new GraphOperandMetaDataImpl(families, typesFactory, operandName, optional);
     }
 }
