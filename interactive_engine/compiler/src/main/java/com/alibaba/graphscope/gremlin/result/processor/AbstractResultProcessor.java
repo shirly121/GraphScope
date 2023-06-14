@@ -71,6 +71,7 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
     public void process(PegasusClient.JobResponse response) {
         synchronized (this) {
             try {
+                logger.info("process response: {}", response);
                 if (!locked) {
                     // send back a page of results if batch size is met and then reset the
                     // resultCollectors
@@ -98,6 +99,7 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
     public void finish() {
         synchronized (this) {
             if (!locked) {
+                logger.info("finish response");
                 aggregateResults();
                 writeResultList(writeResult, resultCollectors, ResponseStatusCode.SUCCESS);
                 locked = true;
