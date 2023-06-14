@@ -1060,6 +1060,7 @@ impl GrinGraphProxy {
     pub fn get_vertex_by_index(
         &self, grin_type_id: GrinVertexTypeId, primary_key: &PKV,
     ) -> GraphProxyResult<Option<GrinIdVertexProxy>> {
+        #[cfg(feature = "grin_enable_vertex_primary_keys")]
         unsafe {
             let any_grin_graph = self.get_any_local_graph()?;
             let grin_vertex_type = grin_get_vertex_type_by_id(any_grin_graph, grin_type_id);
@@ -1082,6 +1083,8 @@ impl GrinGraphProxy {
                 Ok(Some(GrinIdVertexProxy::new(any_grin_graph, grin_vertex).unwrap()))
             }
         }
+        #[cfg(not(feature = "grin_enable_vertex_primary_keys"))]
+        Err(GraphProxyError::unsupported_error("Vertex primary keys are not enabled"))
     }
 
     fn fill_in_adjacent_edge_types(
