@@ -1002,7 +1002,7 @@ impl GrinGraphProxy {
             }
             grin_destroy_partition_list(partitioned_graph, partition_list);
         }
-        let schema = Schema::new(graphs.get(&0).unwrap().clone())?;
+        let schema = Schema::new(graphs.values().next().cloned().unwrap())?;
 
         Ok(GrinGraphProxy { partitioned_graph, graphs, schema: Arc::new(schema) })
     }
