@@ -17,7 +17,7 @@ dotproperties = "0.1.0"
 tokio = { version = "1.24", features = ["macros", "sync"] }
 
 # todo: remove default-features = false when default features are removed in grin.
-grin =  {path = "../../store/grin", default-features = false, features = ["grin_enable_graph_partition"]}
+grin =  {path = "../../store/grin", features = ["grin_features_enable_v6d"]}
 pegasus = { path = "../../engine/pegasus/pegasus", package = "pegasus" }
 pegasus_network = { path = "../../engine/pegasus/network" }
 pegasus_server = { path = "../../engine/pegasus/server" }

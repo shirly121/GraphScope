@@ -14,14 +14,13 @@
 //! limitations under the License.
 
 use std::collections::HashMap;
-use std::ffi::c_char;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use graph_proxy::apis::PegasusClusterInfo;
 use graph_proxy::GrinGraphProxy;
 use graph_proxy::{create_grin_store, GrinPartition};
-use grin::grin_v6d::grin_get_partitioned_graph_from_storage;
+use grin::grin::grin_get_partitioned_graph_from_storage;
 use grin::string_rust2c;
 use grin_runtime::error::{StartServerError, StartServerResult};
 use log::info;
@@ -72,7 +71,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()?;
     println!("vineyard_graph_id: {:?}", vineyard_graph_id);
 
-    let vineyard_socket_str = "/home/graphscope/gie-grin/v6d/build/tmp.sock";
     let vineyard_graph_id_string = vineyard_graph_id.to_string();
 
     assert_eq!(server_size, hosts.len());
@@ -92,11 +90,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Start executor with vineyard graph object id {:?}", vineyard_graph_id);
 
     unsafe {
-        let mut arr: [*const c_char; 2] =
-            [string_rust2c(vineyard_socket_str), string_rust2c(&vineyard_graph_id_string)];
-        // let mut arr: [*const c_char; 2] = [c_str_ptr_1, c_str_ptr_2];
-        let arr_mut_ptr: *mut *mut c_char = arr.as_mut_ptr() as *mut *mut c_char;
-        let pg = grin_get_partitioned_graph_from_storage(2, arr_mut_ptr);
+        let vineyard_graph_id_cstr = string_rust2c(&vineyard_graph_id_string);
+        let vineyard_graph_version = string_rust2c("");
+        let pg = grin_get_partitioned_graph_from_storage(vineyard_graph_id_cstr, vineyard_graph_version);
         let grin_graph_proxy = GrinGraphProxy::new(pg).unwrap();
         let process_partition_list = grin_graph_proxy.get_local_partition_ids();
 

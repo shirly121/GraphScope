@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 /// Starting gaia with GRIN will pre-allocate partitions for each process,
 /// thus we use graph_partitioner together with partition_worker_mapping for data routing.
-use grin::grin_v6d::*;
+use grin::grin::*;
 
 use crate::adapters::GrinGraphProxy;
 use crate::apis::partitioner::{PartitionId, PartitionInfo, PartitionedData, ServerId};

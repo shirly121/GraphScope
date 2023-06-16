@@ -1,4 +1,4 @@
-pub mod grin_v6d;
+pub mod grin;
 
 use std::ffi::{c_char, c_void, CStr, CString};
 
