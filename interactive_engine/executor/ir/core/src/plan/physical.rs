@@ -34,19 +34,19 @@ use crate::error::{IrError, IrResult};
 use crate::glogue::combine_get_v_by_query_params;
 use crate::plan::logical::{LogicalPlan, NodeType};
 use crate::plan::meta::PlanMeta;
-use crate::plan::partition_meta::QueryVisibility;
+use crate::plan::partition_meta::QueryDistribution;
 use std::sync::Arc;
 
-/// A trait for building physical plan (pegasus) from the logical plan
+/// A trait for building physical plan from the logical plan
 pub trait AsPhysical {
-    /// To add pegasus's `JobBuilder`
+    /// To add physical plan's `PlanBuilder`
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()>;
 
     /// To conduct necessary post processing before transforming into a physical plan.
     fn post_process(
-        &mut self, _builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, _plan_meta: &mut PlanMeta,
+        &mut self, _builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, _plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         Ok(())
     }
@@ -67,7 +67,7 @@ pub trait AsPhysical {
 //    Although we only need a single property, we still need to cache it since the property would be used remotely (e.g., in global ordering).
 //    Thus, before `order()`, we shuffle to "a", and cache "a.name", and then do the ordering.
 fn post_process_vars(
-    builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+    builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     is_order_or_group: bool,
 ) -> IrResult<()> {
     if plan_meta.is_partition() {
@@ -130,7 +130,7 @@ fn post_process_vars(
 
 impl AsPhysical for pb::Project {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let mut project = self.clone();
         project.post_process(builder, meta, plan_meta)?;
@@ -139,7 +139,7 @@ impl AsPhysical for pb::Project {
     }
 
     fn post_process(
-        &mut self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         post_process_vars(builder, meta, plan_meta, false)?;
         Ok(())
@@ -148,7 +148,7 @@ impl AsPhysical for pb::Project {
 
 impl AsPhysical for pb::Select {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         // This is the case when g.V().out().has(xxx), which was like Source + EdgeExpand(ExpandV) + Filter in logical plan.
         // This would be refined as:
@@ -194,7 +194,7 @@ impl AsPhysical for pb::Select {
     }
 
     fn post_process(
-        &mut self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         post_process_vars(builder, meta, plan_meta, false)?;
         Ok(())
@@ -203,7 +203,7 @@ impl AsPhysical for pb::Select {
 
 impl AsPhysical for pb::Scan {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, _plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, _plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let scan = self.clone();
         builder.add_scan_source(scan);
@@ -213,7 +213,7 @@ impl AsPhysical for pb::Scan {
 
 impl AsPhysical for pb::EdgeExpand {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let mut xpd = self.clone();
         xpd.post_process(builder, meta, plan_meta)?;
@@ -222,7 +222,7 @@ impl AsPhysical for pb::EdgeExpand {
     }
 
     fn post_process(
-        &mut self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         if plan_meta.is_partition() {
             builder.shuffle(self.v_tag.clone());
@@ -249,7 +249,7 @@ impl AsPhysical for pb::EdgeExpand {
 
 impl AsPhysical for pb::PathExpand {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         // [range.lower, range.upper)
         let range = self
@@ -316,7 +316,7 @@ impl AsPhysical for pb::PathExpand {
     }
 
     fn post_process(
-        &mut self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         post_process_vars(builder, meta, plan_meta, false)?;
         if plan_meta.is_partition() {
@@ -378,7 +378,7 @@ fn build_and_try_fuse_get_v(builder: &mut PlanBuilder, mut get_v: pb::GetV) -> I
 
 impl AsPhysical for pb::GetV {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         // Currently, the case of `g.V().out().has(xxx)` would be translated into `Source + EdgeExpand(ExpandV) + Filter` in logical plan.
         // This would be refined as:
@@ -423,7 +423,7 @@ impl AsPhysical for pb::GetV {
 
 impl AsPhysical for pb::As {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, _plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, _plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let project_new_alias = pb::Project {
             mappings: vec![pb::project::ExprAlias {
@@ -440,7 +440,7 @@ impl AsPhysical for pb::As {
 
 impl AsPhysical for pb::Limit {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, _plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, _plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let range = self
             .range
@@ -456,7 +456,7 @@ impl AsPhysical for pb::Limit {
 
 impl AsPhysical for pb::OrderBy {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         if let Some(range) = &self.limit {
             if range.upper <= range.lower || range.lower < 0 || range.upper <= 0 {
@@ -470,7 +470,7 @@ impl AsPhysical for pb::OrderBy {
     }
 
     fn post_process(
-        &mut self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         post_process_vars(builder, meta, plan_meta, true)?;
         Ok(())
@@ -479,7 +479,7 @@ impl AsPhysical for pb::OrderBy {
 
 impl AsPhysical for pb::Dedup {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let mut dedup = self.clone();
         dedup.post_process(builder, meta, plan_meta)?;
@@ -488,7 +488,7 @@ impl AsPhysical for pb::Dedup {
     }
 
     fn post_process(
-        &mut self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         post_process_vars(builder, meta, plan_meta, false)?;
         Ok(())
@@ -497,7 +497,7 @@ impl AsPhysical for pb::Dedup {
 
 impl AsPhysical for pb::GroupBy {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let mut group = self.clone();
         group.post_process(builder, meta, plan_meta)?;
@@ -505,7 +505,7 @@ impl AsPhysical for pb::GroupBy {
         Ok(())
     }
     fn post_process(
-        &mut self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         post_process_vars(builder, meta, plan_meta, true)?;
         Ok(())
@@ -514,7 +514,7 @@ impl AsPhysical for pb::GroupBy {
 
 impl AsPhysical for pb::Unfold {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, _plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, _plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         builder.unfold(self.clone());
         Ok(())
@@ -523,7 +523,7 @@ impl AsPhysical for pb::Unfold {
 
 impl AsPhysical for pb::Sink {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, _meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         let mut sink_opr = self.clone();
         let target = self
@@ -577,7 +577,7 @@ impl AsPhysical for pb::Sink {
 
 impl AsPhysical for pb::logical_plan::Operator {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         use pb::logical_plan::operator::Opr::*;
         if let Some(opr) = &self.opr {
@@ -607,7 +607,7 @@ impl AsPhysical for pb::logical_plan::Operator {
 
 impl AsPhysical for NodeType {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         plan_meta.set_curr_node(self.borrow().id);
         self.borrow()
@@ -652,7 +652,7 @@ fn extract_project_single_tag(node: NodeType) -> Option<common_pb::NameOrId> {
 
 impl AsPhysical for LogicalPlan {
     fn add_job_builder(
-        &self, builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+        &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         use pb::logical_plan::operator::Opr::*;
         let mut _prev_node_opt: Option<NodeType> = None;
@@ -721,7 +721,6 @@ impl AsPhysical for LogicalPlan {
                         });
                     } else {
                         subplan.add_job_builder(&mut sub_bldr, meta, plan_meta)?;
-                        let plan = sub_bldr.take_plan();
                         builder.apply(
                             unsafe { std::mem::transmute(apply_opr.join_kind) },
                             sub_bldr,
@@ -746,9 +745,9 @@ impl AsPhysical for LogicalPlan {
                 let (merge_node_opt, subplans) = self.get_branch_plans(curr_node.clone());
                 let mut plans: Vec<PlanBuilder> = vec![];
                 for subplan in &subplans {
-                    let mut sub_bldr = JobBuilder::new(builder.conf.clone());
+                    let mut sub_bldr = PlanBuilder::default();
                     subplan.add_job_builder(&mut sub_bldr, meta, plan_meta)?;
-                    plans.push(sub_bldr.take_plan());
+                    plans.push(sub_bldr);
                 }
 
                 if let Some(merge_node) = merge_node_opt.clone() {
@@ -828,7 +827,7 @@ impl AsPhysical for LogicalPlan {
 //     2) EdgeExpand with Opt = ExpandE, which is to expand and intersect on edges (although, not considered in Pattern yet);
 
 fn add_intersect_job_builder(
-    builder: &mut JobBuilder, meta: &Arc<dyn QueryVisibility>, plan_meta: &mut PlanMeta,
+    builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     intersect_opr: &pb::Intersect, subplans: &Vec<LogicalPlan>,
 ) -> IrResult<()> {
     use pb::logical_plan::operator::Opr::*;

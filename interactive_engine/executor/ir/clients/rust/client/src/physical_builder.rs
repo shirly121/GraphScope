@@ -79,7 +79,7 @@ impl PlanBuilder {
 
     pub fn shuffle(&mut self, shuffle_key: Option<common_pb::NameOrId>) -> &mut Self {
         let shuffle_key = shuffle_key.map(|tag| tag.try_into().unwrap());
-        let shuffle = pb::repartition::Shuffle { shuffle_key };
+        let shuffle = pb::Shuffle { shuffle_key };
         let repartition = pb::Repartition { strategy: Some(pb::repartition::Strategy::ToAnother(shuffle)) };
         self.repartition(repartition)
     }

@@ -92,7 +92,7 @@ impl<P: PartitionInfo, C: ClusterInfo> FnGenerator<P, C> {
         Ok(source_opr.gen_source(worker_id.index as usize)?)
     }
 
-    fn gen_shuffle(&self, res: &pb::repartition::Shuffle) -> FnGenResult<RecordShuffle> {
+    fn gen_shuffle(&self, res: &pb::Shuffle) -> FnGenResult<RecordShuffle> {
         let p = self.router.clone();
         let record_router = RecordRouter::new(p, res.shuffle_key)?;
         Ok(Box::new(record_router))
