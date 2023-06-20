@@ -44,10 +44,26 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "grin_features_enable_v6d")]{
         pub type GrinGraph = *mut ::std::os::raw::c_void;
         pub type GrinVertex = u64;
-        pub type GrinEdge = *mut ::std::os::raw::c_void;
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone, PartialEq)]
+        pub struct GrinEdge {
+            pub src: GrinVertex,
+            pub dst: GrinVertex,
+            pub dir: GrinDirection,
+            pub etype: u32,
+            pub eid: u64,
+        }
         pub type GrinVertexList = *mut ::std::os::raw::c_void;
         pub type GrinVertexListIterator = *mut ::std::os::raw::c_void;
-        pub type GrinAdjacentList = *mut ::std::os::raw::c_void;
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone, PartialEq)]
+        pub struct GrinAdjacentList {
+            pub begin: *const ::std::os::raw::c_void,
+            pub end: *const ::std::os::raw::c_void,
+            pub vid: GrinVertex,
+            pub dir: GrinDirection,
+            pub etype: u32,
+        }
         pub type GrinAdjacentListIterator = *mut ::std::os::raw::c_void;
         pub type GrinPartitionedGraph = *mut ::std::os::raw::c_void;
         pub type GrinPartition = u32;
@@ -72,10 +88,10 @@ cfg_if::cfg_if! {
         pub const GRIN_NULL_DATATYPE: GrinDatatype = GRIN_DATATYPE_UNDEFINED;
         pub const GRIN_NULL_GRAPH: GrinGraph = std::ptr::null_mut();
         pub const GRIN_NULL_VERTEX: GrinVertex = u64::MAX;
-        pub const GRIN_NULL_EDGE: GrinEdge = std::ptr::null_mut();
+        pub const GRIN_NULL_EDGE: GrinEdge = GrinEdge{src: u64::MAX, dst: u64::MAX, dir: GRIN_DIRECTION_BOTH, etype: u32::MAX, eid: u64::MAX};
         pub const GRIN_NULL_VERTEX_LIST: GrinVertexList = std::ptr::null_mut();
         pub const GRIN_NULL_VERTEX_LIST_ITERATOR: GrinVertexListIterator = std::ptr::null_mut();
-        pub const GRIN_NULL_ADJACENT_LIST: GrinAdjacentList = std::ptr::null_mut();
+        pub const GRIN_NULL_ADJACENT_LIST: GrinAdjacentList = GrinAdjacentList{begin: std::ptr::null(), end: std::ptr::null(), vid: u64::MAX, dir: GRIN_DIRECTION_BOTH, etype: u32::MAX};
         pub const GRIN_NULL_ADJACENT_LIST_ITERATOR: GrinAdjacentListIterator = std::ptr::null_mut();
         pub const GRIN_NULL_PARTITIONED_GRAPH: GrinPartitionedGraph = std::ptr::null_mut();
         pub const GRIN_NULL_PARTITION: GrinPartition = u32::MAX;
@@ -261,11 +277,9 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_get_edge_from_iter(arg1: GrinGraph, arg2: GrinEdgeListIterator) -> GrinEdge;
 
-    #[doc = " @brief Get a (non-partitioned) graph from storage\n @param id The identity of the graph in the storage.\n @param version The version of the graph, for storage with no version,\n this param will be ignored.\n @return A graph handle."]
+    #[doc = " @brief Get a (non-partitioned) graph from storage\n @param uri The URI of the graph.\n Current URI for supported storage includes:\n 1. gart://{etcd_endpoint}?prefix={etcd_prefix}&version={version}\n 2. graphar://{yaml_path}?partition_num={partition_num}&strategy={strategy}\n 3. v6d://{object_id}?ipc_socket={ipc_socket} where ipc_socket is optional.\n @return A graph handle."]
     #[allow(unused)]
-    pub fn grin_get_graph_from_storage(
-        arg1: *const ::std::os::raw::c_char, arg2: *const ::std::os::raw::c_char,
-    ) -> GrinGraph;
+    pub fn grin_get_graph_from_storage(arg1: *const ::std::os::raw::c_char) -> GrinGraph;
 
     #[allow(unused)]
     pub fn grin_destroy_graph(arg1: GrinGraph);
@@ -350,11 +364,11 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_get_vertex_from_iter(arg1: GrinGraph, arg2: GrinVertexListIterator) -> GrinVertex;
 
-    #[doc = " @brief Get a partitioned graph from a storage.\n @param id The identity of the graph in the storage.\n @param version The version of the graph, for storage with no version,\n this param will be ignored.\n @return A partitioned graph handle."]
+    #[doc = " @brief Get a partitioned graph from a storage.\n @param uri The URI of the graph.\n Current URI for supported storage includes:\n 1. gart://{etcd_endpoint}?prefix={etcd_prefix}&version={version}\n 2. graphar://{yaml_path}?partition_num={partition_num}&strategy={strategy}\n 3. v6d://{object_id}?ipc_socket={ipc_socket} where ipc_socket is optional.\n @return A partitioned graph handle."]
     #[cfg(feature = "grin_enable_graph_partition")]
     #[allow(unused)]
     pub fn grin_get_partitioned_graph_from_storage(
-        id: *const ::std::os::raw::c_char, version: *const ::std::os::raw::c_char,
+        uri: *const ::std::os::raw::c_char,
     ) -> GrinPartitionedGraph;
 
     #[cfg(feature = "grin_enable_graph_partition")]
@@ -514,7 +528,7 @@ extern "C" {
 
     #[cfg(feature = "grin_enable_edge_ref")]
     #[allow(unused)]
-    pub fn grin_destroy_serialized_edge_ref(arg1: GrinGraph, arg2: GrinEdgeRef);
+    pub fn grin_destroy_serialized_edge_ref(arg1: GrinGraph, arg2: *const ::std::os::raw::c_char);
 
     #[cfg(feature = "grin_enable_edge_ref")]
     #[allow(unused)]
@@ -641,7 +655,7 @@ extern "C" {
     #[doc = " @brief Get the primary keys values row of a vertex\n The values in the row are in the same order as the primary keys properties.\n @param GrinGraph The graph\n @param GrinVertex The vertex\n @return The primary keys values row"]
     #[cfg(feature = "grin_enable_vertex_primary_keys")]
     #[allow(unused)]
-    pub fn grin_get_primary_keys_row_by_vertex(arg1: GrinGraph, arg2: GrinVertex) -> GrinRow;
+    pub fn grin_get_vertex_primary_keys_row(arg1: GrinGraph, arg2: GrinVertex) -> GrinRow;
 
     #[cfg(feature = "grin_enable_edge_primary_keys")]
     #[allow(unused)]
@@ -653,7 +667,7 @@ extern "C" {
 
     #[cfg(feature = "grin_enable_edge_primary_keys")]
     #[allow(unused)]
-    pub fn grin_get_primary_keys_row_by_edge(arg1: GrinGraph, arg2: GrinEdge) -> GrinRow;
+    pub fn grin_get_edge_primary_keys_row(arg1: GrinGraph, arg2: GrinEdge) -> GrinRow;
 
     #[allow(unused)]
     pub fn grin_destroy_string_value(arg1: GrinGraph, arg2: *const ::std::os::raw::c_char);
@@ -1329,15 +1343,15 @@ extern "C" {
         arg1: GrinGraph, arg2: GrinVertexType, id: i64,
     ) -> GrinVertex;
 
-    #[doc = " @brief Get the max internal id under type.\n @param GrinGraph The graph\n @param GrinVertexType The vertex type\n @return The max internal id under type"]
+    #[doc = " @brief Get the upper bound of internal id under type.\n @param GrinGraph The graph\n @param GrinVertexType The vertex type\n @return The upper bound of internal id under type"]
     #[cfg(all(feature = "grin_enable_vertex_internal_id_index", feature = "grin_with_vertex_property"))]
     #[allow(unused)]
-    pub fn grin_get_max_vertex_internal_id_by_type(arg1: GrinGraph, arg2: GrinVertexType) -> i64;
+    pub fn grin_get_vertex_internal_id_upper_bound_by_type(arg1: GrinGraph, arg2: GrinVertexType) -> i64;
 
-    #[doc = " @brief Get the min internal id under type.\n @param GrinGraph The graph\n @param GrinVertexType The vertex type\n @return The min internal id under type"]
+    #[doc = " @brief Get the lower bound internal id under type.\n @param GrinGraph The graph\n @param GrinVertexType The vertex type\n @return The lower bound internal id under type"]
     #[cfg(all(feature = "grin_enable_vertex_internal_id_index", feature = "grin_with_vertex_property"))]
     #[allow(unused)]
-    pub fn grin_get_min_vertex_internal_id_by_type(arg1: GrinGraph, arg2: GrinVertexType) -> i64;
+    pub fn grin_get_vertex_internal_id_lower_bound_by_type(arg1: GrinGraph, arg2: GrinVertexType) -> i64;
 
     #[doc = " @brief Get the vertex by primary keys row.\n The values in the row must be in the same order as the primary keys\n properties, which can be obtained by ``grin_get_primary_keys_by_vertex_type``.\n @param GrinGraph The graph.\n @param GrinVertexType The vertex type.\n @param GrinRow The values row of primary keys properties.\n @return The vertex."]
     #[cfg(all(feature = "grin_enable_vertex_pk_index", feature = "grin_enable_vertex_primary_keys"))]
