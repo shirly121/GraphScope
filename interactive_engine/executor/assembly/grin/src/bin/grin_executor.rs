@@ -71,8 +71,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()?;
     println!("vineyard_graph_id: {:?}", vineyard_graph_id);
 
-    let vineyard_graph_id_string = vineyard_graph_id.to_string();
-
     assert_eq!(server_size, hosts.len());
 
     let mut server_addrs = Vec::with_capacity(server_size);
@@ -90,9 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Start executor with vineyard graph object id {:?}", vineyard_graph_id);
 
     unsafe {
-        let vineyard_graph_id_cstr = string_rust2c(&vineyard_graph_id_string);
-        let vineyard_graph_version = string_rust2c("");
-        let pg = grin_get_partitioned_graph_from_storage(vineyard_graph_id_cstr, vineyard_graph_version);
+        // TODO: grin_get_partitioned_graph_from_storage accept a uri as parameter,
+        // and make the uri as a configuration instead of graph object id.
+        let uri = format!(
+            "v6d://{:}?ipc_socket={:}",
+            &vineyard_graph_id, "/home/graphscope/gie-grin/v6d/build/tmp.sock"
+        );
+        println!("uri: {:?}", uri);
+        let uri_cstr = string_rust2c(&uri);
+        let pg = grin_get_partitioned_graph_from_storage(uri_cstr);
         let grin_graph_proxy = GrinGraphProxy::new(pg).unwrap();
         let process_partition_list = grin_graph_proxy.get_local_partition_ids();
 
