@@ -19,7 +19,9 @@
 //! protobuf structure.
 //!
 
+use std::collections::HashMap;
 use std::convert::TryInto;
+use std::sync::Arc;
 
 use ir_common::error::ParsePbError;
 use ir_common::expr_parse::str_to_expr_pb;
@@ -33,9 +35,8 @@ use ir_physical_client::physical_builder::PlanBuilder;
 use crate::error::{IrError, IrResult};
 use crate::glogue::combine_get_v_by_query_params;
 use crate::plan::logical::{LogicalPlan, NodeType};
-use crate::plan::meta::PlanMeta;
-use crate::plan::partition_meta::QueryDistribution;
-use std::sync::Arc;
+use crate::plan::meta::{PlanMeta, TagId};
+use crate::plan::partition_meta::{EdgeDistribution, EntityLabel, PropertyDistribution, QueryDistribution};
 
 /// A trait for building physical plan from the logical plan
 pub trait AsPhysical {
@@ -46,11 +47,157 @@ pub trait AsPhysical {
 
     /// To conduct necessary post processing before transforming into a physical plan.
     fn post_process(
-        &mut self, _builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, _plan_meta: &mut PlanMeta,
+        &mut self, _builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>,
+        _plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
         Ok(())
     }
 }
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub enum RepartitionType {
+    Shuffle(Option<KeyId>),
+    Broadcast,
+    Pipeline,
+}
+
+#[derive(Eq, PartialEq)]
+pub enum Repartition {
+    Single(RepartitionType),
+    // different label may have different repartition_type
+    Hybrid(Vec<(EntityLabel, RepartitionType)>),
+}
+
+impl From<Repartition> for Option<physical_pb::Repartition> {
+    fn from(repartition: Repartition) -> Self {
+        match repartition {
+            Repartition::Single(single_repartition) => match single_repartition {
+                RepartitionType::Shuffle(shuffle) => {
+                    let strategy = physical_pb::repartition::Strategy::ToAnother(physical_pb::Shuffle {
+                        shuffle_key: shuffle,
+                    });
+                    let repartition = physical_pb::Repartition { strategy: Some(strategy) };
+                    Some(repartition)
+                }
+                RepartitionType::Broadcast => {
+                    let repartition = physical_pb::Repartition {
+                        strategy: Some(physical_pb::repartition::Strategy::ToOthers(
+                            physical_pb::Broadcast {},
+                        )),
+                    };
+                    Some(repartition)
+                }
+                RepartitionType::Pipeline => None,
+            },
+            Repartition::Hybrid(hybrid) => {
+                let mut labeled_repartition = Vec::with_capacity(hybrid.len());
+                for (entity_label, repartition_type) in hybrid {
+                    let repartition_type_pb = match repartition_type {
+                        RepartitionType::Shuffle(s) => {
+                            physical_pb::hybrid_repartition::repartition_type::Strategy::ToAnother(
+                                physical_pb::Shuffle { shuffle_key: s },
+                            )
+                        }
+                        RepartitionType::Broadcast => {
+                            physical_pb::hybrid_repartition::repartition_type::Strategy::ToOthers(
+                                physical_pb::Broadcast {},
+                            )
+                        }
+                        RepartitionType::Pipeline => {
+                            physical_pb::hybrid_repartition::repartition_type::Strategy::Pipeline(
+                                physical_pb::Pipeline {},
+                            )
+                        }
+                    };
+                    labeled_repartition.push(physical_pb::hybrid_repartition::LabeledRepartition {
+                        element_label: Some(entity_label.into()),
+                        single_repartition: Some(physical_pb::hybrid_repartition::RepartitionType {
+                            strategy: Some(repartition_type_pb),
+                        }),
+                    });
+                }
+
+                let hybrid_pb = physical_pb::HybridRepartition { labeled_repartition };
+                Some(physical_pb::Repartition {
+                    strategy: Some(physical_pb::repartition::Strategy::Hybrid(hybrid_pb)),
+                })
+            }
+        }
+    }
+}
+
+// fn build_vertex_prop_repartition(
+//     builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, labels: Vec<common_pb::GraphElementLabel>,
+// ) -> IrResult<()> {
+//     for vlabel in labels {
+//         let vlabel_id = vlabel.label;
+//         let prop_distribution = meta.get_vertex_property_distribution(&vlabel_id)?;
+//         let repartition_type = match prop_distribution {
+//             PropertyDistribution::MasterMirrorVisible => {
+//                 let v_distribution = meta.get_vertex_distribution(&vlabel_id)?;
+//                 if v_distribution.is_all_visible() {
+//                     RepartitionType::Broadcast
+//                 } else {
+//                     RepartitionType::Shuffle(tag_id)
+//                 }
+//             }
+//             PropertyDistribution::MasterVisible => RepartitionType::Shuffle(tag_id),
+//         };
+//         repartition_vlabel_map
+//             .entry(repartition_type)
+//             .or_insert(vec![])
+//             .push(vlabel_id.into());
+//     }
+//     let repartition = process_fuzzy_partition_types(repartition_vlabel_map)?;
+//     if let Some(repartition) = repartition.into() {
+//         builder.repartition(repartition);
+//     }
+//     Ok(())
+// }
+//
+// fn build_edge_prop_repartition(
+//     builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, labels: Vec<common_pb::GraphElementLabel>,
+// ) -> IrResult<()> {
+//     for elabel in labels {
+//         let elabel_id = (elabel.src_label.unwrap(), elabel.label, elabel.dst_label.unwrap());
+//         let prop_distribution = meta.get_edge_property_distribution(&elabel_id)?;
+//         let repartition_type = match prop_distribution {
+//             PropertyDistribution::MasterMirrorVisible => {
+//                 let v_distribution = meta.get_edge_distribution(&elabel_id)?;
+//                 if v_distribution.is_all_visible() {
+//                     RepartitionType::Broadcast
+//                 } else {
+//                     RepartitionType::Shuffle(tag_id)
+//                 }
+//             }
+//             PropertyDistribution::MasterVisible => RepartitionType::Shuffle(tag_id),
+//         };
+//         repartition_vlabel_map
+//             .entry(repartition_type)
+//             .or_insert(vec![])
+//             .push(vlabel_id.into());
+//     }
+//     let repartition = process_fuzzy_partition_types(repartition_vlabel_map)?;
+//     if let Some(repartition) = repartition.into() {
+//         builder.repartition(repartition);
+//     }
+//     Ok(())
+// }
+//
+// // repartition by tag
+// fn post_process_repartition(
+//     builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
+//     tag_id: Option<KeyId>,
+// ) -> IrResult<()> {
+//     let node_opt = plan_meta.get_tag_opt(tag_id.map(|tag| tag as TagId).as_ref())?;
+//     let labels = plan_meta.get_tag_labels(tag_id.map(|tag| tag as TagId).as_ref())?;
+//     let mut repartition_label_map = HashMap::new();
+//     for label in labels {}
+//     // match node_opt {
+//     //     common_pb::graph_data_type::GraphElementOpt::Vertex => build_vertex_prop_repartition(builder, meta, labels)
+//     //     common_pb::graph_data_type::GraphElementOpt::Edge => build_edge_prop_repartition(builder, meta, labels)
+//     // }
+// }
 
 // Fetch properties before used in Project, Select, Order, Dedup, Group, Join, and Apply.
 // This is used when the storage is distributed. In case, we may not able to fetch properties of vertices directly as it may locate on a remote server.
@@ -83,6 +230,8 @@ fn post_process_vars(
                 let (tag, columns_opt) = tag_columns.into_iter().next().unwrap();
                 if columns_opt.len() > 0 {
                     let tag_pb = tag.map(|tag_id| (tag_id as KeyId).into());
+                    // currently, we assume that we can always fetch properties from master element (at least);
+                    // TODO: optimization rules that can fetch local properties when property visibility is MasterMirror.
                     builder.shuffle(tag_pb.clone());
                     let auxilia = pb::GetV {
                         tag: tag_pb.clone(),
@@ -211,6 +360,29 @@ impl AsPhysical for pb::Scan {
     }
 }
 
+fn process_fuzzy_partition_types(
+    mut repartition_elabel_map: HashMap<RepartitionType, Vec<EntityLabel>>,
+) -> IrResult<Repartition> {
+    let len = repartition_elabel_map.len();
+    if len == 0 {
+        Err(IrError::DistributionError("labels is empty".to_string()))?
+    } else if len == 1 {
+        let single_partition_type = repartition_elabel_map
+            .into_keys()
+            .next()
+            .unwrap();
+        Ok(Repartition::Single(single_partition_type))
+    } else {
+        let mut hybrid_partition_types = vec![];
+        for (repartition_type, e_labels) in repartition_elabel_map.drain() {
+            for e_label in e_labels {
+                hybrid_partition_types.push((e_label, repartition_type.clone()));
+            }
+        }
+        Ok(Repartition::Hybrid(hybrid_partition_types))
+    }
+}
+
 impl AsPhysical for pb::EdgeExpand {
     fn add_job_builder(
         &self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
@@ -222,23 +394,128 @@ impl AsPhysical for pb::EdgeExpand {
     }
 
     fn post_process(
-        &mut self, builder: &mut PlanBuilder, _meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
     ) -> IrResult<()> {
-        if plan_meta.is_partition() {
-            builder.shuffle(self.v_tag.clone());
-            // Notice that if expand edges, we need to carry its demanded properties,
-            // since query edge by eid is not supported in storage for now.
-            if self.expand_opt == pb::edge_expand::ExpandOpt::Edge as i32 {
-                if let Some(params) = self.params.as_mut() {
-                    let node_meta = plan_meta.get_curr_node_meta().unwrap();
-                    let columns = node_meta.get_columns();
-                    let is_all_columns = node_meta.is_all_columns();
-                    if !columns.is_empty() || is_all_columns {
-                        params.columns = columns
-                            .into_iter()
-                            .map(|tag| tag.into())
-                            .collect();
-                        params.is_all_columns = is_all_columns;
+        let elabels = plan_meta.get_tag_labels(None)?;
+        let mut repartition_elabel_map = HashMap::new();
+        for elabel in elabels {
+            if let EntityLabel::ELabel(elabel_id) = elabel {
+                let edge_visibility = meta.get_edge_distribution(&elabel_id)?;
+                let edge_expand_dir: pb::edge_expand::Direction =
+                    unsafe { ::std::mem::transmute(self.direction) };
+
+                let repartition_type = match edge_visibility {
+                    EdgeDistribution::AllVisible => RepartitionType::Pipeline,
+                    EdgeDistribution::OneVisible => RepartitionType::Broadcast,
+                    EdgeDistribution::SrcVisible => match edge_expand_dir {
+                        pb::edge_expand::Direction::Out => RepartitionType::Shuffle(
+                            self.v_tag
+                                .clone()
+                                .map(|tag| tag.try_into().unwrap()),
+                        ),
+                        pb::edge_expand::Direction::In => RepartitionType::Broadcast,
+                        pb::edge_expand::Direction::Both => {
+                            // TODO
+                            Err(IrError::Unsupported("both query when edge is SrcVisible".to_string()))?
+                        }
+                    },
+                    EdgeDistribution::DstVisible => match edge_expand_dir {
+                        pb::edge_expand::Direction::Out => RepartitionType::Broadcast,
+                        pb::edge_expand::Direction::In => RepartitionType::Shuffle(
+                            self.v_tag
+                                .clone()
+                                .map(|tag| tag.try_into().unwrap()),
+                        ),
+                        pb::edge_expand::Direction::Both => {
+                            // TODO
+                            Err(IrError::Unsupported("both query when edge is DstVisible".to_string()))?
+                        }
+                    },
+                    EdgeDistribution::BothVisible => RepartitionType::Shuffle(
+                        self.v_tag
+                            .clone()
+                            .map(|tag| tag.try_into().unwrap()),
+                    ),
+                };
+                repartition_elabel_map
+                    .entry(repartition_type)
+                    .or_insert(vec![])
+                    .push(elabel_id.into());
+            } else {
+                Err(IrError::DistributionError(format!("unexpected elabel {:?}", elabel)))?
+            }
+        }
+
+        let repartition = process_fuzzy_partition_types(repartition_elabel_map)?;
+        if let Some(repartition) = repartition.into() {
+            builder.repartition(repartition);
+            let elabels = plan_meta.get_tag_labels(None)?;
+            let mut repartition_elabel_map = HashMap::new();
+            for elabel in elabels {
+                if let EntityLabel::ELabel(elabel_id) = elabel {
+                    let edge_visibility = meta.get_edge_distribution(&elabel_id)?;
+                    let edge_expand_dir: pb::edge_expand::Direction =
+                        unsafe { ::std::mem::transmute(self.direction) };
+
+                    let repartition_type = match edge_visibility {
+                        EdgeDistribution::AllVisible => RepartitionType::Pipeline,
+                        EdgeDistribution::OneVisible => RepartitionType::Broadcast,
+                        EdgeDistribution::SrcVisible => match edge_expand_dir {
+                            pb::edge_expand::Direction::Out => RepartitionType::Shuffle(
+                                self.v_tag
+                                    .clone()
+                                    .map(|tag| tag.try_into().unwrap()),
+                            ),
+                            pb::edge_expand::Direction::In => RepartitionType::Broadcast,
+                            pb::edge_expand::Direction::Both => {
+                                // TODO
+                                Err(IrError::Unsupported("both query when edge is SrcVisible".to_string()))?
+                            }
+                        },
+                        EdgeDistribution::DstVisible => match edge_expand_dir {
+                            pb::edge_expand::Direction::Out => RepartitionType::Broadcast,
+                            pb::edge_expand::Direction::In => RepartitionType::Shuffle(
+                                self.v_tag
+                                    .clone()
+                                    .map(|tag| tag.try_into().unwrap()),
+                            ),
+                            pb::edge_expand::Direction::Both => {
+                                // TODO
+                                Err(IrError::Unsupported("both query when edge is DstVisible".to_string()))?
+                            }
+                        },
+                        EdgeDistribution::BothVisible => RepartitionType::Shuffle(
+                            self.v_tag
+                                .clone()
+                                .map(|tag| tag.try_into().unwrap()),
+                        ),
+                    };
+                    repartition_elabel_map
+                        .entry(repartition_type)
+                        .or_insert(vec![])
+                        .push(elabel_id.into());
+                } else {
+                    Err(IrError::DistributionError(format!("unexpected elabel {:?}", elabel)))?
+                }
+            }
+
+            let repartition = process_fuzzy_partition_types(repartition_elabel_map)?;
+            if let Some(repartition) = repartition.into() {
+                builder.repartition(repartition);
+                // Notice that if expand edges, we need to carry its demanded properties,
+                // since query edge by eid is not supported in storage for now.
+                if self.expand_opt == pb::edge_expand::ExpandOpt::Edge as i32 {
+                    if let Some(params) = self.params.as_mut() {
+                        let node_meta = plan_meta.get_curr_node_meta().unwrap();
+                        let columns = node_meta.get_columns();
+                        let is_all_columns = node_meta.is_all_columns();
+                        if !columns.is_empty() || is_all_columns {
+                            params.columns = columns
+                                .into_iter()
+                                .map(|tag| tag.into())
+                                .collect();
+                            params.is_all_columns = is_all_columns;
+                        }
                     }
                 }
             }
@@ -393,7 +670,7 @@ impl AsPhysical for pb::GetV {
         // If GetV(Adj) with filter, translate GetV into GetV(GetAdj) + Shuffle (if on distributed storage) + GetV(Self)
         if let Some(params) = getv.params.as_mut() {
             if params.is_queryable() {
-                let auxilia = pb::GetV {
+                let mut auxilia = pb::GetV {
                     tag: None,
                     opt: 4, //ItSelf
                     params: Some(params.clone()),
@@ -407,16 +684,55 @@ impl AsPhysical for pb::GetV {
                 getv.alias = None;
                 // GetV(Adj) and try to fuse it with ExpandE
                 build_and_try_fuse_get_v(builder, getv)?;
-                // Shuffle + GetV(Self)
-                if plan_meta.is_partition() {
-                    builder.shuffle(None);
-                }
+                // Repartition + GetV(Self)
+                auxilia.post_process(builder, _meta, plan_meta)?;
                 builder.get_v(auxilia);
                 return Ok(());
             }
         }
         // Otherwise, fetches adjacent vertex ids from an edge directly; and try to fuse it with ExpandE
         build_and_try_fuse_get_v(builder, getv)?;
+        Ok(())
+    }
+    fn post_process(
+        &mut self, builder: &mut PlanBuilder, meta: &Arc<dyn QueryDistribution>, plan_meta: &mut PlanMeta,
+    ) -> IrResult<()> {
+        // TODO: move build_and_try_fuse_get_v() into post_process
+        // TODO: and also for auxilia
+        // For Auxilia, post_process is for property fetch.
+        // todo: this is a bug, tag's metadata
+        let tag_id: Option<KeyId> = self
+            .tag
+            .clone()
+            .map(|tag| tag.try_into().unwrap());
+        let vlabels = plan_meta.get_tag_labels(tag_id.map(|tag| tag as TagId).as_ref())?;
+        let mut repartition_vlabel_map = HashMap::new();
+        for vlabel in vlabels {
+            if let EntityLabel::VLabel(vlabel_id) = vlabel {
+                let prop_distribution = meta.get_vertex_property_distribution(&vlabel_id)?;
+                let repartition_type = match prop_distribution {
+                    PropertyDistribution::MasterMirrorVisible => {
+                        let v_distribution = meta.get_vertex_distribution(&vlabel_id)?;
+                        if v_distribution.is_all_visible() {
+                            RepartitionType::Broadcast
+                        } else {
+                            RepartitionType::Shuffle(tag_id)
+                        }
+                    }
+                    PropertyDistribution::MasterVisible => RepartitionType::Shuffle(tag_id),
+                };
+                repartition_vlabel_map
+                    .entry(repartition_type)
+                    .or_insert(vec![])
+                    .push(vlabel_id.into());
+            } else {
+                Err(IrError::DistributionError(format!("unexpected vlabel {:?}", vlabel)))?
+            }
+        }
+        let repartition = process_fuzzy_partition_types(repartition_vlabel_map)?;
+        if let Some(repartition) = repartition.into() {
+            builder.repartition(repartition);
+        }
         Ok(())
     }
 }

@@ -23,14 +23,13 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, RwLock};
 
-use ir_common::generated::common as common_pb;
 use ir_common::generated::schema as schema_pb;
 use ir_common::{KeyId, OneOrMany};
 use ir_common::{LabelId, NameOrId};
 
 use crate::error::{IrError, IrResult};
 use crate::plan::logical::NodeId;
-use crate::plan::partition_meta::QueryDistribution;
+use crate::plan::partition_meta::{EntityLabel, QueryDistribution};
 use crate::JsonIO;
 
 pub static INVALID_META_ID: KeyId = -1;
@@ -509,7 +508,7 @@ impl ColumnsOpt {
 /// Record the runtime schema of the node in the logical plan, for it being the vertex/edge
 pub struct NodeMeta {
     /// The table names (labels)
-    tables: Vec<common_pb::GraphElementLabel>,
+    tables: Vec<EntityLabel>,
     /// The required columns of current node
     columns: ColumnsOpt,
     /// The required columns of the nodes with certain tags. `None` tag means the columns
@@ -518,11 +517,11 @@ pub struct NodeMeta {
 }
 
 impl NodeMeta {
-    pub fn insert_table(&mut self, table: common_pb::GraphElementLabel) {
+    pub fn insert_table(&mut self, table: EntityLabel) {
         self.tables.push(table);
     }
 
-    pub fn get_tables(&self) -> &Vec<common_pb::GraphElementLabel> {
+    pub fn get_tables(&self) -> &Vec<EntityLabel> {
         &self.tables
     }
 }
@@ -643,7 +642,7 @@ impl NodeMetaOpt {
         self[0].borrow().tag_columns.clone()
     }
 
-    pub fn set_tables(&mut self, tables: Vec<common_pb::GraphElementLabel>) {
+    pub fn set_tables(&mut self, tables: Vec<EntityLabel>) {
         match self.as_ref() {
             // The number 256 is given arbitrarily, which however should be determined by the number
             // of actual columns for the given node.
@@ -656,7 +655,7 @@ impl NodeMetaOpt {
         }
     }
 
-    pub fn get_tables(&self) -> Vec<common_pb::GraphElementLabel> {
+    pub fn get_tables(&self) -> Vec<EntityLabel> {
         self[0].borrow().tables.clone()
     }
 }
@@ -877,14 +876,26 @@ impl PlanMeta {
         self.get_or_insert_nodes_meta(&vec![self.curr_node])
     }
 
-    pub fn get_tag_labels(&self, tag: TagId) -> Vec<common_pb::GraphElementLabel> {
+    /// Get the tag-associated nodes' labels.
+    /// If the tag is `None`, the associated nodes are the referred nodes of current nodes.
+    /// If there is no node associated with the tag, return `TagNotExist` error.
+    pub fn get_tag_labels(&self, tag_opt: Option<&TagId>) -> IrResult<Vec<EntityLabel>> {
         let mut tables = vec![];
-        if let Some(nodes) = self.tag_nodes.get(&tag) {
-            if let Some(node_meta) = self.get_nodes_meta(nodes.as_slice()) {
-                tables = node_meta.get_tables()
+        if let Some(tag) = tag_opt {
+            if let Some(nodes) = self.tag_nodes.get(tag) {
+                if let Some(node_meta) = self.get_nodes_meta(nodes.as_slice()) {
+                    tables = node_meta.get_tables()
+                }
+            } else {
+                Err(IrError::TagNotExist((tag.clone() as KeyId).into()))?
+            }
+        } else {
+            if let Some(curr_node_meta) = self.get_curr_node_meta() {
+                tables = curr_node_meta.get_tables()
             }
         }
-        tables
+
+        Ok(tables)
     }
 
     pub fn is_partition(&self) -> bool {

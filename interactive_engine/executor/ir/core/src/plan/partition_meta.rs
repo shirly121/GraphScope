@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ir_common::generated::common as common_pb;
 use ir_common::LabelId;
 
 use crate::error::{IrError, IrResult};
@@ -13,6 +14,15 @@ pub enum VertexDistribution {
     AllVisible,
     OneVisible,
     AdjVisible,
+}
+
+impl VertexDistribution {
+    pub fn is_all_visible(&self) -> bool {
+        match self {
+            VertexDistribution::AllVisible => true,
+            _ => false,
+        }
+    }
 }
 
 /// Define the distribution of edges.
@@ -53,7 +63,7 @@ pub enum PropertyDistribution {
 /// NOTICE that direction is prserved in ETripLabel.
 pub type ETripLabel = (LabelId, LabelId, LabelId);
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum EntityLabel {
     VLabel(LabelId),
     ELabel(ETripLabel),
@@ -68,6 +78,21 @@ impl From<LabelId> for EntityLabel {
 impl From<ETripLabel> for EntityLabel {
     fn from(label: ETripLabel) -> Self {
         EntityLabel::ELabel(label)
+    }
+}
+
+impl From<EntityLabel> for common_pb::GraphElementLabel {
+    fn from(label: EntityLabel) -> Self {
+        match label {
+            EntityLabel::VLabel(vlabel) => common_pb::GraphElementLabel {
+                element_label: Some(common_pb::graph_element_label::ElementLabel::VLabel(vlabel)),
+            },
+            EntityLabel::ELabel((src_label, label, dst_label)) => common_pb::GraphElementLabel {
+                element_label: Some(common_pb::graph_element_label::ElementLabel::ELabel(
+                    common_pb::graph_element_label::EdgeLabel { label, src_label, dst_label },
+                )),
+            },
+        }
     }
 }
 

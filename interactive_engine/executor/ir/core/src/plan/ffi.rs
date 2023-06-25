@@ -161,6 +161,7 @@ impl From<IrError> for FfiResult {
                 ResultCode::InvalidRangeError,
                 format!("the range ({:?}, {:?}) is invalid", l, u),
             ),
+            IrError::DistributionError(err) => FfiResult::new(ResultCode::Others, err.to_string()),
             IrError::Unsupported(err) => FfiResult::new(ResultCode::UnSupported, err.to_string()),
         }
     }

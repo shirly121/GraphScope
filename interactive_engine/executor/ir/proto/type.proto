@@ -25,21 +25,23 @@ import "google/protobuf/wrappers.proto";
 // The label of the graph element. i.e., the label of vertex or edge.
 // Specifically, for an edge, the labels of its src and dst vertices can be further specified.
 message GraphElementLabel {
-  // the label of vertex or edge
-  int32 label = 1;
-  // optional field, denoting the label of the src vertex of the edge
-  google.protobuf.Int32Value src_label  = 2;
-  // optional field, denoting the label of the dst vertex of the edge
-  google.protobuf.Int32Value dst_label  = 3;
+  message EdgeLabel {
+    // the label of edge
+    int32 label = 1;
+    // the label of the src vertex of the edge
+    int32 src_label  = 2;
+    // the label of the dst vertex of the edge
+    int32 dst_label  = 3;
+  }
+  oneof element_label {
+    // the label of vertex or edge
+    int32 v_label = 1;
+    EdgeLabel e_label = 2;
+  }
 }
 
 // GraphDataType, including structured data types of vertices or edges.
 message GraphDataType {
-  // The Option of the graph element, i.e., vertex or edge
-  enum GraphElementOpt {
-    VERTEX = 0;
-    EDGE = 1;
-  }
   // GraphElementTypeField represents the definition of a field in the structured GraphElementType
   // In common, it denotes the type of properties.
   message GraphElementTypeField {
@@ -52,8 +54,7 @@ message GraphDataType {
     GraphElementLabel label = 1;
     repeated GraphElementTypeField props = 2;
   }
-  GraphElementOpt element_opt = 1;
-  repeated GraphElementType graph_data_type = 2;
+  repeated GraphElementType graph_data_type = 1;
 }
 
 // IrDataType, which could be either basic DataType or GraphDataType

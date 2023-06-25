@@ -43,6 +43,7 @@ pub enum IrError {
     // Physical Errors
     MissingData(String),
     InvalidRange(i32, i32),
+    DistributionError(String),
 
     // Common Errors
     Unsupported(String),
@@ -75,6 +76,7 @@ impl fmt::Display for IrError {
             IrError::InvalidRange(lo, up) => {
                 write!(f, "invalid range ({:?}, {:?})", lo, up)
             }
+            IrError::DistributionError(s) => write!(f, "distribution error: {:?}", s),
             IrError::Unsupported(s) => write!(f, "{:?}: is not supported", s),
         }
     }

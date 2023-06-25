@@ -840,25 +840,6 @@ impl TryFrom<physical_pb::PhysicalOpr> for physical_pb::physical_opr::operator::
     }
 }
 
-impl common_pb::IrDataType {
-    pub fn extract_labels(&self) -> Vec<common_pb::GraphElementLabel> {
-        let mut labels = vec![];
-        if let Some(t) = &self.r#type {
-            match t {
-                Type::DataType(_) => {}
-                Type::GraphType(graph_type) => {
-                    labels = graph_type
-                        .graph_data_type
-                        .iter()
-                        .map(|graph_data_type| graph_data_type.label.clone().unwrap())
-                        .collect()
-                }
-            }
-        }
-        labels
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;

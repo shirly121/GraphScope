@@ -29,6 +29,7 @@ use vec_map::VecMap;
 use crate::error::{IrError, IrResult};
 use crate::glogue::error::IrPatternError;
 use crate::plan::meta::{ColumnsOpt, PlanMeta, Schema, StoreMeta, TagId, INVALID_META_ID, STORE_META};
+use crate::plan::partition_meta::EntityLabel;
 use crate::plan::patmat::{ExtendStrategy, MatchingStrategy, NaiveStrategy};
 
 // Note that protobuf only support signed integer, while we actually requires the nodes'
@@ -966,14 +967,18 @@ fn get_or_set_tag_id(tag_pb: &mut common_pb::NameOrId, plan_meta: &mut PlanMeta)
     }
 }
 
+pub fn extract_entity_label_from_meta(node_meta_data: Option<pb::MetaData>) -> Vec<EntityLabel> {
+    todo!()
+}
+
 /// Process the node's meta in `plan_meta` such that the nodes can be attached to
 /// corresponding labels.
 fn process_node_meta(plan_meta: &mut PlanMeta, node_meta_data: Option<pb::MetaData>) -> IrResult<()> {
+    let labels = extract_entity_label_from_meta(node_meta_data);
+    // if let Some(node_meta_type) = node_meta_data.and_then(|node_meta_data| node_meta_data.r#type) {
+    //     labels = node_meta_type.extract_labels();
+    // }
     let mut node_meta = plan_meta.curr_node_meta_mut();
-    let mut labels = vec![];
-    if let Some(node_meta_type) = node_meta_data.and_then(|node_meta_data| node_meta_data.r#type) {
-        labels = node_meta_type.extract_labels();
-    }
     node_meta.set_tables(labels);
     Ok(())
 }
