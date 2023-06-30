@@ -22,7 +22,7 @@ use graph_proxy::GrinGraphProxy;
 use graph_proxy::{create_grin_store, GrinPartition};
 use grin::grin::grin_get_partitioned_graph_from_storage;
 use grin::string_rust2c;
-use grin_runtime::error::{StartServerError, StartServerResult};
+use grin_v6d::error::{StartServerError, StartServerResult};
 use log::info;
 use pegasus::api::Sink;
 use pegasus::{wait_servers_ready, Configuration, JobConf, ServerConf};

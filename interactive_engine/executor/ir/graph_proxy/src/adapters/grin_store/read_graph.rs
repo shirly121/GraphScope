@@ -509,7 +509,7 @@ impl Iterator for GrinAdjVertexIter {
                         return Some(GrinIdVertexProxy::new(self.graph, vertex_handle).unwrap());
                     } else {
                         if let Some(iter_val) = self.grin_adj_list_iter_vec.pop() {
-                            grin_destroy_vertex_list_iter(self.graph, *iter);
+                            grin_destroy_adjacent_list_iter(self.graph, *iter);
                             self.curr_iter = Some(iter_val);
                         } else {
                             return None;

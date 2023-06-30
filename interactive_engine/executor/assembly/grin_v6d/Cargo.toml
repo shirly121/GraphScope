@@ -1,5 +1,5 @@
 [package]
-name = "grin_runtime"
+name = "grin_v6d"
 version = "0.1.0"
 edition = "2021"
 
