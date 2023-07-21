@@ -426,72 +426,8 @@
     },
     {
       "label": {
-        "id": 9,
-        "name": "CITY"
-      },
-      "columns": [
-        {
-          "key": {
-            "id": 0,
-            "name": "id"
-          },
-          "data_type": 2,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 8,
-            "name": "name"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
         "id": 12,
         "name": "UNIVERSITY"
-      },
-      "columns": [
-        {
-          "key": {
-            "id": 0,
-            "name": "id"
-          },
-          "data_type": 2,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 8,
-            "name": "name"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
-        "id": 8,
-        "name": "PLACE"
       },
       "columns": [
         {
@@ -586,17 +522,17 @@
       "entity_pairs": [
         {
           "src": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           },
           "dst": {
-            "id": 8,
+            "id": 0,
             "name": "PLACE"
           }
         },
         {
           "src": {
-            "id": 8,
+            "id": 0,
             "name": "PLACE"
           },
           "dst": {
@@ -866,8 +802,8 @@
             "name": "PERSON"
           },
           "dst": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           }
         },
         {
@@ -876,8 +812,8 @@
             "name": "UNIVERSITY"
           },
           "dst": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           }
         },
         {
@@ -886,7 +822,7 @@
             "name": "COMPANY"
           },
           "dst": {
-            "id": 8,
+            "id": 0,
             "name": "PLACE"
           }
         }
@@ -936,3 +872,4 @@
   "is_table_id": true,
   "is_column_id": false
 }
+
