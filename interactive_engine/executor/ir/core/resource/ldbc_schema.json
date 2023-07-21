@@ -491,7 +491,7 @@
     {
       "label": {
         "id": 8,
-        "name": "COUNTRY"
+        "name": "PLACE"
       },
       "columns": [
         {
@@ -591,13 +591,13 @@
           },
           "dst": {
             "id": 8,
-            "name": "COUNTRY"
+            "name": "PLACE"
           }
         },
         {
           "src": {
             "id": 8,
-            "name": "COUNTRY"
+            "name": "PLACE"
           },
           "dst": {
             "id": 10,
@@ -887,7 +887,7 @@
           },
           "dst": {
             "id": 8,
-            "name": "COUNTRY"
+            "name": "PLACE"
           }
         }
       ],
