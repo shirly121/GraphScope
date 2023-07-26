@@ -103,7 +103,7 @@ pub enum ResultCode {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FfiResult {
     code: ResultCode,
-    msg: *const c_char,
+    pub msg: *const c_char,
 }
 
 impl FfiResult {
@@ -267,6 +267,19 @@ impl Default for FfiNameOrId {
     }
 }
 
+impl From<common_pb::NameOrId> for FfiNameOrId {
+    fn from(pb: common_pb::NameOrId) -> Self {
+        match pb.item {
+            Some(common_pb::name_or_id::Item::Name(name)) => {
+                let name_cstr = string_to_cstr(name).unwrap();
+                Self { opt: FfiNameIdOpt::Name, name: name_cstr, name_id: 0 }
+            }
+            Some(common_pb::name_or_id::Item::Id(id)) => Self { opt: FfiNameIdOpt::Id, name: std::ptr::null(), name_id: id },
+            None => Self::default(),
+        }
+    }
+}
+
 impl TryFrom<FfiNameOrId> for Option<common_pb::NameOrId> {
     type Error = FfiResult;
 
@@ -355,7 +368,7 @@ impl TryFrom<FfiProperty> for Option<common_pb::Property> {
 #[repr(C)]
 #[derive(Default)]
 pub struct FfiVariable {
-    tag: FfiNameOrId,
+    pub tag: FfiNameOrId,
     property: FfiProperty,
 }
 
@@ -1168,7 +1181,7 @@ mod select {
     }
 }
 
-mod join {
+pub mod join {
     use super::*;
 
     #[allow(dead_code)]
@@ -1710,7 +1723,7 @@ mod unfold {
     }
 }
 
-mod scan {
+pub mod scan {
     use std::collections::HashMap;
 
     use super::*;
@@ -1918,7 +1931,7 @@ mod as_opr {
     }
 }
 
-mod sink {
+pub mod sink {
     use super::*;
 
     /// To initialize an Sink operator with target of SinkDefault (i.e., sink to client)
@@ -1984,7 +1997,7 @@ mod sink {
     }
 }
 
-mod graph {
+pub mod graph {
     use std::collections::HashMap;
 
     use super::*;
