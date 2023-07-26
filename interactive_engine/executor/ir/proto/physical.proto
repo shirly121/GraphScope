@@ -269,6 +269,18 @@ message Repartition {
 // A dummy node to delegate a source opr for multiple scan cases.
 message RootScan {}
 
+// denote an operator to call a registered procedure
+message ProcedureCall {
+  // name of the procedure
+  common.NameOrId signature_name = 1;
+  // arguments to call the procedure
+  repeated common.Expression call_arguments = 2;
+  // to support `CALL...YIELD...` syntax in Cypher, if `YIELD *` is given, yield_all is true
+  bool yield_all = 3;
+  // list variables to yield
+  repeated common.Variable yield_variables = 4;
+}
+
 message PhysicalOpr {
   message Operator {
     oneof op_kind {
@@ -291,6 +303,7 @@ message PhysicalOpr {
       GetV vertex = 30;
       EdgeExpand edge = 31;
       PathExpand path = 32;
+      ProcedureCall procedure_call = 33;
     }
   }
   message MetaData {

@@ -138,6 +138,14 @@ message Case {
   Expression else_result_expression = 2;
 }
 
+// denote a user-defined function call which is an expression type
+message FunctionCall {
+  // name of the function
+  string signature_name = 1;
+  // arguments to call the function
+  repeated Expression call_arguments = 2;
+}
+
 // An operator of expression is one of Logical, Arithmetic, Const and Variable.
 message ExprOpr {
   enum Brace {
@@ -155,9 +163,10 @@ message ExprOpr {
     // dynamic param in expression
     DynamicParam param = 9;
     Case case = 10;
+    FunctionCall function_call = 11;
   }
   // The data of type of ExprOpr
-  common.IrDataType node_type = 11;
+  common.IrDataType node_type = 12;
 }
 
 // An inner representation of an expression
