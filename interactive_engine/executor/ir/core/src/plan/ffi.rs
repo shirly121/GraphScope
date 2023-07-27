@@ -274,7 +274,9 @@ impl From<common_pb::NameOrId> for FfiNameOrId {
                 let name_cstr = string_to_cstr(name).unwrap();
                 Self { opt: FfiNameIdOpt::Name, name: name_cstr, name_id: 0 }
             }
-            Some(common_pb::name_or_id::Item::Id(id)) => Self { opt: FfiNameIdOpt::Id, name: std::ptr::null(), name_id: id },
+            Some(common_pb::name_or_id::Item::Id(id)) => {
+                Self { opt: FfiNameIdOpt::Id, name: std::ptr::null(), name_id: id }
+            }
             None => Self::default(),
         }
     }
