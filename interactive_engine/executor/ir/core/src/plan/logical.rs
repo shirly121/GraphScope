@@ -78,7 +78,7 @@ pub struct LogicalPlan {
     /// **include the removed ones**
     pub(crate) max_node_id: NodeId,
     /// The metadata of the logical plan
-    pub(crate) meta: PlanMeta,
+    pub meta: PlanMeta,
 }
 
 impl PartialEq for LogicalPlan {

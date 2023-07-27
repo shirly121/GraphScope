@@ -29,8 +29,10 @@ mod tests {
     use ir_core::plan::ffi::scan::*;
     use ir_core::plan::ffi::sink::*;
     use ir_core::plan::logical::LogicalPlan;
+    use ir_core::plan::physical::AsPhysical;
     use ir_core::FfiNameOrId;
     use ir_core::FfiVariable;
+    use ir_physical_client::physical_builder::PlanBuilder;
 
     fn tag_gen(tag: &str) -> FfiNameOrId {
         let tag_pb = common_pb::NameOrId { item: Some(common_pb::name_or_id::Item::Name(tag.to_string())) };
@@ -82,6 +84,10 @@ mod tests {
             let ptr_match2 = init_pattern_operator();
             add_pattern_sentence(ptr_match2, ptr_sentence2);
             let match_id2: *mut i32 = &mut 0;
+            // TODO: the parent should be *scan_id or *match_id???
+            // TODO: scan_id leads to a partial logical plan without match2;
+            // TODO: while match_id leads to a complete logical plan, but failed in generate physical plan
+            // append_pattern_operator(ptr_plan, ptr_match2, *scan_id, match_id2);
             append_pattern_operator(ptr_plan, ptr_match2, *match_id, match_id2);
 
             println!("right_match_id: {:?}", *match_id2);
@@ -111,8 +117,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_match_join_match_logical() {
+    fn match_join_match_logical_plan() -> LogicalPlan {
         let scan_opr =
             pb::Scan { scan_opt: 0, alias: None, params: None, idx_predicate: None, meta_data: None };
 
@@ -182,7 +187,26 @@ mod tests {
         println!("right_match_id: {:?}", right_match_id);
         println!("join_id: {:?}", join_id);
 
+        plan
+    }
+
+    #[test]
+    fn test_match_join_match_logical() {
+        let plan = match_join_match_logical_plan();
         println!("hello i'm logical plan");
         println!("{:#?}", plan);
+    }
+
+    #[test]
+    fn test_match_join_match_physical() {
+        let plan = match_join_match_logical_plan();
+
+        let mut plan_meta = plan.meta.clone();
+        let mut builder = PlanBuilder::default();
+        let _ = plan.add_job_builder(&mut builder, &mut plan_meta);
+        // TODO: seems bug in get_branch_plans for the join operator
+        let physical_plan = builder.build();
+        println!("hello i'm physical plan");
+        println!("{:#?}", physical_plan);
     }
 }
