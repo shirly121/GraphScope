@@ -82,7 +82,7 @@ mod tests {
             let ptr_match2 = init_pattern_operator();
             add_pattern_sentence(ptr_match2, ptr_sentence2);
             let match_id2: *mut i32 = &mut 0;
-            append_pattern_operator(ptr_plan, ptr_match2, *scan_id, match_id2);
+            append_pattern_operator(ptr_plan, ptr_match2, *match_id, match_id2);
 
             println!("right_match_id: {:?}", *match_id2);
 
