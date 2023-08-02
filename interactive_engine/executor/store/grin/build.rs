@@ -13,6 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+#[cfg(feature = "grin_features_enable_v6d")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-link-search=/home/graphscope/gie-grin/v6d/build/shared-lib");
     println!("cargo:rustc-link-search=/usr/local/lib");
@@ -24,3 +25,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(feature = "grin_features_enable_graphar")]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("cargo:rustc-link-search=/usr/local/lib");
+    println!("cargo:rustc-link-lib=libgar");
+    println!("cargo:rustc-link-lib=libgar-grin.so");
+
+    Ok(())
+}
+
+#[cfg(feature = "grin_features_enable_gart")]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    todo!()
+}
+
+// #[cfg(not(any(grin_features_enable_v6d, grin_features_enable_gar, grin_features_enable_gart)))]
+// fn main() -> Result<(), Box<dyn std::error::Error>> {
+//     todo!()
+// }

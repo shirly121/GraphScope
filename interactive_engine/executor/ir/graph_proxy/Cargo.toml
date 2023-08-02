@@ -34,5 +34,5 @@ with_grin = []
 
 # for different storage implementations, set features of grin_v6d, grin_gart, etc.
 grin_v6d = ["with_grin", "grin/grin_features_enable_v6d", "grin_enable_vertex_primary_keys"]
-# TODO: grin would contain feature of "grin_features_enable_gart"
-grin_gart = ["with_grin"]
+grin_gart = ["with_grin", "grin/grin_features_enable_gart"]
+grin_graphar = ["with_grin", "grin/grin_features_enable_graphar"]
