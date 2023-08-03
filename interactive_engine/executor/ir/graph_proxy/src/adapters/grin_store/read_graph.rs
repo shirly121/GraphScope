@@ -284,8 +284,7 @@ impl GrinVertexProxy {
     pub fn get_properties(&self) -> GraphProxyResult<HashMap<NameOrId, Object>> {
         unsafe {
             let prop_list = grin_get_vertex_property_list_by_type(self.graph, self.vertex_type);
-            // TODO(bingqing): fix all is_null() checks
-            if prop_list.is_null() {
+            if prop_list == GRIN_NULL_VERTEX_PROPERTY_LIST {
                 return Err(GraphProxyError::QueryStoreError(format!(
                     "`grin_get_vertex_property_list_by_type`: {:?} returns null",
                     self.vertex_type
@@ -354,7 +353,7 @@ impl GrinVertexIter {
                     )));
                 }
                 let vtype_list = grin_get_vertex_list_by_type_select_master(graph, vertex_type);
-                if vtype_list.is_null() {
+                if vtype_list == GRIN_NULL_VERTEX_LIST {
                     return Err(GraphProxyError::QueryStoreError(format!(
                         "`grin_select_type_for_vertex_list`: {:?}, returns null",
                         vertex_type_id
