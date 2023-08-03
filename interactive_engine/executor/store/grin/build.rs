@@ -33,8 +33,7 @@ fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(all(feature = "grin_features_enable_graphar", not(feature = "grin_features_enable_v6d")))]
 fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-link-search=/usr/local/lib");
-    println!("cargo:rustc-link-lib=libgar");
-    println!("cargo:rustc-link-lib=libgar-grin.so");
+    println!("cargo:rustc-link-lib=gar-grin");
 
     Ok(())
 }
