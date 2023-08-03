@@ -23,6 +23,7 @@ import com.alibaba.graphscope.gremlin.integration.result.TestGraphFactory;
 public class GraphServiceMain {
     public static final String EXPERIMENTAL = "exp";
     public static final String CSR = "csr";
+    public static final String GRINV6D = "grinv6d";
 
     public static void main(String[] args) throws Exception {
         Configs configs = new Configs("conf/ir.compiler.properties", FileLoadType.RELATIVE_PATH);
@@ -35,7 +36,10 @@ public class GraphServiceMain {
             server.start(configs, fetcher, metaQueryCallback, TestGraphFactory.EXPERIMENTAL);
         } else if (storeType.equals(CSR)) {
             server.start(configs, fetcher, metaQueryCallback, TestGraphFactory.MCSR);
-        } else {
+        } else if (storeType.equals(GRINV6D)) {
+            server.start(configs, fetcher, metaQueryCallback, TestGraphFactory.GRINV6D);
+        }
+        else {
             throw new UnsupportedOperationException(
                     "store type " + storeType + " is unsupported yet");
         }

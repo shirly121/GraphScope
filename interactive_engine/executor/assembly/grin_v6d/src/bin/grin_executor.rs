@@ -92,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // and make the uri as a configuration instead of graph object id.
         let uri = format!(
             "v6d://{:}?ipc_socket={:}",
-            &vineyard_graph_id, "/home/graphscope/gie-grin/v6d/build/tmp.sock"
+            &vineyard_graph_id, "/workspaces/v6d/build/tmp.sock"
         );
         println!("uri: {:?}", uri);
         let uri_cstr = string_rust2c(&uri);
