@@ -24,11 +24,11 @@ public class GraphServiceMain {
     public static final String EXPERIMENTAL = "exp";
     public static final String CSR = "csr";
     public static final String GRINV6D = "grinv6d";
+    public static final String GRINGRAPHAR = "gringraphar";
 
     public static void main(String[] args) throws Exception {
         Configs configs = new Configs("conf/ir.compiler.properties", FileLoadType.RELATIVE_PATH);
-        IrMetaQueryCallback metaQueryCallback =
-                new IrMetaQueryCallback(new ExperimentalMetaFetcher(configs));
+        IrMetaQueryCallback metaQueryCallback = new IrMetaQueryCallback(new ExperimentalMetaFetcher(configs));
         ChannelFetcher fetcher = new HostsRpcChannelFetcher(configs);
         IrGremlinServer server = new IrGremlinServer();
         String storeType = GraphConfig.GRAPH_STORE.get(configs);
@@ -38,8 +38,9 @@ public class GraphServiceMain {
             server.start(configs, fetcher, metaQueryCallback, TestGraphFactory.MCSR);
         } else if (storeType.equals(GRINV6D)) {
             server.start(configs, fetcher, metaQueryCallback, TestGraphFactory.GRINV6D);
-        }
-        else {
+        } else if (storeType.equals(GRINGRAPHAR)) {
+            server.start(configs, fetcher, metaQueryCallback, TestGraphFactory.GRINGRAPHAR);
+        } else {
             throw new UnsupportedOperationException(
                     "store type " + storeType + " is unsupported yet");
         }

@@ -134,6 +134,61 @@ public enum TestGraphFactory implements GraphProperties {
             return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
         }
     },
+    GRINGRAPHAR {
+        @Override
+        public Map<String, Object> getProperties(Configs configs) {
+            String json =
+                    "{\n"
+                            + "  \"vertex_properties\": {\n"
+                            + "    \"3\": {\n"
+                            + "      \"name\": \"marko\",\n"
+                            + "      \"age\": 29\n"
+                            + "    },\n"
+                            + "    \"0\": {\n"
+                            + "      \"name\": \"vadas\",\n"
+                            + "      \"age\": 27\n"
+                            + "    },\n"
+                            + "    \"1048576\": {\n"
+                            + "      \"name\": \"lop\",\n"
+                            + "      \"lang\": \"java\"\n"
+                            + "    },\n"
+                            + "    \"2\": {\n"
+                            + "      \"name\": \"josh\",\n"
+                            + "      \"age\": 32\n"
+                            + "    },\n"
+                            + "    \"1048577\": {\n"
+                            + "      \"name\": \"ripple\",\n"
+                            + "      \"lang\": \"java\"\n"
+                            + "    },\n"
+                            + "    \"1\": {\n"
+                            + "      \"name\": \"peter\",\n"
+                            + "      \"age\": 35\n"
+                            + "    }\n"
+                            + "  },\n"
+                            + "  \"edge_properties\": {\n"
+                            + "    \"1\": {\n"
+                            + "      \"weight\": 0.5\n"
+                            + "    },\n"
+                            + "    \"4\": {\n"
+                            + "      \"weight\": 0.4\n"
+                            + "    },\n"
+                            + "    \"2\": {\n"
+                            + "      \"weight\": 1.0\n"
+                            + "    },\n"
+                            + "    \"3\": {\n"
+                            + "      \"weight\": 0.4\n"
+                            + "    },\n"
+                            + "    \"0\": {\n"
+                            + "      \"weight\": 1.0\n"
+                            + "    },\n"
+                            + "    \"5\": {\n"
+                            + "      \"weight\": 0.2\n"
+                            + "    }\n"
+                            + "  }\n"
+                            + "}";
+            return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
+        }
+    },
     MCSR {
         @Override
         public Map<String, Object> getProperties(Configs configs) {
