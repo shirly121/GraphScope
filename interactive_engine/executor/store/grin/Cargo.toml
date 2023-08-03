@@ -9,7 +9,7 @@ authors = ["dijie"]
 cc = "1.0"
 
 [dependencies]
-cfg-if = "0.1"
+cfg-if = "1.0.0"
 
 [features]
 grin_assume_has_directed_graph = []

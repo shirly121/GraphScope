@@ -19,9 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // TODO: use cfg-if! instead
-#[cfg(grin_features_enable_v6d)]
+#[cfg(feature = "grin_features_enable_v6d")]
 fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
-    println!("cargo:rustc-link-search=/home/graphscope/gie-grin/v6d/build/shared-lib");
     println!("cargo:rustc-link-search=/usr/local/lib");
     println!("cargo:rustc-link-lib=vineyard_grin");
     println!("cargo:rustc-link-lib=vineyard_graph");
@@ -32,7 +31,7 @@ fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(all(grin_features_enable_graphar, not(grin_features_enable_v6d)))]
+#[cfg(all(feature = "grin_features_enable_graphar", not(feature = "grin_features_enable_v6d")))]
 fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-link-search=/usr/local/lib");
     println!("cargo:rustc-link-lib=libgar");
@@ -41,7 +40,7 @@ fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(not(any(grin_features_enable_v6d, grin_features_enable_graphar)))]
+#[cfg(not(any(feature = "grin_features_enable_v6d", feature = "grin_features_enable_graphar")))]
 fn codegen_inplace() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
