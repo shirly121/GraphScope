@@ -28,6 +28,8 @@ pub const GRIN_DATATYPE_DATE32: GrinDatatype = 8;
 pub const GRIN_DATATYPE_TIME32: GrinDatatype = 9;
 #[doc = "< Timestamp"]
 pub const GRIN_DATATYPE_TIMESTAMP64: GrinDatatype = 10;
+#[doc = "< float array"]
+pub const GRIN_DATATYPE_FLOATARRAY: GrinDatatype = 11;
 #[doc = " Enumerates the datatype supported in the storage"]
 pub type GrinDatatype = u32;
 #[doc = "< success"]
@@ -177,7 +179,7 @@ cfg_if::cfg_if! {
         pub const GRIN_NULL_EDGE_PROPERTY_ID: GrinEdgePropertyId = u32::MAX;
         pub const GRIN_NULL_ROW: GrinRow = std::ptr::null_mut();
         pub const GRIN_NULL_SIZE: u32 = u32::MAX;
-    } else if #[cfg(feature = "grin_features_enable_GraphAr")]{
+    } else if #[cfg(feature = "grin_features_enable_graphar")]{
         pub type GrinGraph = *mut ::std::os::raw::c_void;
         pub type GrinVertex = *mut ::std::os::raw::c_void;
         pub type GrinEdge = *mut ::std::os::raw::c_void;
@@ -772,6 +774,9 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_destroy_string_value(arg1: GrinGraph, arg2: *const ::std::os::raw::c_char);
 
+    #[allow(unused)]
+    pub fn grin_destroy_float_array_value(arg1: GrinGraph, arg2: *const f32);
+
     #[doc = " @brief Get the vertex property name\n @param GrinGraph The graph\n @param GrinVertexType The vertex type that the property belongs to\n @param GrinVertexProperty The vertex property\n @return The property's name as string"]
     #[cfg(feature = "grin_with_vertex_property_name")]
     #[allow(unused)]
@@ -882,19 +887,26 @@ extern "C" {
         arg1: GrinGraph, arg2: GrinVertex, arg3: GrinVertexProperty,
     ) -> i32;
 
-    #[doc = " @brief Get the value of int32, given a vertex and a vertex property.\n The user should make sure the vertex property is of datatype time32.\n The return int has no predefined invalid value.\n User should use ``grin_get_last_error_code()`` to check if the API call\n is successful.\n Note that the returned string should be explicitly freed by the user,\n by calling API ``grin_destroy_string_value``.\n @param GrinGraph The graph\n @param GrinVertex The vertex\n @param GrinVertexProperty The vertex property\n @return The value of the property"]
+    #[doc = " @brief Get the value of int32, given a vertex and a vertex property.\n The user should make sure the vertex property is of datatype time32.\n The return int has no predefined invalid value.\n User should use ``grin_get_last_error_code()`` to check if the API call\n is successful.\n @param GrinGraph The graph\n @param GrinVertex The vertex\n @param GrinVertexProperty The vertex property\n @return The value of the property"]
     #[cfg(feature = "grin_with_vertex_property")]
     #[allow(unused)]
     pub fn grin_get_vertex_property_value_of_time32(
         arg1: GrinGraph, arg2: GrinVertex, arg3: GrinVertexProperty,
     ) -> i32;
 
-    #[doc = " @brief Get the value of int64, given a vertex and a vertex property.\n The user should make sure the vertex property is of datatype timestamp64.\n The return int has no predefined invalid value.\n User should use ``grin_get_last_error_code()`` to check if the API call\n is successful.\n Note that the returned string should be explicitly freed by the user,\n by calling API ``grin_destroy_string_value``.\n @param GrinGraph The graph\n @param GrinVertex The vertex\n @param GrinVertexProperty The vertex property\n @return The value of the property"]
+    #[doc = " @brief Get the value of int64, given a vertex and a vertex property.\n The user should make sure the vertex property is of datatype timestamp64.\n The return int has no predefined invalid value.\n User should use ``grin_get_last_error_code()`` to check if the API call\n is successful.\n @param GrinGraph The graph\n @param GrinVertex The vertex\n @param GrinVertexProperty The vertex property\n @return The value of the property"]
     #[cfg(feature = "grin_with_vertex_property")]
     #[allow(unused)]
     pub fn grin_get_vertex_property_value_of_timestamp64(
         arg1: GrinGraph, arg2: GrinVertex, arg3: GrinVertexProperty,
     ) -> i64;
+
+    #[doc = " @brief Get the vertex value of a float array as a float pointer.\n The user should make sure the vertex property is of datatype float array.\n The return is NULL if the value is invalid.\n Note that the returned float pointer should be explicitly freed by the user,\n by calling API ``grin_destroy_float_array_value``."]
+    #[cfg(feature = "grin_with_vertex_property")]
+    #[allow(unused)]
+    pub fn grin_get_vertex_property_value_of_float_array(
+        arg1: GrinGraph, arg2: GrinVertex, arg3: GrinVertexProperty,
+    ) -> *const f32;
 
     #[doc = " @brief Get the vertex type that a given vertex property belongs to.\n @param GrinGraph The graph\n @param GrinVertexProperty The vertex property\n @return The vertex type"]
     #[cfg(feature = "grin_with_vertex_property")]
@@ -980,6 +992,12 @@ extern "C" {
     pub fn grin_get_edge_property_value_of_timestamp64(
         arg1: GrinGraph, arg2: GrinEdge, arg3: GrinEdgeProperty,
     ) -> i64;
+
+    #[cfg(feature = "grin_with_edge_property")]
+    #[allow(unused)]
+    pub fn grin_get_edge_property_value_of_float_array(
+        arg1: GrinGraph, arg2: GrinEdge, arg3: GrinEdgeProperty,
+    ) -> *const f32;
 
     #[cfg(feature = "grin_with_edge_property")]
     #[allow(unused)]
@@ -1124,6 +1142,10 @@ extern "C" {
     #[allow(unused)]
     pub fn grin_get_timestamp64_from_row(arg1: GrinGraph, arg2: GrinRow, arg3: usize) -> i64;
 
+    #[cfg(feature = "grin_enable_row")]
+    #[allow(unused)]
+    pub fn grin_get_float_array_from_row(arg1: GrinGraph, arg2: GrinRow, arg3: usize) -> *const f32;
+
     #[doc = " @brief Create a row.\n Row works as carrier of property values in GRIN.\n It is a pure value array, and users can only get the value by the array index.\n That means users should understand the property that each value is\n representing when using the row.\n Currently rows are used in two scenarios:\n 1. Users can create a row of values for primary keys properties,\n and then query the vertex/edge using the row if pk indexing is enabled.\n 2. Users can get the row of values for the entire property list of\n a vertex/edge in one API ``grin_get_vertex_row`` or ``grin_get_edge_row``.\n However this API is not recommended if the user only wants to get the\n properties values, in which case, the user can get property values\n one-by-one using the APIs like ``grin_get_vertex_property_value_of_int32``."]
     #[cfg(feature = "grin_enable_row")]
     #[allow(unused)]
@@ -1170,6 +1192,12 @@ extern "C" {
     #[cfg(feature = "grin_enable_row")]
     #[allow(unused)]
     pub fn grin_insert_timestamp64_to_row(arg1: GrinGraph, arg2: GrinRow, arg3: i64) -> bool;
+
+    #[cfg(feature = "grin_enable_row")]
+    #[allow(unused)]
+    pub fn grin_insert_float_array_to_row(
+        arg1: GrinGraph, arg2: GrinRow, arg3: *const f32, arg4: usize,
+    ) -> bool;
 
     #[cfg(all(feature = "grin_enable_row", feature = "grin_trait_const_value_ptr"))]
     #[allow(unused)]
@@ -1350,9 +1378,25 @@ extern "C" {
         arg1: GrinGraph, arg2: GrinVertexType, arg3: GrinVertexType,
     ) -> GrinEdgeTypeList;
 
+    #[doc = " @brief get label list size\n @param GrinGraph the graph\n @param GrinLabelList the label list\n @return the label list size"]
+    #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
+    #[allow(unused)]
+    pub fn grin_get_label_list_size(arg1: GrinGraph, arg2: GrinLabelList) -> usize;
+
+    #[doc = " @brief get the label from the label list by index\n @param GrinGraph the graph\n @param GrinLabelList the label list\n @param index the index"]
+    #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
+    #[allow(unused)]
+    pub fn grin_get_label_from_list(arg1: GrinGraph, arg2: GrinLabelList, arg3: usize) -> GrinLabel;
+
+    #[doc = " @brief get the label by name\n @param GrinGraph the graph\n @param label_name the label name\n @return the label"]
     #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
     #[allow(unused)]
     pub fn grin_get_label_by_name(arg1: GrinGraph, arg2: *const ::std::os::raw::c_char) -> GrinLabel;
+
+    #[doc = " @brief get the label name\n @param GrinGraph the graph\n @param GrinLabel the label\n @return the label name"]
+    #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
+    #[allow(unused)]
+    pub fn grin_get_label_name(arg1: GrinGraph, arg2: GrinLabel) -> *const ::std::os::raw::c_char;
 
     #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
     #[allow(unused)]
@@ -1360,63 +1404,51 @@ extern "C" {
 
     #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
     #[allow(unused)]
-    pub fn grin_get_label_name(arg1: GrinGraph, arg2: GrinLabel) -> *const ::std::os::raw::c_char;
-
-    #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
-    #[allow(unused)]
     pub fn grin_destroy_label_list(arg1: GrinGraph, arg2: GrinLabelList);
 
-    #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
-    #[allow(unused)]
-    pub fn grin_get_label_list_size(arg1: GrinGraph, arg2: GrinLabelList) -> usize;
-
-    #[cfg(any(feature = "grin_with_vertex_label", feature = "grin_with_edge_label"))]
-    #[allow(unused)]
-    pub fn grin_get_label_from_list(arg1: GrinGraph, arg2: GrinLabelList, arg3: usize) -> GrinLabel;
-
-    #[doc = " @brief assign a label to a vertex\n @param GrinGraph the graph\n @param GrinLabel the label\n @param GrinVertex the vertex\n @return whether succeed"]
+    #[doc = " @brief get the label list for vertices in the graph\n @param GrinGraph the graph\n @return the label list for vertices"]
     #[cfg(feature = "grin_with_vertex_label")]
     #[allow(unused)]
-    pub fn grin_assign_label_to_vertex(arg1: GrinGraph, arg2: GrinLabel, arg3: GrinVertex) -> bool;
+    pub fn grin_get_vertex_label_list(arg1: GrinGraph) -> GrinLabelList;
 
-    #[doc = " @brief get the label list of a vertex\n @param GrinGraph the graph\n @param GrinVertex the vertex"]
+    #[doc = " @brief get all the labels of a vertex as a label list\n @param GrinGraph the graph\n @param GrinVertex the vertex\n @return the label list"]
     #[cfg(feature = "grin_with_vertex_label")]
     #[allow(unused)]
-    pub fn grin_get_vertex_label_list(arg1: GrinGraph, arg2: GrinVertex) -> GrinLabelList;
+    pub fn grin_get_label_list_by_vertex(arg1: GrinGraph, arg2: GrinVertex) -> GrinLabelList;
 
-    #[doc = " @brief get the vertex list by label\n @param GrinGraph the graph\n @param GrinLabel the label"]
-    #[cfg(feature = "grin_with_vertex_label")]
+    #[doc = " @brief get the vertex list by label\n @param GrinGraph the graph\n @param GrinVertexType the vertex type\n @param GrinLabel the label\n @return the vertex list"]
+    #[cfg(all(feature = "grin_with_vertex_label", feature = "grin_with_vertex_property"))]
     #[allow(unused)]
-    pub fn grin_get_vertex_list_by_label(arg1: GrinGraph, arg2: GrinLabel) -> GrinVertexList;
-
-    #[doc = " @brief filtering an existing vertex list by label\n @param GrinVertexList the existing vertex list\n @param GrinLabel the label"]
-    #[cfg(feature = "grin_with_vertex_label")]
-    #[allow(unused)]
-    pub fn grin_select_label_for_vertex_list(
-        arg1: GrinGraph, arg2: GrinLabel, arg3: GrinVertexList,
+    pub fn grin_get_vertex_list_by_type_by_label(
+        arg1: GrinGraph, arg2: GrinVertexType, arg3: GrinLabel,
     ) -> GrinVertexList;
 
-    #[doc = " @brief assign a label to a edge\n @param GrinGraph the graph\n @param GrinLabel the label\n @param GrinEdge the edge\n @return whether succeed"]
-    #[cfg(feature = "grin_with_edge_label")]
+    #[doc = " @brief get all the vertex types that might have the label\n @param GrinGraph the graph\n @param GrinLabel the label\n @return the vertex type list"]
+    #[cfg(all(feature = "grin_with_vertex_label", feature = "grin_with_vertex_property"))]
     #[allow(unused)]
-    pub fn grin_assign_label_to_edge(arg1: GrinGraph, arg2: GrinLabel, arg3: GrinEdge) -> bool;
+    pub fn grin_get_vertex_type_list_by_label(arg1: GrinGraph, arg2: GrinLabel) -> GrinVertexTypeList;
 
-    #[doc = " @brief get the label list of a edge\n @param GrinGraph the graph\n @param GrinEdge the edge"]
+    #[doc = " @brief get the label list for edges in the graph\n @param GrinGraph the graph\n @return the label list for edges"]
     #[cfg(feature = "grin_with_edge_label")]
     #[allow(unused)]
-    pub fn grin_get_edge_label_list(arg1: GrinGraph, arg2: GrinEdge) -> GrinLabelList;
+    pub fn grin_get_edge_label_list(arg1: GrinGraph) -> GrinLabelList;
 
-    #[doc = " @brief get the edge list by label\n @param GrinGraph the graph\n @param GrinLabel the label"]
+    #[doc = " @brief get all the labels of an edge as a label list\n @param GrinGraph the graph\n @param GrinEdge the edge\n @return the label list"]
     #[cfg(feature = "grin_with_edge_label")]
     #[allow(unused)]
-    pub fn grin_get_edge_list_by_label(arg1: GrinGraph, arg2: GrinLabel) -> GrinEdgeList;
+    pub fn grin_get_label_list_by_edge(arg1: GrinGraph, arg2: GrinEdge) -> GrinLabelList;
 
-    #[doc = " @brief filtering an existing edge list by label\n @param GrinEdgeList the existing edge list\n @param GrinLabel the label"]
-    #[cfg(feature = "grin_with_edge_label")]
+    #[doc = " @brief get the edge list by label\n @param GrinGraph the graph\n @param GrinEdgeType the edge type\n @param GrinLabel the label\n @return the edge list"]
+    #[cfg(all(feature = "grin_with_edge_label", feature = "grin_with_edge_property"))]
     #[allow(unused)]
-    pub fn grin_select_label_for_edge_list(
-        arg1: GrinGraph, arg2: GrinLabel, arg3: GrinEdgeList,
+    pub fn grin_get_edge_list_by_type_by_label(
+        arg1: GrinGraph, arg2: GrinEdgeType, arg3: GrinLabel,
     ) -> GrinEdgeList;
+
+    #[doc = " @brief get all the edge types that might have the label\n @param GrinGraph the graph\n @param GrinLabel the label\n @return the edge type list"]
+    #[cfg(all(feature = "grin_with_edge_label", feature = "grin_with_edge_property"))]
+    #[allow(unused)]
+    pub fn grin_get_edge_type_list_by_label(arg1: GrinGraph, arg2: GrinLabel) -> GrinEdgeTypeList;
 
     #[cfg(feature = "grin_assume_all_vertex_list_sorted")]
     #[allow(unused)]
