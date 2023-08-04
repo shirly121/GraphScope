@@ -421,6 +421,101 @@ impl Iterator for GrinVertexIter {
 unsafe impl Send for GrinVertexIter {}
 unsafe impl Sync for GrinVertexIter {}
 
+/// A structure to easily handle scanning various types of edges in a grin-enabled store.
+pub struct GrinEdgeIter {
+    /// A grin graph handle, only local to the current process
+    graph: GrinGraph,
+    /// A per-type map of edge list iterator handles, used iterate edges of specific type
+    edge_type_iter: HashMap<GrinEdgeTypeId, GrinEdgeListIterator>,
+    /// **All** (exclude `current_edge_type`) types of edges to scan
+    edge_type_ids: Vec<GrinEdgeTypeId>,
+    /// The current edge type that is under scanning
+    current_edge_type_id: GrinEdgeTypeId,
+}
+
+impl GrinEdgeIter {
+    pub fn new(graph: GrinGraph, edge_type_ids: &Vec<GrinEdgeTypeId>) -> GraphProxyResult<Self> {
+        unsafe {
+            let mut edge_type_iter = HashMap::new();
+            let mut edge_type_ids = edge_type_ids.clone();
+            for edge_type_id in &edge_type_ids {
+                let edge_type = grin_get_edge_type_by_id(graph, *edge_type_id);
+                if edge_type == GRIN_NULL_VERTEX_TYPE {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_get_vertex_type_by_id`: {:?}, returns null",
+                        edge_type_id
+                    )));
+                }
+                // TODO: whether need to select by master is according to different features.
+                let etype_list = grin_get_edge_list_by_type(graph, edge_type);
+                if etype_list == GRIN_NULL_VERTEX_LIST {
+                    return Err(GraphProxyError::QueryStoreError(format!(
+                        "`grin_select_type_for_vertex_list`: {:?}, returns null",
+                        edge_type_id
+                    )));
+                }
+                let etype_iter = grin_get_edge_list_begin(graph, etype_list);
+                if etype_iter == GRIN_NULL_VERTEX_LIST_ITERATOR {
+                    return Err(GraphProxyError::QueryStoreError(
+                        "`grin_get_vertex_list_begin` returns null".to_string(),
+                    ));
+                }
+                edge_type_iter.insert(*edge_type_id, etype_iter);
+                grin_destroy_edge_list(graph, etype_list);
+                grin_destroy_edge_type(graph, edge_type);
+            }
+            let current_edge_type_id = edge_type_ids.pop().unwrap();
+
+            Ok(Self { graph, edge_type_iter, edge_type_ids, current_edge_type_id: current_edge_type_id })
+        }
+    }
+
+    pub fn get_current_edge_iter(&self) -> GrinEdgeListIterator {
+        self.edge_type_iter[&self.current_edge_type_id].clone()
+    }
+}
+
+impl Drop for GrinEdgeIter {
+    fn drop(&mut self) {
+        unsafe {
+            println!("drop GrinEdgeIter...");
+            for (_, iter) in self.edge_type_iter.drain() {
+                grin_destroy_edge_list_iter(self.graph, iter);
+            }
+        }
+    }
+}
+
+impl Iterator for GrinEdgeIter {
+    type Item = GrinEdgeProxy;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let mut current_edge_iter = self.get_current_edge_iter();
+            while grin_is_edge_list_end(self.graph, current_edge_iter) {
+                // complete scanning the current type of edges, switch to the next one
+                if let Some(next_edge_type_id) = self.edge_type_ids.pop() {
+                    self.current_edge_type_id = next_edge_type_id;
+                    current_edge_iter = self.get_current_edge_iter();
+                } else {
+                    // no more edge type to scan
+                    return None;
+                }
+            }
+
+            let edge_handle = grin_get_edge_from_iter(self.graph, current_edge_iter);
+            grin_get_next_edge_list_iter(self.graph, current_edge_iter);
+            // a null edge handle is unacceptable at the current stage
+            assert_ne!(edge_handle, GRIN_NULL_VERTEX);
+
+            Some(GrinEdgeProxy::new(self.graph, edge_handle))
+        }
+    }
+}
+
+unsafe impl Send for GrinEdgeIter {}
+unsafe impl Sync for GrinEdgeIter {}
+
 /// A proxy for handling an id-only-vertex (the vertex with no properties) in a grin-enabled store.
 /// TODO: may not necessary. can directly build RuntimeVertex instead of GrinIdVertexProxy
 pub struct GrinIdVertexProxy {
@@ -485,8 +580,9 @@ impl GrinAdjVertexIter {
                 grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
                 grin_destroy_edge_type(graph, edge_type);
                 grin_destroy_adjacent_list(graph, grin_typed_adj_list);
-                grin_destroy_vertex(graph, vertex_handle);
             }
+
+            grin_destroy_vertex(graph, vertex_handle);
 
             Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
         }
@@ -581,8 +677,8 @@ impl GrinAdjEdgeIter {
                 grin_adj_list_iter_vec.push(grin_typed_adj_list_iter);
                 grin_destroy_edge_type(graph, edge_type);
                 grin_destroy_adjacent_list(graph, grin_typed_adj_list);
-                grin_destroy_vertex(graph, vertex_handle);
             }
+            grin_destroy_vertex(graph, vertex_handle);
 
             Ok(Self { graph, grin_adj_list_iter_vec, curr_iter: None })
         }
@@ -1056,6 +1152,30 @@ impl GrinGraphProxy {
         ))
     }
 
+    pub fn get_all_edges(
+        &self, partitions: &Vec<GrinPartitionId>, label_ids: &Vec<GrinEdgeTypeId>,
+    ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinEdgeProxy> + Send>> {
+        let mut results = Vec::new();
+        let edge_type_ids =
+            if label_ids.is_empty() { self.schema.get_all_edge_type_ids() } else { label_ids.clone() };
+        for partition in partitions {
+            if let Some(graph) = self.graphs.get(partition).cloned() {
+                let edge_iter = GrinEdgeIter::new(graph, &edge_type_ids)?;
+                results.push(edge_iter);
+            } else {
+                return Err(GraphProxyError::QueryStoreError(format!(
+                    "Partition {:?} is not found in the current process",
+                    partition
+                )));
+            }
+        }
+        Ok(Box::new(
+            results
+                .into_iter()
+                .flat_map(move |edge_iter| edge_iter),
+        ))
+    }
+
     pub fn get_vertex_by_index(
         &self, grin_type_id: GrinVertexTypeId, primary_key: &PKV,
     ) -> GraphProxyResult<Option<GrinIdVertexProxy>> {
@@ -1248,14 +1368,11 @@ impl ReadGraph for GrinGraphRuntime {
                 .map(|label| *label as GrinVertexTypeId)
                 .collect();
             let row_filter = params.filter.clone();
-
             let partitions: Vec<GrinPartitionId> = worker_partitions
                 .iter()
                 .map(|pid| *pid as GrinPartitionId)
                 .collect();
-
             let columns = params.columns.clone();
-
             let result_iter = store
                 .get_all_vertices(partitions.as_ref(), &label_ids)?
                 .map(move |graph_proxy| {
@@ -1283,9 +1400,41 @@ impl ReadGraph for GrinGraphRuntime {
     }
 
     fn scan_edge(
-        &self, _params: &QueryParams,
+        &self, params: &QueryParams,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = RuntimeEdge> + Send>> {
-        Err(GraphProxyError::unsupported_error("scan_edge() in GrinGraphRuntime"))
+        #[cfg(feature = "grin_enable_edge_list")]
+        {
+            let worker_partitions = self.assign_worker_partitions()?;
+            if !worker_partitions.is_empty() {
+                let store = self.store.clone();
+                let label_ids: Vec<GrinEdgeTypeId> = params
+                    .labels
+                    .iter()
+                    .map(|label| *label as GrinEdgeTypeId)
+                    .collect();
+                let row_filter = params.filter.clone();
+                let partitions: Vec<GrinPartitionId> = worker_partitions
+                    .iter()
+                    .map(|pid| *pid as GrinPartitionId)
+                    .collect();
+                let columns = params.columns.clone();
+                let result_iter = store
+                    .get_all_edges(partitions.as_ref(), &label_ids)?
+                    .map(move |graph_proxy| {
+                        graph_proxy
+                            .into_runtime_edge(columns.as_ref(), true)
+                            .unwrap()
+                    });
+
+                Ok(filter_sample_limit!(result_iter, row_filter, params.sample_ratio, params.limit))
+            } else {
+                Ok(Box::new(std::iter::empty()))
+            }
+        }
+        #[cfg(not(feature = "grin_enable_edge_list"))]
+        {
+            Err(GraphProxyError::QueryStoreError("Edge list is not enabled".to_string()))
+        }
     }
 
     fn get_vertex(
