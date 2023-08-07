@@ -421,6 +421,7 @@ impl Iterator for GrinVertexIter {
 unsafe impl Send for GrinVertexIter {}
 unsafe impl Sync for GrinVertexIter {}
 
+#[cfg(feature = "grin_enable_edge_list")]
 /// A structure to easily handle scanning various types of edges in a grin-enabled store.
 pub struct GrinEdgeIter {
     /// A grin graph handle, only local to the current process
@@ -433,6 +434,7 @@ pub struct GrinEdgeIter {
     current_edge_type_id: GrinEdgeTypeId,
 }
 
+#[cfg(feature = "grin_enable_edge_list")]
 impl GrinEdgeIter {
     pub fn new(graph: GrinGraph, edge_type_ids: &Vec<GrinEdgeTypeId>) -> GraphProxyResult<Self> {
         unsafe {
@@ -446,8 +448,7 @@ impl GrinEdgeIter {
                         edge_type_id
                     )));
                 }
-                // TODO: whether need to select by master is according to different features.
-                let etype_list = grin_get_edge_list_by_type(graph, edge_type);
+                let etype_list = grin_get_edge_list_by_type_select_master(graph, edge_type);
                 if etype_list == GRIN_NULL_VERTEX_LIST {
                     return Err(GraphProxyError::QueryStoreError(format!(
                         "`grin_select_type_for_vertex_list`: {:?}, returns null",
@@ -475,6 +476,7 @@ impl GrinEdgeIter {
     }
 }
 
+#[cfg(feature = "grin_enable_edge_list")]
 impl Drop for GrinEdgeIter {
     fn drop(&mut self) {
         unsafe {
@@ -486,6 +488,7 @@ impl Drop for GrinEdgeIter {
     }
 }
 
+#[cfg(feature = "grin_enable_edge_list")]
 impl Iterator for GrinEdgeIter {
     type Item = GrinEdgeProxy;
 
@@ -513,7 +516,9 @@ impl Iterator for GrinEdgeIter {
     }
 }
 
+#[cfg(feature = "grin_enable_edge_list")]
 unsafe impl Send for GrinEdgeIter {}
+#[cfg(feature = "grin_enable_edge_list")]
 unsafe impl Sync for GrinEdgeIter {}
 
 /// A proxy for handling an id-only-vertex (the vertex with no properties) in a grin-enabled store.
@@ -1152,6 +1157,7 @@ impl GrinGraphProxy {
         ))
     }
 
+    #[cfg(feature = "grin_enable_edge_list")]
     pub fn get_all_edges(
         &self, partitions: &Vec<GrinPartitionId>, label_ids: &Vec<GrinEdgeTypeId>,
     ) -> GraphProxyResult<Box<dyn Iterator<Item = GrinEdgeProxy> + Send>> {

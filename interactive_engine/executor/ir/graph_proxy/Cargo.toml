@@ -29,11 +29,11 @@ with_v6d = ["global_query/with_v6d", "with_global_query"]
 grin_enable_list_iterator = ["grin/grin_enable_vertex_list_iterator", "grin/grin_enable_vertex_list", "grin/grin_enable_adjacent_list_iterator", "grin/grin_enable_adjacent_list"]
 grin_enable_list_array = ["grin/grin_enable_vertex_list_array", "grin/grin_enable_vertex_list", "grin/grin_enable_adjacent_list_array", "grin/grin_enable_adjacent_list"]
 grin_enable_vertex_primary_keys = ["grin/grin_enable_vertex_primary_keys"]
-grin_enable_edge_list = ['grin/grin_enable_edge_list', 'grin/grin_enable_edge_list_iterator']
+grin_enable_edge_list = ['grin/grin_enable_edge_list', 'grin/grin_enable_edge_list_iterator', 'grin/grin_trait_select_master_for_edge_list']
 
 with_grin = []
 
 # for different storage implementations, set features of grin_v6d, grin_gart, etc.
 grin_v6d = ["with_grin", "grin/grin_features_enable_v6d", "grin_enable_vertex_primary_keys"]
 grin_gart = ["with_grin", "grin/grin_features_enable_gart"]
-grin_graphar = ["with_grin", "grin/grin_features_enable_graphar", "grin_enable_edge_list"]
+grin_graphar = ["with_grin", "grin/grin_features_enable_graphar"]
