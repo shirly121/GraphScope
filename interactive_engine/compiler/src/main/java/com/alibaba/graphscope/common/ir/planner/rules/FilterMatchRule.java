@@ -21,6 +21,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -68,6 +69,10 @@ public class FilterMatchRule<C extends FilterMatchRule.Config> extends RelRule<C
     private boolean pushFilter(
             List<RelNode> sentences, RexNode condition, GraphBuilder graphBuilder) {
         boolean pushed = false;
+        // data type of graph operators cannot not be null
+        if (condition.getKind() == SqlKind.IS_NOT_NULL) {
+            return pushed;
+        }
         List<Integer> distinctAliasIds =
                 condition
                         .accept(new RexVariableAliasCollector<>(true, RexGraphVariable::getAliasId))

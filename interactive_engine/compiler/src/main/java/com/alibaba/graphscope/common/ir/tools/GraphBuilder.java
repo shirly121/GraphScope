@@ -626,7 +626,6 @@ public class GraphBuilder extends RelBuilder {
 
     @Override
     public GraphBuilder filter(Iterable<? extends RexNode> conditions) {
-        // ObjectUtils.requireNonEmpty(conditions);
         // make sure all conditions have the Boolean return type
         for (RexNode condition : conditions) {
             RelDataType type = condition.getType();
