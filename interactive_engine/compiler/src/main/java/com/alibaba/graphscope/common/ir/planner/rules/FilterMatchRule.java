@@ -9,7 +9,6 @@ import com.alibaba.graphscope.common.ir.rex.RexVariableAliasCollector;
 import com.alibaba.graphscope.common.ir.rex.RexVariableAliasConverter;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
-import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptUtil;
@@ -21,7 +20,6 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
-import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -41,12 +39,6 @@ public class FilterMatchRule<C extends FilterMatchRule.Config> extends RelRule<C
     public void onMatch(RelOptRuleCall call) {
         Filter filter = call.rel(0);
         AbstractLogicalMatch match = call.rel(1);
-        // if filter has been pushed down to optional or anti match, it will result in more 'null'
-        // values, which is not consistent with the original logical plan
-        if (match instanceof GraphLogicalSingleMatch
-                && ((GraphLogicalSingleMatch) match).getMatchOpt() != GraphOpt.Match.INNER) {
-            return;
-        }
         // do the transformation
         List<RelNode> sentences = getSentences(match);
         List<RexNode> conjunctions = RelOptUtil.conjunctions(filter.getCondition());
@@ -69,10 +61,6 @@ public class FilterMatchRule<C extends FilterMatchRule.Config> extends RelRule<C
     private boolean pushFilter(
             List<RelNode> sentences, RexNode condition, GraphBuilder graphBuilder) {
         boolean pushed = false;
-        // data type of graph operators cannot not be null
-        if (condition.getKind() == SqlKind.IS_NOT_NULL) {
-            return pushed;
-        }
         List<Integer> distinctAliasIds =
                 condition
                         .accept(new RexVariableAliasCollector<>(true, RexGraphVariable::getAliasId))
