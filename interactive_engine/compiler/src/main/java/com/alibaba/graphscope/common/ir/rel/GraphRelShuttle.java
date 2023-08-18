@@ -23,8 +23,10 @@ import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalSource;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
 
+import com.alibaba.graphscope.common.ir.runtime.type.PhysicalNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.logical.LogicalJoin;
 
 /**
  * interface to visit each {@code RelNode}
@@ -49,4 +51,6 @@ public interface GraphRelShuttle {
     RelNode visit(GraphLogicalSingleMatch match);
 
     RelNode visit(GraphLogicalMultiMatch match);
+
+    PhysicalNode visit(LogicalJoin join);
 }

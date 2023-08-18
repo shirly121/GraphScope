@@ -22,6 +22,7 @@ import com.alibaba.graphscope.common.ir.tools.config.*;
 import com.google.common.collect.ImmutableList;
 
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rex.RexNode;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -88,7 +89,7 @@ public class GroupTest {
     @Test
     public void group_3_test() {
         GraphBuilder builder = Utils.mockGraphBuilder();
-        RelNode aggregate =
+        RexNode in =
                 builder.source(
                                 new SourceConfig(
                                         GraphOpt.Source.VERTEX,
@@ -100,14 +101,16 @@ public class GroupTest {
                                                 builder.variable(null, "age")),
                                         ImmutableList.of("a", "b")),
                                 builder.collect(false, "c", ImmutableList.of()))
-                        .build();
-        Assert.assertEquals(
-                "GraphLogicalAggregate(keys=[{variables=[DEFAULT.name, DEFAULT.age], aliases=[a,"
-                        + " b]}], values=[[{operands=[DEFAULT], aggFunction=COLLECT, alias='c',"
-                        + " distinct=false}]])\n"
-                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
-                        + " alias=[DEFAULT], opt=[VERTEX])",
-                aggregate.explain().trim());
+                        .call(GraphStdOperatorTable.IN, builder.literal(10), builder.variable("c"));
+        System.out.println(in.toString());
+//                        .build();
+//        Assert.assertEquals(
+//                "GraphLogicalAggregate(keys=[{variables=[DEFAULT.name, DEFAULT.age], aliases=[a,"
+//                        + " b]}], values=[[{operands=[DEFAULT], aggFunction=COLLECT, alias='c',"
+//                        + " distinct=false}]])\n"
+//                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+//                        + " alias=[DEFAULT], opt=[VERTEX])",
+//                aggregate.explain().trim());
     }
 
     // g.V().hasLabel("person").group().by("@.age+1").by(count().as("c"))

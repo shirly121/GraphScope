@@ -18,14 +18,15 @@ package com.alibaba.graphscope.common.ir.runtime.proto;
 
 import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
+import com.alibaba.graphscope.common.ir.tools.GraphStdOperatorTable;
 import com.alibaba.graphscope.gaia.proto.Common;
 import com.alibaba.graphscope.gaia.proto.DataType;
 import com.alibaba.graphscope.gaia.proto.OuterExpression;
 import com.google.common.base.Preconditions;
-
 import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.commons.lang3.NotImplementedException;
 
 /**
  * convert an expression in calcite to logical expression in ir_core
@@ -46,8 +47,12 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
         SqlOperator operator = call.getOperator();
         if (operator.getKind() == SqlKind.CASE) {
             return visitCase(call);
+        } else if (operator.getKind() == SqlKind.ARRAY_VALUE_CONSTRUCTOR) {
+            return visitArrayValueConstructor(call);
+        } else if (call.getOperands().size() == 1) {
+            return visitUnaryOperator(call);
         } else {
-            return visitOperator(call);
+            return visitBinaryOperator(call);
         }
     }
 
@@ -72,7 +77,35 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
                 .build();
     }
 
-    private OuterExpression.Expression visitOperator(RexCall call) {
+    private OuterExpression.Expression visitUnaryOperator(RexCall call) {
+        SqlOperator operator = call.getOperator();
+        // convert to binary call: XX = NONE or XX != NONE
+        if (operator.getKind() == SqlKind.IS_NULL || operator.getKind() == SqlKind.IS_NOT_NULL) {
+            RexNode leftOperand = call.getOperands().get(0);
+            SqlOperator equals = operator.getKind() == SqlKind.IS_NULL ? GraphStdOperatorTable.EQUALS : GraphStdOperatorTable.NOT_EQUALS;
+            return OuterExpression.Expression.newBuilder().addAllOperators(leftOperand.accept(this).getOperatorsList())
+                    .addOperators(Utils.protoOperator(equals).toBuilder().setNodeType(Utils.protoIrDataType(call.getType(), isColumnId)))
+                    .addOperators(OuterExpression.ExprOpr.newBuilder().setConst(Common.Value.newBuilder().setNone(Common.None.newBuilder()))
+                            .setNodeType(DataType.IrDataType.newBuilder().setDataType(Common.DataType.NONE).build()))
+                    .build();
+        } else {
+            throw new UnsupportedOperationException("unary operator " + operator.getKind() + " is not supported");
+        }
+    }
+
+    private OuterExpression.Expression visitArrayValueConstructor(RexCall call) {
+        OuterExpression.VariableKeys.Builder varsBuilder = OuterExpression.VariableKeys.newBuilder();
+        call.getOperands().forEach(operand -> {
+            Preconditions.checkArgument(operand instanceof RexGraphVariable, "component type of 'ARRAY_VALUE_CONSTRUCTOR' should be 'variable' in ir core structure");
+            varsBuilder.addKeys(operand.accept(this).getOperators(0).getVar());
+        });
+        return OuterExpression.Expression.newBuilder()
+                .addOperators(OuterExpression.ExprOpr.newBuilder().setVars(varsBuilder)
+                        .setNodeType(Utils.protoIrDataType(call.getType(), isColumnId)))
+                .build();
+    }
+
+    private OuterExpression.Expression visitBinaryOperator(RexCall call) {
         SqlOperator operator = call.getOperator();
         OuterExpression.Expression.Builder exprBuilder = OuterExpression.Expression.newBuilder();
         // left-associative
@@ -181,5 +214,10 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
                                 .setNodeType(paramDataType)
                                 .build())
                 .build();
+    }
+
+    @Override
+    public OuterExpression.Expression visitSubQuery(RexSubQuery subQuery) {
+        throw new NotImplementedException("conversion from subQuery to proto is unimplemented yet");
     }
 }

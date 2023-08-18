@@ -184,27 +184,9 @@ oC_FunctionInvocation
     :  oC_FunctionName SP? '(' SP? ( DISTINCT SP? )? ( oC_Expression SP? ( ',' SP? oC_Expression SP? )* )? ')' ;
 
 oC_FunctionName
-    :  COUNT
-    |  AVG
-    |  COLLECT
-    |  MAX
-    |  MIN
-    |  SUM
-    ;
+    :  oC_Namespace oC_SymbolicName ;
 
 DISTINCT : ( 'D' | 'd' ) ( 'I' | 'i' ) ( 'S' | 's' ) ( 'T' | 't' ) ( 'I' | 'i' ) ( 'N' | 'n' ) ( 'C' | 'c' ) ( 'T' | 't' ) ;
-
-COUNT : ( 'C' | 'c' ) ( 'O' | 'o' ) ( 'U' | 'u' ) ( 'N' | 'n' ) ( 'T' | 't' ) ;
-
-AVG : ( 'A' | 'a' ) ( 'V' | 'v' ) ( 'G' | 'g' ) ;
-
-COLLECT : ( 'C' | 'c' ) ( 'O' | 'o' ) ( 'L' | 'l' ) ( 'L' | 'l' ) ( 'E' | 'e' ) ( 'C' | 'c' ) ( 'T' | 't' ) ;
-
-MAX : ( 'M' | 'm' ) ( 'A' | 'a' ) ( 'X' | 'x' ) ;
-
-MIN : ( 'M' | 'm' ) ( 'I' | 'i' ) ( 'N' | 'n' ) ;
-
-SUM : ( 'S' | 's' ) ( 'U' | 'u' ) ( 'M' | 'm' ) ;
 
 // literal: 'a'
 // variable: b.name
@@ -244,9 +226,12 @@ oC_PartialComparisonExpression
                                ;
 
 oC_StringListNullPredicateExpression
-                                 :  oC_AddOrSubtractExpression ;
+                         :  oC_AddOrSubtractExpression ( oC_NullPredicateExpression )? ;
 
-IN : ( 'I' | 'i' ) ( 'N' | 'n' ) ;
+oC_NullPredicateExpression
+                       :  ( SP IS SP NULL )
+                           | ( SP IS SP NOT SP NULL )
+                           ;
 
 IS : ( 'I' | 'i' ) ( 'S' | 's' ) ;
 
@@ -317,6 +302,8 @@ THEN : ( 'T' | 't' ) ( 'H' | 'h' ) ( 'E' | 'e' ) ( 'N' | 'n' ) ;
 oC_CountAny
     : ( COUNT SP? '(' SP? '*' SP? ')' )
     ;
+
+COUNT : ( 'C' | 'c' ) ( 'O' | 'o' ) ( 'U' | 'u' ) ( 'N' | 'n' ) ( 'T' | 't' ) ;
 
 oC_ParenthesizedExpression
     :  '(' SP? oC_Expression SP? ')' ;
@@ -442,6 +429,7 @@ oC_SymbolicName
             :  UnescapedSymbolicName
                 | EscapedSymbolicName
                 | HexLetter
+                | COUNT
                 ;
 
 UnescapedSymbolicName

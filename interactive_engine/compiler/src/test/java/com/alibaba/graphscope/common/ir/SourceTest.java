@@ -20,7 +20,6 @@ import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.tools.config.LabelConfig;
 import com.alibaba.graphscope.common.ir.tools.config.SourceConfig;
-
 import org.apache.calcite.rel.RelNode;
 import org.junit.Assert;
 import org.junit.Test;

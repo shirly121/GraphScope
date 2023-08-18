@@ -16,8 +16,6 @@
 
 package com.alibaba.graphscope.common.ir.tools;
 
-import static java.util.Objects.requireNonNull;
-
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalAggregate;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalProject;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalSort;
@@ -30,8 +28,8 @@ import com.alibaba.graphscope.common.ir.rel.type.group.GraphAggCall;
 import com.alibaba.graphscope.common.ir.rel.type.group.GraphGroupKeys;
 import com.alibaba.graphscope.common.ir.rel.type.order.GraphFieldCollation;
 import com.alibaba.graphscope.common.ir.rel.type.order.GraphRelCollations;
-import com.alibaba.graphscope.common.ir.rex.*;
 import com.alibaba.graphscope.common.ir.rex.RexCallBinding;
+import com.alibaba.graphscope.common.ir.rex.*;
 import com.alibaba.graphscope.common.ir.schema.GraphOptSchema;
 import com.alibaba.graphscope.common.ir.schema.StatisticSchema;
 import com.alibaba.graphscope.common.ir.tools.config.*;
@@ -39,12 +37,10 @@ import com.alibaba.graphscope.common.ir.type.GraphNameOrId;
 import com.alibaba.graphscope.common.ir.type.GraphProperty;
 import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
 import com.alibaba.graphscope.gremlin.Utils;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-
 import org.apache.calcite.plan.*;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelFieldCollation;
@@ -67,6 +63,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Integrate interfaces to build algebra structures,
@@ -278,7 +276,7 @@ public class GraphBuilder extends RelBuilder {
                 (single.getInputs().isEmpty() && single instanceof GraphLogicalSource)
                         ? single
                         : GraphLogicalSingleMatch.create(
-                                (GraphOptCluster) cluster, null, null, single, opt);
+                                (GraphOptCluster) cluster, null, null, single, GraphOpt.Match.INNER);
         if (input == null) {
             push(match);
         } else {
@@ -615,7 +613,10 @@ public class GraphBuilder extends RelBuilder {
                 || (sqlKind == SqlKind.MINUS_PREFIX)
                 || (sqlKind == SqlKind.CASE)
                 || (sqlKind == SqlKind.PROCEDURE_CALL)
-                || (sqlKind == SqlKind.NOT);
+                || (sqlKind == SqlKind.NOT)
+                || sqlKind == SqlKind.IS_NULL
+                || sqlKind == SqlKind.IS_NOT_NULL
+                || sqlKind == SqlKind.ARRAY_VALUE_CONSTRUCTOR;
     }
 
     @Override
@@ -625,7 +626,7 @@ public class GraphBuilder extends RelBuilder {
 
     @Override
     public GraphBuilder filter(Iterable<? extends RexNode> conditions) {
-        ObjectUtils.requireNonEmpty(conditions);
+        // ObjectUtils.requireNonEmpty(conditions);
         // make sure all conditions have the Boolean return type
         for (RexNode condition : conditions) {
             RelDataType type = condition.getType();
@@ -1036,6 +1037,13 @@ public class GraphBuilder extends RelBuilder {
         return this;
     }
 
+    @Override
+    public RelBuilder antiJoin(Iterable<? extends RexNode> conditions) {
+        Join join = (Join) super.antiJoin(conditions).peek();
+        Utils.setFieldValue(AbstractRelNode.class, join, "rowType", reorgAliasId(join));
+        return this;
+    }
+
     /**
      * in the official implementation of {@code join}, the aliasId in rowType actually represents the columnId, but we need to preserve the original aliasId before the {@code join}
      * @param join
@@ -1045,30 +1053,23 @@ public class GraphBuilder extends RelBuilder {
         RelDataType originalType = join.getRowType();
         RelDataType leftType = join.getLeft().getRowType();
         RelDataType rightType = join.getRight().getRowType();
-        Preconditions.checkArgument(
-                originalType.getFieldCount()
-                        == leftType.getFieldCount() + rightType.getFieldCount(),
-                "join field count is not equal to left field count plus right field count");
         List<RelDataTypeField> newFields =
                 originalType.getFieldList().stream()
                         .map(
                                 k -> {
                                     if (k.getIndex() < leftType.getFieldCount()) {
+                                        RelDataTypeField leftField =
+                                                leftType.getFieldList().get(k.getIndex());
                                         return new RelDataTypeFieldImpl(
                                                 k.getName(),
-                                                leftType.getFieldList()
-                                                        .get(k.getIndex())
-                                                        .getIndex(),
+                                                leftField.getIndex(),
                                                 k.getType());
                                     } else {
+                                        RelDataTypeField rightField =
+                                                rightType.getFieldList().get(k.getIndex() - leftType.getFieldCount());
                                         return new RelDataTypeFieldImpl(
                                                 k.getName(),
-                                                rightType
-                                                        .getFieldList()
-                                                        .get(
-                                                                k.getIndex()
-                                                                        - leftType.getFieldCount())
-                                                        .getIndex(),
+                                                rightField.getIndex(),
                                                 k.getType());
                                     }
                                 })
@@ -1101,6 +1102,11 @@ public class GraphBuilder extends RelBuilder {
             throw new IllegalArgumentException(
                     "cannot convert " + value + " (" + value.getClass() + ") to a constant");
         }
+    }
+
+    @Override
+    public RexNode in(RexNode arg, Iterable<? extends RexNode> ranges) {
+        return getRexBuilder().makeIn(arg, ImmutableList.copyOf(ranges));
     }
 
     /**
@@ -1153,5 +1159,11 @@ public class GraphBuilder extends RelBuilder {
     @Override
     public RexNode equals(RexNode operand0, RexNode operand1) {
         return this.call(GraphStdOperatorTable.EQUALS, operand0, operand1);
+    }
+
+    @Override
+    public RelBuilder convert(RelDataType castRowType, boolean rename) {
+        // do nothing
+        return this;
     }
 }

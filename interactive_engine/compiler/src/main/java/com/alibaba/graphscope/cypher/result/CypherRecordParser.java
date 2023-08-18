@@ -129,6 +129,10 @@ public class CypherRecordParser implements RecordParser<AnyValue> {
                 return Values.doubleValue(value.getF64());
             case STR:
                 return Values.stringValue(value.getStr());
+            case NONE:
+                return Values.NO_VALUE;
+            case STR_ARRAY:
+                return Values.stringArray(value.getStrArray().getItemList().toArray(new String[0]));
             default:
                 throw new NotImplementedException(value.getItemCase() + " is unsupported yet");
         }

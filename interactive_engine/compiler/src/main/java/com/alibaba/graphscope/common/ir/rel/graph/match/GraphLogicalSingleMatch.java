@@ -18,9 +18,7 @@ package com.alibaba.graphscope.common.ir.rel.graph.match;
 
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.google.common.collect.Lists;
-
 import org.apache.calcite.plan.GraphOptCluster;
-import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.hint.RelHint;
@@ -60,7 +58,7 @@ public class GraphLogicalSingleMatch extends AbstractLogicalMatch {
     @Override
     public RelWriter explainTerms(RelWriter pw) {
         return super.explainTerms(pw)
-                .item("sentence", RelOptUtil.toString(sentence))
+                .item("sentence", sentence.toString())
                 .item("matchOpt", matchOpt);
     }
 

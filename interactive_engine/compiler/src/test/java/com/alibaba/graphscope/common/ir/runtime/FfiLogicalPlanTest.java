@@ -86,7 +86,7 @@ public class FfiLogicalPlanTest {
                 new FfiPhysicalBuilder(
                         getMockGraphConfig(),
                         Utils.schemaMeta,
-                        new LogicalPlan(aggregate, false))) {
+                        new LogicalPlan(aggregate))) {
             Assert.assertEquals(
                     FileUtils.readJsonFromResource("ffi_logical_plan_1.json"),
                     ffiBuilder.explain());
@@ -116,7 +116,7 @@ public class FfiLogicalPlanTest {
                 filter.explain().trim());
         try (PhysicalBuilder<byte[]> ffiBuilder =
                 new FfiPhysicalBuilder(
-                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(filter, false))) {
+                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(filter))) {
             Assert.assertEquals(
                     FileUtils.readJsonFromResource("ffi_logical_plan_2.json"),
                     ffiBuilder.explain());
@@ -142,7 +142,7 @@ public class FfiLogicalPlanTest {
                 project.explain().trim());
         try (PhysicalBuilder<byte[]> ffiBuilder =
                 new FfiPhysicalBuilder(
-                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(project, false))) {
+                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(project))) {
             Assert.assertEquals(
                     FileUtils.readJsonFromResource("ffi_logical_plan_3.json"),
                     ffiBuilder.explain());
@@ -188,7 +188,7 @@ public class FfiLogicalPlanTest {
                 project.explain().trim());
         try (PhysicalBuilder<byte[]> ffiBuilder =
                 new FfiPhysicalBuilder(
-                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(project, false))) {
+                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(project))) {
             Assert.assertEquals(
                     FileUtils.readJsonFromResource("case_when.json"), ffiBuilder.explain());
         }

@@ -17,7 +17,6 @@
 package com.alibaba.graphscope.common.ir.type;
 
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
-
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.type.RelDataTypeFamily;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -35,10 +34,6 @@ public class GraphSchemaType extends RelRecordType {
     protected GraphOpt.Source scanOpt;
     protected GraphLabelType labelType;
 
-    protected GraphSchemaType(GraphOpt.Source scanOpt, List<RelDataTypeField> fields) {
-        this(scanOpt, GraphLabelType.DEFAULT, fields);
-    }
-
     /**
      * @param scanOpt   entity or relation
      * @param labelType
@@ -46,7 +41,16 @@ public class GraphSchemaType extends RelRecordType {
      */
     public GraphSchemaType(
             GraphOpt.Source scanOpt, GraphLabelType labelType, List<RelDataTypeField> fields) {
-        super(StructKind.NONE, fields, false);
+        this(scanOpt, labelType, fields, false);
+    }
+
+    protected GraphSchemaType(GraphOpt.Source scanOpt, List<RelDataTypeField> fields, boolean isNullable) {
+        this(scanOpt, GraphLabelType.DEFAULT, fields, isNullable);
+    }
+
+    public GraphSchemaType(
+            GraphOpt.Source scanOpt, GraphLabelType labelType, List<RelDataTypeField> fields, boolean isNullable) {
+        super(StructKind.NONE, fields, isNullable);
         this.scanOpt = scanOpt;
         this.labelType = labelType;
     }
@@ -85,6 +89,13 @@ public class GraphSchemaType extends RelRecordType {
         }
 
         sb.append(")");
+    }
+
+    @Override
+    protected void computeDigest() {
+        StringBuilder sb = new StringBuilder();
+        generateTypeString(sb, false);
+        digest = sb.toString();
     }
 
     @Override
