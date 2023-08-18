@@ -17,19 +17,11 @@
 package com.alibaba.graphscope.cypher.antlr4;
 
 import com.alibaba.graphscope.common.config.Configs;
-import com.alibaba.graphscope.common.ir.planner.rules.FilterMatchRule;
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalSource;
-import com.alibaba.graphscope.common.ir.runtime.PhysicalBuilder;
-import com.alibaba.graphscope.common.ir.runtime.ffi.FfiPhysicalBuilder;
-import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
-import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.google.common.collect.ImmutableMap;
-import org.apache.calcite.plan.*;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.rules.CoreRules;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.sql.type.SqlTypeName;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -175,26 +167,27 @@ public class MatchTest {
     @Test
     public void match_8_test() throws Exception {
         RelNode multiMatch =
-                Utils.eval("Match (n {id:2}) Optional Match (n)-[]->(b) Where b is null Return n, b").build();
+                Utils.eval("Match (n {id:2}) Optional Match (n)-[]->(b)  Return b").build();
+        System.out.println(multiMatch.getRowType().getFieldList().get(0).getType().isNullable());
 //        Filter filter = (Filter) multiMatch.getInput(0);
 //        System.out.println(filter.getCondition());
-        RelOptPlanner planner = com.alibaba.graphscope.common.ir.Utils.mockPlanner((RelRule) CoreRules.FILTER_INTO_JOIN.config
-                .withRelBuilderFactory(
-                        (RelOptCluster cluster, @Nullable RelOptSchema schema) ->
-                                GraphBuilder.create(
-                                        null, (GraphOptCluster) cluster, schema)
-        ).toRule(), FilterMatchRule.Config.DEFAULT.toRule());
-        planner.setRoot(multiMatch);
-        RelNode after = planner.findBestExp();
-        System.out.println(after.explain());
-        try (PhysicalBuilder<byte[]> ffiBuilder =
-                     new FfiPhysicalBuilder(
-                             getMockGraphConfig(), com.alibaba.graphscope.common.ir.Utils.schemaMeta, new LogicalPlan(after))) {
-            ffiBuilder.build();
-            System.out.println(ffiBuilder.explain());
-//            Assert.assertEquals(
-//                    FileUtils.readJsonFromResource("case_when.json"), ffiBuilder.explain());
-        }
+//        RelOptPlanner planner = com.alibaba.graphscope.common.ir.Utils.mockPlanner((RelRule) CoreRules.FILTER_INTO_JOIN.config
+//                .withRelBuilderFactory(
+//                        (RelOptCluster cluster, @Nullable RelOptSchema schema) ->
+//                                GraphBuilder.create(
+//                                        null, (GraphOptCluster) cluster, schema)
+//        ).toRule(), FilterMatchRule.Config.DEFAULT.toRule());
+//        planner.setRoot(multiMatch);
+//        RelNode after = planner.findBestExp();
+//        System.out.println(after.explain());
+//        try (PhysicalBuilder<byte[]> ffiBuilder =
+//                     new FfiPhysicalBuilder(
+//                             getMockGraphConfig(), com.alibaba.graphscope.common.ir.Utils.schemaMeta, new LogicalPlan(after))) {
+//            ffiBuilder.build();
+//            System.out.println(ffiBuilder.explain());
+////            Assert.assertEquals(
+////                    FileUtils.readJsonFromResource("case_when.json"), ffiBuilder.explain());
+//        }
 //        GraphBuilder builder = com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder();
 //        RexNode expr = builder.source(new SourceConfig(GraphOpt.Source.VERTEX, new LabelConfig(false).addLabel("person")))
 //                .call(GraphStdOperatorTable.ARRAY_VALUE_CONSTRUCTOR, builder.variable(null, "age"), builder.variable(null, "name"));
