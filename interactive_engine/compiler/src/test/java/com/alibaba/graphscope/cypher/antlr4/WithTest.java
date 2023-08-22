@@ -204,7 +204,7 @@ public class WithTest {
     }
 
     @Test
-    public void with_11_test() {
+    public void with_12_test() {
         RelNode project =
                 Utils.eval("Match (a:person) Return head(collect(a.name)) as name").build();
         Assert.assertEquals(
