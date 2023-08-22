@@ -552,6 +552,11 @@ impl AsPhysical for pb::logical_plan::Operator {
                 Union(_) => Ok(()),
                 Intersect(_) => Ok(()),
                 Unfold(unfold) => unfold.add_job_builder(builder, plan_meta),
+                Root(_) => {
+                    builder.add_dummy_source();
+                    Ok(())
+                }
+                Branch(_) => Ok(()),
                 _ => Err(IrError::Unsupported(format!("the operator {:?}", self))),
             }
         } else {
@@ -693,7 +698,9 @@ impl AsPhysical for LogicalPlan {
                 let next_node_id = curr_node.borrow().get_first_child().unwrap();
                 curr_node_opt = self.get_node(next_node_id);
             } else if curr_node.borrow().children.len() >= 2 {
-                let (merge_node_opt, subplans) = self.get_branch_plans(curr_node.clone());
+                let (merge_node, subplans) = self
+                    .get_branch_plans(curr_node.clone())
+                    .ok_or(IrError::MissingData("Branch::merge_node and subplans".to_string()))?;
                 let mut plans: Vec<PlanBuilder> = vec![];
                 for subplan in &subplans {
                     let mut sub_bldr = PlanBuilder::default();
@@ -701,48 +708,43 @@ impl AsPhysical for LogicalPlan {
                     plans.push(sub_bldr);
                 }
 
-                if let Some(merge_node) = merge_node_opt.clone() {
-                    match &merge_node.borrow().opr.opr {
-                        Some(Union(_)) => {
-                            builder.union(plans);
+                match &merge_node.borrow().opr.opr {
+                    Some(Union(_)) => {
+                        builder.union(plans);
+                    }
+                    Some(Intersect(intersect)) => {
+                        add_intersect_job_builder(builder, plan_meta, intersect, &subplans)?;
+                    }
+                    Some(Join(join_opr)) => {
+                        if merge_node.borrow().parents.len() != 2 {
+                            // For now we only support joining two branches
+                            return Err(IrError::Unsupported("joining more than two branches".to_string()));
                         }
-                        Some(Intersect(intersect)) => {
-                            add_intersect_job_builder(builder, plan_meta, intersect, &subplans)?;
-                        }
-                        Some(Join(join_opr)) => {
-                            if curr_node.borrow().children.len() != 2 {
-                                // For now we only support joining two branches
-                                return Err(IrError::Unsupported(
-                                    "joining more than two branches".to_string(),
-                                ));
-                            }
-                            let left_plan = plans.get(0).unwrap().clone();
-                            let right_plan = plans.get(1).unwrap().clone();
+                        let left_plan = plans.get(0).unwrap().clone();
+                        let right_plan = plans.get(1).unwrap().clone();
 
-                            post_process_vars(builder, plan_meta, false)?;
+                        post_process_vars(builder, plan_meta, false)?;
 
-                            builder.join(
-                                unsafe { std::mem::transmute(join_opr.kind) },
-                                left_plan,
-                                right_plan,
-                                join_opr.left_keys.clone(),
-                                join_opr.right_keys.clone(),
-                            );
-                        }
-                        None => {
-                            return Err(IrError::MissingData(
-                                "Union/Intersect/Join::merge_node".to_string(),
-                            ))
-                        }
-                        _ => {
-                            return Err(IrError::Unsupported(format!(
+                        builder.join(
+                            unsafe { std::mem::transmute(join_opr.kind) },
+                            left_plan,
+                            right_plan,
+                            join_opr.left_keys.clone(),
+                            join_opr.right_keys.clone(),
+                        );
+                    }
+                    None => {
+                        return Err(IrError::MissingData("Union/Intersect/Join::merge_node".to_string()))
+                    }
+                    _ => {
+                        return Err(IrError::Unsupported(format!(
                             "Operators other than `Union` , `Intersect`, or `Join`. The operator is {:?}",
                             merge_node
                         )))
-                        }
                     }
                 }
-                curr_node_opt = merge_node_opt;
+
+                curr_node_opt = Some(merge_node);
 
                 if let Some(curr_node_clone) = curr_node_opt.clone() {
                     if curr_node_clone.borrow().children.len() <= 1 {
@@ -1035,12 +1037,15 @@ mod test {
     fn post_process_edgexpd() {
         // g.V().outE()
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(1, vec![], None).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(1, vec![], None).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![1])
+        plan.append_operator_as_node(build_sink().into(), vec![2])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1074,14 +1079,17 @@ mod test {
         // In this case, the Select will be translated into an GetV, to fetch and filter the
         // results in one single `FilterMap` pegasus operator.
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(0, vec![], None).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(0, vec![], None).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_select("@.birthday == 20220101").into(), vec![1])
+        plan.append_operator_as_node(build_select("@.birthday == 20220101").into(), vec![2])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![2])
+        plan.append_operator_as_node(build_sink().into(), vec![3])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1116,14 +1124,17 @@ mod test {
     fn post_process_edgexpd_label_filter() {
         // g.V().out().filter(@.~label == "person")
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(0, vec![], None).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(0, vec![], None).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_select("@.~label == \"person\"").into(), vec![1])
+        plan.append_operator_as_node(build_select("@.~label == \"person\"").into(), vec![2])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![2])
+        plan.append_operator_as_node(build_sink().into(), vec![3])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1146,16 +1157,19 @@ mod test {
         // the properties using `GetV` twice before filter, and can
         // finally execute the selection of "0.age > 1.age".
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(0.into())).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(0.into())).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(1.into())).into(), vec![1])
+        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(1.into())).into(), vec![2])
             .unwrap();
-        plan.append_operator_as_node(build_select("@0.age > @1.age").into(), vec![2])
+        plan.append_operator_as_node(build_select("@0.age > @1.age").into(), vec![3])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![3])
+        plan.append_operator_as_node(build_sink().into(), vec![4])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1204,14 +1218,17 @@ mod test {
     fn post_process_edgexpd_project_auxilia() {
         // g.V().out().as(0).select(0).by(valueMap("name", "id", "age")
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(0.into())).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(0.into())).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_project("{@0.name, @0.id, @0.age}").into(), vec![1])
+        plan.append_operator_as_node(build_project("{@0.name, @0.id, @0.age}").into(), vec![2])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![2])
+        plan.append_operator_as_node(build_sink().into(), vec![3])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1253,14 +1270,17 @@ mod test {
     fn post_process_edgexpd_tag_no_auxilia() {
         // g.V().out().as('a').select('a')
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(0.into())).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(0, vec![], Some(0.into())).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_project("@0").into(), vec![1])
+        plan.append_operator_as_node(build_project("@0").into(), vec![2])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![2])
+        plan.append_operator_as_node(build_sink().into(), vec![3])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan_meta = plan_meta.with_partition();
@@ -1281,21 +1301,23 @@ mod test {
     fn post_process_scan() {
         let mut plan = LogicalPlan::default();
         // g.V().hasLabel("person").has("age", 27).valueMap("age", "name", "id")
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
         // .hasLabel("person")
-        plan.append_operator_as_node(build_select("@.~label == \"person\"").into(), vec![0])
+        plan.append_operator_as_node(build_select("@.~label == \"person\"").into(), vec![1])
             .unwrap();
         // .has("age", 27)
-        plan.append_operator_as_node(build_select("@.age == 27").into(), vec![1])
+        plan.append_operator_as_node(build_select("@.age == 27").into(), vec![2])
             .unwrap();
 
         // .valueMap("age", "name", "id")
-        plan.append_operator_as_node(build_project("{@.name, @.id}").into(), vec![2])
+        plan.append_operator_as_node(build_project("{@.name, @.id}").into(), vec![3])
             .unwrap();
 
-        plan.append_operator_as_node(build_sink().into(), vec![3])
+        plan.append_operator_as_node(build_sink().into(), vec![4])
             .unwrap();
+
+        plan.clean_redundant_nodes();
 
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
@@ -1333,16 +1355,19 @@ mod test {
     fn post_process_getv_auxilia_projection() {
         // g.V().outE().inV().as('a').select('a').by(valueMap("name", "id", "age")
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(1, vec![], None).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(1, vec![], None).into(), vec![1])
             .unwrap();
-        plan.append_operator_as_node(build_getv(Some(0.into())).into(), vec![1])
+        plan.append_operator_as_node(build_getv(Some(0.into())).into(), vec![2])
             .unwrap();
-        plan.append_operator_as_node(build_project("{@0.name, @0.id, @0.age}").into(), vec![2])
+        plan.append_operator_as_node(build_project("{@0.name, @0.id, @0.age}").into(), vec![3])
             .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![3])
+        plan.append_operator_as_node(build_sink().into(), vec![4])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1384,9 +1409,9 @@ mod test {
     fn post_process_getv_auxilia_filter() {
         // g.V().outE().inV().filter('age > 10')
         let mut plan = LogicalPlan::default();
-        plan.append_operator_as_node(build_scan(vec![]).into(), vec![])
+        plan.append_operator_as_node(build_scan(vec![]).into(), vec![0])
             .unwrap();
-        plan.append_operator_as_node(build_edgexpd(1, vec![], None).into(), vec![0])
+        plan.append_operator_as_node(build_edgexpd(1, vec![], None).into(), vec![1])
             .unwrap();
         plan.append_operator_as_node(
             pb::GetV {
@@ -1405,11 +1430,14 @@ mod test {
                 meta_data: None,
             }
             .into(),
-            vec![1],
+            vec![2],
         )
         .unwrap();
-        plan.append_operator_as_node(build_sink().into(), vec![2])
+        plan.append_operator_as_node(build_sink().into(), vec![3])
             .unwrap();
+
+        plan.clean_redundant_nodes();
+
         let mut job_builder = PlanBuilder::default();
         let mut plan_meta = plan.meta.clone();
         plan.add_job_builder(&mut job_builder, &mut plan_meta)
@@ -1448,20 +1476,23 @@ mod test {
         let mut logical_plan = LogicalPlan::default();
 
         logical_plan
-            .append_operator_as_node(source_opr.clone().into(), vec![])
+            .append_operator_as_node(source_opr.clone().into(), vec![0])
             .unwrap(); // node 0
         logical_plan
-            .append_operator_as_node(select_opr.clone().into(), vec![0])
+            .append_operator_as_node(select_opr.clone().into(), vec![1])
             .unwrap(); // node 1
         logical_plan
-            .append_operator_as_node(expand_opr.clone().into(), vec![1])
+            .append_operator_as_node(expand_opr.clone().into(), vec![2])
             .unwrap(); // node 2
         logical_plan
-            .append_operator_as_node(limit_opr.clone().into(), vec![2])
+            .append_operator_as_node(limit_opr.clone().into(), vec![3])
             .unwrap(); // node 3
         logical_plan
-            .append_operator_as_node(build_sink().into(), vec![3])
+            .append_operator_as_node(build_sink().into(), vec![4])
             .unwrap();
+
+        logical_plan.clean_redundant_nodes();
+
         let mut builder = PlanBuilder::default();
         let mut plan_meta = logical_plan.meta.clone();
         let _ = logical_plan.add_job_builder(&mut builder, &mut plan_meta);
@@ -1823,7 +1854,7 @@ mod test {
         };
 
         let opr_id = plan
-            .append_operator_as_node(scan.clone().into(), vec![])
+            .append_operator_as_node(scan.clone().into(), vec![0])
             .unwrap();
 
         // .out().as("1")
@@ -1860,6 +1891,8 @@ mod test {
         };
         plan.append_operator_as_node(project.clone().into(), vec![opr_id])
             .unwrap();
+
+        plan.clean_redundant_nodes();
 
         let mut builder = PlanBuilder::default();
         let mut meta = plan.meta.clone();
@@ -1910,7 +1943,7 @@ mod test {
         };
 
         let opr_id = plan
-            .append_operator_as_node(scan.clone().into(), vec![])
+            .append_operator_as_node(scan.clone().into(), vec![0])
             .unwrap();
 
         // .out().count()
@@ -1924,6 +1957,8 @@ mod test {
             pb::Apply { join_kind: 4, tags: vec![], subtask: subplan_id as i32, alias: Some(1.into()) };
         plan.append_operator_as_node(apply.clone().into(), vec![opr_id])
             .unwrap();
+
+        plan.clean_redundant_nodes();
 
         let mut builder = PlanBuilder::default();
         let mut meta = plan.meta.clone();
@@ -1973,7 +2008,7 @@ mod test {
         };
 
         let opr_id = plan
-            .append_operator_as_node(scan.clone().into(), vec![])
+            .append_operator_as_node(scan.clone().into(), vec![0])
             .unwrap();
 
         // .select("0").out().count()
@@ -1998,6 +2033,8 @@ mod test {
                 .into();
         plan.append_operator_as_node(apply.clone(), vec![opr_id])
             .unwrap();
+
+        plan.clean_redundant_nodes();
 
         let mut builder = PlanBuilder::default();
         let mut meta = plan.meta.clone();
@@ -2325,6 +2362,516 @@ mod test {
         expected_builder.intersect(vec![sub_builder_1, sub_builder_2], 2.into());
         expected_builder.unfold(unfold_opr);
         expected_builder.get_v(get_c_filter);
+        assert_eq!(builder, expected_builder);
+    }
+
+    // The plan looks like:
+    //       root(1)
+    //       / \
+    //      2    3
+    //     / \   |
+    //    4   5  |
+    //    \   /  |
+    //      6    |
+    //       \  /
+    //         7
+    //         |
+    //         8
+    // 6: union
+    // 7: join
+    // other: out
+    fn create_nested_logical_plan1() -> LogicalPlan {
+        let opr = pb::logical_plan::Operator {
+            opr: Some(pb::logical_plan::operator::Opr::Edge(pb::EdgeExpand::default())),
+        };
+        let union_opr = pb::Union { parents: vec![4, 5] };
+        let join = pb::Join::default();
+        let mut plan = LogicalPlan::default();
+        plan.append_operator_as_node(opr.clone(), vec![0])
+            .unwrap(); // root(1)
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 2
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 3
+        plan.append_operator_as_node(opr.clone(), vec![2])
+            .unwrap(); // node 4
+        plan.append_operator_as_node(opr.clone(), vec![2])
+            .unwrap(); // node 5
+        plan.append_operator_as_node(union_opr.into(), vec![4, 5])
+            .unwrap(); // node 6
+        plan.append_operator_as_node(join.into(), vec![3, 6])
+            .unwrap(); // node 7
+        plan.append_operator_as_node(opr.clone(), vec![7])
+            .unwrap(); // node 8
+
+        plan.clean_redundant_nodes();
+
+        plan
+    }
+
+    // The plan looks like:
+    //         root(1)
+    //      /   |   \
+    //     2    3    4
+    //     \   /    /
+    //       5     /
+    //        \   /
+    //          6
+    // 5: join
+    // 6: union
+    // other: out
+    fn create_nested_logical_plan2() -> LogicalPlan {
+        let opr = pb::logical_plan::Operator {
+            opr: Some(pb::logical_plan::operator::Opr::Edge(pb::EdgeExpand::default())),
+        };
+        let union_opr = pb::Union { parents: vec![4, 5] };
+        let join = pb::Join::default();
+        let mut plan = LogicalPlan::default();
+        plan.append_operator_as_node(opr.clone(), vec![0])
+            .unwrap(); // root(1)
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 2
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 3
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 4
+        plan.append_operator_as_node(join.into(), vec![2, 3])
+            .unwrap(); // node 5
+        plan.append_operator_as_node(union_opr.into(), vec![4, 5])
+            .unwrap(); // node 6
+
+        plan.clean_redundant_nodes();
+
+        plan
+    }
+
+    // The plan looks like:
+    //        root(1)
+    //      /   |   \
+    //     2    3    4
+    //     \   / \   /
+    //       5     6
+    //        \   /
+    //          7
+    // 5: union
+    // 6: union
+    // 7: join
+    // other: out
+    fn create_nested_logical_plan3() -> LogicalPlan {
+        let opr = pb::logical_plan::Operator {
+            opr: Some(pb::logical_plan::operator::Opr::Edge(pb::EdgeExpand::default())),
+        };
+        let union1 = pb::Union { parents: vec![2, 3] };
+        let union2 = pb::Union { parents: vec![3, 4] };
+        let join = pb::Join::default();
+        let mut plan = LogicalPlan::default();
+        plan.append_operator_as_node(opr.clone(), vec![0])
+            .unwrap(); // root(1)
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 2
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 3
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 4
+        plan.append_operator_as_node(union1.into(), vec![2, 3])
+            .unwrap(); // node 5
+        plan.append_operator_as_node(union2.into(), vec![3, 4])
+            .unwrap(); // node 6
+        plan.append_operator_as_node(join.into(), vec![5, 6])
+            .unwrap(); // node 7
+
+        plan.clean_redundant_nodes();
+
+        plan
+    }
+
+    // The plan looks like:
+    //               root(1)
+    //             /   |    \
+    //           2     3     4
+    //            \   /    /   \
+    //             5       6   7
+    //              \      \ /
+    //               \      8
+    //                \   /
+    //                  9
+    // 5: join
+    // 8: union
+    // 9: join
+    // other: out
+    fn create_nested_logical_plan4() -> LogicalPlan {
+        let opr = pb::logical_plan::Operator {
+            opr: Some(pb::logical_plan::operator::Opr::Edge(pb::EdgeExpand::default())),
+        };
+        let union_opr = pb::Union { parents: vec![6, 7] };
+        let join1 = pb::Join::default();
+        let join2 = pb::Join::default();
+        let mut plan = LogicalPlan::default();
+
+        plan.append_operator_as_node(opr.clone(), vec![0])
+            .unwrap(); // root(1)
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 2
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 3
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 4
+        plan.append_operator_as_node(join1.into(), vec![2, 3])
+            .unwrap(); // node 5
+        plan.append_operator_as_node(opr.clone(), vec![4])
+            .unwrap(); // node 6
+        plan.append_operator_as_node(opr.clone(), vec![4])
+            .unwrap(); // node 7
+        plan.append_operator_as_node(union_opr.into(), vec![6, 7])
+            .unwrap(); // node 8
+        plan.append_operator_as_node(join2.into(), vec![5, 8])
+            .unwrap(); // node 9
+
+        plan.clean_redundant_nodes();
+
+        plan
+    }
+
+    // The plan looks like:
+    //                root(1)
+    //               /      \
+    //              2        3
+    //            /   \    /   \
+    //           4    5   6    7
+    //            \   /    \  /
+    //              8       9
+    //                \   /
+    //                  10
+    // 8: union
+    // 9: join
+    // 10: union
+    // other: out
+    fn create_nested_logical_plan5() -> LogicalPlan {
+        let opr = pb::logical_plan::Operator {
+            opr: Some(pb::logical_plan::operator::Opr::Edge(pb::EdgeExpand::default())),
+        };
+        let union1 = pb::Union { parents: vec![4, 5] };
+        let union2 = pb::Union { parents: vec![8, 9] };
+        let join = pb::Join::default();
+        let mut plan = LogicalPlan::default();
+
+        plan.append_operator_as_node(opr.clone(), vec![0])
+            .unwrap(); // root(1)
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 2
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 3
+        plan.append_operator_as_node(opr.clone(), vec![2])
+            .unwrap(); // node 4
+        plan.append_operator_as_node(opr.clone(), vec![2])
+            .unwrap(); // node 5
+        plan.append_operator_as_node(opr.clone(), vec![3])
+            .unwrap(); // node 6
+        plan.append_operator_as_node(opr.clone(), vec![3])
+            .unwrap(); // node 7
+        plan.append_operator_as_node(union1.into(), vec![4, 5])
+            .unwrap(); // node 8
+        plan.append_operator_as_node(join.into(), vec![6, 7])
+            .unwrap(); // node 9
+        plan.append_operator_as_node(union2.into(), vec![8, 9])
+            .unwrap(); // node 10
+
+        plan.clean_redundant_nodes();
+
+        plan
+    }
+
+    // The plan looks like:
+    //                  root(1)
+    //                  /   \
+    //                 2     3
+    //                  \  /   \
+    //                   4      5
+    //                    \   /  \
+    //                      6     7
+    //                       \   /
+    //                         8
+    // 4: join
+    // 6: union
+    // 8: join
+    // other: out
+    fn create_nested_logical_plan6() -> LogicalPlan {
+        let opr = pb::logical_plan::Operator {
+            opr: Some(pb::logical_plan::operator::Opr::Edge(pb::EdgeExpand::default())),
+        };
+        let union_opr = pb::Union { parents: vec![4, 5] };
+        let join1 = pb::Join::default();
+        let join2 = pb::Join::default();
+        let mut plan = LogicalPlan::default();
+
+        plan.append_operator_as_node(opr.clone(), vec![0])
+            .unwrap(); // root(1)
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 2
+        plan.append_operator_as_node(opr.clone(), vec![1])
+            .unwrap(); // node 3
+        plan.append_operator_as_node(join1.into(), vec![2, 3])
+            .unwrap(); // node 4
+        plan.append_operator_as_node(opr.clone(), vec![3])
+            .unwrap(); // node 5
+        plan.append_operator_as_node(union_opr.into(), vec![4, 5])
+            .unwrap(); // node 6
+        plan.append_operator_as_node(opr.clone(), vec![5])
+            .unwrap(); // node 7
+        plan.append_operator_as_node(join2.into(), vec![6, 7])
+            .unwrap(); // node 8
+
+        plan.clean_redundant_nodes();
+
+        plan
+    }
+
+    #[test]
+    fn test_nested_logical_plan1_to_physical() {
+        let nested_logical_plan = create_nested_logical_plan1();
+
+        let mut builder = PlanBuilder::default();
+
+        let mut plan_meta = PlanMeta::default();
+
+        nested_logical_plan
+            .add_job_builder(&mut builder, &mut plan_meta)
+            .unwrap();
+
+        let opr = pb::EdgeExpand::default();
+
+        let mut expected_builder = PlanBuilder::default();
+        expected_builder.edge_expand(opr.clone());
+
+        let mut sub_builder_1 = PlanBuilder::default();
+        sub_builder_1.edge_expand(opr.clone());
+
+        let mut sub_builder_2 = PlanBuilder::default();
+        sub_builder_2.edge_expand(opr.clone());
+        let mut sub_builder_21 = PlanBuilder::default();
+        sub_builder_21.edge_expand(opr.clone());
+        let mut sub_builder_22 = PlanBuilder::default();
+        sub_builder_22.edge_expand(opr.clone());
+        sub_builder_2.union(vec![sub_builder_21, sub_builder_22]);
+
+        expected_builder.join(pb::join::JoinKind::default(), sub_builder_1, sub_builder_2, vec![], vec![]);
+        expected_builder.edge_expand(opr.clone());
+
+        assert_eq!(builder, expected_builder);
+    }
+
+    #[test]
+    fn test_nested_logical_plan2_to_physical() {
+        let nested_logical_plan = create_nested_logical_plan2();
+
+        let mut builder = PlanBuilder::default();
+
+        let mut plan_meta = PlanMeta::default();
+
+        nested_logical_plan
+            .add_job_builder(&mut builder, &mut plan_meta)
+            .unwrap();
+
+        let opr = pb::EdgeExpand::default();
+
+        let mut expected_builder = PlanBuilder::default();
+        expected_builder.edge_expand(opr.clone());
+
+        let mut sub_builder_1 = PlanBuilder::default();
+        sub_builder_1.edge_expand(opr.clone());
+
+        let mut sub_builder_2 = PlanBuilder::default();
+
+        let mut sub_builder_21 = PlanBuilder::default();
+        sub_builder_21.edge_expand(opr.clone());
+
+        let mut sub_builder_22 = PlanBuilder::default();
+        sub_builder_22.edge_expand(opr.clone());
+
+        sub_builder_2.join(pb::join::JoinKind::default(), sub_builder_21, sub_builder_22, vec![], vec![]);
+
+        expected_builder.union(vec![sub_builder_1, sub_builder_2]);
+
+        assert_eq!(builder, expected_builder);
+    }
+
+    #[test]
+    fn test_nested_logical_plan3_to_physical() {
+        let nested_logical_plan = create_nested_logical_plan3();
+
+        let mut builder = PlanBuilder::default();
+
+        let mut plan_meta = PlanMeta::default();
+
+        nested_logical_plan
+            .add_job_builder(&mut builder, &mut plan_meta)
+            .unwrap();
+
+        let opr = pb::EdgeExpand::default();
+
+        let mut expected_builder = PlanBuilder::default();
+        expected_builder.edge_expand(opr.clone());
+
+        let mut sub_builder_1 = PlanBuilder::default();
+
+        let mut sub_builder_11 = PlanBuilder::default();
+        sub_builder_11.edge_expand(opr.clone());
+
+        let mut sub_builder_12 = PlanBuilder::default();
+        sub_builder_12.edge_expand(opr.clone());
+
+        sub_builder_1.union(vec![sub_builder_11, sub_builder_12]);
+
+        let mut sub_builder_2 = PlanBuilder::default();
+
+        let mut sub_builder_21 = PlanBuilder::default();
+        sub_builder_21.edge_expand(opr.clone());
+
+        let mut sub_builder_22 = PlanBuilder::default();
+        sub_builder_22.edge_expand(opr.clone());
+
+        sub_builder_2.union(vec![sub_builder_21, sub_builder_22]);
+
+        expected_builder.join(pb::join::JoinKind::default(), sub_builder_1, sub_builder_2, vec![], vec![]);
+
+        assert_eq!(builder, expected_builder);
+    }
+
+    #[test]
+    fn test_nested_logical_plan4_to_physical() {
+        let nested_logical_plan = create_nested_logical_plan4();
+
+        let mut builder = PlanBuilder::default();
+
+        let mut plan_meta = PlanMeta::default();
+
+        nested_logical_plan
+            .add_job_builder(&mut builder, &mut plan_meta)
+            .unwrap();
+
+        let opr = pb::EdgeExpand::default();
+
+        let mut expected_builder = PlanBuilder::default();
+        expected_builder.edge_expand(opr.clone());
+
+        let mut sub_builder_1 = PlanBuilder::default();
+
+        let mut sub_builder_11 = PlanBuilder::default();
+        sub_builder_11.edge_expand(opr.clone());
+
+        let mut sub_builder_12 = PlanBuilder::default();
+        sub_builder_12.edge_expand(opr.clone());
+
+        sub_builder_1.join(pb::join::JoinKind::default(), sub_builder_11, sub_builder_12, vec![], vec![]);
+
+        let mut sub_builder_2 = PlanBuilder::default();
+        sub_builder_2.edge_expand(opr.clone());
+
+        let mut sub_builder_21 = PlanBuilder::default();
+        sub_builder_21.edge_expand(opr.clone());
+
+        let mut sub_builder_22 = PlanBuilder::default();
+        sub_builder_22.edge_expand(opr.clone());
+
+        sub_builder_2.union(vec![sub_builder_21, sub_builder_22]);
+
+        expected_builder.join(pb::join::JoinKind::default(), sub_builder_1, sub_builder_2, vec![], vec![]);
+
+        assert_eq!(builder, expected_builder);
+    }
+
+    #[test]
+    fn test_nested_logical_plan5_to_physical() {
+        let nested_logical_plan = create_nested_logical_plan5();
+
+        let mut builder = PlanBuilder::default();
+
+        let mut plan_meta = PlanMeta::default();
+
+        nested_logical_plan
+            .add_job_builder(&mut builder, &mut plan_meta)
+            .unwrap();
+
+        let opr = pb::EdgeExpand::default();
+
+        let mut expected_builder = PlanBuilder::default();
+        expected_builder.edge_expand(opr.clone());
+
+        let mut sub_builder_1 = PlanBuilder::default();
+        sub_builder_1.edge_expand(opr.clone());
+
+        let mut sub_builder_11 = PlanBuilder::default();
+        sub_builder_11.edge_expand(opr.clone());
+
+        let mut sub_builder_12 = PlanBuilder::default();
+        sub_builder_12.edge_expand(opr.clone());
+
+        sub_builder_1.union(vec![sub_builder_11, sub_builder_12]);
+
+        let mut sub_builder_2 = PlanBuilder::default();
+        sub_builder_2.edge_expand(opr.clone());
+
+        let mut sub_builder_21 = PlanBuilder::default();
+        sub_builder_21.edge_expand(opr.clone());
+
+        let mut sub_builder_22 = PlanBuilder::default();
+        sub_builder_22.edge_expand(opr.clone());
+
+        sub_builder_2.join(pb::join::JoinKind::default(), sub_builder_21, sub_builder_22, vec![], vec![]);
+
+        expected_builder.union(vec![sub_builder_1, sub_builder_2]);
+
+        assert_eq!(builder, expected_builder);
+    }
+
+    #[test]
+    fn test_nested_logical_plan6_to_physical() {
+        let nested_logical_plan = create_nested_logical_plan6();
+
+        let mut builder = PlanBuilder::default();
+
+        let mut plan_meta = PlanMeta::default();
+
+        nested_logical_plan
+            .add_job_builder(&mut builder, &mut plan_meta)
+            .unwrap();
+
+        let opr = pb::EdgeExpand::default();
+
+        let mut expected_builder = PlanBuilder::default();
+        expected_builder.edge_expand(opr.clone());
+
+        let mut sub_builder_1 = PlanBuilder::default();
+
+        let mut sub_builder_11 = PlanBuilder::default();
+
+        let mut sub_builder_111 = PlanBuilder::default();
+        sub_builder_111.edge_expand(opr.clone());
+
+        let mut sub_builder_112 = PlanBuilder::default();
+        sub_builder_112.edge_expand(opr.clone());
+
+        sub_builder_11.join(
+            pb::join::JoinKind::default(),
+            sub_builder_111,
+            sub_builder_112,
+            vec![],
+            vec![],
+        );
+
+        let mut sub_builder_12 = PlanBuilder::default();
+        sub_builder_12.edge_expand(opr.clone());
+        sub_builder_12.edge_expand(opr.clone());
+
+        sub_builder_1.union(vec![sub_builder_11, sub_builder_12]);
+
+        let mut sub_builder_2 = PlanBuilder::default();
+        sub_builder_2.edge_expand(opr.clone());
+        sub_builder_2.edge_expand(opr.clone());
+        sub_builder_2.edge_expand(opr.clone());
+
+        expected_builder.join(pb::join::JoinKind::default(), sub_builder_1, sub_builder_2, vec![], vec![]);
+
         assert_eq!(builder, expected_builder);
     }
 }
