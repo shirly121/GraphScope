@@ -102,23 +102,25 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
         SqlOperator operator = call.getOperator();
         RexNode operand = call.getOperands().get(0);
         switch (operator.getKind()) {
-                // convert IS_NULL to binary call: XX = NONE
-                // convert IS_NOT_NULL to XX != NONE
+                // convert IS_NULL to unary call: IS_NULL(XX)
             case IS_NULL:
-                return OuterExpression.Expression.newBuilder()
-                        .addAllOperators(operand.accept(this).getOperatorsList())
-                        .addOperators(getEqualsOperator(call))
-                        .addOperators(getValueNone())
-                        .build();
+                return visitIsNullOperator(operand);
+                // convert IS_NOT_NULL to NOT(IS_NULL(XX))
             case IS_NOT_NULL:
                 return OuterExpression.Expression.newBuilder()
-                        .addAllOperators(operand.accept(this).getOperatorsList())
-                        .addOperators(getNotEqualsOperator(call))
-                        .addOperators(getValueNone())
+                        .addOperators(Utils.protoOperator(GraphStdOperatorTable.NOT))
+                        .addOperators(
+                                OuterExpression.ExprOpr.newBuilder()
+                                        .setBrace(OuterExpression.ExprOpr.Brace.LEFT_BRACE))
+                        .addAllOperators(visitIsNullOperator(operand).getOperatorsList())
+                        .addOperators(
+                                OuterExpression.ExprOpr.newBuilder()
+                                        .setBrace(OuterExpression.ExprOpr.Brace.RIGHT_BRACE))
                         .build();
+            case NOT:
             default:
                 return OuterExpression.Expression.newBuilder()
-                        .addOperators(Utils.protoOperator(GraphStdOperatorTable.NOT))
+                        .addOperators(Utils.protoOperator(operator))
                         .addOperators(
                                 OuterExpression.ExprOpr.newBuilder()
                                         .setBrace(OuterExpression.ExprOpr.Brace.LEFT_BRACE))
@@ -130,23 +132,16 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
         }
     }
 
-    private OuterExpression.ExprOpr getValueNone() {
-        return OuterExpression.ExprOpr.newBuilder()
-                .setConst(Common.Value.newBuilder().setNone(Common.None.newBuilder()))
-                .setNodeType(
-                        DataType.IrDataType.newBuilder().setDataType(Common.DataType.NONE).build())
-                .build();
-    }
-
-    private OuterExpression.ExprOpr getEqualsOperator(RexCall call) {
-        return Utils.protoOperator(GraphStdOperatorTable.EQUALS).toBuilder()
-                .setNodeType(Utils.protoIrDataType(call.getType(), isColumnId))
-                .build();
-    }
-
-    private OuterExpression.ExprOpr getNotEqualsOperator(RexCall call) {
-        return Utils.protoOperator(GraphStdOperatorTable.NOT_EQUALS).toBuilder()
-                .setNodeType(Utils.protoIrDataType(call.getType(), isColumnId))
+    private OuterExpression.Expression visitIsNullOperator(RexNode operand) {
+        return OuterExpression.Expression.newBuilder()
+                .addOperators(Utils.protoOperator(GraphStdOperatorTable.IS_NULL))
+                .addOperators(
+                        OuterExpression.ExprOpr.newBuilder()
+                                .setBrace(OuterExpression.ExprOpr.Brace.LEFT_BRACE))
+                .addAllOperators(operand.accept(this).getOperatorsList())
+                .addOperators(
+                        OuterExpression.ExprOpr.newBuilder()
+                                .setBrace(OuterExpression.ExprOpr.Brace.RIGHT_BRACE))
                 .build();
     }
 
