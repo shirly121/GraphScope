@@ -329,6 +329,13 @@ impl TryFrom<common_pb::Value> for Object {
                     }
                     Ok(vec.into())
                 }
+                ValueArray(values) => {
+                    let mut vec = Vec::<Object>::with_capacity(values.item.len());
+                    for item in values.item.clone().into_iter() {
+                        vec.push(Object::try_from(item)?);
+                    }
+                    Ok(vec.into())
+                }
             };
         }
 

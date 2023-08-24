@@ -55,6 +55,11 @@ message NameOrId {
   }
 }
 
+// denote a list of values with different types
+message ValueArray {
+  repeated Value item = 1;
+}
+
 message Value {
   oneof item {
     bool  boolean     = 2;
@@ -68,7 +73,8 @@ message Value {
     DoubleArray f64_array    = 10;
     StringArray str_array    = 11;
     PairArray pair_array     = 12;
-    None  none               = 13;
+    ValueArray value_array   = 13;
+    None  none               = 14;
   }
 }
 
