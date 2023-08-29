@@ -13,7 +13,9 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 //
-use pegasus::api::{CorrelatedSubTask, Count, EmitKind, Fold, IterCondition, Iteration, Map, Reduce, Sink};
+use pegasus::api::{
+    CorrelatedSubTask, Count, EmitKind, Fold, IterCondition, Iteration, Limit, Map, Reduce, Sink,
+};
 use pegasus::JobConf;
 
 #[test]
@@ -582,6 +584,59 @@ fn fold_x_unfold_x_x_filter_map_x_empty_iterate_test() {
         }
     })
     .expect("submit job failure");
+
+    while let Some(v) = result.next() {
+        println!("get {}", v.unwrap());
+    }
+}
+
+// TODO: error message:
+// ERROR   [reactor 2] [pegasus/src/data_plane/intra_process.rs:41] [worker_0(12526101200027122362)]: IntraProcessPush#push: send data failure Event { from_worker: 0, target_port: (2.0), kind: Cancel([root]) }
+// ERROR   [reactor 2] [pegasus/src/communication/input/input.rs:398] [worker_0(12526101200027122362)]: propagate cancel of [root] failure, error: IOError(kind=System(NotConnected)),    occurred at: pegasus/src/data_plane/intra_process.rs:43, ;
+#[test]
+fn limit_filtermap_flatmap_count_test() {
+    let mut conf = JobConf::new("limit_filtermap_flatmap_count_test");
+    conf.set_workers(2);
+    let mut result = pegasus::run(conf, || {
+        |input, output| {
+            input
+                .input_from(1..50000000u32)?
+                .limit(1000000)?
+                .filter_map(|i| Ok(Some(i)))?
+                .flat_map(|x| Ok(vec![x + 1].into_iter()))?
+                .count()?
+                .sink_into(output)
+        }
+    })
+    .expect("build job failure");
+
+    while let Some(v) = result.next() {
+        println!("get {}", v.unwrap());
+    }
+}
+
+// TODO: output #worker_num of count value
+#[test]
+fn iterate_emit_flatmap_test() {
+    let mut conf = JobConf::new("iterate_emit_flatmap_test");
+    conf.set_workers(2);
+    let mut result = pegasus::run(conf, || {
+        |input, output| {
+            input
+                .input_from(1..50000000u32)?
+                .limit(1000000)?
+                .filter_map(|i| Ok(Some(i)))?
+                .iterate_emit_until(IterCondition::max_iters(1), EmitKind::Before, |start| {
+                    Ok(start
+                        .flat_map(|x| Ok(vec![x + 1].into_iter()))?
+                        .repartition(|x| Ok((x % 32) as u64)))
+                })?
+                .flat_map(|x| Ok(vec![x + 1].into_iter()))?
+                .count()?
+                .sink_into(output)
+        }
+    })
+    .expect("build job failure");
 
     while let Some(v) = result.next() {
         println!("get {}", v.unwrap());
