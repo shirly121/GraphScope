@@ -567,10 +567,10 @@ impl From<Object> for common_pb::Value {
             },
             Object::String(s) => common_pb::value::Item::Str(s),
             Object::Blob(b) => common_pb::value::Item::Blob(b.to_vec()),
-            Object::Vector(v) => common_pb::value::Item::StrArray(common_pb::StringArray {
+            Object::Vector(v) => common_pb::value::Item::ValueArray(common_pb::ValueArray {
                 item: v
                     .into_iter()
-                    .map(|obj| obj.to_string())
+                    .map(|obj| obj.into())
                     .collect(),
             }),
             Object::KV(kv) => {
