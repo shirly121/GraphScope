@@ -84,6 +84,12 @@ message Record {
 message Results {
   oneof inner {
     Record record = 1;
+    // a shortcut to single column record, including vertex, edge, graph_path, object, collection.
+    Vertex vertex = 2;
+    Edge edge = 3;
+    GraphPath graph_path = 4;
+    common.Value object = 5;
+    Collection collection = 6;
   }
 }
 
