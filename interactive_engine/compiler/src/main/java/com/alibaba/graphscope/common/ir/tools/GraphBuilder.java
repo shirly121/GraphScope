@@ -16,8 +16,6 @@
 
 package com.alibaba.graphscope.common.ir.tools;
 
-import static java.util.Objects.requireNonNull;
-
 import com.alibaba.graphscope.common.ir.meta.schema.GraphOptSchema;
 import com.alibaba.graphscope.common.ir.meta.schema.StatisticSchema;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalAggregate;
@@ -32,8 +30,8 @@ import com.alibaba.graphscope.common.ir.rel.type.group.GraphAggCall;
 import com.alibaba.graphscope.common.ir.rel.type.group.GraphGroupKeys;
 import com.alibaba.graphscope.common.ir.rel.type.order.GraphFieldCollation;
 import com.alibaba.graphscope.common.ir.rel.type.order.GraphRelCollations;
-import com.alibaba.graphscope.common.ir.rex.*;
 import com.alibaba.graphscope.common.ir.rex.RexCallBinding;
+import com.alibaba.graphscope.common.ir.rex.*;
 import com.alibaba.graphscope.common.ir.tools.config.*;
 import com.alibaba.graphscope.common.ir.type.GraphNameOrId;
 import com.alibaba.graphscope.common.ir.type.GraphPathType;
@@ -44,7 +42,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-
 import org.apache.calcite.plan.*;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelFieldCollation;
@@ -56,6 +53,7 @@ import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.type.BasicSqlType;
+import org.apache.calcite.sql.type.IntervalSqlType;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Litmus;
@@ -66,6 +64,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Integrate interfaces to build algebra structures,
@@ -580,6 +580,20 @@ public class GraphBuilder extends RelBuilder {
         RelDataType returnType = operator.inferReturnType(callBinding);
         // derive unknown types of operands
         operandList = inferOperandTypes(operator, returnType, operandList);
+        if (operator.getKind() == SqlKind.EXTRACT) {
+            RexNode intervalOperand = operandList.get(0);
+            if (intervalOperand instanceof RexLiteral
+                    && ((RexLiteral) intervalOperand).isNull()
+                    && intervalOperand.getType() instanceof IntervalSqlType) {
+                IntervalSqlType intervalType = (IntervalSqlType) intervalOperand.getType();
+                List<RexNode> newOperands = Lists.newArrayList();
+                newOperands.add(
+                        getRexBuilder()
+                                .makeFlag(intervalType.getIntervalQualifier().getStartUnit()));
+                newOperands.add(operandList.get(1));
+                operandList = newOperands;
+            }
+        }
         final RexBuilder builder = cluster.getRexBuilder();
         return builder.makeCall(returnType, operator, operandList);
     }
@@ -621,7 +635,8 @@ public class GraphBuilder extends RelBuilder {
                 || (sqlKind == SqlKind.NOT)
                 || sqlKind == SqlKind.IS_NULL
                 || sqlKind == SqlKind.IS_NOT_NULL
-                || sqlKind == SqlKind.ARRAY_VALUE_CONSTRUCTOR;
+                || sqlKind == SqlKind.ARRAY_VALUE_CONSTRUCTOR
+                || sqlKind == SqlKind.EXTRACT;
     }
 
     @Override
