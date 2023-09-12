@@ -95,7 +95,7 @@ impl MultiVersionGraph for GraphStore {
         &self, snapshot_id: SnapshotId, edge_id: EdgeId, edge_relation: Option<&EdgeKind>,
         property_ids: Option<&Vec<PropertyId>>,
     ) -> GraphResult<Option<Self::E>> {
-        trace!("get_edge")
+        trace!("get_edge");
         if let Some(relation) = edge_relation {
             self.get_edge_from_relation(snapshot_id, edge_id, relation, property_ids)
         } else {
