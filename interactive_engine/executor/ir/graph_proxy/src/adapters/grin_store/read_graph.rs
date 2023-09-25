@@ -43,7 +43,7 @@ pub fn create_grin_store(
 /// Get value of certain type of vertex property from the grin-enabled graph, and turn it into
 /// `Object` accessible to the runtime.
 #[inline]
-fn get_vertex_propoerty_as_object(
+fn get_vertex_property_as_object(
     graph: GrinGraph, vertex: GrinVertex, prop_handle: GrinVertexProperty,
 ) -> GraphProxyResult<Object> {
     unsafe {
@@ -273,7 +273,7 @@ impl GrinVertexProxy {
                     prop_key
                 )));
             }
-            let result = get_vertex_propoerty_as_object(self.graph, self.vertex, prop_handle);
+            let result = get_vertex_property_as_object(self.graph, self.vertex, prop_handle);
             grin_destroy_vertex_property(self.graph, prop_handle);
 
             result
@@ -301,10 +301,10 @@ impl GrinVertexProxy {
                         i
                     )));
                 }
-                let prop_id = grin_get_vertex_property_id(self.graph, self.vertex_type, prop_handle);
-
-                let prop_value = get_vertex_propoerty_as_object(self.graph, self.vertex, prop_handle)?;
-                result.insert(NameOrId::Id(prop_id as i32), prop_value);
+                let prop_name = grin_get_vertex_property_name(self.graph, self.vertex_type, prop_handle);
+                let prop_name_string = string_c2rust(prop_name);
+                let prop_value = get_vertex_property_as_object(self.graph, self.vertex, prop_handle)?;
+                result.insert(NameOrId::Str(prop_name_string), prop_value);
 
                 grin_destroy_vertex_property(self.graph, prop_handle);
             }
