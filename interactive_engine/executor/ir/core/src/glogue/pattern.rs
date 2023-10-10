@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter::FromIterator;
 
 use ir_common::error::ParsePbError;
@@ -556,6 +556,47 @@ impl Pattern {
             }
         }
         build_logical_plan(self, exact_extend_steps)
+    }
+}
+
+impl Pattern {
+    pub fn generate_all_extend_match_plans(&self) -> IrPatternResult<Vec<pb::LogicalPlan>> {
+        if self.get_vertices_num() == 0 {
+            Err(IrPatternError::InvalidExtendPattern(format!("Empty pattern {:?}", self)))?
+        }
+
+        let mut plans = vec![];
+        let mut e_p_queue = VecDeque::from_iter([(vec![], self.clone())]);
+
+        while let Some((mut extend_steps, trace_pattern)) = e_p_queue.pop_front() {
+            if trace_pattern.get_vertices_num() == 1 {
+                // Add the last vertex into exact_extend_steps
+                let select_vertex_id = trace_pattern
+                    .vertices_iter()
+                    .next()
+                    .ok_or(IrPatternError::InvalidExtendPattern("Wrong vertex number = 1".to_string()))?
+                    .get_id();
+                let exact_extend_step =
+                    ExactExtendStep::from_target_pattern(&trace_pattern, select_vertex_id)?;
+                extend_steps.push(exact_extend_step);
+                plans.push(build_logical_plan(self, extend_steps)?);
+            } else {
+                for id in trace_pattern
+                    .vertices_iter()
+                    .map(|v| v.get_id())
+                {
+                    if check_connectivity(id, &trace_pattern)? {
+                        let extend_step = ExactExtendStep::from_target_pattern(&trace_pattern, id)?;
+                        let mut new_extend_steps = extend_steps.clone();
+                        let mut new_trace_pattern = trace_pattern.clone();
+                        new_extend_steps.push(extend_step);
+                        new_trace_pattern.remove_vertex(id)?;
+                        e_p_queue.push_back((new_extend_steps, new_trace_pattern));
+                    }
+                }
+            }
+        }
+        Ok(plans)
     }
 }
 

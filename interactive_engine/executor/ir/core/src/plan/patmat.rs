@@ -1198,6 +1198,11 @@ impl ExtendStrategy {
         let pattern = Pattern::from_pb_pattern(pb_pattern, plan_meta)?;
         Ok(ExtendStrategy { pattern })
     }
+
+    pub fn generate_all_extend_match_plans(&self) -> IrResult<Vec<pb::LogicalPlan>> {
+        let all_plans = self.pattern.generate_all_extend_match_plans()?;
+        Ok(all_plans)
+    }
 }
 
 /// Build pattern match Logical Plan for ExtendStrategy

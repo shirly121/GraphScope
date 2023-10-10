@@ -556,6 +556,64 @@ impl LogicalPlan {
         new_curr_node_rst
     }
 
+    pub fn append_to_generate_all_match_plans(
+        mut self, mut pattern: pb::Pattern, parent_ids: Vec<NodeId>,
+    ) -> IrResult<Vec<(LogicalPlan, NodeId)>> {
+        // Set new current node as `self.max_node_id`
+        let new_curr_node = self.max_node_id;
+        self.meta.set_curr_node(new_curr_node);
+        // Configure `NodeMeta` for current node
+        let _ = self.meta.curr_node_meta_mut();
+        // By default, refer to the nodes that the the parent nodes refer to
+        // Certain operators will modify the referred nodes during preprocessing, including
+        // Scan, EdgeExpand, PathExpand, GetV, Apply and Project
+        let ref_parent_nodes = self.meta.get_referred_nodes(&parent_ids);
+        self.meta
+            .refer_to_nodes(new_curr_node, ref_parent_nodes);
+
+        if let Ok(store_meta) = STORE_META.read() {
+            pattern.preprocess(&store_meta, &mut self.meta)?;
+        }
+        if parent_ids.len() == 1 {
+            let is_pattern_source_whole_graph = self
+                .get_opr(parent_ids[0])
+                .map(|pattern_source| is_whole_graph(&pattern_source))
+                .ok_or(IrError::ParentNodeNotExist(parent_ids[0]))?;
+            let extend_strategy = if is_pattern_source_whole_graph {
+                ExtendStrategy::init(&pattern, &self.meta)
+            } else {
+                Err(IrPatternError::Unsupported("pattern source is not whole graph".to_string()))
+            };
+            let mut logical_plans_with_nodes = vec![];
+            match extend_strategy {
+                Ok(extend_strategy) => {
+                    for match_logical_plan in extend_strategy.generate_all_extend_match_plans()? {
+                        let mut new_logical_plan = self.clone();
+                        let new_node_id = new_logical_plan.append_plan(match_logical_plan, vec![0])?;
+                        logical_plans_with_nodes.push((new_logical_plan, new_node_id));
+                    }
+                }
+                Err(err) => match err {
+                    IrPatternError::Unsupported(_) => {
+                        // if is not supported in ExtendStrategy, try NaiveStrategy
+                        debug!("pattern matching by NaiveStrategy");
+                        let naive_strategy = NaiveStrategy::try_from(pattern.clone())?;
+                        let match_logical_plan = naive_strategy.build_logical_plan()?;
+                        let mut new_logical_plan = self.clone();
+                        let new_node_id = new_logical_plan.append_plan(match_logical_plan, vec![0])?;
+                        logical_plans_with_nodes.push((new_logical_plan, new_node_id));
+                    }
+                    _ => return Err(err.into()),
+                },
+            }
+            Ok(logical_plans_with_nodes)
+        } else {
+            Err(IrError::Unsupported(
+                "only one single parent is supported for the `Pattern` operator".to_string(),
+            ))
+        }
+    }
+
     /// Remove redundant nodes
     ///
     /// There are two types of redundant nodes:

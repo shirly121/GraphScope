@@ -378,4 +378,13 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_generate_all_extend_plans() {
+        let pattern1 = build_ldbc_pattern_from_pb_case1().unwrap();
+        let all_plans = pattern1
+            .generate_all_extend_match_plans()
+            .unwrap();
+        assert_eq!(all_plans.len(), 6);
+    }
 }

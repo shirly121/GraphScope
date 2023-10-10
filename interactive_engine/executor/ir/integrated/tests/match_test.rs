@@ -900,4 +900,72 @@ mod test {
         result_collection.sort();
         assert_eq!(result_collection, expected_result_ids);
     }
+
+    fn get_all_match_case2_requests() -> Vec<JobRequest> {
+        init_schema();
+
+        let source = pb::Scan::default();
+
+        let pattern = get_pattern_case2();
+
+        let sink = get_sink(vec![TAG_A, TAG_B, TAG_C, TAG_D]);
+
+        let mut plan = LogicalPlan::with_root();
+
+        let source_id = plan
+            .append_operator_as_node(source.into(), vec![0])
+            .unwrap();
+
+        let mut all_plans = plan
+            .append_to_generate_all_match_plans(pattern, vec![source_id])
+            .unwrap();
+
+        all_plans.iter_mut().for_each(|(plan, id)| {
+            plan.append_operator_as_node(sink.clone().into(), vec![*id])
+                .unwrap();
+        });
+
+        all_plans
+            .into_iter()
+            .map(|(plan, _)| build_job_request(plan))
+            .collect()
+    }
+
+    #[test]
+    fn test_all_match_case2_requests() {
+        initialize();
+        let all_requests = get_all_match_case2_requests();
+        let expected_result_ids = vec![
+            (1, 2, 2, 1 << 56 | 3),
+            (1, 2, 4, 1 << 56 | 3),
+            (1, 4, 2, 1 << 56 | 3),
+            (1, 4, 4, 1 << 56 | 3),
+        ];
+        for request in all_requests {
+            let mut results = submit_query(request, 2);
+            let mut result_collection = vec![];
+            while let Some(result) = results.next() {
+                match result {
+                    Ok(res) => {
+                        let entry = parse_result(res).unwrap();
+                        let a = entry.get(Some(TAG_A)).unwrap().as_vertex();
+                        let b = entry.get(Some(TAG_B)).unwrap().as_vertex();
+                        let c = entry.get(Some(TAG_C)).unwrap().as_vertex();
+                        let d = entry.get(Some(TAG_D)).unwrap().as_vertex();
+                        result_collection.push((
+                            a.unwrap().id(),
+                            b.unwrap().id(),
+                            c.unwrap().id(),
+                            d.unwrap().id(),
+                        ));
+                    }
+                    Err(e) => {
+                        panic!("err result {:?}", e);
+                    }
+                }
+            }
+            result_collection.sort();
+            assert_eq!(result_collection, expected_result_ids);
+        }
+    }
 }
