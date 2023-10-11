@@ -32,6 +32,7 @@ mod test {
     use ir_core::plan::physical::AsPhysical;
     use ir_physical_client::physical_builder::{JobBuilder, PlanBuilder};
     use pegasus_server::JobRequest;
+
     use runtime::process::entry::Entry;
 
     use crate::common::test::{
@@ -993,4 +994,19 @@ mod test {
             assert_eq!(result_collection, expected_result_ids);
         }
     }
+
+    // #[test]
+    // fn load_physical_plan() {
+    // use prost::Message;
+    // use std::io::Read;
+    // use ir_common::generated::physical::PhysicalPlan;
+    //     let mut file = File::open("/Users/meloyang/opt/GraphScope/interactive_engine/compiler/plan0")
+    //         .expect("Fail to open the file");
+    //     let mut plan_data: Vec<u8> = vec![];
+    //     file.read_to_end(&mut plan_data)
+    //         .expect("Fail to read the content of the file");
+    //     let plan_data: &[u8] = &plan_data;
+    //     let physical_plan = PhysicalPlan::decode(plan_data).unwrap();
+    //     println!("{:?}", physical_plan);
+    // }
 }
