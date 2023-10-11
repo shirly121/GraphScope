@@ -44,8 +44,8 @@ type PbNodeId = i32;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub(crate) id: NodeId,
-    pub(crate) opr: pb::logical_plan::Operator,
-    pub(crate) parents: BTreeSet<NodeId>,
+    pub opr: pb::logical_plan::Operator,
+    pub parents: BTreeSet<NodeId>,
     pub(crate) children: BTreeSet<NodeId>,
 }
 
@@ -89,7 +89,7 @@ pub(crate) type NodeType = Rc<RefCell<Node>>;
 /// [`LogicalPlan`]: crate::generated::algebra::LogicalPlan
 #[derive(Clone, Default)]
 pub struct LogicalPlan {
-    pub(crate) nodes: VecMap<NodeType>,
+    pub nodes: VecMap<NodeType>,
     /// To record the nodes' maximum id in the logical plan. Note that the nodes
     /// **include the removed ones**
     pub(crate) max_node_id: NodeId,
@@ -558,7 +558,7 @@ impl LogicalPlan {
 
     pub fn append_to_generate_all_match_plans(
         mut self, mut pattern: pb::Pattern, parent_ids: Vec<NodeId>,
-    ) -> IrResult<Vec<(LogicalPlan, NodeId)>> {
+    ) -> IrResult<Vec<(LogicalPlan, Vec<NodeId>)>> {
         // Set new current node as `self.max_node_id`
         let new_curr_node = self.max_node_id;
         self.meta.set_curr_node(new_curr_node);
@@ -590,7 +590,7 @@ impl LogicalPlan {
                     for match_logical_plan in extend_strategy.generate_all_extend_match_plans()? {
                         let mut new_logical_plan = self.clone();
                         let new_node_id = new_logical_plan.append_plan(match_logical_plan, vec![0])?;
-                        logical_plans_with_nodes.push((new_logical_plan, new_node_id));
+                        logical_plans_with_nodes.push((new_logical_plan, vec![new_node_id]));
                     }
                 }
                 Err(err) => match err {
@@ -601,7 +601,7 @@ impl LogicalPlan {
                         let match_logical_plan = naive_strategy.build_logical_plan()?;
                         let mut new_logical_plan = self.clone();
                         let new_node_id = new_logical_plan.append_plan(match_logical_plan, vec![0])?;
-                        logical_plans_with_nodes.push((new_logical_plan, new_node_id));
+                        logical_plans_with_nodes.push((new_logical_plan, vec![new_node_id]));
                     }
                     _ => return Err(err.into()),
                 },

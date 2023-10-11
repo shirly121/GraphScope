@@ -26,7 +26,8 @@ mod test {
     use ir_common::generated::algebra as pb;
     use ir_common::generated::common as common_pb;
     use ir_common::KeyId;
-    use ir_core::plan::logical::LogicalPlan;
+    use ir_core::glogue::DynIter;
+    use ir_core::plan::logical::{LogicalPlan, Node, NodeId};
     use ir_core::plan::meta::set_schema_from_json;
     use ir_core::plan::physical::AsPhysical;
     use ir_physical_client::physical_builder::{JobBuilder, PlanBuilder};
@@ -913,20 +914,44 @@ mod test {
         let mut plan = LogicalPlan::with_root();
 
         let source_id = plan
-            .append_operator_as_node(source.into(), vec![0])
+            .append_node(Node::new(plan.get_max_node_id(), source.into()), vec![0])
             .unwrap();
 
-        let mut all_plans = plan
-            .append_to_generate_all_match_plans(pattern, vec![source_id])
+        let pattern_id = plan
+            .append_node(Node::new(plan.get_max_node_id(), pattern.into()), vec![source_id])
             .unwrap();
 
-        all_plans.iter_mut().for_each(|(plan, id)| {
-            plan.append_operator_as_node(sink.clone().into(), vec![*id])
-                .unwrap();
-        });
+        plan.append_node(Node::new(plan.get_max_node_id(), sink.into()), vec![pattern_id])
+            .unwrap();
 
-        all_plans
-            .into_iter()
+        let mut plans_iter: DynIter<(LogicalPlan, Vec<NodeId>)> =
+            Box::new(vec![(LogicalPlan::default(), vec![])].into_iter());
+
+        for (_, node) in plan.nodes.iter() {
+            plans_iter = Box::new(plans_iter.flat_map(move |(mut logical_plan, parent_ids)| {
+                if let Some(pb::logical_plan::operator::Opr::Pattern(pattern)) =
+                    node.borrow().opr.opr.as_ref()
+                {
+                    if let Ok(all_plans) =
+                        logical_plan.append_to_generate_all_match_plans(pattern.clone(), parent_ids)
+                    {
+                        all_plans
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    if let Ok(new_parent_id) =
+                        logical_plan.append_operator_as_node(node.borrow().opr.clone(), parent_ids)
+                    {
+                        vec![(logical_plan, vec![new_parent_id])]
+                    } else {
+                        vec![]
+                    }
+                }
+            }));
+        }
+
+        plans_iter
             .map(|(plan, _)| build_job_request(plan))
             .collect()
     }

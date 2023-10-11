@@ -53,6 +53,8 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{c_void, CStr};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::os::raw::c_char;
 
 use ir_common::expr_parse::str_to_expr_pb;
@@ -63,7 +65,8 @@ use pegasus::BuildJobError;
 use prost::Message;
 
 use crate::error::IrError;
-use crate::plan::logical::{LogicalPlan, NodeId};
+use crate::glogue::DynIter;
+use crate::plan::logical::{LogicalPlan, Node, NodeId};
 use crate::plan::meta::{set_schema_from_json, KeyType};
 use crate::plan::physical::AsPhysical;
 
@@ -618,40 +621,77 @@ pub extern "C" fn destroy_ffi_data(data: FfiData) {
 pub extern "C" fn build_physical_plan(
     ptr_plan: *const c_void, num_workers: u32, num_servers: u32,
 ) -> FfiData {
-    let mut plan = unsafe { Box::from_raw(ptr_plan as *mut LogicalPlan) };
-    if num_workers > 1 || num_servers > 1 {
-        plan.meta = plan.meta.with_partition();
+    let simple_plan = unsafe { Box::from_raw(ptr_plan as *mut LogicalPlan) };
+
+    let mut plans_iter: DynIter<(LogicalPlan, Vec<NodeId>)> =
+        Box::new(vec![(LogicalPlan::default(), vec![])].into_iter());
+
+    for (_, node) in simple_plan.nodes.iter() {
+        plans_iter = Box::new(plans_iter.flat_map(move |(mut logical_plan, parent_ids)| {
+            if let Some(pb::logical_plan::operator::Opr::Pattern(pattern)) = node.borrow().opr.opr.as_ref()
+            {
+                if let Ok(all_plans) =
+                    logical_plan.append_to_generate_all_match_plans(pattern.clone(), parent_ids)
+                {
+                    all_plans
+                } else {
+                    vec![]
+                }
+            } else {
+                if let Ok(new_parent_id) =
+                    logical_plan.append_operator_as_node(node.borrow().opr.clone(), parent_ids)
+                {
+                    vec![(logical_plan, vec![new_parent_id])]
+                } else {
+                    vec![]
+                }
+            }
+        }));
     }
-    let mut plan_meta = plan.meta.clone();
-    let mut builder = PlanBuilder::default();
-    let build_result = plan.add_job_builder(&mut builder, &mut plan_meta);
-    let result = match build_result {
-        Ok(_) => {
-            let physical_plan = builder.build();
-            let mut plan_bytes = physical_plan.encode_to_vec().into_boxed_slice();
-            let data = FfiData {
-                ptr: plan_bytes.as_mut_ptr() as *mut c_void,
-                len: plan_bytes.len(),
-                error: FfiResult::success(),
-            };
-            std::mem::forget(plan_bytes);
 
-            data
+    for (i, (mut plan, _)) in plans_iter.enumerate() {
+        if num_workers > 1 || num_servers > 1 {
+            plan.meta = plan.meta.with_partition();
         }
-        Err(e) => e.into(),
+        let mut plan_meta = plan.meta.clone();
+        let mut builder = PlanBuilder::default();
+        let build_result = plan.add_job_builder(&mut builder, &mut plan_meta);
+        if let Ok(_) = build_result {
+            let physical_plan = builder.build();
+            let plan_data = physical_plan.encode_to_vec();
+            let mut file = File::create(format!("plan{}", i)).expect("Fail to create a file");
+            file.write_all(&plan_data)
+                .expect("Fail to write contents to a file");
+        }
+    }
+
+    IrError::Unsupported("Get all plans".to_string()).into()
+}
+
+#[no_mangle]
+pub extern "C" fn load_physical_plan(file_path: *const c_char) -> FfiData {
+    let c_str = unsafe { CStr::from_ptr(file_path) };
+    let rust_string = c_str.to_string_lossy().to_string();
+    let mut file = File::open(&rust_string).expect("Fail to open the file");
+    let mut plan_data: Vec<u8> = vec![];
+    file.read_to_end(&mut plan_data)
+        .expect("Fail to read the content of the file");
+    let mut plan_bytes = plan_data.into_boxed_slice();
+    let data = FfiData {
+        ptr: plan_bytes.as_mut_ptr() as *mut c_void,
+        len: plan_bytes.len(),
+        error: FfiResult::success(),
     };
-
-    std::mem::forget(plan);
-
-    result
+    std::mem::forget(plan_bytes);
+    data
 }
 
 fn append_operator(
     ptr_plan: *const c_void, operator: pb::logical_plan::Operator, parent_ids: Vec<i32>, id: *mut i32,
 ) -> FfiResult {
     let mut plan = unsafe { Box::from_raw(ptr_plan as *mut LogicalPlan) };
-    let result = plan.append_operator_as_node(
-        operator,
+    let result = plan.append_node(
+        Node::new(plan.get_max_node_id(), operator),
         parent_ids
             .into_iter()
             .filter_map(|x| if x >= 0 { Some(x as NodeId) } else { None })
