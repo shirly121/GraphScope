@@ -107,6 +107,8 @@ class MutableCSRInterface {
     LOG(INFO) << "person label num: " << db_session_.graph().vertex_num(1);
   }
 
+  const Schema& schema() const { return db_session_.schema(); }
+
   /**
    * @brief Get the Vertex Label id
    *
@@ -804,6 +806,16 @@ class MutableCSRInterface {
     return column;
   }
 
+  std::shared_ptr<RefColumnBase> GetRefColumnBase(
+      const label_t& label_id, const std::string& prop_name) const {
+    if (prop_name == "id" || prop_name == "ID" || prop_name == "Id") {
+      return db_session_.get_vertex_id_column(label_id);
+    } else {
+      return create_ref_column(
+          db_session_.get_vertex_property_column(label_id, prop_name));
+    }
+  }
+
  private:
   std::shared_ptr<RefColumnBase> create_ref_column(
       std::shared_ptr<ColumnBase> column) const {
@@ -875,7 +887,7 @@ class MutableCSRInterface {
       std::tuple<std::shared_ptr<TypedRefColumn<T>>...>& columns) const {}
 
   const GraphDBSession& db_session_;
-};
+};  // namespace gs
 
 }  // namespace gs
 

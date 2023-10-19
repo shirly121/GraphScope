@@ -31,6 +31,8 @@ void Schema::add_vertex_label(
   label_t v_label_id = vertex_label_to_index(label);
   vproperties_[v_label_id] = property_types;
   vprop_names_[v_label_id] = property_names;
+  VLOG(1) << "set prop names for : " << std::to_string(v_label_id)
+          << ", prop names:" << gs::to_string(vprop_names_[v_label_id]);
   vprop_storage_[v_label_id] = strategies;
   vprop_storage_[v_label_id].resize(vproperties_[v_label_id].size(),
                                     StorageStrategy::kMem);
@@ -106,7 +108,10 @@ const std::vector<std::string>& Schema::get_vertex_property_names(
 
 const std::vector<std::string>& Schema::get_vertex_property_names(
     label_t label) const {
-  CHECK(label < vprop_names_.size());
+  CHECK(label < vprop_names_.size())
+      << "label: " << std::to_string(label)
+      << " is out of range: " << vprop_names_.size() << ", "
+      << vproperties_.size();
   return vprop_names_[label];
 }
 
@@ -246,8 +251,9 @@ void Schema::Serialize(std::unique_ptr<grape::LocalIOAdaptor>& writer) {
   vlabel_indexer_.Serialize(writer);
   elabel_indexer_.Serialize(writer);
   grape::InArchive arc;
-  arc << vproperties_ << vprop_storage_ << eproperties_ << ie_strategy_
-      << oe_strategy_ << max_vnum_;
+  arc << vproperties_ << vprop_names_ << v_primary_keys_ << vprop_storage_
+      << eproperties_ << eprop_names_ << ie_strategy_ << oe_strategy_
+      << max_vnum_ << plugin_list_ << plugin_dir_;
   CHECK(writer->WriteArchive(arc));
 }
 
@@ -256,8 +262,9 @@ void Schema::Deserialize(std::unique_ptr<grape::LocalIOAdaptor>& reader) {
   elabel_indexer_.Deserialize(reader);
   grape::OutArchive arc;
   CHECK(reader->ReadArchive(arc));
-  arc >> vproperties_ >> vprop_storage_ >> eproperties_ >> ie_strategy_ >>
-      oe_strategy_ >> max_vnum_;
+  arc >> vproperties_ >> vprop_names_ >> v_primary_keys_ >> vprop_storage_ >>
+      eproperties_ >> eprop_names_ >> ie_strategy_ >> oe_strategy_ >>
+      max_vnum_ >> plugin_list_ >> plugin_dir_;
 }
 
 label_t Schema::vertex_label_to_index(const std::string& label) {
