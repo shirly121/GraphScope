@@ -162,9 +162,13 @@ impl SourceOperator {
                         v_source = Box::new(source_vertices.into_iter());
                     } else {
                         // parallel scan, and each worker should scan the partitions assigned to it in self.v_params.partitions
+                        debug!("Start parallel scan...");
                         v_source = graph.scan_vertex(&self.query_params)?;
+                       
                     };
-                    Ok(Box::new(v_source.map(move |v| Record::new(v, self.alias.clone()))))
+                    let result = v_source.map(move |v| Record::new(v, self.alias.clone()));
+                    debug!("End parallel scan...");
+                    return Ok(Box::new(result));
                 }
             }
             SourceType::Edge => {
