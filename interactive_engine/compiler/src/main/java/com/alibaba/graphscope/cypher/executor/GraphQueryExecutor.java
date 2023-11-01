@@ -109,7 +109,7 @@ public class GraphQueryExecutor extends FabricExecutor {
             GraphPlanner.PlannerInstance instance = graphPlanner.instance(parseTree, irMeta);
             GraphPlanner.Summary planSummary = instance.plan();
             try (PhysicalBuilder physicalBuilder = planSummary.getPhysicalBuilder()) {
-                logger.debug(
+                logger.info(
                         "cypher query \"{}\", job conf name \"{}\", calcite logical plan {}",
                         statement,
                         planSummary.getName(),

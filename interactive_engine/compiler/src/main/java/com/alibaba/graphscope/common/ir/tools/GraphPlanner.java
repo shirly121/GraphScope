@@ -128,7 +128,7 @@ public class GraphPlanner {
                     GraphBuilder.create(
                             null, this.optCluster, new GraphOptSchema(this.optCluster, schema));
             LogicalPlan logicalPlan =
-                    new LogicalPlanVisitor(graphBuilder, this.irMeta).visit(this.parsedQuery);
+                    new LogicalPlanVisitor(graphBuilder, this.irMeta, graphConfig).visit(this.parsedQuery);
             // apply optimizations
             if (plannerConfig.isOn()
                     && logicalPlan.getRegularQuery() != null
@@ -204,14 +204,11 @@ public class GraphPlanner {
                                                 NotMatchToAntiJoinRule.class.getSimpleName())) {
                                             ruleConfigs.add(NotMatchToAntiJoinRule.Config.DEFAULT);
                                         } else if (k.equals(
-                                                DegreeFusionRule.ExpandDegreeFusionRule.class
+                                                DegreeFusionRule.class
                                                         .getSimpleName())) {
                                             ruleConfigs.add(
                                                     DegreeFusionRule.ExpandDegreeFusionRule.Config
                                                             .DEFAULT);
-                                        } else if (k.equals(
-                                                DegreeFusionRule.ExpandGetVDegreeFusionRule.class
-                                                        .getSimpleName())) {
                                             ruleConfigs.add(
                                                     DegreeFusionRule.ExpandGetVDegreeFusionRule
                                                             .Config.DEFAULT);

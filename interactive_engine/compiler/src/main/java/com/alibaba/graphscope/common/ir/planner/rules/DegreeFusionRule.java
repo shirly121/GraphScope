@@ -5,12 +5,10 @@ import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalExpand;
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalExpandDegree;
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalGetV;
 import com.alibaba.graphscope.common.ir.rel.type.group.GraphAggCall;
-import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
@@ -90,13 +88,6 @@ public abstract class DegreeFusionRule<C extends RelRule.Config> extends RelRule
                                                                     b1.operand(
                                                                                     GraphLogicalExpand
                                                                                             .class)
-                                                                            .predicate(
-                                                                                    (GraphLogicalExpand
-                                                                                                    expand) ->
-                                                                                            expand
-                                                                                                            .getAliasName()
-                                                                                                    == AliasInference
-                                                                                                            .DEFAULT_NAME)
                                                                             .anyInputs()));
             private RelRule.OperandTransform operandSupplier;
             private @Nullable String description;
@@ -184,9 +175,7 @@ public abstract class DegreeFusionRule<C extends RelRule.Config> extends RelRule
                                                             })
                                                     .oneInput(
                                                             b1 ->
-                                                                    // should be getV without any
-                                                                    // query given alias, and opt is
-                                                                    // not BOTH
+                                                                    // should be getV which opt is not BOTH
                                                                     b1.operand(
                                                                                     GraphLogicalGetV
                                                                                             .class)
@@ -194,27 +183,15 @@ public abstract class DegreeFusionRule<C extends RelRule.Config> extends RelRule
                                                                                     (GraphLogicalGetV
                                                                                                     getV) ->
                                                                                             getV
-                                                                                                                    .getAliasName()
-                                                                                                            == AliasInference
-                                                                                                                    .DEFAULT_NAME
-                                                                                                    && getV
                                                                                                                     .getOpt()
                                                                                                             != GraphOpt
                                                                                                                     .GetV
                                                                                                                     .BOTH)
                                                                             .oneInput(
                                                                                     b2 ->
-                                                                                            // should be expand without any query given alias
                                                                                             b2.operand(
                                                                                                             GraphLogicalExpand
                                                                                                                     .class)
-                                                                                                    .predicate(
-                                                                                                            (GraphLogicalExpand
-                                                                                                                            expand) ->
-                                                                                                                    expand
-                                                                                                                                    .getAliasName()
-                                                                                                                            == AliasInference
-                                                                                                                                    .DEFAULT_NAME)
                                                                                                     .anyInputs())));
             private RelRule.OperandTransform operandSupplier;
             private @Nullable String description;

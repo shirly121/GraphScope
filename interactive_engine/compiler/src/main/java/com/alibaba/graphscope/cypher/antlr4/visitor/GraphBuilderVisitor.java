@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.cypher.antlr4.visitor;
 
+import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.rel.type.group.GraphAggCall;
 import com.alibaba.graphscope.common.ir.rex.RexTmpVariableConverter;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
@@ -23,7 +24,6 @@ import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.cypher.antlr4.visitor.type.ExprVisitorResult;
 import com.alibaba.graphscope.grammar.CypherGSBaseVisitor;
 import com.alibaba.graphscope.grammar.CypherGSParser;
-
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
@@ -37,11 +37,13 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
     private final GraphBuilder builder;
     private final Set<String> uniqueNameList;
     private final ExpressionVisitor expressionVisitor;
+    private final Configs configs;
 
-    public GraphBuilderVisitor(GraphBuilder builder) {
+    public GraphBuilderVisitor(GraphBuilder builder, Configs configs) {
         this.builder = Objects.requireNonNull(builder);
         this.expressionVisitor = new ExpressionVisitor(this);
         this.uniqueNameList = new HashSet<>();
+        this.configs = configs;
     }
 
     @Override
@@ -59,9 +61,13 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
             sentences.add(visitOC_PatternPart(partCtx).build());
         }
         if (sentences.size() == 1) {
-            builder.match(
-                    sentences.get(0),
-                    (ctx.OPTIONAL() != null) ? GraphOpt.Match.OPTIONAL : GraphOpt.Match.INNER);
+            if (configs.get("unwrap.match", "false").equals("true")) {
+                builder.push(sentences.get(0));
+            } else {
+                builder.match(
+                        sentences.get(0),
+                        (ctx.OPTIONAL() != null) ? GraphOpt.Match.OPTIONAL : GraphOpt.Match.INNER);
+            }
         } else if (sentences.size() > 1) {
             builder.match(sentences.get(0), sentences.subList(1, sentences.size()));
         } else {
