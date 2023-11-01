@@ -32,6 +32,7 @@ import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
+import com.alibaba.graphscope.common.jna.IrCoreLibrary;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gremlin.InterOpCollectionBuilder;
@@ -50,7 +51,6 @@ import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
@@ -69,6 +69,7 @@ import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 
+import javax.script.SimpleBindings;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
@@ -77,8 +78,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
-
-import javax.script.SimpleBindings;
 
 public class IrStandardOpProcessor extends StandardOpProcessor {
     protected Graph graph;
@@ -105,6 +104,11 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         this.rpcClient = new RpcClient(fetcher.fetch());
         this.metaQueryCallback = metaQueryCallback;
         this.graphPlanner = graphPlanner;
+
+        IrMeta irMeta = metaQueryCallback.beforeExec();
+        if (irMeta != null) {
+            IrCoreLibrary.INSTANCE.setSchema(irMeta.getSchema().schemaJson());
+        }
     }
 
     @Override

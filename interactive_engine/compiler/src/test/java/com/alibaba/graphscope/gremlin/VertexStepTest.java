@@ -27,7 +27,6 @@ import com.alibaba.graphscope.common.jna.type.FfiExpandOpt;
 import com.alibaba.graphscope.common.jna.type.FfiVOpt;
 import com.alibaba.graphscope.gremlin.plugin.processor.IrStandardOpProcessor;
 import com.alibaba.graphscope.gremlin.transform.StepTransformFactory;
-
 import org.apache.tinkerpop.gremlin.process.traversal.Step;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
@@ -180,6 +179,146 @@ public class VertexStepTest {
         SelectOp selectOp = (SelectOp) ops.get(2);
         Assert.assertEquals("@.name == \"marko\"", selectOp.getPredicate().get().applyArg());
     }
+
+//    @Test
+//    public void mem_leak_test() {
+//        IrCoreLibrary.INSTANCE.setSchema("{\n" +
+//                "  \"entities\": [\n" +
+//                "    {\n" +
+//                "      \"label\": {\n" +
+//                "        \"id\": 1,\n" +
+//                "        \"name\": \"software\"\n" +
+//                "      },\n" +
+//                "      \"columns\": [\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 4,\n" +
+//                "            \"name\": \"id\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 2,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        },\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 0,\n" +
+//                "            \"name\": \"name\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 4,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        },\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 2,\n" +
+//                "            \"name\": \"lang\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 4,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        },\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 3,\n" +
+//                "            \"name\": \"creationDate\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 12,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        }\n" +
+//                "      ]\n" +
+//                "    },\n" +
+//                "    {\n" +
+//                "      \"label\": {\n" +
+//                "        \"id\": 0,\n" +
+//                "        \"name\": \"person\"\n" +
+//                "      },\n" +
+//                "      \"columns\": [\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 4,\n" +
+//                "            \"name\": \"id\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 2,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        },\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 0,\n" +
+//                "            \"name\": \"name\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 4,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        },\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 1,\n" +
+//                "            \"name\": \"age\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 1,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        }\n" +
+//                "      ]\n" +
+//                "    }\n" +
+//                "  ],\n" +
+//                "  \"relations\": [\n" +
+//                "    {\n" +
+//                "      \"label\": {\n" +
+//                "        \"id\": 0,\n" +
+//                "        \"name\": \"knows\"\n" +
+//                "      },\n" +
+//                "      \"entity_pairs\": [\n" +
+//                "        {\n" +
+//                "          \"src\": {\n" +
+//                "            \"id\": 0,\n" +
+//                "            \"name\": \"person\"\n" +
+//                "          },\n" +
+//                "          \"dst\": {\n" +
+//                "            \"id\": 0,\n" +
+//                "            \"name\": \"person\"\n" +
+//                "          }\n" +
+//                "        }\n" +
+//                "      ],\n" +
+//                "      \"columns\": [\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 3,\n" +
+//                "            \"name\": \"weight\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 3,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        }\n" +
+//                "      ]\n" +
+//                "    },\n" +
+//                "    {\n" +
+//                "      \"label\": {\n" +
+//                "        \"id\": 1,\n" +
+//                "        \"name\": \"created\"\n" +
+//                "      },\n" +
+//                "      \"entity_pairs\": [\n" +
+//                "        {\n" +
+//                "          \"src\": {\n" +
+//                "            \"id\": 0,\n" +
+//                "            \"name\": \"person\"\n" +
+//                "          },\n" +
+//                "          \"dst\": {\n" +
+//                "            \"id\": 0,\n" +
+//                "            \"name\": \"software\"\n" +
+//                "          }\n" +
+//                "        }\n" +
+//                "      ],\n" +
+//                "      \"columns\": [\n" +
+//                "        {\n" +
+//                "          \"key\": {\n" +
+//                "            \"id\": 3,\n" +
+//                "            \"name\": \"weight\"\n" +
+//                "          },\n" +
+//                "          \"data_type\": 3,\n" +
+//                "          \"is_primary_key\": false\n" +
+//                "        }\n" +
+//                "      ]\n" +
+//                "    }\n" +
+//                "  ],\n" +
+//                "  \"is_table_id\": true,\n" +
+//                "  \"is_column_id\": false\n" +
+//                "}\n");
+//    }
 
     public static List<InterOpBase> getOps(Traversal traversal) {
         IrStandardOpProcessor.applyStrategies(traversal);
