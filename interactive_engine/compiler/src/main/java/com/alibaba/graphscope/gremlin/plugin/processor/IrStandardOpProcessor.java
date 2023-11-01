@@ -25,14 +25,12 @@
 
 package com.alibaba.graphscope.gremlin.plugin.processor;
 
-import com.alibaba.graphscope.common.IrPlan;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
-import com.alibaba.graphscope.common.jna.IrCoreLibrary;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gremlin.InterOpCollectionBuilder;
@@ -51,6 +49,7 @@ import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.commons.io.FileUtils;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
@@ -70,6 +69,7 @@ import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 
 import javax.script.SimpleBindings;
+import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
@@ -91,6 +91,8 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
     protected IrMetaQueryCallback metaQueryCallback;
     protected final GraphPlanner graphPlanner;
 
+    private final byte[] physicalBytes;
+
     public IrStandardOpProcessor(
             Configs configs,
             GraphPlanner graphPlanner,
@@ -105,9 +107,10 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         this.metaQueryCallback = metaQueryCallback;
         this.graphPlanner = graphPlanner;
 
-        IrMeta irMeta = metaQueryCallback.beforeExec();
-        if (irMeta != null) {
-            IrCoreLibrary.INSTANCE.setSchema(irMeta.getSchema().schemaJson());
+        try {
+            physicalBytes = FileUtils.readFileToByteArray(new File("physical_plan.bytes"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -319,15 +322,17 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
 
         long jobId = queryLogger.getQueryId();
         String jobName = "ir_plan_" + jobId;
-        IrPlan irPlan = new IrPlan(irMeta, opCollection);
-        // print script and jobName with ir plan
-        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
-        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
-        irPlan.close();
+//        IrPlan irPlan = new IrPlan(irMeta, opCollection);
+//        // print script and jobName with ir plan
+//        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
+//        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
+//        irPlan.close();
+//
+//        FileUtils.writeByteArrayToFile(new File("physical_plan.bytes"), physicalPlanBytes);
 
         PegasusClient.JobRequest request =
                 PegasusClient.JobRequest.newBuilder()
-                        .setPlan(ByteString.copyFrom(physicalPlanBytes))
+                        .setPlan(ByteString.copyFrom(physicalBytes))
                         .build();
         PegasusClient.JobConfig jobConfig =
                 PegasusClient.JobConfig.newBuilder()

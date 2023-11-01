@@ -22,6 +22,7 @@ import com.alibaba.graphscope.gaia.proto.Common;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.graphscope.gremlin.exception.GremlinResultParserException;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.apache.tinkerpop.gremlin.structure.util.detached.DetachedEdge;
@@ -133,25 +134,26 @@ public class ParserUtils {
     }
 
     public static String getKeyName(Common.NameOrId key, FfiKeyType type) {
-        switch (key.getItemCase()) {
-            case NAME:
-                return key.getName();
-            case ID:
-                {
-                    FfiResult.ByValue result = irCoreLib.getKeyName(key.getId(), type);
-                    if (result.code != ResultCode.Success) {
-                        String errorMsg =
-                                "code is " + result.code.name() + ", msg is " + result.getMsg();
-                        throw new GremlinResultParserException("getKeyName fail " + errorMsg);
-                    }
-                    return result.getMsg();
-                }
-            default:
-                // throw new GremlinResultParserException("key type " + key.getItemCase().name() + "
-                // is invalid");
-                logger.error("{}", "key type is not set");
-                return "";
-        }
+//        switch (key.getItemCase()) {
+//            case NAME:
+//                return key.getName();
+//            case ID:
+//                {
+//                    FfiResult.ByValue result = irCoreLib.getKeyName(key.getId(), type);
+//                    if (result.code != ResultCode.Success) {
+//                        String errorMsg =
+//                                "code is " + result.code.name() + ", msg is " + result.getMsg();
+//                        throw new GremlinResultParserException("getKeyName fail " + errorMsg);
+//                    }
+//                    return result.getMsg();
+//                }
+//            default:
+//                // throw new GremlinResultParserException("key type " + key.getItemCase().name() + "
+//                // is invalid");
+//                logger.error("{}", "key type is not set");
+//                return "";
+//        }
+        return StringUtils.EMPTY;
     }
 
     public static Object parseEntry(IrResult.Entry entry) {

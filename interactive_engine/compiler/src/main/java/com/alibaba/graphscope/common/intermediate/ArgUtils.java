@@ -65,7 +65,8 @@ public class ArgUtils {
     }
 
     public static FfiNameOrId.ByValue asNoneNameOrId() {
-        return new FfiNameOrId.ByValue();
+        // return new FfiNameOrId.ByValue();
+        return null;
     }
 
     // "" or null indicates NONE
