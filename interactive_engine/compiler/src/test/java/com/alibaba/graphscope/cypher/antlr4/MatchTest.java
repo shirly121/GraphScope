@@ -16,11 +16,10 @@
 
 package com.alibaba.graphscope.cypher.antlr4;
 
-import com.alibaba.graphscope.common.ir.planner.rules.FilterMatchRule;
+import com.alibaba.graphscope.common.ir.planner.rules.DegreeFusionRule;
 import com.alibaba.graphscope.common.ir.planner.rules.NotMatchToAntiJoinRule;
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalSource;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
-
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexCall;
@@ -391,14 +390,11 @@ public class MatchTest {
 //                "Return comment.creationDate as date, comment.id as id\n" +
 //                "Order by date Desc, id Asc\n" +
 //                "Limit 20;").build();
-        RelNode node = Utils.eval("Match (person:PERSON)<-[:HASCREATOR]-(:POST|COMMENT)<-[:REPLYOF]-(comment:COMMENT)-[:HASCREATOR]->(author:PERSON)\n" +
-                "Where person.id = $personId\n" +
-                "Return comment.creationDate as date, comment.id as id\n" +
-                "Order by date Desc, id Asc\n" +
-                "Limit 20;").build();
+        RelNode node = Utils.eval("Match (author:PERSON)<-[:HASCREATOR]-(comment:COMMENT)\n" +
+                "Return count(comment);").build();
         RelOptPlanner planner =
                 com.alibaba.graphscope.common.ir.Utils.mockPlanner(
-                        FilterMatchRule.Config.DEFAULT);
+                        DegreeFusionRule.ExpandDegreeFusionRule.Config.DEFAULT, DegreeFusionRule.ExpandGetVDegreeFusionRule.Config.DEFAULT);
         System.out.println(node.explain());
         planner.setRoot(node);
         RelNode after = planner.findBestExp();

@@ -37,7 +37,7 @@ public class QueryCacheTest {
                 new GraphPlanner(
                         configs,
                         (GraphBuilder builder, IrMeta irMeta, String q) ->
-                                new LogicalPlanVisitor(builder, irMeta)
+                                new LogicalPlanVisitor(builder, irMeta, configs)
                                         .visit(new CypherAntlr4Parser().parse(q)));
         QueryCache cache = new QueryCache(configs, graphPlanner);
         QueryCache.Key key1 = cache.createKey("Match (n {name: 'ma'}) Return n", Utils.schemaMeta);
@@ -60,7 +60,7 @@ public class QueryCacheTest {
                 new GraphPlanner(
                         configs,
                         (GraphBuilder builder, IrMeta irMeta, String q) ->
-                                new LogicalPlanVisitor(builder, irMeta)
+                                new LogicalPlanVisitor(builder, irMeta, configs)
                                         .visit(new CypherAntlr4Parser().parse(q)));
         QueryCache cache = new QueryCache(configs, graphPlanner);
         QueryCache.Key key1 = cache.createKey("Match (n {name: 'ma'}) Return n", Utils.schemaMeta);

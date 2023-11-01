@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.cypher.antlr4.visitor;
 
+import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.meta.procedure.StoredProcedureMeta;
 import com.alibaba.graphscope.common.ir.meta.procedure.StoredProcedures;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
@@ -25,7 +26,7 @@ import com.alibaba.graphscope.grammar.CypherGSBaseVisitor;
 import com.alibaba.graphscope.grammar.CypherGSParser;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-
+import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlOperator;
 
@@ -39,7 +40,7 @@ public class ProcedureCallVisitor extends CypherGSBaseVisitor<RexNode> {
 
     public ProcedureCallVisitor(GraphBuilder builder, IrMeta irMeta) {
         this.builder = builder;
-        this.expressionVisitor = new ExpressionVisitor(new GraphBuilderVisitor(this.builder));
+        this.expressionVisitor = new ExpressionVisitor(new GraphBuilderVisitor(this.builder, new Configs(ImmutableMap.of())));
         this.irMeta = irMeta;
     }
 

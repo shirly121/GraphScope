@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.cypher.antlr4.visitor;
 
+import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.meta.procedure.StoredProcedureMeta;
 import com.alibaba.graphscope.common.ir.rel.graph.AbstractBindableTableScan;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
@@ -45,10 +46,12 @@ import java.util.stream.Collectors;
 public class LogicalPlanVisitor extends CypherGSBaseVisitor<LogicalPlan> {
     private final GraphBuilder builder;
     private final IrMeta irMeta;
+    private final Configs configs;
 
-    public LogicalPlanVisitor(GraphBuilder builder, IrMeta irMeta) {
+    public LogicalPlanVisitor(GraphBuilder builder, IrMeta irMeta, Configs configs) {
         this.builder = builder;
         this.irMeta = irMeta;
+        this.configs = configs;
     }
 
     @Override
@@ -59,7 +62,7 @@ public class LogicalPlanVisitor extends CypherGSBaseVisitor<LogicalPlan> {
     @Override
     public LogicalPlan visitOC_Query(CypherGSParser.OC_QueryContext ctx) {
         if (ctx.oC_RegularQuery() != null) {
-            GraphBuilderVisitor builderVisitor = new GraphBuilderVisitor(this.builder);
+            GraphBuilderVisitor builderVisitor = new GraphBuilderVisitor(this.builder, this.configs);
             RelNode regularQuery =
                     builderVisitor.visitOC_RegularQuery(ctx.oC_RegularQuery()).build();
             ImmutableMap<Integer, String> map =

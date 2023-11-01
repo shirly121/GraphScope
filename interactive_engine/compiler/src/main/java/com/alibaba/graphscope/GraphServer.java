@@ -77,7 +77,7 @@ public class GraphServer {
         ExecutionClient executionClient = ExecutionClient.Factory.create(configs, channelFetcher);
         LogicalPlanFactory planFactory =
                 (GraphBuilder builder, IrMeta irMeta, String query) ->
-                        new LogicalPlanVisitor(builder, irMeta)
+                        new LogicalPlanVisitor(builder, irMeta, this.configs)
                                 .visit(new CypherAntlr4Parser().parse(query));
         GraphPlanner graphPlanner = new GraphPlanner(configs, planFactory);
         QueryCache queryCache = new QueryCache(configs, graphPlanner);
