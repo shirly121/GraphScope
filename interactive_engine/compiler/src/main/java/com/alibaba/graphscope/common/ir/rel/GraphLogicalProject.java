@@ -18,6 +18,7 @@ package com.alibaba.graphscope.common.ir.rel;
 
 import com.google.common.collect.ImmutableList;
 
+import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -25,9 +26,11 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.hint.RelHint;
-import org.apache.calcite.rel.type.*;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexNode;
 
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -78,6 +81,18 @@ public class GraphLogicalProject extends Project {
 
     @Override
     public RelWriter explainTerms(RelWriter pw) {
-        return super.explainTerms(pw).item("isAppend", isAppend);
+        pw.input("input", this.getInput());
+        Ord field;
+        String fieldName;
+        for (Iterator var2 = Ord.zip(this.getRowType().getFieldList()).iterator();
+                var2.hasNext();
+                pw.item(fieldName, this.exps.get(field.i))) {
+            field = (Ord) var2.next();
+            fieldName = ((RelDataTypeField) field.e).getName();
+            if (fieldName == null) {
+                fieldName = "field#" + field.i;
+            }
+        }
+        return pw.item("isAppend", isAppend);
     }
 }

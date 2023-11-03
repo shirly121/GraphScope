@@ -72,4 +72,21 @@ public class QueryCacheTest {
         // value1 should have been evicted due to max size is 1
         Assert.assertTrue(value1 != value3);
     }
+
+    @Test
+    public void query_cache_3_test() {
+        Configs configs = new Configs(ImmutableMap.of("query.cache.size", "1"));
+        GraphPlanner graphPlanner =
+                new GraphPlanner(
+                        configs,
+                        (GraphBuilder builder, IrMeta irMeta, String q) ->
+                                new LogicalPlanVisitor(builder, irMeta)
+                                        .visit(new CypherAntlr4Parser().parse(q)));
+        QueryCache cache = new QueryCache(configs, graphPlanner);
+        QueryCache.Key key1 =
+                cache.createKey("Match (n {name: 'ma'}) Return n.id", Utils.schemaMeta);
+        QueryCache.Key key2 =
+                cache.createKey("Match (n {name: 'ma'}) Return n.name", Utils.schemaMeta);
+        Assert.assertNotEquals(key1.hashCode(), key2.hashCode());
+    }
 }
