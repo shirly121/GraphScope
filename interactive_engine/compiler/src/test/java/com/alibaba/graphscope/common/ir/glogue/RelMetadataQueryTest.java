@@ -26,6 +26,7 @@ import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphOptimizer;
 import com.alibaba.graphscope.common.ir.planner.rules.ExtendIntersectRule;
 import com.alibaba.graphscope.common.ir.planner.volcano.VolcanoPlannerX;
+import com.alibaba.graphscope.common.ir.rel.GraphPattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.Glogue;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueQuery;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
@@ -44,8 +45,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMdRowCount;
 import org.junit.Test;
 
-import java.io.FileOutputStream;
-import java.io.PrintWriter;
 import java.util.Map;
 
 public class RelMetadataQueryTest {
@@ -83,7 +82,7 @@ public class RelMetadataQueryTest {
         RelNode after = planner.findBestExp();
         // RelNode output = ioProcessor.processOutput(after);
 
-        planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+       // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
         System.out.println(after.explain());
 
         Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
@@ -138,5 +137,734 @@ public class RelMetadataQueryTest {
                         "(p1:person)-[:created]->(s:software), (p2:person)-[:created]->(s:software), (p3:person)-[:created]->(s:software) Return p1, p2, p3", builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, Utils.schemaMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void test_ldbc_p1() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // comment -> tag <- person + comment -> person
+        // v0: comment
+        PatternVertex v0 = new SinglePatternVertex(2, 0);
+        // v1: tag
+        PatternVertex v1 = new SinglePatternVertex(7, 1);
+        // v2: person
+        PatternVertex v2 = new SinglePatternVertex(1, 2);
+        // comment -hastag-> tag
+        EdgeTypeId e0 = new EdgeTypeId(2, 7, 1);
+        // person -hasInterest-> tag
+        EdgeTypeId e1 = new EdgeTypeId(1, 7, 10);
+        // comment -hasCreator-> person
+        EdgeTypeId e2 = new EdgeTypeId(2, 1, 0);
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v2, v1, e1);
+        p.addEdge(v0, v2, e2);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // person1 -likes-> comment, person1 -livesIn-> city, comment -created person2,
+    // person2 -livesIn -> city
+    @Test
+    public void test_ldbc_p2() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // v0: person
+        PatternVertex v0 = new SinglePatternVertex(1, 0);
+        // v1: comment
+        PatternVertex v1 = new SinglePatternVertex(2, 1);
+        // v2: city
+        PatternVertex v2 = new SinglePatternVertex(0, 2);
+        // v3: person
+        PatternVertex v3 = new SinglePatternVertex(1, 3);
+        // person -likes-> comment
+        EdgeTypeId e0 = new EdgeTypeId(1, 2, 13);
+        // person -livesIn-> city
+        EdgeTypeId e1 = new EdgeTypeId(1, 0, 11);
+        // comment -hasCreator-> person
+        EdgeTypeId e2 = new EdgeTypeId(2, 1, 0);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v0, v2, e1);
+        p.addEdge(v1, v3, e2);
+        p.addEdge(v3, v2, e1);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // comment -hasCreator-> person1, person2 -knows-> person1, comment -replyOf->
+    // post, post <-likes- person2
+    @Test
+    public void test_ldbc_p3() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // comment -hasCreator-> person1, person2 -knows-> person1, comment -replyOf->
+        // post, person2 -likes-> post
+        // v0: comment
+        PatternVertex v0 = new SinglePatternVertex(2, 0);
+        // v1: person1
+        PatternVertex v1 = new SinglePatternVertex(1, 1);
+        // v2: post
+        PatternVertex v2 = new SinglePatternVertex(3, 2);
+        // v3: person2
+        PatternVertex v3 = new SinglePatternVertex(1, 3);
+        // comment -hasCreator-> person
+        EdgeTypeId e0 = new EdgeTypeId(2, 1, 0);
+        // person -knows-> person
+        EdgeTypeId e1 = new EdgeTypeId(1, 1, 12);
+        // comment -replyOf-> post
+        EdgeTypeId e2 = new EdgeTypeId(2, 3, 3);
+        // post-hasCreator-> person
+        EdgeTypeId e3 = new EdgeTypeId(3, 1, 0);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v1, v3, e1);
+        p.addEdge(v0, v2, e2);
+        p.addEdge(v2, v3, e3);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // person<-comment->post<-forum->person
+    @Test
+    public void test_ldbc_p4() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics_trim_p4.txt");
+
+        Glogue gl = new Glogue().create(g, 5);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // person1<-comment->post<-forum->person2
+        // v0: person
+        PatternVertex v0 = new SinglePatternVertex(1, 0);
+        // v1: comment
+        PatternVertex v1 = new SinglePatternVertex(2, 1);
+        // v2: post
+        PatternVertex v2 = new SinglePatternVertex(3, 2);
+        // v3: forum
+        PatternVertex v3 = new SinglePatternVertex(4, 3);
+        // v4: person
+        PatternVertex v4 = new SinglePatternVertex(1, 4);
+        // comment -hasCreator-> person
+        EdgeTypeId e0 = new EdgeTypeId(2, 1, 0);
+        // comment -replyOf-> post
+        EdgeTypeId e1 = new EdgeTypeId(2, 3, 3);
+        // forum -containerOf-> post
+        EdgeTypeId e2 = new EdgeTypeId(4, 3, 5);
+        // forum -hasMember-> person
+        EdgeTypeId e3 = new EdgeTypeId(4, 1, 6);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addVertex(v4);
+        p.addEdge(v1, v0, e0);
+        p.addEdge(v1, v2, e1);
+        p.addEdge(v3, v2, e2);
+        p.addEdge(v3, v4, e3);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster,
+                planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // comment1 -hasCreator-> person1, person1 -likes-> comment2, comment2
+    // -hasCreator-> person2, person2 -likes-> comment1, comment1-replyOf->comment2
+    @Test
+    public void test_ldbc_p5() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // comment1 -hasCreator-> person1, person1 -likes-> comment2, comment2
+        // -hasCreator-> person2, person2 -likes-> comment1, comment1-replyOf->comment2
+        // v0: comment1
+        PatternVertex v0 = new SinglePatternVertex(2, 0);
+        // v1: person1
+        PatternVertex v1 = new SinglePatternVertex(1, 1);
+        // v2: comment2
+        PatternVertex v2 = new SinglePatternVertex(2, 2);
+        // v3: person2
+        PatternVertex v3 = new SinglePatternVertex(1, 3);
+        // comment -hasCreator-> person
+        EdgeTypeId e0 = new EdgeTypeId(2, 1, 0);
+        // person -likes-> comment
+        EdgeTypeId e1 = new EdgeTypeId(1, 2, 13);
+        // comment -replyOf-> comment
+        EdgeTypeId e2 = new EdgeTypeId(2, 2, 3);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v1, v2, e1);
+        p.addEdge(v2, v3, e0);
+        p.addEdge(v3, v0, e1);
+        p.addEdge(v0, v2, e2);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // forum->person1, forum->person2, forum-> post, person1->person2,
+    // person1->post, person2->post
+    @Test
+    public void test_ldbc_p6() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // forum->person1, forum->person2, forum-> post, person1->person2,
+        // person1->post, person2->post
+        // v0: forum
+        PatternVertex v0 = new SinglePatternVertex(4, 0);
+        // v1: person1
+        PatternVertex v1 = new SinglePatternVertex(1, 1);
+        // v2: person2
+        PatternVertex v2 = new SinglePatternVertex(1, 2);
+        // v3: post
+        PatternVertex v3 = new SinglePatternVertex(3, 3);
+        // forum -hasMember-> person
+        EdgeTypeId e0 = new EdgeTypeId(4, 1, 6);
+        // forum -containerOf-> post
+        EdgeTypeId e1 = new EdgeTypeId(4, 3, 5);
+        // person -knows-> person
+        EdgeTypeId e2 = new EdgeTypeId(1, 1, 12);
+        // person -likes-> post
+        EdgeTypeId e3 = new EdgeTypeId(1, 3, 13);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v0, v2, e0);
+        p.addEdge(v0, v3, e1);
+        p.addEdge(v1, v2, e2);
+        p.addEdge(v1, v3, e3);
+        p.addEdge(v2, v3, e3);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // forum -> person1, forum->person2, person2->person1, comment1->person1,
+    // comment2->person2, comment2->comment1
+    @Test
+    public void test_ldbc_p7() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // forum -> person1, forum->person2, person2->person1, comment1->person1,
+        // comment2->person2, comment2->comment1
+        // v0: forum
+        PatternVertex v0 = new SinglePatternVertex(4, 0);
+        // v1: person1
+        PatternVertex v1 = new SinglePatternVertex(1, 1);
+        // v2: person2
+        PatternVertex v2 = new SinglePatternVertex(1, 2);
+        // v3: comment1
+        PatternVertex v3 = new SinglePatternVertex(2, 3);
+        // v4: comment2
+        PatternVertex v4 = new SinglePatternVertex(2, 4);
+        // forum -hasMember-> person
+        EdgeTypeId e0 = new EdgeTypeId(4, 1, 6);
+        // person -knows-> person
+        EdgeTypeId e1 = new EdgeTypeId(1, 1, 12);
+        // comment -hasCreator-> person
+        EdgeTypeId e2 = new EdgeTypeId(2, 1, 0);
+        // comment -replyOf-> comment
+        EdgeTypeId e3 = new EdgeTypeId(2, 2, 3);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addVertex(v4);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v0, v2, e0);
+        p.addEdge(v2, v1, e1);
+        p.addEdge(v3, v1, e2);
+        p.addEdge(v4, v2, e2);
+        p.addEdge(v4, v3, e3);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+    }
+
+    // comment1->tag, comment2->tag, comment1->comment2, comment1->person1,
+    // comment2->person2, person1->person2
+    @Test
+    public void test_ldbc_p8() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // comment1->tag, comment2->tag, comment1->comment2, comment1->person1,
+        // comment2->person2, person1->person2
+        // v0: tag
+        PatternVertex v0 = new SinglePatternVertex(7, 0);
+        // v1: comment1
+        PatternVertex v1 = new SinglePatternVertex(2, 1);
+        // v2: comment2
+        PatternVertex v2 = new SinglePatternVertex(2, 2);
+        // v3: person1
+        PatternVertex v3 = new SinglePatternVertex(1, 3);
+        // v4: person2
+        PatternVertex v4 = new SinglePatternVertex(1, 4);
+        // comment -hasTag-> tag
+        EdgeTypeId e0 = new EdgeTypeId(2, 7, 1);
+        // comment -replyOf-> comment
+        EdgeTypeId e1 = new EdgeTypeId(2, 2, 3);
+        // comment -hasCreator-> person
+        EdgeTypeId e2 = new EdgeTypeId(2, 1, 0);
+        // person -knows-> person
+        EdgeTypeId e3 = new EdgeTypeId(1, 1, 12);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addVertex(v4);
+        p.addEdge(v1, v0, e0);
+        p.addEdge(v2, v0, e0);
+        p.addEdge(v1, v2, e1);
+        p.addEdge(v1, v3, e2);
+        p.addEdge(v2, v4, e2);
+        p.addEdge(v3, v4, e3);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    // person1 -> person2, person1 -> person3, person2 -> person3, person1 ->city1,
+    // person2->city2, person3->city3, city1->country, city2->country,
+    // city3->country
+    @Test
+    public void test_ldbc_p9() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+        // person1 -> person2, person1 -> person3, person2 -> person3, person1 ->city1,
+        // person2->city2, person3->city3, city1->country, city2->country,
+        // city3->country
+        // v0: person1
+        PatternVertex v0 = new SinglePatternVertex(1, 0);
+        // v1: person2
+        PatternVertex v1 = new SinglePatternVertex(1, 1);
+        // v2: person3
+        PatternVertex v2 = new SinglePatternVertex(1, 2);
+        // v3: city1
+        PatternVertex v3 = new SinglePatternVertex(0, 3);
+        // v4: city2
+        PatternVertex v4 = new SinglePatternVertex(0, 4);
+        // v5: city3
+        PatternVertex v5 = new SinglePatternVertex(0, 5);
+        // v6: country
+        PatternVertex v6 = new SinglePatternVertex(0, 6);
+        // person -knows-> person
+        EdgeTypeId e0 = new EdgeTypeId(1, 1, 12);
+        // person -isLocatedIn-> city
+        EdgeTypeId e1 = new EdgeTypeId(1, 0, 11);
+        // city -isPartOf-> country
+        EdgeTypeId e2 = new EdgeTypeId(0, 0, 17);
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addVertex(v4);
+        p.addVertex(v5);
+        p.addVertex(v6);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v0, v2, e0);
+        p.addEdge(v1, v2, e0);
+        p.addEdge(v0, v3, e1);
+        p.addEdge(v1, v4, e1);
+        p.addEdge(v2, v5, e1);
+        p.addEdge(v3, v6, e2);
+        p.addEdge(v4, v6, e2);
+        p.addEdge(v5, v6, e2);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
+    }
+
+    @Test
+    // person1 -> comment1 -> person2, person1 -> city, person2 -> city, person3 -> comment2 -> person4, person3 -> city, person4 -> city
+    public void test_ldbc_p10() throws Exception {
+        VolcanoPlanner planner = new VolcanoPlannerX();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        RelOptCluster optCluster = GraphOptCluster.create(planner, Utils.rexBuilder);
+
+        GlogueSchema g = new GlogueSchema().SchemaFromFile(
+                "/workspaces/GraphScope/interactive_engine/compiler/src/main/java/com/alibaba/graphscope/common/ir/rel/metadata/schema/resource/ldbc1_statistics.txt");
+
+        Glogue gl = new Glogue().create(g, 3);
+        System.out.println(gl.toString());
+        GlogueQuery gq = new GlogueQuery(gl, g);
+
+        GraphRelMetadataQuery mq = new GraphRelMetadataQuery(
+                new GraphMetadataHandlerProvider(planner, new RelMdRowCount(), gq));
+
+        optCluster.setMetadataQuerySupplier(() -> mq);
+
+        planner.setTopDownOpt(true);
+        planner.setNoneConventionHasInfiniteCost(false);
+        planner.addRule(
+                ExtendIntersectRule.Config.DEFAULT
+                        .withRelBuilderFactory(GraphPlanner.relBuilderFactory)
+                        .withMaxPatternSizeInGlogue(gq.getMaxPatternSize())
+                        .toRule());
+
+        Pattern p = new Pattern();
+         // person1 -> comment1 -> person2, person1 -> city, person2 -> city, person3 -> comment2 -> person4, person3 -> city, person4 -> city
+
+        // v0: person1
+        PatternVertex v0 = new SinglePatternVertex(1, 0);
+        // v1: comment1
+        PatternVertex v1 = new SinglePatternVertex(2, 1);
+        // v2: person2
+        PatternVertex v2 = new SinglePatternVertex(1, 2);
+        // v3: city
+        PatternVertex v3 = new SinglePatternVertex(0, 3);
+        // v4: person3
+        PatternVertex v4 = new SinglePatternVertex(1, 4);
+        // v5: comment2
+        PatternVertex v5 = new SinglePatternVertex(2, 5);
+        // v6: person4
+        PatternVertex v6 = new SinglePatternVertex(1, 6);
+        // person -> comment
+        EdgeTypeId e0 = new EdgeTypeId(1, 2, 13);
+        // comment -> person
+        EdgeTypeId e1 = new EdgeTypeId(2, 1, 0);
+        // person -> city
+        EdgeTypeId e2 = new EdgeTypeId(1, 0, 11);
+
+
+        p.addVertex(v0);
+        p.addVertex(v1);
+        p.addVertex(v2);
+        p.addVertex(v3);
+        p.addVertex(v4);
+        p.addVertex(v5);
+        p.addVertex(v6);
+        p.addEdge(v0, v1, e0);
+        p.addEdge(v1, v2, e1);
+        p.addEdge(v0, v3, e2);
+        p.addEdge(v2, v3, e2);
+        p.addEdge(v4, v5, e0);
+        p.addEdge(v5, v6, e1);
+        p.addEdge(v4, v3, e2);
+        p.addEdge(v6, v3, e2);
+        p.reordering();
+
+        GraphPattern graphPattern = new GraphPattern(optCluster, planner.emptyTraitSet(), p);
+        planner.setRoot(graphPattern);
+
+        RelNode after = planner.findBestExp();
+        // planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
+        System.out.println(after.explain());
+
+        Map<Integer, Pattern> patterns = com.alibaba.graphscope.common.ir.tools.Utils.getAllPatterns(after);
+        patterns.forEach((k, v) -> {
+            System.out.println(v);
+        });
     }
 }
