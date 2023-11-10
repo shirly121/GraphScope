@@ -20,10 +20,8 @@ import com.alibaba.graphscope.common.result.ResultParser;
 import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
-
 import io.grpc.Status;
 import io.netty.channel.ChannelHandlerContext;
-
 import org.apache.tinkerpop.gremlin.driver.MessageSerializer;
 import org.apache.tinkerpop.gremlin.driver.Tokens;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
@@ -77,28 +75,29 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
     @Override
     public synchronized void process(PegasusClient.JobResponse response) {
 //        logger.info("response bytes size is {}", response.getResp().toByteArray().length);
-//        try {
-//            if (isContextWritable) {
-//                // send back a page of results if batch size is met and then reset the
-//                // resultCollectors
-//                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
-//                    aggregateResults();
-//                    writeResultList(
-//                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
-//                    this.resultCollectors.clear();
-//                }
-//                resultCollectors.addAll(resultParser.parseFrom(response));
-//            }
-//        } catch (Exception e) {
-//            statusCallback.getQueryLogger().error("process response from grpc fail", e);
-//            // cannot write to this context any more
-//            isContextWritable = false;
-//            statusCallback.onEnd(false);
-//            writeResultList(
-//                    writeResult,
-//                    Collections.singletonList(e.getMessage()),
-//                    ResponseStatusCode.SERVER_ERROR);
-//        }
+        try {
+            if (isContextWritable) {
+//                FileUtils.writeByteArrayToFile(new File("result.bytes"), response.toByteString().toByteArray());
+                // send back a page of results if batch size is met and then reset the
+                // resultCollectors
+                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
+                    aggregateResults();
+                    writeResultList(
+                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
+                    this.resultCollectors.clear();
+                }
+                resultCollectors.addAll(resultParser.parseFrom(response));
+            }
+        } catch (Exception e) {
+            statusCallback.getQueryLogger().error("process response from grpc fail", e);
+            // cannot write to this context any more
+            isContextWritable = false;
+            statusCallback.onEnd(false);
+            writeResultList(
+                    writeResult,
+                    Collections.singletonList(e.getMessage()),
+                    ResponseStatusCode.SERVER_ERROR);
+        }
     }
 
     @Override

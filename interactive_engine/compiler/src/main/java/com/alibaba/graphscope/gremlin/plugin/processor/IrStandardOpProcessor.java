@@ -43,6 +43,7 @@ import com.alibaba.graphscope.gremlin.plugin.strategy.ExpandFusionStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.RemoveUselessStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.ScanFusionStepStrategy;
 import com.alibaba.graphscope.gremlin.result.processor.AbstractResultProcessor;
+import com.alibaba.graphscope.gremlin.result.processor.GremlinResultProcessor;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
@@ -95,6 +96,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
     protected final GraphPlanner graphPlanner;
 
     private final byte[] physicalBytes;
+    private final byte[] resultBytes;
 
     public IrStandardOpProcessor(
             Configs configs,
@@ -112,6 +114,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
 
         try {
             physicalBytes = FileUtils.readFileToByteArray(new File("physical_plan.bytes"));
+            resultBytes = FileUtils.readFileToByteArray(new File("result.bytes"));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -288,25 +291,24 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                         })
                 .transformResult(
                         o -> {
-//                            if (o != null && o instanceof Traversal) {
-//                                applyStrategies((Traversal) o);
-//                            }
+                            if (o != null && o instanceof Traversal) {
+                                applyStrategies((Traversal) o);
+                            }
                             return o;
                         })
                 .withResult(
                         o -> {
                             try {
-//                                if (o != null && o instanceof Traversal) {
-//                                    Traversal traversal = (Traversal) o;
-//                                    processTraversal(
-//                                            traversal,
-//                                            new GremlinResultProcessor(
-//                                                    ctx, traversal, statusCallback),
-//                                            irMeta,
-//                                            timeoutConfig,
-//                                            statusCallback.getQueryLogger());
-//                                }
-                                ctx.writeAndFlush(ResponseMessage.build(ctx.getRequestMessage()).code(ResponseStatusCode.SUCCESS).create());
+                                if (o != null && o instanceof Traversal) {
+                                    Traversal traversal = (Traversal) o;
+                                    processTraversal(
+                                            traversal,
+                                            new GremlinResultProcessor(
+                                                    ctx, traversal, statusCallback),
+                                            irMeta,
+                                            timeoutConfig,
+                                            statusCallback.getQueryLogger());
+                                }
                             } catch (Exception e) {
                                 throw new RuntimeException(e);
                             }
@@ -354,7 +356,11 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                         .setAll(PegasusClient.Empty.newBuilder().build())
                         .build();
         request = request.toBuilder().setConf(jobConfig).build();
-        this.rpcClient.submit(request, resultProcessor, timeoutConfig.getChannelTimeoutMS());
+        for (int i = 0; i < 6; ++i) {
+            resultProcessor.process(PegasusClient.JobResponse.parseFrom(this.resultBytes));
+        }
+        resultProcessor.finish();
+        // this.rpcClient.submit(request, resultProcessor, timeoutConfig.getChannelTimeoutMS());
     }
 
     public static void applyStrategies(Traversal traversal) {
