@@ -727,7 +727,7 @@ public class IrPlan implements Closeable {
     }
 
     public IrPlan(IrMeta meta, InterOpCollection opCollection) {
-        // irCoreLib.setSchema(meta.getSchema().schemaJson());
+        irCoreLib.setSchema(meta.getSchema().schemaJson());
         this.ptrPlan = irCoreLib.initLogicalPlan();
         // add snapshot to QueryParams
         for (InterOpBase op : opCollection.unmodifiableCollection()) {
