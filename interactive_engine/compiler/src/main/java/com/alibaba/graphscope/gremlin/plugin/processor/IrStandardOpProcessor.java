@@ -43,7 +43,6 @@ import com.alibaba.graphscope.gremlin.plugin.strategy.ExpandFusionStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.RemoveUselessStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.ScanFusionStepStrategy;
 import com.alibaba.graphscope.gremlin.result.processor.AbstractResultProcessor;
-import com.alibaba.graphscope.gremlin.result.processor.GremlinResultProcessor;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
@@ -289,24 +288,25 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                         })
                 .transformResult(
                         o -> {
-                            if (o != null && o instanceof Traversal) {
-                                applyStrategies((Traversal) o);
-                            }
+//                            if (o != null && o instanceof Traversal) {
+//                                applyStrategies((Traversal) o);
+//                            }
                             return o;
                         })
                 .withResult(
                         o -> {
                             try {
-                                if (o != null && o instanceof Traversal) {
-                                    Traversal traversal = (Traversal) o;
-                                    processTraversal(
-                                            traversal,
-                                            new GremlinResultProcessor(
-                                                    ctx, traversal, statusCallback),
-                                            irMeta,
-                                            timeoutConfig,
-                                            statusCallback.getQueryLogger());
-                                }
+//                                if (o != null && o instanceof Traversal) {
+//                                    Traversal traversal = (Traversal) o;
+//                                    processTraversal(
+//                                            traversal,
+//                                            new GremlinResultProcessor(
+//                                                    ctx, traversal, statusCallback),
+//                                            irMeta,
+//                                            timeoutConfig,
+//                                            statusCallback.getQueryLogger());
+//                                }
+                                ctx.writeAndFlush(ResponseMessage.build(ctx.getRequestMessage()).code(ResponseStatusCode.SUCCESS).create());
                             } catch (Exception e) {
                                 throw new RuntimeException(e);
                             }
