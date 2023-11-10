@@ -76,28 +76,29 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
 
     @Override
     public synchronized void process(PegasusClient.JobResponse response) {
-        try {
-            if (isContextWritable) {
-                // send back a page of results if batch size is met and then reset the
-                // resultCollectors
-                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
-                    aggregateResults();
-                    writeResultList(
-                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
-                    this.resultCollectors.clear();
-                }
-                resultCollectors.addAll(resultParser.parseFrom(response));
-            }
-        } catch (Exception e) {
-            statusCallback.getQueryLogger().error("process response from grpc fail", e);
-            // cannot write to this context any more
-            isContextWritable = false;
-            statusCallback.onEnd(false);
-            writeResultList(
-                    writeResult,
-                    Collections.singletonList(e.getMessage()),
-                    ResponseStatusCode.SERVER_ERROR);
-        }
+        logger.info("response bytes size is {}", response.getResp().toByteArray().length);
+//        try {
+//            if (isContextWritable) {
+//                // send back a page of results if batch size is met and then reset the
+//                // resultCollectors
+//                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
+//                    aggregateResults();
+//                    writeResultList(
+//                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
+//                    this.resultCollectors.clear();
+//                }
+//                resultCollectors.addAll(resultParser.parseFrom(response));
+//            }
+//        } catch (Exception e) {
+//            statusCallback.getQueryLogger().error("process response from grpc fail", e);
+//            // cannot write to this context any more
+//            isContextWritable = false;
+//            statusCallback.onEnd(false);
+//            writeResultList(
+//                    writeResult,
+//                    Collections.singletonList(e.getMessage()),
+//                    ResponseStatusCode.SERVER_ERROR);
+//        }
     }
 
     @Override
