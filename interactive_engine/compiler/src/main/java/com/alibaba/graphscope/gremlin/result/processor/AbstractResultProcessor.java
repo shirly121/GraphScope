@@ -20,12 +20,10 @@ import com.alibaba.graphscope.common.result.ResultParser;
 import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
-
 import io.grpc.Status;
 import io.netty.channel.ChannelHandlerContext;
-
+import org.apache.commons.compress.utils.Lists;
 import org.apache.tinkerpop.gremlin.driver.MessageSerializer;
-import org.apache.tinkerpop.gremlin.driver.Tokens;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
@@ -37,7 +35,6 @@ import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -66,38 +63,40 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
         Settings settings = writeResult.getSettings();
         // init batch size from resultIterationBatchSize in conf/gremlin-server.yaml,
         // or args in RequestMessage which is originate from gremlin client
-        this.resultCollectorsBatchSize =
-                (Integer)
-                        msg.optionalArgs(Tokens.ARGS_BATCH_SIZE)
-                                .orElse(settings.resultIterationBatchSize);
-        this.resultCollectors = new ArrayList<>(this.resultCollectorsBatchSize);
+//        this.resultCollectorsBatchSize =
+//                (Integer)
+//                        msg.optionalArgs(Tokens.ARGS_BATCH_SIZE)
+//                                .orElse(settings.resultIterationBatchSize);
+        this.resultCollectorsBatchSize = 0;
+        this.resultCollectors = Lists.newArrayList();
+//        this.resultCollectors = new ArrayList<>(this.resultCollectorsBatchSize);
         this.isContextWritable = true;
     }
 
     @Override
     public synchronized void process(PegasusClient.JobResponse response) {
-        try {
-            if (isContextWritable) {
-                // send back a page of results if batch size is met and then reset the
-                // resultCollectors
-                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
-                    aggregateResults();
-                    writeResultList(
-                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
-                    this.resultCollectors.clear();
-                }
-                resultCollectors.addAll(resultParser.parseFrom(response));
-            }
-        } catch (Exception e) {
-            statusCallback.getQueryLogger().error("process response from grpc fail", e);
-            // cannot write to this context any more
-            isContextWritable = false;
-            statusCallback.onEnd(false);
-            writeResultList(
-                    writeResult,
-                    Collections.singletonList(e.getMessage()),
-                    ResponseStatusCode.SERVER_ERROR);
-        }
+//        try {
+//            if (isContextWritable) {
+//                // send back a page of results if batch size is met and then reset the
+//                // resultCollectors
+//                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
+//                    aggregateResults();
+//                    writeResultList(
+//                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
+//                    this.resultCollectors.clear();
+//                }
+//                resultCollectors.addAll(resultParser.parseFrom(response));
+//            }
+//        } catch (Exception e) {
+//            statusCallback.getQueryLogger().error("process response from grpc fail", e);
+//            // cannot write to this context any more
+//            isContextWritable = false;
+//            statusCallback.onEnd(false);
+//            writeResultList(
+//                    writeResult,
+//                    Collections.singletonList(e.getMessage()),
+//                    ResponseStatusCode.SERVER_ERROR);
+//        }
     }
 
     @Override
