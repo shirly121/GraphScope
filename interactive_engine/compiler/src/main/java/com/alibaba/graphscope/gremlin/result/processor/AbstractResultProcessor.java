@@ -76,7 +76,7 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
 
     @Override
     public synchronized void process(PegasusClient.JobResponse response) {
-        logger.info("response bytes size is {}", response.getResp().toByteArray().length);
+//        logger.info("response bytes size is {}", response.getResp().toByteArray().length);
 //        try {
 //            if (isContextWritable) {
 //                // send back a page of results if batch size is met and then reset the

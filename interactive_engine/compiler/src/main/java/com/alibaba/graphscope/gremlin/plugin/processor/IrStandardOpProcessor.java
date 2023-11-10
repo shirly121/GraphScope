@@ -67,6 +67,8 @@ import org.apache.tinkerpop.gremlin.server.op.OpProcessorException;
 import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.script.SimpleBindings;
 import java.io.File;
@@ -76,10 +78,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 public class IrStandardOpProcessor extends StandardOpProcessor {
+    private static final Logger logger = LoggerFactory.getLogger(IrStandardOpProcessor.class);
     protected Graph graph;
     protected GraphTraversalSource g;
     protected Configs configs;
@@ -121,6 +125,10 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
             final AbstractEvalOpProcessor.BindingSupplier bindingsSupplier) {
         RequestMessage msg = ctx.getRequestMessage();
         GremlinExecutor gremlinExecutor = gremlinExecutorSupplier.get();
+
+        ThreadPoolExecutor executor = (ThreadPoolExecutor) gremlinExecutor.getExecutorService();
+        logger.info("gremlin executor queue size: {}", executor.getQueue().size());
+
         Map<String, Object> args = msg.getArgs();
         String script = (String) args.get("gremlin");
 
