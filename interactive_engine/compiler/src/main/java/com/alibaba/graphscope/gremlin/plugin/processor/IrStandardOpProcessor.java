@@ -25,6 +25,7 @@
 
 package com.alibaba.graphscope.gremlin.plugin.processor;
 
+import com.alibaba.graphscope.common.IrPlan;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
@@ -332,17 +333,17 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
 
         long jobId = queryLogger.getQueryId();
         String jobName = "ir_plan_" + jobId;
-//        IrPlan irPlan = new IrPlan(irMeta, opCollection);
-//        // print script and jobName with ir plan
-//        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
-//        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
-//        irPlan.close();
-//
+        IrPlan irPlan = new IrPlan(irMeta, opCollection);
+        // print script and jobName with ir plan
+        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
+        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
+        irPlan.close();
+
 //        FileUtils.writeByteArrayToFile(new File("physical_plan.bytes"), physicalPlanBytes);
 
         PegasusClient.JobRequest request =
                 PegasusClient.JobRequest.newBuilder()
-                        .setPlan(ByteString.copyFrom(physicalBytes))
+                        .setPlan(ByteString.copyFrom(physicalPlanBytes))
                         .build();
         PegasusClient.JobConfig jobConfig =
                 PegasusClient.JobConfig.newBuilder()
