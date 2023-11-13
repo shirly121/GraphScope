@@ -25,15 +25,13 @@
 
 package com.alibaba.graphscope.gremlin.plugin.processor;
 
-import com.alibaba.graphscope.common.IrPlan;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
-import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
-import com.alibaba.graphscope.gremlin.InterOpCollectionBuilder;
 import com.alibaba.graphscope.gremlin.Utils;
 import com.alibaba.graphscope.gremlin.plugin.MetricsCollector;
 import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
@@ -48,8 +46,11 @@ import com.alibaba.graphscope.gremlin.result.processor.AbstractResultProcessor;
 import com.alibaba.graphscope.gremlin.result.processor.GremlinResultProcessor;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
+import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.common.collect.Maps;
+import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+import org.apache.commons.io.FileUtils;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
@@ -70,6 +71,7 @@ import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 
 import javax.script.SimpleBindings;
+import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Map;
@@ -92,6 +94,8 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
     protected IrMetaQueryCallback metaQueryCallback;
     protected final GraphPlanner graphPlanner;
 
+    private final byte[] physicalBytes;
+
     public IrStandardOpProcessor(
             Configs configs,
             GraphPlanner graphPlanner,
@@ -105,6 +109,12 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         this.rpcClient = new RpcClient(fetcher.fetch());
         this.metaQueryCallback = metaQueryCallback;
         this.graphPlanner = graphPlanner;
+
+        try {
+            this.physicalBytes = FileUtils.readFileToByteArray(new File("physical_plan.bytes"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -310,39 +320,39 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         // get configs per query from traversal
         Configs queryConfigs = getQueryConfigs(traversal);
 
-        InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
-        // fuse order with limit to topK
-        InterOpCollection.applyStrategies(opCollection);
-        // add sink operator
-        InterOpCollection.process(opCollection);
+//        InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
+//        // fuse order with limit to topK
+//        InterOpCollection.applyStrategies(opCollection);
+//        // add sink operator
+//        InterOpCollection.process(opCollection);
 
         long jobId = queryLogger.getQueryId();
         String jobName = "ir_plan_" + jobId;
-        IrPlan irPlan = new IrPlan(irMeta, opCollection);
-        // print script and jobName with ir plan
-        irPlan.getPlanAsJson();
-        // queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
-        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
-        irPlan.close();
+//        IrPlan irPlan = new IrPlan(irMeta, opCollection);
+//        // print script and jobName with ir plan
+//        irPlan.getPlanAsJson();
+//        // queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
+//        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
+//        irPlan.close();
 //
-//        PegasusClient.JobRequest request =
-//                PegasusClient.JobRequest.newBuilder()
-//                        .setPlan(ByteString.copyFrom(physicalPlanBytes))
-//                        .build();
-//        PegasusClient.JobConfig jobConfig =
-//                PegasusClient.JobConfig.newBuilder()
-//                        .setJobId(jobId)
-//                        .setJobName(jobName)
-//                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(queryConfigs))
-//                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(queryConfigs))
-//                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(queryConfigs))
-//                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(queryConfigs))
-//                        .setTimeLimit(timeoutConfig.getEngineTimeoutMS())
-//                        .setAll(PegasusClient.Empty.newBuilder().build())
-//                        .build();
-//        request = request.toBuilder().setConf(jobConfig).build();
-        // this.rpcClient.submit(request, resultProcessor, timeoutConfig.getChannelTimeoutMS());
-        resultProcessor.finish();
+        PegasusClient.JobRequest request =
+                PegasusClient.JobRequest.newBuilder()
+                        .setPlan(ByteString.copyFrom(physicalBytes))
+                        .build();
+        PegasusClient.JobConfig jobConfig =
+                PegasusClient.JobConfig.newBuilder()
+                        .setJobId(jobId)
+                        .setJobName(jobName)
+                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(queryConfigs))
+                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(queryConfigs))
+                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(queryConfigs))
+                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(queryConfigs))
+                        .setTimeLimit(timeoutConfig.getEngineTimeoutMS())
+                        .setAll(PegasusClient.Empty.newBuilder().build())
+                        .build();
+        request = request.toBuilder().setConf(jobConfig).build();
+        this.rpcClient.submit(request, resultProcessor, timeoutConfig.getChannelTimeoutMS());
+//        resultProcessor.finish();
     }
 
     private Configs getQueryConfigs(Traversal traversal) {
