@@ -104,7 +104,8 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
             isContextWritable = false;
 //            statusCallback.onEnd(true);
 //            aggregateResults();
-            writeResultList(writeResult, resultCollectors, ResponseStatusCode.SUCCESS);
+            // writeResultList(writeResult, resultCollectors, ResponseStatusCode.SUCCESS);
+            writeResult.writeAndFlush(ResponseMessage.build(writeResult.getRequestMessage()).code(ResponseStatusCode.SUCCESS).result(Lists.newArrayList()).create());
         }
     }
 
