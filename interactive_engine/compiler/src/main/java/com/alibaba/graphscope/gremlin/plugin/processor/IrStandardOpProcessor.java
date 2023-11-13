@@ -28,9 +28,11 @@ package com.alibaba.graphscope.gremlin.plugin.processor;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
+import com.alibaba.graphscope.gremlin.InterOpCollectionBuilder;
 import com.alibaba.graphscope.gremlin.Utils;
 import com.alibaba.graphscope.gremlin.plugin.MetricsCollector;
 import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
@@ -271,9 +273,9 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                         })
                 .transformResult(
                         o -> {
-//                            if (o != null && o instanceof Traversal) {
-//                                applyStrategies((Traversal) o);
-//                            }
+                            if (o != null && o instanceof Traversal) {
+                                applyStrategies((Traversal) o);
+                            }
                             return o;
                         })
                 .withResult(
@@ -307,11 +309,11 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         // get configs per query from traversal
 //        Configs queryConfigs = getQueryConfigs(traversal);
 
-//        InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
-//        // fuse order with limit to topK
-//        InterOpCollection.applyStrategies(opCollection);
-//        // add sink operator
-//        InterOpCollection.process(opCollection);
+        InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
+        // fuse order with limit to topK
+        InterOpCollection.applyStrategies(opCollection);
+        // add sink operator
+        InterOpCollection.process(opCollection);
 
 //        long jobId = queryLogger.getQueryId();
 //        String jobName = "ir_plan_" + jobId;
