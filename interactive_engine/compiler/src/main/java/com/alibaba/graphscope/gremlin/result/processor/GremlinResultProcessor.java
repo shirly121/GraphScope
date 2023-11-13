@@ -17,9 +17,7 @@
 package com.alibaba.graphscope.gremlin.result.processor;
 
 import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
-import com.alibaba.graphscope.gremlin.result.GremlinResultAnalyzer;
 import com.alibaba.graphscope.gremlin.result.GroupResultParser;
-
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.server.Context;
 import org.slf4j.Logger;
@@ -33,7 +31,8 @@ public class GremlinResultProcessor extends AbstractResultProcessor {
 
     public GremlinResultProcessor(
             Context writeResult, Traversal traversal, QueryStatusCallback statusCallback) {
-        super(writeResult, GremlinResultAnalyzer.analyze(traversal), statusCallback);
+        // super(writeResult, GremlinResultAnalyzer.analyze(traversal), statusCallback);
+        super(writeResult, null, statusCallback);
     }
 
     // format group result as a single map
