@@ -273,9 +273,9 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                         })
                 .transformResult(
                         o -> {
-                            if (o != null && o instanceof Traversal) {
-                                applyStrategies((Traversal) o);
-                            }
+//                            if (o != null && o instanceof Traversal) {
+//                                applyStrategies((Traversal) o);
+//                            }
                             return o;
                         })
                 .withResult(
@@ -307,13 +307,13 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
             QueryLogger queryLogger)
             throws InvalidProtocolBufferException, IOException, RuntimeException {
         // get configs per query from traversal
-        Configs queryConfigs = getQueryConfigs(traversal);
+//        Configs queryConfigs = getQueryConfigs(traversal);
 
         InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
-        // fuse order with limit to topK
-        InterOpCollection.applyStrategies(opCollection);
-        // add sink operator
-        InterOpCollection.process(opCollection);
+//        // fuse order with limit to topK
+//        InterOpCollection.applyStrategies(opCollection);
+//        // add sink operator
+//        InterOpCollection.process(opCollection);
 
 //        long jobId = queryLogger.getQueryId();
 //        String jobName = "ir_plan_" + jobId;
