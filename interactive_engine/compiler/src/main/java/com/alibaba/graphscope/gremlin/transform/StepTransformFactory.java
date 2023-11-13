@@ -89,7 +89,7 @@ public enum StepTransformFactory implements Function<Step, InterOpBase> {
             // set labels
             List<String> labels = scanFusionStep.getGraphLabels();
             for (String label : labels) {
-                params.addTable(ArgUtils.asNameOrId(label));
+//                params.addTable(ArgUtils.asNameOrId(label));
             }
             // set predicate
             List<HasContainer> containers = scanFusionStep.getHasContainers();
