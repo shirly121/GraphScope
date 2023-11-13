@@ -25,6 +25,7 @@
 
 package com.alibaba.graphscope.gremlin.plugin.processor;
 
+import com.alibaba.graphscope.common.IrPlan;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
@@ -307,7 +308,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
             QueryLogger queryLogger)
             throws InvalidProtocolBufferException, IOException, RuntimeException {
         // get configs per query from traversal
-//        Configs queryConfigs = getQueryConfigs(traversal);
+        Configs queryConfigs = getQueryConfigs(traversal);
 
         InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
         // fuse order with limit to topK
@@ -315,13 +316,14 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         // add sink operator
         InterOpCollection.process(opCollection);
 
-//        long jobId = queryLogger.getQueryId();
-//        String jobName = "ir_plan_" + jobId;
-//        IrPlan irPlan = new IrPlan(irMeta, opCollection);
-//        // print script and jobName with ir plan
-//        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
-//        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
-//        irPlan.close();
+        long jobId = queryLogger.getQueryId();
+        String jobName = "ir_plan_" + jobId;
+        IrPlan irPlan = new IrPlan(irMeta, opCollection);
+        // print script and jobName with ir plan
+        irPlan.getPlanAsJson();
+        // queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
+        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
+        irPlan.close();
 //
 //        PegasusClient.JobRequest request =
 //                PegasusClient.JobRequest.newBuilder()

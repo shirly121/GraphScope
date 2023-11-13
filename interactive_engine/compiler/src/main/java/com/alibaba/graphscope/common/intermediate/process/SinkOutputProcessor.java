@@ -19,6 +19,7 @@ package com.alibaba.graphscope.common.intermediate.process;
 import com.alibaba.graphscope.common.exception.InterOpIllegalArgException;
 import com.alibaba.graphscope.common.exception.InterOpUnsupportedException;
 import com.alibaba.graphscope.common.intermediate.ArgAggFn;
+import com.alibaba.graphscope.common.intermediate.ArgUtils;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.intermediate.MatchSentence;
 import com.alibaba.graphscope.common.intermediate.operator.*;
@@ -64,7 +65,7 @@ public class SinkOutputProcessor implements InterOpProcessor {
                     || cur instanceof ScanFusionOp
                     || cur instanceof GetVOp
                     || cur instanceof UnfoldOp) {
-//                sinkArg.addColumnName(ArgUtils.asNoneNameOrId());
+                sinkArg.addColumnName(ArgUtils.asNoneNameOrId());
                 break;
             } else if (cur instanceof ProjectOp) {
                 ProjectOp op = (ProjectOp) cur;
