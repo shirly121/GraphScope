@@ -28,7 +28,6 @@ import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
 import org.apache.tinkerpop.gremlin.server.Context;
-import org.apache.tinkerpop.gremlin.server.Settings;
 import org.apache.tinkerpop.gremlin.server.handler.Frame;
 import org.apache.tinkerpop.gremlin.server.handler.StateKey;
 import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
@@ -59,8 +58,8 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
         this.resultParser = resultParser;
         this.statusCallback = statusCallback;
 
-        RequestMessage msg = writeResult.getRequestMessage();
-        Settings settings = writeResult.getSettings();
+//        RequestMessage msg = writeResult.getRequestMessage();
+//        Settings settings = writeResult.getSettings();
         // init batch size from resultIterationBatchSize in conf/gremlin-server.yaml,
         // or args in RequestMessage which is originate from gremlin client
 //        this.resultCollectorsBatchSize =
@@ -103,8 +102,8 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
     public synchronized void finish() {
         if (isContextWritable) {
             isContextWritable = false;
-            statusCallback.onEnd(true);
-            aggregateResults();
+//            statusCallback.onEnd(true);
+//            aggregateResults();
             writeResultList(writeResult, resultCollectors, ResponseStatusCode.SUCCESS);
         }
     }

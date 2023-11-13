@@ -25,10 +25,8 @@
 
 package com.alibaba.graphscope.gremlin.plugin.processor;
 
-import com.alibaba.graphscope.common.IrPlan;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
-import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
@@ -49,9 +47,7 @@ import com.alibaba.graphscope.gremlin.result.processor.AbstractResultProcessor;
 import com.alibaba.graphscope.gremlin.result.processor.GremlinResultProcessor;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
-import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.common.collect.Maps;
-import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
@@ -319,30 +315,30 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         // add sink operator
         InterOpCollection.process(opCollection);
 
-        long jobId = queryLogger.getQueryId();
-        String jobName = "ir_plan_" + jobId;
-        IrPlan irPlan = new IrPlan(irMeta, opCollection);
-        // print script and jobName with ir plan
-        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
-        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
-        irPlan.close();
-
-        PegasusClient.JobRequest request =
-                PegasusClient.JobRequest.newBuilder()
-                        .setPlan(ByteString.copyFrom(physicalPlanBytes))
-                        .build();
-        PegasusClient.JobConfig jobConfig =
-                PegasusClient.JobConfig.newBuilder()
-                        .setJobId(jobId)
-                        .setJobName(jobName)
-                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(queryConfigs))
-                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(queryConfigs))
-                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(queryConfigs))
-                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(queryConfigs))
-                        .setTimeLimit(timeoutConfig.getEngineTimeoutMS())
-                        .setAll(PegasusClient.Empty.newBuilder().build())
-                        .build();
-        request = request.toBuilder().setConf(jobConfig).build();
+//        long jobId = queryLogger.getQueryId();
+//        String jobName = "ir_plan_" + jobId;
+//        IrPlan irPlan = new IrPlan(irMeta, opCollection);
+//        // print script and jobName with ir plan
+//        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
+//        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
+//        irPlan.close();
+//
+//        PegasusClient.JobRequest request =
+//                PegasusClient.JobRequest.newBuilder()
+//                        .setPlan(ByteString.copyFrom(physicalPlanBytes))
+//                        .build();
+//        PegasusClient.JobConfig jobConfig =
+//                PegasusClient.JobConfig.newBuilder()
+//                        .setJobId(jobId)
+//                        .setJobName(jobName)
+//                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(queryConfigs))
+//                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(queryConfigs))
+//                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(queryConfigs))
+//                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(queryConfigs))
+//                        .setTimeLimit(timeoutConfig.getEngineTimeoutMS())
+//                        .setAll(PegasusClient.Empty.newBuilder().build())
+//                        .build();
+//        request = request.toBuilder().setConf(jobConfig).build();
         // this.rpcClient.submit(request, resultProcessor, timeoutConfig.getChannelTimeoutMS());
         resultProcessor.finish();
     }
