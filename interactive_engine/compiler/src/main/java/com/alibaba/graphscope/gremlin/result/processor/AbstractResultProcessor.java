@@ -113,12 +113,13 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
     public synchronized void error(Status status) {
         logger.error("error return from grpc, status {}", status);
         if (isContextWritable) {
-            isContextWritable = false;
-            statusCallback.onEnd(false);
-            writeResultList(
-                    writeResult,
-                    Collections.singletonList(status.toString()),
-                    ResponseStatusCode.SERVER_ERROR);
+//            isContextWritable = false;
+//            statusCallback.onEnd(false);
+//            writeResultList(
+//                    writeResult,
+//                    Collections.singletonList(status.toString()),
+//                    ResponseStatusCode.SERVER_ERROR);
+            writeResult.writeAndFlush(ResponseMessage.build(writeResult.getRequestMessage()).code(ResponseStatusCode.SERVER_ERROR).statusMessage(status.toString()).create());
         }
     }
 

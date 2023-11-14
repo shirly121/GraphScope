@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 public class RpcClient {
     private static final Logger logger = LoggerFactory.getLogger(RpcClient.class);
     private final List<RpcChannel> channels;
-//    private final List<JobServiceStub> serviceStubs;
+//    private final List<JobServiceGrpc.JobServiceStub> serviceStubs;
     private final List<JobServiceGrpc.JobServiceBlockingStub> serviceBlockingStubs;
 
     public RpcClient(List<RpcChannel> channels) {
@@ -53,6 +53,7 @@ public class RpcClient {
     public void submit(JobRequest jobRequest, ResultProcessor processor, long rpcTimeoutMS) {
 //        AtomicInteger counter = new AtomicInteger(this.channels.size());
 //        AtomicBoolean finished = new AtomicBoolean(false);
+//        logger.info("submit job async");
 //        serviceStubs.forEach(
 //                asyncStub -> {
 //                    asyncStub
@@ -61,7 +62,7 @@ public class RpcClient {
 //                                    jobRequest,
 //                                    new JobResponseObserver(processor, finished, counter));
 //                });
-        logger.info("submit job sync");
+        logger.info("submit job sync1");
         this.serviceBlockingStubs.forEach(blockingStub -> {
             try {
                 Iterator<JobResponse> response = blockingStub.submit(jobRequest);
