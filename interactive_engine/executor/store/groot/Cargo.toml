@@ -18,6 +18,7 @@ crossbeam-epoch = "0.9"
 rust-ini = "0.13"
 libc = "0.2"
 log4rs = "1.2"
+env_logger = "0.10"
 grpcio = "0.10"
 grpcio-sys = { version = "0.10", features = ["openssl"] }
 # deactivation of bzip2 due to https://github.com/rust-rocksdb/rust-rocksdb/issues/609
