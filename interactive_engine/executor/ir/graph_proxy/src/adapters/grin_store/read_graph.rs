@@ -889,6 +889,12 @@ impl Schema {
                     )));
                 }
                 let vertex_type_id = grin_get_vertex_type_id(graph, vertex_type);
+                let vertex_type_name = grin_get_vertex_type_name(graph, vertex_type);
+                let vertex_type_name_string = string_c2rust(vertex_type_name);
+                info!(
+                    "vertex_type_name_string: {:?}, vertex_type_id: {:?}",
+                    vertex_type_name_string, vertex_type_id
+                );
                 if vertex_type_id == GRIN_NULL_VERTEX_TYPE_ID {
                     return Err(GraphProxyError::QueryStoreError(format!(
                         "`grin_get_vertex_type_id`: {:?}, returns null",
@@ -918,6 +924,12 @@ impl Schema {
                     )));
                 }
                 let edge_type_id = grin_get_edge_type_id(graph, edge_type);
+                let edge_type_name = grin_get_edge_type_name(graph, edge_type);
+                let edge_type_name_string = string_c2rust(edge_type_name);
+                info!(
+                    "edge_type_name_string: {:?}, edge_type_id: {:?}",
+                    edge_type_name_string, edge_type_id
+                );
                 if edge_type_id == GRIN_NULL_EDGE_TYPE_ID {
                     return Err(GraphProxyError::QueryStoreError(format!(
                         "`grin_get_edge_type_id`: {:?}, returns null",
@@ -1628,45 +1640,41 @@ impl ReadGraph for GrinGraphRuntime {
     }
 
     fn count_vertex(&self, params: &QueryParams) -> GraphProxyResult<u64> {
-        if params.filter.is_some() {
-            // the filter can not be pushed down to store,
-            // so we need to scan all vertices with filter and then count
-            Ok(self.scan_vertex(params)?.count() as u64)
-        } else {
-            let worker_partitions = self.assign_worker_partitions()?;
-            if !worker_partitions.is_empty() {
-                let store = self.store.clone();
-                let label_ids: Vec<GrinVertexTypeId> = self.encode_storage_vlabels(&params.labels);
-                let count = store.count_all_vertices(&worker_partitions, &label_ids)?;
-                Ok(count)
-            } else {
-                Ok(0)
-            }
-        }
+        Ok(self.scan_vertex(params)?.count() as u64)
+        // TODO: call GRIN'a API count_all_vertices_of_master() when it is ready
+        // if params.filter.is_some() {
+        //     // the filter can not be pushed down to store,
+        //     // so we need to scan all vertices with filter and then count
+        //     Ok(self.scan_vertex(params)?.count() as u64)
+        // } else {
+        //     let worker_partitions = self.assign_worker_partitions()?;
+        //     if !worker_partitions.is_empty() {
+        //         let store = self.store.clone();
+        //         let label_ids: Vec<GrinVertexTypeId> = self.encode_storage_vlabels(&params.labels);
+        //         let count = store.count_all_vertices(&worker_partitions, &label_ids)?;
+        //         Ok(count)
+        //     } else {
+        //         Ok(0)
+        //     }
+        // }
     }
 
     fn count_edge(&self, params: &QueryParams) -> GraphProxyResult<u64> {
-        #[cfg(feature = "grin_enable_edge_list")]
-        {
-            if params.filter.is_some() {
-                // the filter can not be pushed down to store,
-                // so we need to scan all vertices with filter and then count
-                Ok(self.scan_edge(params)?.count() as u64)
-            } else {
-                let worker_partitions = self.assign_worker_partitions()?;
-                if !worker_partitions.is_empty() {
-                    let store = self.store.clone();
-                    let label_ids: Vec<GrinVertexTypeId> = self.encode_storage_vlabels(&params.labels);
-                    let count = store.count_all_edges(&worker_partitions, &label_ids)?;
-                    Ok(count)
-                } else {
-                    Ok(0)
-                }
-            }
-        }
-        #[cfg(not(feature = "grin_enable_edge_list"))]
-        {
-            Err(GraphProxyError::QueryStoreError("Edge list is not enabled".to_string()))
-        }
+        Ok(self.scan_edge(params)?.count() as u64)
+        // if params.filter.is_some() {
+        //     // the filter can not be pushed down to store,
+        //     // so we need to scan all vertices with filter and then count
+        //     Ok(self.scan_edge(params)?.count() as u64)
+        // } else {
+        //     let worker_partitions = self.assign_worker_partitions()?;
+        //     if !worker_partitions.is_empty() {
+        //         let store = self.store.clone();
+        //         let label_ids: Vec<GrinVertexTypeId> = self.encode_storage_vlabels(&params.labels);
+        //         let count = store.count_all_edges(&worker_partitions, &label_ids)?;
+        //         Ok(count)
+        //     } else {
+        //         Ok(0)
+        //     }
+        // }
     }
 }
