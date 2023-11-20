@@ -166,6 +166,12 @@ public class GraphServer {
             case "csr":
                 testGraph = TestGraphFactory.MCSR;
                 break;
+            case "grinv6d":
+                testGraph = TestGraphFactory.GRINV6D;
+                break;
+            case "gringraphar":
+                testGraph = TestGraphFactory.GRINGRAPHAR;
+                break;
             default:
                 throw new IllegalArgumentException("unknown graph store type");
         }
