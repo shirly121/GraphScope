@@ -18,8 +18,6 @@
 
 #ifdef NETWORKX
 
-#include <glog/logging.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -29,6 +27,7 @@
 
 #include "boost/leaf/error.hpp"
 #include "boost/leaf/result.hpp"
+#include "glog/logging.h"
 #include "grape/communication/communicator.h"
 #include "grape/serialization/in_archive.h"
 #include "grape/worker/comm_spec.h"
@@ -40,7 +39,7 @@
 #include "core/server/rpc_utils.h"
 #include "core/utils/convert_utils.h"
 #include "core/utils/msgpack_utils.h"
-#include "graphscope/proto/types.pb.h"
+#include "proto/types.pb.h"
 
 namespace bl = boost::leaf;
 
@@ -105,7 +104,6 @@ class DynamicFragmentReporter : public grape::Communicator {
       }
       break;
     }
-
     case rpc::HAS_EDGE: {
       BOOST_LEAF_AUTO(edge_in_json, params.Get<std::string>(rpc::EDGE));
       dynamic::Value edge;
@@ -761,7 +759,9 @@ class ArrowFragmentReporter<
         }
       }
       // archive the start gid and nodes attribute array.
-      arc << gid << nodes_attr;
+      msgpack::sbuffer sbuf;
+      msgpack::pack(&sbuf, nodes_attr);
+      arc << gid << sbuf;
     }
   }
 
@@ -859,7 +859,9 @@ class ArrowFragmentReporter<
         }
       }
       // archive the start gid and edges attributes array.
-      arc << gid << adj_list;
+      msgpack::sbuffer sbuf;
+      msgpack::pack(&sbuf, adj_list);
+      arc << gid << sbuf;
     }
   }
 

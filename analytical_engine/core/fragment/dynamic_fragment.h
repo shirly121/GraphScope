@@ -42,7 +42,7 @@
 #include "core/object/dynamic.h"
 #include "core/utils/convert_utils.h"
 #include "core/utils/partitioner.h"
-#include "graphscope/proto/types.pb.h"
+#include "proto/types.pb.h"
 
 namespace gs {
 
@@ -418,7 +418,7 @@ class DynamicFragment
     if (conf.need_split_edges_by_fragment) {
       LOG(ERROR) << "MutableEdgecutFragment cannot split edges by fragment";
     } else if (conf.need_split_edges) {
-      splitEdges();
+      splitEdges(comm_spec);
     }
   }
 
@@ -905,30 +905,37 @@ class DynamicFragment
     return id_parser_.max_local_id() - index - 1;
   }
 
-  void splitEdges() {
+  void splitEdges(const grape::CommSpec& comm_spec) {
     auto& inner_vertices = InnerVertices();
     iespliter_.Init(inner_vertices);
     oespliter_.Init(inner_vertices);
-    int inner_neighbor_count = 0;
-    for (auto& v : inner_vertices) {
-      inner_neighbor_count = 0;
-      auto ie = GetIncomingAdjList(v);
-      for (auto& e : ie) {
-        if (IsInnerVertex(e.neighbor)) {
-          ++inner_neighbor_count;
-        }
-      }
-      iespliter_[v] = get_ie_begin(v) + inner_neighbor_count;
 
-      inner_neighbor_count = 0;
-      auto oe = GetOutgoingAdjList(v);
-      for (auto& e : oe) {
-        if (IsInnerVertex(e.neighbor)) {
-          ++inner_neighbor_count;
-        }
-      }
-      oespliter_[v] = get_oe_begin(v) + inner_neighbor_count;
-    }
+    int concurrency =
+        (std::thread::hardware_concurrency() + comm_spec.local_num() - 1) /
+        comm_spec.local_num();
+    vineyard::parallel_for(
+        static_cast<vid_t>(0), static_cast<vid_t>(inner_vertices.size()),
+        [this, &inner_vertices](const vid_t& offset) {
+          vertex_t v = *(inner_vertices.begin() + offset);
+          size_t inner_neighbor_count = 0;
+          auto ie = GetIncomingAdjList(v);
+          for (auto& e : ie) {
+            if (IsInnerVertex(e.neighbor)) {
+              ++inner_neighbor_count;
+            }
+          }
+          iespliter_[v] = get_ie_begin(v) + inner_neighbor_count;
+
+          inner_neighbor_count = 0;
+          auto oe = GetOutgoingAdjList(v);
+          for (auto& e : oe) {
+            if (IsInnerVertex(e.neighbor)) {
+              ++inner_neighbor_count;
+            }
+          }
+          oespliter_[v] = get_oe_begin(v) + inner_neighbor_count;
+        },
+        concurrency, 1024);
   }
 
   vid_t parseOrAddOuterVertexGid(vid_t gid) {
@@ -1529,7 +1536,7 @@ class DynamicFragmentMutator {
       v_fid = partitioner.GetPartitionId(oid);
       if (modify_type == rpc::NX_ADD_NODES) {
         vm_ptr_->AddVertex(std::move(oid), gid);
-        if (!v_data.Empty()) {
+        if (v_data.IsObject() && !v_data.GetObject().ObjectEmpty()) {
           for (const auto& prop : v_data.GetObject()) {
             if (!fragment_->schema_["vertex"].HasMember(prop.name)) {
               dynamic::Value key(prop.name);
@@ -1591,7 +1598,8 @@ class DynamicFragmentMutator {
         bool src_new_add = vm_ptr_->AddVertex(std::move(src), src_gid);
         bool dst_new_add = vm_ptr_->AddVertex(std::move(dst), dst_gid);
         if (src_fid == fid) {
-          if (src_new_add || (fragment_->InnerVertexGid2Lid(src_gid, lid) &&
+          fragment_->InnerVertexGid2Lid(src_gid, lid);
+          if (src_new_add || (fragment_->iv_alive_.cardinality() > lid &&
                               !fragment_->iv_alive_.get_bit(lid))) {
             vdata_t empty_data(rapidjson::kObjectType);
             mutation.vertices_to_add.emplace_back(src_gid,
@@ -1599,14 +1607,15 @@ class DynamicFragmentMutator {
           }
         }
         if (dst_fid == fid) {
-          if (dst_new_add || (fragment_->InnerVertexGid2Lid(src_gid, lid) &&
+          fragment_->InnerVertexGid2Lid(dst_gid, lid);
+          if (dst_new_add || (fragment_->iv_alive_.cardinality() > lid &&
                               !fragment_->iv_alive_.get_bit(lid))) {
             vdata_t empty_data(rapidjson::kObjectType);
             mutation.vertices_to_add.emplace_back(dst_gid,
                                                   std::move(empty_data));
           }
         }
-        if (!e_data.Empty()) {
+        if (e_data.IsObject() && !e_data.GetObject().ObjectEmpty()) {
           for (const auto& prop : e_data.GetObject()) {
             if (!fragment_->schema_["edge"].HasMember(prop.name)) {
               dynamic::Value key(prop.name);

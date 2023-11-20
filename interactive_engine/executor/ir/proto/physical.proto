@@ -57,6 +57,7 @@ message GroupBy {
       TO_LIST = 5;
       TO_SET = 6;
       AVG = 7;
+      FIRST = 8;
     }
 
     // The variables to apply this aggregation
@@ -150,6 +151,8 @@ message Scan {
   algebra.QueryParams params = 3;
   // The optional filtering predicate for the field that have been indexed
   algebra.IndexPredicate idx_predicate = 4;
+  // The flag that indicates to SCAN + COUNT
+  bool is_count_only = 5;
 }
 
 // It is typical to use the operator when:
@@ -158,15 +161,15 @@ message Scan {
 message GetV {
   enum VOpt {
     // The case when getting the start vertex of the edge
-    Start = 0;
+    START = 0;
     // The case when getting the end vertex of the edge/path
-    End = 1;
+    END = 1;
     // The case when getting the other vertex of the edge. We are calibrating to Gremlin's bothE.otherV semantics
-    Other = 2;
+    OTHER = 2;
     // The case when getting both vertices of the edge
-    Both = 3;
+    BOTH = 3;
     // The case when tag refers to vertices
-    Itself = 4;
+    ITSELF = 4;
   }
   // The tag that refers to the edge/path where the end vertex will be retrieved
   google.protobuf.Int32Value tag = 1;
@@ -185,9 +188,9 @@ message EdgeExpand {
     BOTH = 2;
   }
   enum ExpandOpt {
-    Vertex = 0;
-    Edge = 1;
-    Degree = 2;
+    VERTEX = 0;
+    EDGE = 1;
+    DEGREE = 2;
   }
   // The tag that refers to the starting vertex
   google.protobuf.Int32Value v_tag = 1;
@@ -213,17 +216,19 @@ message PathExpand {
   }
   enum PathOpt {
     // an arbitrary path, in which both vertex/edge may duplicate
-    Arbitrary = 0;
+    ARBITRARY = 0;
     // a path without vertex duplications
-    Simple = 1;
+    SIMPLE = 1;
   }
   // Define what result is required for this path. We currently support `EndV` and `AllV`, while an option to
   // include all edges and vertices may be needed in the future.
   enum ResultOpt {
-    // only end vertex is required for this expansion
-    EndV = 0;
-    // all vertices of this path are required for this expansion.
-    AllV = 1;
+     // only end vertex is required for this expansion
+     END_V = 0;
+     // all vertices of this path are required for this expansion.
+     ALL_V = 1;
+     // all vertices and edges of this path are required for this expansion.
+     ALL_V_E = 2;
   }
   // A path expansion has a base of edge expansion
   ExpandBase base = 1;
@@ -264,7 +269,7 @@ message Repartition {
 }
 
 // A dummy node to delegate a source opr for multiple scan cases.
-message RootScan {}
+message Root {}
 
 message PhysicalOpr {
   message Operator {
@@ -283,7 +288,8 @@ message PhysicalOpr {
       Union union = 12;
       Intersect intersect = 13;
       Repartition repartition = 14;
-      RootScan root = 16;
+      Root root = 16;
+      algebra.Sample sample = 17;
       // Saving the room for relational operators
       GetV vertex = 30;
       EdgeExpand edge = 31;
@@ -301,5 +307,6 @@ message PhysicalOpr {
 }
 
 message PhysicalPlan {
-  repeated PhysicalOpr plan = 1;
+  int32 plan_id = 1;
+  repeated PhysicalOpr plan = 2;
 }

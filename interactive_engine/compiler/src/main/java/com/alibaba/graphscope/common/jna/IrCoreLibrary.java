@@ -38,7 +38,11 @@ public interface IrCoreLibrary extends Library {
 
     void destroyLogicalPlan(Pointer plan);
 
-    FfiData.ByValue buildPhysicalPlan(Pointer plan, int workers, int servers);
+    default FfiData.ByValue buildPhysicalPlan(Pointer plan, int workers, int servers) {
+        return buildPhysicalPlan(plan, workers, servers, 0);
+    }
+
+    FfiData.ByValue buildPhysicalPlan(Pointer plan, int workers, int servers, int planId);
 
     Pointer initScanOperator(FfiScanOpt opt);
 
@@ -59,6 +63,8 @@ public interface IrCoreLibrary extends Library {
     FfiResult.ByValue setScanParams(Pointer scan, Pointer params);
 
     FfiResult.ByValue setScanAlias(Pointer scan, FfiAlias.ByValue alias);
+
+    FfiResult.ByValue setCountOnly(Pointer scan, boolean countOnly);
 
     Pointer initEdgexpdOperator(FfiExpandOpt expandOpt, FfiDirection direction);
 
@@ -229,4 +235,47 @@ public interface IrCoreLibrary extends Library {
     FfiResult.ByValue addParamsExtra(Pointer params, String key, String value);
 
     Pointer initSinkGraphOperator(String graphName);
+
+    FfiResult.ByValue setScanMeta(Pointer scan, FfiPbPointer.ByValue meta);
+
+    FfiResult.ByValue setEdgexpdMeta(Pointer edgexpd, FfiPbPointer.ByValue meta);
+
+    FfiResult.ByValue setGetvMeta(Pointer getV, FfiPbPointer.ByValue meta);
+
+    FfiResult.ByValue addProjectMeta(Pointer project, FfiPbPointer.ByValue meta);
+
+    FfiResult.ByValue addGroupbyKeyValueMeta(Pointer groupBy, FfiPbPointer.ByValue meta);
+
+    FfiResult.ByValue addPatternMeta(Pointer pattern, FfiPbPointer.ByValue meta);
+
+    Pointer initUnfoldOperator();
+
+    FfiResult.ByValue appendUnfoldOperator(
+            Pointer plan, Pointer unfold, int parent, IntByReference oprIdx);
+
+    FfiResult.ByValue setUnfoldPair(
+            Pointer unfold, FfiNameOrId.ByValue tag, FfiNameOrId.ByValue alias);
+
+    FfiResult.ByValue setUnfoldMeta(Pointer unfold, FfiPbPointer.ByValue meta);
+
+    Pointer initJoinOperator(FfiJoinKind joinKind);
+
+    FfiResult.ByValue addJoinKeyPairPb(
+            Pointer join, FfiPbPointer.ByValue left, FfiPbPointer.ByValue right);
+
+    FfiResult.ByValue appendJoinOperator(
+            Pointer plan, Pointer join, int leftParent, int rightParent, IntByReference oprIdx);
+
+    Pointer initSampleOperator();
+
+    FfiResult.ByValue setSampleType(Pointer sample, FfiPbPointer.ByValue sampleType);
+
+    FfiResult.ByValue setSampleSeed(Pointer sample, long seed);
+
+    FfiResult.ByValue setSampleWeightVariable(Pointer sample, FfiPbPointer.ByValue weightVariable);
+
+    FfiResult.ByValue appendSampleOperator(
+            Pointer plan, Pointer sample, int parent, IntByReference oprIdx);
+
+    void destroyCstrPointer(Pointer cstr);
 }

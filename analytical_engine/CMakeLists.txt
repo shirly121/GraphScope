@@ -19,6 +19,18 @@ option(LET_IT_CRASH_ON_EXCEPTION "Disable boost leaf's error handling and let it
 execute_process(COMMAND uname -m OUTPUT_VARIABLE SYSTEM_PROCESSOR)
 string(REGEX REPLACE "\n$" "" SYSTEM_PROCESSOR "${SYSTEM_PROCESSOR}")
 
+# find jni ---------------------------------------------------------------------
+if (ENABLE_JAVA_SDK)
+    find_package(JNI QUIET)
+    if (JNI_FOUND)
+        include_directories(SYSTEM ${JAVA_INCLUDE_PATH})
+        include_directories(SYSTEM ${JAVA_INCLUDE_PATH2})
+    else()
+        message(WARNING "Disable Java SDK because JNI libraries not found")
+        set(ENABLE_JAVA_SDK OFF)
+    endif()
+endif()
+
 if (ENABLE_JAVA_SDK)
     #check whether we are using clang.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -223,27 +235,12 @@ endif ()
 find_package(libgrapelite REQUIRED)
 include_directories(${LIBGRAPELITE_INCLUDE_DIRS})
 
-find_package(Protobuf REQUIRED)
+find_package(Protobuf CONFIG QUIET)
+if (NOT Protobuf_FOUND)
+    find_package(Protobuf REQUIRED)
+endif()
 include_directories(${Protobuf_INCLUDE_DIRS})
 
-if (ENABLE_JAVA_SDK)
-# find jni---------------------------------------------------------------------
-    find_package(JNI REQUIRED)
-    include_directories(SYSTEM ${JAVA_INCLUDE_PATH})
-    include_directories(SYSTEM ${JAVA_INCLUDE_PATH2})
-endif()
-
-find_package(gRPC QUIET)
-if(gRPC_FOUND)
-    set(GRPC_LIBRARIES gRPC::gpr gRPC::grpc gRPC::grpc++)
-    get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
-    get_target_property(GRPC_INCLUDE_DIR gRPC::grpc INTERFACE_INCLUDE_DIRECTORIES)
-else()
-    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindGRPC.cmake)
-    set(GRPC_LIBRARIES ${GPR_LIBRARY} ${GRPC_LIBRARY} ${GRPC_GRPC++_LIBRARY})
-endif()
-
-# Make sure FindArrow is behind FindGRPC to address the "'c-ares::cares_shared' target already exists" error.
 find_package(Arrow QUIET)
 if(Arrow_FOUND)
     set(ARROW_INCLUDE_DIR)
@@ -260,6 +257,16 @@ else()
     endif()
 endif()
 
+find_package(gRPC QUIET)
+if(gRPC_FOUND)
+    set(GRPC_LIBRARIES gRPC::gpr gRPC::grpc gRPC::grpc++)
+    get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
+    get_target_property(GRPC_INCLUDE_DIR gRPC::grpc INTERFACE_INCLUDE_DIRECTORIES)
+else()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindGRPC.cmake)
+    set(GRPC_LIBRARIES ${GPR_LIBRARY} ${GRPC_LIBRARY} ${GRPC_GRPC++_LIBRARY})
+endif()
+
 # find vineyard after arrow to avoid duplicate target names
 find_package(vineyard 0.14.8 REQUIRED)
 include_directories(${VINEYARD_INCLUDE_DIRS})
@@ -270,10 +277,10 @@ if(Arrow_FOUND AND Arrow_VERSION VERSION_GREATER 9.0.1)
 endif()
 
 # Generate proto
-execute_process(COMMAND python3 python/graphscope/proto/proto_generator.py "${PROJECT_SOURCE_DIR}" --cpp
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/..)
+execute_process(COMMAND python3 ../proto/proto_generator.py "${PROJECT_SOURCE_DIR}/proto" --cpp
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
-file(GLOB PROTO_CPP_FILES "graphscope/proto/*.cc")
+file(GLOB PROTO_CPP_FILES "proto/*.cc")
 file(GLOB CORE_RPC_SRC_FILES "core/server/*.cc")
 
 # Add targets
@@ -287,19 +294,19 @@ target_link_libraries(gs_proto PUBLIC
 
 add_library(gs_util SHARED "core/flags.cc" "core/launcher.cc")
 target_link_libraries(gs_util PRIVATE
-        ${LIBGRAPELITE_LIBRARIES}
-        ${GFLAGS_LIBRARIES}
-        ${VINEYARD_LIBRARIES}
-        ${Boost_LIBRARIES}
-    )
+    ${LIBGRAPELITE_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${VINEYARD_LIBRARIES}
+    ${Boost_LIBRARIES}
+)
 
 if (ENABLE_JAVA_SDK)
     target_sources(gs_util PRIVATE "core/java/javasdk.cc")
     target_compile_definitions(gs_util PUBLIC ENABLE_JAVA_SDK)
     target_link_libraries(gs_util PRIVATE
-            ${JAVA_JVM_LIBRARY}
-            ${JNI_LIBRARIES}
-        )
+        ${JAVA_JVM_LIBRARY}
+        ${JNI_LIBRARIES}
+    )
 endif()
 
 add_executable(grape_engine
@@ -310,14 +317,14 @@ add_executable(grape_engine
     )
 target_include_directories(grape_engine PRIVATE proto utils)
 target_link_libraries(grape_engine PRIVATE
-        gs_proto
-        gs_util
-        ${LIBGRAPELITE_LIBRARIES}
-        ${GFLAGS_LIBRARIES}
-        ${CMAKE_DL_LIBS}
-        ${Boost_LIBRARIES}
-        ${VINEYARD_LIBRARIES}
-    )
+    gs_proto
+    gs_util
+    ${LIBGRAPELITE_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${CMAKE_DL_LIBS}
+    ${Boost_LIBRARIES}
+    ${VINEYARD_LIBRARIES}
+)
 
 if (ENABLE_JAVA_SDK)
     target_compile_definitions(grape_engine PUBLIC ENABLE_JAVA_SDK)
@@ -486,6 +493,12 @@ if(ENABLE_JAVA_SDK)
     set(GAE_JAVA_RUNTIME_JAR "${GAE_JAVA_RUNTIME_DIR}/target/grape-runtime-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
     set(GAE_JAVA_GRAPHX_JAR "${GAE_JAVA_DIR}/grape-graphx/target/grape-graphx-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
     set(GAE_JAVA_GIRAPH_JAR "${GAE_JAVA_DIR}/grape-giraph/target/grape-giraph-${GRAPHSCOPE_ANALYTICAL_JAR_VERSION}-shaded.jar")
+    # condiationally set grape-jni's name according to platform
+    if (APPLE)
+        set(GAE_JAVA_JNI_LIB "${GAE_JAVA_DIR}/grape-runtime/target/native/libgrape-jni.dylib")
+    else ()
+        set(GAE_JAVA_JNI_LIB "${GAE_JAVA_DIR}/grape-runtime/target/native/libgrape-jni.so")
+    endif()
 
     add_custom_command(
         OUTPUT "${GAE_JAVA_RUNTIME_JAR}"
@@ -502,6 +515,7 @@ if(ENABLE_JAVA_SDK)
     install(FILES "${GAE_JAVA_RUNTIME_JAR}" DESTINATION lib)
     install(FILES "${GAE_JAVA_GRAPHX_JAR}" DESTINATION lib)
     install(FILES "${GAE_JAVA_GIRAPH_JAR}" DESTINATION lib)
+    install(FILES "${GAE_JAVA_JNI_LIB}" DESTINATION lib)
     install(FILES "${GAE_JAVA_DIR}/grape_jvm_opts" DESTINATION conf)
     install(FILES "${GAE_JAVA_DIR}/run_graphx.sh" DESTINATION bin)
  endif()
@@ -561,22 +575,22 @@ endif()
 install_gsa_headers("${PROJECT_SOURCE_DIR}/apps")
 install_gsa_headers("${PROJECT_SOURCE_DIR}/benchmarks")
 install_gsa_headers("${PROJECT_SOURCE_DIR}/core")
-install_gsa_headers("${PROJECT_SOURCE_DIR}/graphscope")
+install_gsa_headers("${PROJECT_SOURCE_DIR}/proto")
 install_gsa_app_frames("${PROJECT_SOURCE_DIR}/frame")
 
 install_gsa_dependency_modules("${PROJECT_SOURCE_DIR}/cmake")
 
 configure_file(graphscope-analytical-config.in.cmake
         "${PROJECT_BINARY_DIR}/graphscope-analytical-config.cmake" @ONLY
-        )
+)
 configure_file(graphscope-analytical-config-version.in.cmake
         "${PROJECT_BINARY_DIR}/graphscope-analytical-config-version.cmake" @ONLY
-        )
+)
 install(FILES "${PROJECT_BINARY_DIR}/graphscope-analytical-config.cmake"
         "${PROJECT_BINARY_DIR}/graphscope-analytical-config-version.cmake"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/graphscope-analytical
-        )
+)
 install(EXPORT graphscope-analytical-targets
         FILE graphscope-analytical-targets.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/graphscope-analytical
-        )
+)

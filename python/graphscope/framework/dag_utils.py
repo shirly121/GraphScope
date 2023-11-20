@@ -18,6 +18,10 @@
 
 import json
 import pickle
+from typing import Dict
+from typing import List
+from typing import Tuple
+from typing import Union
 
 from graphscope.framework import utils
 from graphscope.framework.errors import check_argument
@@ -60,6 +64,8 @@ def bind_app(graph, app_assets):
         config[types_pb2.VERTEX_MAP_TYPE] = utils.i_to_attr(graph._vertex_map)
     if hasattr(graph, "_compact_edges"):
         config[types_pb2.COMPACT_EDGES] = utils.b_to_attr(graph._compact_edges)
+    if hasattr(graph, "_use_perfect_hash"):
+        config[types_pb2.USE_PERFECT_HASH] = utils.b_to_attr(graph._use_perfect_hash)
     if app_assets.cmake_extra_options is not None:
         config[types_pb2.CMAKE_EXTRA_OPTIONS] = utils.s_to_attr(
             app_assets.cmake_extra_options
@@ -197,11 +203,12 @@ def add_labels_to_graph(graph, loader_op):
         types_pb2.GRAPH_TYPE: utils.graph_type_to_attr(graph._graph_type),
         types_pb2.DIRECTED: utils.b_to_attr(graph._directed),
         types_pb2.OID_TYPE: utils.s_to_attr(graph._oid_type),
+        types_pb2.VID_TYPE: utils.s_to_attr(graph._vid_type),
         types_pb2.GENERATE_EID: utils.b_to_attr(graph._generate_eid),
         types_pb2.RETAIN_OID: utils.b_to_attr(graph._retain_oid),
         types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(graph._vertex_map),
         types_pb2.COMPACT_EDGES: utils.b_to_attr(graph._compact_edges),
-        types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
+        types_pb2.USE_PERFECT_HASH: utils.b_to_attr(graph._use_perfect_hash),
         types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
         types_pb2.IS_FROM_GAR: utils.b_to_attr(False),
     }
@@ -216,6 +223,55 @@ def add_labels_to_graph(graph, loader_op):
         types_pb2.ADD_LABELS,
         inputs=inputs,
         config=config,
+        output_types=types_pb2.GRAPH,
+    )
+    return op
+
+
+def consolidate_columns(
+    graph,
+    label: str,
+    columns: Union[List[str], Tuple[str]],
+    result_column: str,
+):
+    """Consolidate property columns in the graph.
+
+    Args:
+        graph (:class:`Graph`)
+        label (str): The label of the vertex/edge to be consolidated.
+        columns: The columns to be consolidated.
+        result_column: The column name of the result.
+
+    Returns:
+        Operation
+    """
+    check_argument(graph.graph_type == graph_def_pb2.ARROW_PROPERTY)
+    config = {
+        types_pb2.GRAPH_TYPE: utils.graph_type_to_attr(graph._graph_type),
+        types_pb2.DIRECTED: utils.b_to_attr(graph._directed),
+        types_pb2.OID_TYPE: utils.s_to_attr(graph._oid_type),
+        types_pb2.VID_TYPE: utils.s_to_attr(graph._vid_type),
+        types_pb2.GENERATE_EID: utils.b_to_attr(graph._generate_eid),
+        types_pb2.RETAIN_OID: utils.b_to_attr(graph._retain_oid),
+        types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(graph._vertex_map),
+        types_pb2.COMPACT_EDGES: utils.b_to_attr(graph._compact_edges),
+        types_pb2.USE_PERFECT_HASH: utils.b_to_attr(graph._use_perfect_hash),
+        types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
+        types_pb2.IS_FROM_GAR: utils.b_to_attr(False),
+        types_pb2.CONSOLIDATE_COLUMNS_LABEL: utils.s_to_attr(label),
+        types_pb2.CONSOLIDATE_COLUMNS_COLUMNS: utils.s_to_attr(",".join(columns)),
+        types_pb2.CONSOLIDATE_COLUMNS_RESULT_COLUMN: utils.s_to_attr(result_column),
+    }
+
+    # The key maybe filled later in coordinator
+    if hasattr(graph, "key"):
+        config[types_pb2.GRAPH_NAME] = utils.s_to_attr(graph.key)
+
+    op = Operation(
+        graph.session_id,
+        types_pb2.CONSOLIDATE_COLUMNS,
+        config=config,
+        inputs=[graph.op],
         output_types=types_pb2.GRAPH,
     )
     return op
@@ -436,6 +492,7 @@ def project_arrow_property_graph(graph, vertex_collections, edge_collections):
         types_pb2.GRAPH_TYPE: utils.graph_type_to_attr(graph.graph_type),
         types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(graph._vertex_map),
         types_pb2.COMPACT_EDGES: utils.b_to_attr(graph._compact_edges),
+        types_pb2.USE_PERFECT_HASH: utils.b_to_attr(graph._use_perfect_hash),
     }
     config.update(
         {
@@ -480,6 +537,8 @@ def project_to_simple(
         config[types_pb2.VERTEX_MAP_TYPE] = utils.i_to_attr(graph._vertex_map)
     if hasattr(graph, "_compact_edges"):
         config[types_pb2.COMPACT_EDGES] = utils.b_to_attr(graph._compact_edges)
+    if hasattr(graph, "_use_perfect_hash"):
+        config[types_pb2.USE_PERFECT_HASH] = utils.b_to_attr(graph._use_perfect_hash)
     op = Operation(
         graph.session_id,
         types_pb2.PROJECT_TO_SIMPLE,
@@ -985,38 +1044,6 @@ def graph_to_dataframe(graph, selector=None, vertex_range=None):
     return op
 
 
-def gremlin_query(interactive_query, query, request_options=None):
-    """Execute a gremlin query.
-
-    Args:
-        interactive_query (:class:`graphscope.interactive.query.InteractiveQueryDAGNode`):
-            The GIE instance holds the graph that gremlin query on.
-        query (str):
-            Scripts that written in gremlin quering language.
-        request_options (dict, optional): gremlin request options. format:
-            {
-                "engine": "gae"
-            }
-
-    Returns:
-        An op to execute a gremlin query on the GIE instance.
-    """
-    config = {}
-    config[types_pb2.GIE_GREMLIN_QUERY_MESSAGE] = utils.s_to_attr(query)
-    config[types_pb2.VINEYARD_ID] = utils.i_to_attr(interactive_query.object_id)
-    if request_options:
-        config[types_pb2.GIE_GREMLIN_REQUEST_OPTIONS] = utils.s_to_attr(
-            json.dumps(request_options)
-        )
-    op = Operation(
-        interactive_query.session_id,
-        types_pb2.GREMLIN_QUERY,
-        config=config,
-        output_types=types_pb2.GREMLIN_RESULTS,
-    )
-    return op
-
-
 def gremlin_to_subgraph(
     interactive_query, gremlin_script, request_options=None, oid_type="int64"
 ):
@@ -1054,29 +1081,6 @@ def gremlin_to_subgraph(
     return op
 
 
-def fetch_gremlin_result(result_set, fetch_type="one"):
-    """Fetch the gremlin query result.
-
-    Args:
-        result_set (:class:`raphscope.interactive.query.ResultSetDAGNode`):
-            The instance holds the resultSet in coordinator that can fetch the gremlin result from.
-        fetch_type (str): "one" or "all". Defaults to "one".
-
-    Returns:
-        An op to fetch the gremlin result.
-    """
-    config = {}
-    config[types_pb2.GIE_GREMLIN_FETCH_RESULT_TYPE] = utils.s_to_attr(fetch_type)
-    op = Operation(
-        result_set.session_id,
-        types_pb2.FETCH_GREMLIN_RESULT,
-        config=config,
-        inputs=[result_set.op],
-        output_types=types_pb2.RESULTS,
-    )
-    return op
-
-
 def archive_graph(graph, path):
     """Archive a graph to gar format with a path.
 
@@ -1090,9 +1094,10 @@ def archive_graph(graph, path):
     config = {
         types_pb2.GRAPH_TYPE: utils.graph_type_to_attr(graph._graph_type),
         types_pb2.OID_TYPE: utils.s_to_attr(graph._oid_type),
-        types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
+        types_pb2.VID_TYPE: utils.s_to_attr(graph._vid_type),
         types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(graph._vertex_map),
         types_pb2.COMPACT_EDGES: utils.b_to_attr(graph._compact_edges),
+        types_pb2.USE_PERFECT_HASH: utils.b_to_attr(graph._use_perfect_hash),
     }
     config[types_pb2.GRAPH_INFO_PATH] = utils.s_to_attr(path)
     op = Operation(
@@ -1101,5 +1106,49 @@ def archive_graph(graph, path):
         config=config,
         inputs=[graph.op],
         output_types=types_pb2.NULL_OUTPUT,
+    )
+    return op
+
+
+def save_graph_to(
+    graph,
+    path: str,
+    vineyard_id,
+    **kwargs,
+):
+    """Serialize graph to the specified location
+
+    Args:
+        graph (:class:`graphscope.framework.graph.GraphDAGNode`): Source graph.
+        path (str): The path to serialize the graph, on each worker.
+
+    Returns:
+        An op to serialize the graph to a path.
+    """
+    config = {
+        types_pb2.GRAPH_SERIALIZATION_PATH: utils.s_to_attr(path),
+        types_pb2.VINEYARD_ID: utils.i_to_attr(vineyard_id),
+        types_pb2.STORAGE_OPTIONS: utils.s_to_attr(json.dumps(kwargs)),
+    }
+    op = Operation(
+        graph.session_id,
+        types_pb2.SERIALIZE_GRAPH,
+        config=config,
+        inputs=[graph.op],
+        output_types=types_pb2.NULL_OUTPUT,
+    )
+    return op
+
+
+def load_graph_from(path: str, sess, **kwargs):
+    config = {
+        types_pb2.GRAPH_SERIALIZATION_PATH: utils.s_to_attr(path),
+        types_pb2.STORAGE_OPTIONS: utils.s_to_attr(json.dumps(kwargs)),
+    }
+    op = Operation(
+        sess.session_id,
+        types_pb2.DESERIALIZE_GRAPH,
+        config=config,
+        output_types=types_pb2.GRAPH,
     )
     return op

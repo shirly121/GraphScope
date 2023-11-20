@@ -18,6 +18,7 @@
 
 import os
 import platform
+import shutil
 import site
 import subprocess
 import sys
@@ -32,11 +33,17 @@ from setuptools.command.develop import develop
 from setuptools.command.sdist import sdist
 from wheel.bdist_wheel import bdist_wheel
 
+try:
+    import torch
+    import torch.utils.cpp_extension
+except ImportError:
+    torch = None
+
 # Enables --editable install with --user
 # https://github.com/pypa/pip/issues/7953
 site.ENABLE_USER_SITE = "--user" in sys.argv[1:]
 
-repo_root = os.path.dirname(os.path.abspath(__file__))
+pkg_root = os.path.dirname(os.path.abspath(__file__))
 
 if platform.system() == "Darwin":
     # see also: https://github.com/python/cpython/issues/100420
@@ -44,6 +51,15 @@ if platform.system() == "Darwin":
         os.environ["ARCHFLAGS"] = "-arch arm64"
     else:
         os.environ["ARCHFLAGS"] = "-arch x86_64"
+
+GL_EXT_NAME = "graphscope.learning.graphlearn.pywrap_graphlearn"
+GLTORCH_EXT_NAME = "graphscope.learning.graphlearn_torch.py_graphlearn_torch"
+GLTORCH_V6D_EXT_NAME = (
+    "graphscope.learning.graphlearn_torch.py_graphlearn_torch_vineyard"
+)
+glt_root_path = os.path.abspath(
+    os.path.join(pkg_root, "..", "learning_engine", "graphlearn-for-pytorch")
+)
 
 
 class BuildProto(Command):
@@ -57,20 +73,20 @@ class BuildProto(Command):
         pass
 
     def run(self):
+        cmd = [
+            sys.executable,
+            os.path.join(
+                pkg_root,
+                "..",
+                "proto",
+                "proto_generator.py",
+            ),
+            os.path.join(pkg_root, "graphscope", "proto"),
+            "--python",
+        ]
+        print(" ".join(cmd))
         subprocess.check_call(
-            [
-                sys.executable,
-                os.path.join(
-                    repo_root,
-                    "..",
-                    "python",
-                    "graphscope",
-                    "proto",
-                    "proto_generator.py",
-                ),
-                repo_root,
-                "--python",
-            ],
+            cmd,
             env=os.environ.copy(),
         )
 
@@ -92,17 +108,17 @@ class FormatAndLint(Command):
 
     def run(self):
         if self.inplace:
-            subprocess.check_call([sys.executable, "-m", "isort", "."], cwd=repo_root)
-            subprocess.check_call([sys.executable, "-m", "black", "."], cwd=repo_root)
-            subprocess.check_call([sys.executable, "-m", "flake8", "."], cwd=repo_root)
+            subprocess.check_call([sys.executable, "-m", "isort", "."], cwd=pkg_root)
+            subprocess.check_call([sys.executable, "-m", "black", "."], cwd=pkg_root)
+            subprocess.check_call([sys.executable, "-m", "flake8", "."], cwd=pkg_root)
         else:
             subprocess.check_call(
-                [sys.executable, "-m", "isort", "--check", "--diff", "."], cwd=repo_root
+                [sys.executable, "-m", "isort", "--check", "--diff", "."], cwd=pkg_root
             )
             subprocess.check_call(
-                [sys.executable, "-m", "black", "--check", "--diff", "."], cwd=repo_root
+                [sys.executable, "-m", "black", "--check", "--diff", "."], cwd=pkg_root
             )
-            subprocess.check_call([sys.executable, "-m", "flake8", "."], cwd=repo_root)
+            subprocess.check_call([sys.executable, "-m", "flake8", "."], cwd=pkg_root)
 
 
 class CustomBuildPy(build_py):
@@ -111,10 +127,55 @@ class CustomBuildPy(build_py):
         build_py.run(self)
 
 
-class CustomBuildExt(build_ext):
+class BuildGLExt(build_ext):
     def run(self):
+        self.extensions = [ext for ext in self.extensions if ext.name == GL_EXT_NAME]
         self.run_command("build_proto")
         build_ext.run(self)
+
+
+class BuildGLTorchExt(torch.utils.cpp_extension.BuildExtension if torch else build_ext):
+    def run(self):
+        if torch is None:
+            print("Building graphlearn-torch extension requires pytorch")
+            print("Set WITH_GLTORCH=OFF if you don't need it.")
+            return
+        self.extensions = [
+            ext
+            for ext in self.extensions
+            if ext.name in [GLTORCH_EXT_NAME, GLTORCH_V6D_EXT_NAME]
+        ]
+        torch.utils.cpp_extension.BuildExtension.run(self)
+
+    def _get_gcc_use_cxx_abi(self):
+        if hasattr(self, "_gcc_use_cxx_abi"):
+            return self._gcc_use_cxx_abi
+        build_dir = os.path.join(glt_root_path, "cmake-build")
+        os.makedirs(build_dir, exist_ok=True)
+        output = subprocess.run(
+            [shutil.which("cmake"), ".."],
+            cwd=build_dir,
+            capture_output=True,
+            text=True,
+        )
+        import re
+
+        match = re.search(r"GCC_USE_CXX11_ABI: (\d)", str(output))
+        if match:
+            self._gcc_use_cxx_abi = match.group(1)
+        else:
+            return None
+
+        return self._gcc_use_cxx_abi
+
+    def _add_gnu_cpp_abi_flag(self, extension):
+        gcc_use_cxx_abi = (
+            self._get_gcc_use_cxx_abi()
+            if extension.name == GLTORCH_V6D_EXT_NAME
+            else str(int(torch._C._GLIBCXX_USE_CXX11_ABI))
+        )
+        print(f"GCC_USE_CXX11_ABI for {extension.name}: {gcc_use_cxx_abi}")
+        self._add_compile_flag(extension, "-D_GLIBCXX_USE_CXX11_ABI=" + gcc_use_cxx_abi)
 
 
 class CustomDevelop(develop):
@@ -141,7 +202,7 @@ class CustomBDistWheel(bdist_wheel):
             graphlearn_shared_lib = "libgraphlearn_shared.so"
         if not os.path.isfile(
             os.path.join(
-                repo_root,
+                pkg_root,
                 "..",
                 "learning_engine",
                 "graph-learn",
@@ -156,18 +217,18 @@ class CustomBDistWheel(bdist_wheel):
         bdist_wheel.run(self)
 
 
-with open(os.path.join(repo_root, "..", "README.md"), "r", encoding="utf-8") as fp:
+with open(os.path.join(pkg_root, "..", "README.md"), "r", encoding="utf-8") as fp:
     long_description = fp.read()
 
 
 def parsed_reqs():
-    with open(os.path.join(repo_root, "requirements.txt"), "r", encoding="utf-8") as fp:
+    with open(os.path.join(pkg_root, "requirements.txt"), "r", encoding="utf-8") as fp:
         return fp.read().splitlines()
 
 
 def parsed_dev_reqs():
     with open(
-        os.path.join(repo_root, "requirements-dev.txt"), "r", encoding="utf-8"
+        os.path.join(pkg_root, "requirements-dev.txt"), "r", encoding="utf-8"
     ) as fp:
         return fp.read().splitlines()
 
@@ -193,15 +254,45 @@ def parsed_package_data():
     return {
         "graphscope": [
             "VERSION",
+            "proto/*.pyi",
+            "gsctl/scripts/*.sh",
+            "gsctl/scripts/lib/*.sh",
         ],
     }
 
 
 def build_learning_engine():
+    ext_modules = [graphlearn_ext()]
+    if torch and os.path.exists(os.path.join(glt_root_path, "graphlearn_torch")):
+        sys.path.insert(
+            0, os.path.join(glt_root_path, "graphlearn_torch", "python", "utils")
+        )
+        from build import glt_ext_module
+        from build import glt_v6d_ext_module
+
+        ext_modules.append(
+            glt_ext_module(
+                name=GLTORCH_EXT_NAME,
+                root_path=glt_root_path,
+                with_cuda=False,
+                release=False,
+            )
+        )
+        ext_modules.append(
+            glt_v6d_ext_module(
+                name=GLTORCH_V6D_EXT_NAME,
+                root_path=glt_root_path,
+            )
+        )
+        sys.path.pop(0)
+    return ext_modules
+
+
+def graphlearn_ext():
     import numpy
 
     ROOT_PATH = os.path.abspath(
-        os.path.join(repo_root, "..", "learning_engine", "graph-learn")
+        os.path.join(pkg_root, "..", "learning_engine", "graph-learn")
     )
 
     include_dirs = []
@@ -221,14 +312,21 @@ def build_learning_engine():
     include_dirs.append(ROOT_PATH + "/third_party/glog/build")
     include_dirs.append(ROOT_PATH + "/third_party/protobuf/build/include")
     include_dirs.append(numpy.get_include())
-    # mac M1 support
-    include_dirs.append("/opt/homebrew/include")
-
     library_dirs.append(ROOT_PATH + "/graphlearn/built/lib")
 
     extra_compile_args.append("-D__USE_XOPEN2K8")
-    extra_compile_args.append("-std=c++11")
+    extra_compile_args.append("-std=c++17")
     extra_compile_args.append("-fvisibility=hidden")
+
+    if sys.platform == "darwin":
+        # mac M1 support
+        include_dirs.append("/opt/homebrew/include")
+
+        # explicitly link against protobuf to avoid the error
+        # "illegal thread local variable reference to regular symbol"
+        library_dirs.append("/usr/local/lib")
+        library_dirs.append("/opt/homebrew/lib")
+        libraries.append("protobuf")
 
     libraries.append("graphlearn_shared")
     if sys.platform == "linux" or sys.platform == "linux2":
@@ -242,8 +340,9 @@ def build_learning_engine():
         # KNN not enabled
         # ROOT_PATH + "/graphlearn/python/c/py_contrib.cc",
     ]
-    ext = Extension(
-        "graphscope.learning.graphlearn.pywrap_graphlearn",
+
+    return Extension(
+        GL_EXT_NAME,
         sources,
         extra_compile_args=extra_compile_args,
         extra_link_args=extra_link_args,
@@ -251,7 +350,6 @@ def build_learning_engine():
         library_dirs=library_dirs,
         libraries=libraries,
     )
-    return [ext]
 
 
 def parse_version(root, **kwargs):
@@ -262,7 +360,7 @@ def parse_version(root, **kwargs):
     from setuptools_scm.git import parse
     from setuptools_scm.version import meta
 
-    version_file = os.path.join(repo_root, "..", "VERSION")
+    version_file = os.path.join(pkg_root, "..", "VERSION")
     if os.path.isfile(version_file):
         with open(version_file, "r", encoding="utf-8") as fp:
             return meta(fp.read().strip())
@@ -297,18 +395,19 @@ setup(
     ],
     keywords="Graph, Large-Scale, Distributed Computing",
     use_scm_version={
-        "root": repo_root,
+        "root": pkg_root,
         "parse": parse_version,
     },
     setup_requires=[
-        "setuptools_scm>=5.0.0",
+        "setuptools_scm>=5.0.0,<8",
     ],
     package_dir=resolve_graphscope_package_dir(),
     packages=find_graphscope_packages(),
     package_data=parsed_package_data(),
     ext_modules=build_learning_engine(),
     cmdclass={
-        "build_ext": CustomBuildExt,
+        "build_ext": BuildGLExt,
+        "build_gltorch_ext": BuildGLTorchExt,
         "build_proto": BuildProto,
         "build_py": CustomBuildPy,
         "bdist_wheel": CustomBDistWheel,
@@ -324,6 +423,11 @@ setup(
         "Documentation": "https://graphscope.io/docs",
         "Source": "https://github.com/alibaba/GraphScope",
         "Tracker": "https://github.com/alibaba/GraphScope/issues",
+    },
+    entry_points={
+        "console_scripts": [
+            "gsctl = graphscope.gsctl.gsctl:cli",
+        ],
     },
 )
 

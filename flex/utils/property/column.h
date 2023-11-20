@@ -37,6 +37,12 @@ class ColumnBase {
 
   virtual Any get(size_t index) const = 0;
 
+  virtual size_t size() const = 0;
+
+  virtual void clear() = 0;
+
+  virtual void resize(size_t size) = 0;
+
   virtual void ingest(uint32_t index, grape::OutArchive& arc) = 0;
 
   virtual void Serialize(const std::string& filename, size_t size) = 0;
@@ -67,6 +73,7 @@ class TypedColumn : public ColumnBase {
   Any get(size_t index) const override {
     return AnyConverter<T>::to_any(buffer_[index]);
   }
+  size_t size() const override { return buffer_.size(); }
 
   void Serialize(const std::string& path, size_t size) override {
     buffer_.dump_to_file(path, size);
@@ -75,6 +82,10 @@ class TypedColumn : public ColumnBase {
   void Deserialize(const std::string& path) override {
     buffer_.open_for_read(path);
   }
+
+  void clear() override { buffer_.clear(); }
+
+  void resize(size_t size) override { buffer_.resize(size); }
 
   void ingest(uint32_t index, grape::OutArchive& arc) override {
     T val;
@@ -92,13 +103,48 @@ class TypedColumn : public ColumnBase {
   StorageStrategy strategy_;
 };
 
-using IntColumn = TypedColumn<int>;
+using BoolColumn = TypedColumn<bool>;
+using IntColumn = TypedColumn<int32_t>;
+using UIntColumn = TypedColumn<uint32_t>;
 using LongColumn = TypedColumn<int64_t>;
+using ULongColumn = TypedColumn<uint64_t>;
 using DateColumn = TypedColumn<Date>;
 using StringColumn = TypedColumn<std::string_view>;
+using DoubleColumn = TypedColumn<double>;
+using FloatColumn = TypedColumn<float>;
 
 std::shared_ptr<ColumnBase> CreateColumn(
     PropertyType type, StorageStrategy strategy = StorageStrategy::kMem);
+
+/// Create RefColumn for ease of usage for hqps
+class RefColumnBase {
+ public:
+  virtual ~RefColumnBase() {}
+  virtual Any get(size_t index) const = 0;
+};
+
+// Different from TypedColumn, RefColumn is a wrapper of mmap_array
+template <typename T>
+class TypedRefColumn : public RefColumnBase {
+ public:
+  using value_type = T;
+
+  TypedRefColumn(const mmap_array<T>& buffer, StorageStrategy strategy)
+      : buffer_(buffer), strategy_(strategy) {}
+  TypedRefColumn(const TypedColumn<T>& column)
+      : buffer_(column.buffer()), strategy_(column.storage_strategy()) {}
+  ~TypedRefColumn() {}
+
+  inline T get_view(size_t index) const { return buffer_[index]; }
+
+  Any get(size_t index) const override {
+    return AnyConverter<T>::to_any(buffer_[index]);
+  }
+
+ private:
+  const mmap_array<T>& buffer_;
+  StorageStrategy strategy_;
+};
 
 }  // namespace gs
 

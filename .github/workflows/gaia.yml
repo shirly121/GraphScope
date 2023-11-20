@@ -2,6 +2,7 @@ name: GraphScope GAIA CI
 
 on:
   # Trigger the workflow on push or pull request, but only for the main branch
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -55,6 +56,13 @@ jobs:
       run: |
         cd ${GITHUB_WORKSPACE}/interactive_engine/executor && ./check_format.sh
 
+    - name: Build Pegasus and Test
+      run: |
+        echo $(pwd)
+        cd ${GITHUB_WORKSPACE}/interactive_engine/executor/engine/pegasus
+        cargo build --verbose
+        cargo test --verbose
+
     - name: Build Ir on Experimental Store and Csr Store
       run: |
         cd ${GITHUB_WORKSPACE}/interactive_engine/compiler
@@ -80,13 +88,13 @@ jobs:
     - name: Ir Integration Test on Experimental Store
       run: |
         . ${HOME}/.graphscope_env
+        git clone -b master --single-branch --depth=1 https://github.com/7br/gstest.git /tmp/gstest
         cd ${GITHUB_WORKSPACE}/interactive_engine/compiler && ./ir_exprimental_ci.sh
 
     - name: Ir Integration Pattern Test on Experimental Store
       run: |
         cd ${GITHUB_WORKSPACE}
-        git clone -b master --single-branch --depth=1 https://github.com/7br/gstest.git /tmp/gstest
-        cd ${GITHUB_WORKSPACE}/interactive_engine/compiler && ./ir_exprimental_pattern_ci.sh
+        cd ${GITHUB_WORKSPACE}/interactive_engine/compiler && ./ir_exprimental_advanced_ci.sh
 
     - name: Ir Integration Test on Csr Store
       run: |
@@ -100,6 +108,7 @@ jobs:
     - name: Upload GIE log
       if: failure()
       uses: actions/upload-artifact@v3
+      continue-on-error: true
       with:
         name: gie-log
         path: /var/log/graphscope

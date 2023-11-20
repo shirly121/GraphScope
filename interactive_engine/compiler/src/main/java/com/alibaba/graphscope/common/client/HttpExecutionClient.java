@@ -21,6 +21,7 @@ import com.alibaba.graphscope.common.client.type.ExecutionRequest;
 import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.HiactorConfig;
+import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.google.common.collect.Lists;
@@ -36,6 +37,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * http client to send request to hqps engine service
@@ -58,7 +60,10 @@ public class HttpExecutionClient extends ExecutionClient<URI> {
     }
 
     @Override
-    public void submit(ExecutionRequest request, ExecutionResponseListener listener)
+    public void submit(
+            ExecutionRequest request,
+            ExecutionResponseListener listener,
+            QueryTimeoutConfig timeoutConfig)
             throws Exception {
         List<CompletableFuture> responseFutures = Lists.newArrayList();
         for (URI httpURI : channelFetcher.fetch()) {
@@ -68,11 +73,12 @@ public class HttpExecutionClient extends ExecutionClient<URI> {
                             .headers(CONTENT_TYPE, TEXT_PLAIN)
                             .POST(
                                     HttpRequest.BodyPublishers.ofByteArray(
-                                            (byte[]) request.getRequestPhysical().build()))
+                                            (byte[]) request.getRequestPhysical().getContent()))
                             .build();
             CompletableFuture<HttpResponse<byte[]>> responseFuture =
                     httpClient
                             .sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
+                            .orTimeout(timeoutConfig.getChannelTimeoutMS(), TimeUnit.MILLISECONDS)
                             .whenComplete(
                                     (bytes, exception) -> {
                                         if (exception != null) {

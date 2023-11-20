@@ -15,7 +15,7 @@
  */
 package com.alibaba.graphscope.groot.wal.kafka;
 
-import com.alibaba.graphscope.compiler.api.exception.GrootException;
+import com.alibaba.graphscope.groot.common.exception.GrootException;
 import com.alibaba.graphscope.groot.wal.LogEntry;
 import com.alibaba.graphscope.groot.wal.LogWriter;
 
@@ -48,6 +48,7 @@ public class KafkaLogWriter implements LogWriter {
         Map<String, Object> producerConfig = new HashMap<>();
         producerConfig.put("bootstrap.servers", servers);
         producerConfig.put("enable.idempotence", true);
+        producerConfig.put("max.request.size", 1048576000);
 
         customConfigs.forEach(
                 (k, v) -> {

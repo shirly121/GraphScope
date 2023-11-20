@@ -129,6 +129,16 @@ impl From<Partial> for Option<Predicates> {
                         cmp: cmp.unwrap(),
                         right: right.unwrap(),
                     }))
+                } else if right.is_none() {
+                    if cmp.unwrap() == common_pb::Logical::Isnull {
+                        Some(Predicates::Predicate(Predicate {
+                            left: left.unwrap(),
+                            cmp: cmp.unwrap(),
+                            right: Operand::Const(Object::None),
+                        }))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -158,20 +168,28 @@ impl TryFrom<pb::index_predicate::Triplet> for Predicates {
     type Error = ParsePbError;
 
     fn try_from(triplet: pb::index_predicate::Triplet) -> Result<Self, Self::Error> {
+        let value = if let Some(value) = &triplet.value {
+            match &value {
+                pb::index_predicate::triplet::Value::Const(v) => Some(v.clone()),
+                _ => Err(ParsePbError::Unsupported(format!(
+                    "unsupported indexed predicate value {:?}",
+                    value
+                )))?,
+            }
+        } else {
+            None
+        };
         let partial = Partial::SingleItem {
             left: triplet
                 .key
                 .map(|var| var.try_into())
                 .transpose()?,
             cmp: Some(common_pb::Logical::Eq),
-            right: triplet
-                .value
-                .map(|val| val.try_into())
-                .transpose()?,
+            right: value.map(|val| val.try_into()).transpose()?,
         };
 
         Option::<Predicates>::from(partial)
-            .ok_or(ParsePbError::ParseError("invalid `Triplet` in `IndexPredicate`".to_string()))
+            .ok_or_else(|| (ParsePbError::ParseError("invalid `Triplet` in `IndexPredicate`".to_string())))
     }
 }
 
@@ -191,7 +209,9 @@ impl TryFrom<pb::index_predicate::AndPredicate> for Predicates {
             }
         }
 
-        predicates.ok_or(ParsePbError::ParseError("invalid `AndPredicate` in `IndexPredicate`".to_string()))
+        predicates.ok_or_else(|| {
+            (ParsePbError::ParseError("invalid `AndPredicate` in `IndexPredicate`".to_string()))
+        })
     }
 }
 
@@ -211,7 +231,7 @@ impl TryFrom<pb::IndexPredicate> for Predicates {
             }
         }
 
-        predicates.ok_or(ParsePbError::ParseError("invalid `IndexPredicate`".to_string()))
+        predicates.ok_or_else(|| (ParsePbError::ParseError("invalid `IndexPredicate`".to_string())))
     }
 }
 
@@ -299,6 +319,14 @@ impl EvalPred for Operand {
                 }
                 Ok(true)
             }
+            Operand::Map(key_vals) => {
+                for key_val in key_vals {
+                    if !key_val.1.eval_bool(_context)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
         }
     }
 }
@@ -316,13 +344,26 @@ impl EvalPred for Predicate {
             | Logical::Within
             | Logical::Without
             | Logical::Startswith
-            | Logical::Endswith => Ok(apply_logical(
+            | Logical::Endswith
+            | Logical::Regex => Ok(apply_logical(
                 &self.cmp,
                 self.left.eval(context)?.as_borrow_object(),
                 Some(self.right.eval(context)?.as_borrow_object()),
             )?
             .as_bool()
             .unwrap_or(false)),
+            Logical::Isnull => {
+                let left = match self.left.eval(context) {
+                    Ok(left) => Ok(left),
+                    Err(err) => match err {
+                        ExprEvalError::GetNoneFromContext => Ok(Object::None),
+                        _ => Err(err),
+                    },
+                };
+                Ok(apply_logical(&self.cmp, left?.as_borrow_object(), None)?
+                    .as_bool()
+                    .unwrap_or(false))
+            }
             _ => Err(ExprEvalError::OtherErr(format!(
                 "invalid logical operator: {:?} in a predicate",
                 self.cmp
@@ -418,7 +459,9 @@ fn process_predicates(
                             | Logical::Within
                             | Logical::Without
                             | Logical::Startswith
-                            | Logical::Endswith => partial.cmp(logical)?,
+                            | Logical::Endswith
+                            | Logical::Isnull
+                            | Logical::Regex => partial.cmp(logical)?,
                             Logical::Not => is_not = true,
                             Logical::And | Logical::Or => {
                                 predicates = predicates.merge_partial(curr_cmp, partial, is_not)?;
@@ -433,7 +476,7 @@ fn process_predicates(
                         container.push(opr.clone());
                     }
                 }
-                Item::Const(_) | Item::Var(_) | Item::Vars(_) | Item::VarMap(_) => {
+                Item::Const(_) | Item::Var(_) | Item::Vars(_) | Item::VarMap(_) | Item::Map(_) => {
                     if left_brace_count == 0 {
                         if partial.get_left().is_none() {
                             partial.left(opr.clone().try_into()?)?;
@@ -466,6 +509,13 @@ fn process_predicates(
                     }
                 }
                 Item::Arith(_) => return Ok(None),
+                Item::Param(param) => {
+                    return Err(ExprError::unsupported(format!("Dynamic Param {:?}", param)))
+                }
+                Item::Case(case) => return Err(ExprError::unsupported(format!("Case When {:?}", case))),
+                Item::Extract(extract) => {
+                    return Err(ExprError::unsupported(format!("Extract {:?}", extract)))
+                }
             }
         }
     }
@@ -554,6 +604,7 @@ mod tests {
                 NameOrId::from("hobbies".to_string()),
                 vec!["football".to_string(), "guitar".to_string()].into(),
             ),
+            (NameOrId::from("str_birthday".to_string()), "1990-04-16".to_string().into()),
         ]
         .into_iter()
         .collect();
@@ -890,5 +941,80 @@ mod tests {
         assert!(!p_eval
             .eval_bool::<_, Vertices>(Some(&context))
             .unwrap());
+    }
+
+    #[test]
+    fn test_eval_predicates_is_null() {
+        // [v0: id = 1, label = 9, age = 31, name = John, birthday = 19900416, hobbies = [football, guitar]]
+        // [v1: id = 2, label = 11, age = 26, name = Jimmy, birthday = 19950816]
+        let ctxt = prepare_context();
+        let cases: Vec<&str> = vec![
+            "@0.hobbies isNull",                 // false
+            "!(@0.hobbies isNull)",              // true
+            "@1.hobbies isNull",                 // true
+            "!(@1.hobbies isNull)",              // false
+            "true isNull",                       // false
+            "false isNull",                      // false
+            "@1.hobbies isNull && @1.age == 26", // true
+        ];
+        let expected: Vec<bool> = vec![false, true, true, false, false, false, true];
+
+        for (case, expected) in cases.into_iter().zip(expected.into_iter()) {
+            let eval = PEvaluator::try_from(str_to_expr_pb(case.to_string()).unwrap()).unwrap();
+            assert_eq!(
+                eval.eval_bool::<_, Vertices>(Some(&ctxt))
+                    .unwrap(),
+                expected
+            );
+        }
+    }
+
+    fn gen_regex_expression(to_match: &str, pattern: &str) -> common_pb::Expression {
+        let mut regex_expr = str_to_expr_pb(to_match.to_string()).unwrap();
+        let regex_opr = common_pb::ExprOpr {
+            node_type: None,
+            item: Some(common_pb::expr_opr::Item::Logical(common_pb::Logical::Regex as i32)),
+        };
+        regex_expr.operators.push(regex_opr);
+        let right = common_pb::ExprOpr {
+            node_type: None,
+            item: Some(common_pb::expr_opr::Item::Const(common_pb::Value {
+                item: Some(common_pb::value::Item::Str(pattern.to_string())),
+            })),
+        };
+        regex_expr.operators.push(right);
+        regex_expr
+    }
+
+    #[test]
+    fn test_eval_predicates_regex() {
+        // [v0: id = 1, label = 9, age = 31, name = John, birthday = 19900416, hobbies = [football, guitar]]
+        // [v1: id = 2, label = 11, age = 26, name = Jimmy, birthday = 19950816]
+        let ctxt = prepare_context();
+
+        // TODO: the parser does not support escape characters in regex well yet.
+        // So use gen_regex_expression() to help generate expression
+        let cases: Vec<(&str, &str)> = vec![
+            ("@0.name", r"^J"),                          // startWith, true
+            ("@0.name", r"J.*"),                         // true
+            ("@0.name", r"n$"),                          // endWith, true
+            ("@0.name", r".*n"),                         // true
+            ("@0.name", r"oh"),                          // true
+            ("@0.name", r"A.*"),                         // false
+            ("@0.name", r".*A"),                         // false
+            ("@0.name", r"ab"),                          // false
+            ("@0.name", r"John.+"),                      // false
+            ("@0.str_birthday", r"^\d{4}-\d{2}-\d{2}$"), // true
+        ];
+        let expected: Vec<bool> = vec![true, true, true, true, true, false, false, false, false, true];
+
+        for ((to_match, pattern), expected) in cases.into_iter().zip(expected.into_iter()) {
+            let eval = PEvaluator::try_from(gen_regex_expression(to_match, pattern)).unwrap();
+            assert_eq!(
+                eval.eval_bool::<_, Vertices>(Some(&ctxt))
+                    .unwrap(),
+                expected
+            );
+        }
     }
 }

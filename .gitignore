@@ -74,7 +74,7 @@ interactive_engine/executor/ir/Cargo.lock
 **/.flattened-pom.xml
 
 # java sdk
-java/**/dependency-reduced-pom.xml
+analytical_engine/java/**/dependency-reduced-pom.xml
 
 # GraphLearn
 coordinator/graphlearn*
@@ -87,3 +87,11 @@ package.lock
 # Core dump
 core.*
 *.core
+
+# Flex related
+flex/docs/
+flex/interactive/data/*
+flex/interactive/logs/*
+flex/interactive/examples/sf0.1-raw/
+flex/interactive/.running
+flex/interactive/.env

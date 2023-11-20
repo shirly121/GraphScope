@@ -6,16 +6,18 @@ This guide gives you a quick start to use GraphScope for graph interactive tasks
 
 GIE works as the core component of GraphScope. Therefore, you should install GraphScope at first to use GIE.
 
-GraphScope provides python interface which requires:
+GraphScope requires the following software versions:
 
-- Python3.7 ~ 3.11
+- Python 3.9 ~ 3.11
+- JDK 11 (Both JDK 8 and 20 have known compatibility issues)
 - gcc 7.1+ or Apple Clang
+
 
 And it is tested on the following 64-bit operating systems:
 
 - Ubuntu 18.04 or later
 - CentOS 7 or later
-- macOS 11 (Intel) / macOS 12 (Apple silicon) or later, with both Intel chip and Apple M1 chip
+- macOS 12 (Intel/Apple silicon) or later, with both Intel chip and Apple M1 chip
 
 If your environment satisfies the above requirement, you can easily install GraphScope through pip:
 
@@ -65,37 +67,47 @@ gs.set_option(show_log=True)
 # load the modern graph as example.
 graph = load_modern_graph()
 
-# Hereafter, you can use the `graph` object to create an `gremlin` query session
-g = gs.gremlin(graph)
-# then `execute` any supported gremlin query.
+# Hereafter, you can use the `graph` object to create an `interactive` query session
+g = gs.interactive(graph)
+# then `execute` any supported gremlin query (by default)
 q1 = g.execute('g.V().count()')
-print(q1.all())   # should print [6]
+print(q1.all().result())   # should print [6]
 
 q2 = g.execute('g.V().hasLabel(\'person\')')
-print(q2.all())  # should print [[v[2], v[3], v[0], v[1]]]
+print(q2.all().result())  # should print [[v[2], v[3], v[0], v[1]]]
+
+# or `execute` any supported Cypher query, by passing `lang="cypher"`
+q3 = g.execute("MATCH (n) RETURN count(n)", lang="cypher")
+print(q3.records[0][0])  # should print 6
 ```
 
 You may see something like:
 ```Shell
 ...
 ... [INFO][coordinator:453]: Built interactive frontend xxx.xxx.xxx.xxx:pppp for graph xxx
-... [INFO][op_executor:455]: execute gremlin query
 [6]
 ...
-... [INFO][op_executor:455]: execute gremlin query
 [v[2], v[3], v[0], v[1]]
 ...
 ```
 
 The number 6 is printed, which is the number of vertices in modern graph.
 
+### Customize Configurations for GIE instance
+
+You could pass additional key-value pairs to customize the startup configuration of GIE, for example:
+
+```python
+# Set the timeout value to 10 min
+g = gs.interactive(graph, params={'query.execution.timeout.ms': 600000})
+```
+
 ## What's the Next
-As shown in the above example, it is very easy to use GraphScope to interactively query a graph using the gremlin query language on your local machine. You may find more tutorials [here](https://tinkerpop.apache.org/docs/current/tutorials/getting-started/) for the basic Gremlin usage, in which most read-only queries can be seamlessly executed with the above `g.execute()` function.
+As shown in the above example, it is very easy to use GraphScope to interactively query a graph using both the Gremlin and Cypher query language on your local machine.
 
 In addition to the above local-machine entr\'ee, we have prepared the following topics for your reference.
 
-- GIE can handle much complex cases, for example, the complex LDBC
-  business intelligence workloads. [A walk-through tutorial is here!](./guide_and_examples)
-- GIE can be deployed in a distributed environment to process very large graph. [How to do that?](./deployment)
-- GIE has supported a lot of standard Gremlin steps, together with many useful syntactic sugars. [Please look into the details!](./supported_gremlin_steps)
-- Want to learn more about the technique details of GIE. [This is the design and architecture of GIE!](./design_of_gie)
+- GIE can be [deployed standalone](./deployment.md) in a distributed environment to process very large graph.
+- GIE has been designed to [integrate with the Tinkerpop ecosystem](./tinkerpop/tinkerpop_gremlin.md), with necessary extensions such as some [syntactic sugars](./tinkerpop/supported_gremlin_steps.md) to ease the use of Gremlin.
+- GIE has been designed to [integrate with the Neo4j ecosystem](./neo4j/cypher_sdk.md).
+- Learn more about the [design of GIE](./design_of_gie).

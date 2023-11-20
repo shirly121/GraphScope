@@ -65,9 +65,9 @@
 #include "core/server/command_detail.h"
 #include "core/server/rpc_utils.h"
 #include "core/utils/mpi_utils.h"
-#include "graphscope/proto/attr_value.pb.h"
-#include "graphscope/proto/graph_def.pb.h"
-#include "graphscope/proto/types.pb.h"
+#include "proto/attr_value.pb.h"
+#include "proto/graph_def.pb.h"
+#include "proto/types.pb.h"
 
 namespace bl = boost::leaf;
 
@@ -287,7 +287,7 @@ bl::result<rpc::graph::GraphDefPb> GrapeInstance::projectToSimple(
     return graph_def;
   }
   VY_OK_OR_RAISE(client_->Persist(vy_info.vineyard_id()));
-  // contruct fragment group
+  // construct fragment group
   BOOST_LEAF_AUTO(frag_group_id,
                   vineyard::ConstructFragmentGroup(
                       *client_, vy_info.vineyard_id(), comm_spec_));
@@ -318,7 +318,11 @@ bl::result<std::string> GrapeInstance::query(const rpc::GSParams& params,
                   app->Query(worker.get(), query_args, context_key, wrapper));
   std::string context_type;
   std::string context_schema;
-  if (ctx_wrapper != nullptr) {
+  if (ctx_wrapper == nullptr) {
+    RETURN_GS_ERROR(
+        vineyard::ErrorCode::kIllegalStateError,
+        "Query returns a null context wrapper without useful error message");
+  } else {
     context_type = ctx_wrapper->context_type();
     context_schema = ctx_wrapper->schema();
     BOOST_LEAF_CHECK(object_manager_.PutObject(ctx_wrapper));
@@ -1175,6 +1179,35 @@ bl::result<rpc::graph::GraphDefPb> GrapeInstance::addLabelsToGraph(
   return dst_wrapper->graph_def();
 }
 
+bl::result<rpc::graph::GraphDefPb> GrapeInstance::consolidateColumns(
+    const rpc::GSParams& params) {
+  BOOST_LEAF_AUTO(src_graph_name, params.Get<std::string>(rpc::GRAPH_NAME));
+  BOOST_LEAF_AUTO(label,
+                  params.Get<std::string>(rpc::CONSOLIDATE_COLUMNS_LABEL));
+  BOOST_LEAF_AUTO(columns,
+                  params.Get<std::string>(rpc::CONSOLIDATE_COLUMNS_COLUMNS));
+  BOOST_LEAF_AUTO(result_column, params.Get<std::string>(
+                                     rpc::CONSOLIDATE_COLUMNS_RESULT_COLUMN));
+  BOOST_LEAF_AUTO(
+      src_wrapper,
+      object_manager_.GetObject<ILabeledFragmentWrapper>(src_graph_name));
+  if (src_wrapper->graph_def().graph_type() != rpc::graph::ARROW_PROPERTY) {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "ConsolidateColumns is only avaiable for ArrowFragment");
+  }
+  std::string dst_graph_name = "graph_" + generateId();
+
+  VLOG(1) << "Consolidate columns from " << src_graph_name
+          << ", graph name: " << dst_graph_name << ":"
+          << "\nlabel = " << label << "\ncolumns = " << columns
+          << "\nresult_column = " << result_column;
+  BOOST_LEAF_AUTO(dst_wrapper, src_wrapper->ConsolidateColumns(
+                                   comm_spec_, dst_graph_name, label, columns,
+                                   result_column));
+  BOOST_LEAF_CHECK(object_manager_.PutObject(dst_wrapper));
+  return dst_wrapper->graph_def();
+}
+
 bl::result<std::shared_ptr<grape::InArchive>> GrapeInstance::graphToNumpy(
     const rpc::GSParams& params) {
   std::pair<std::string, std::string> range;
@@ -1406,6 +1439,11 @@ bl::result<std::shared_ptr<DispatchResult>> GrapeInstance::OnReceive(
   }
   case rpc::ADD_LABELS: {
     BOOST_LEAF_AUTO(graph_def, addLabelsToGraph(params));
+    r->set_graph_def(graph_def);
+    break;
+  }
+  case rpc::CONSOLIDATE_COLUMNS: {
+    BOOST_LEAF_AUTO(graph_def, consolidateColumns(params));
     r->set_graph_def(graph_def);
     break;
   }

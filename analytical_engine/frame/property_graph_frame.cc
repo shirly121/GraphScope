@@ -33,8 +33,8 @@
 #include "core/server/rpc_utils.h"
 #include "core/utils/fragment_traits.h"
 #include "core/vertex_map/arrow_projected_vertex_map.h"
-#include "graphscope/proto/attr_value.pb.h"
-#include "graphscope/proto/graph_def.pb.h"
+#include "proto/attr_value.pb.h"
+#include "proto/graph_def.pb.h"
 
 #if !defined(_GRAPH_TYPE)
 #error Missing _GRAPH_TYPE
@@ -85,6 +85,7 @@ LoadGraph(const grape::CommSpec& comm_spec, vineyard::Client& client,
 
     graph_def.set_key(graph_name);
     graph_def.set_compact_edges(frag->compact_edges());
+    graph_def.set_use_perfect_hash(frag->use_perfect_hash());
     gs::rpc::graph::VineyardInfoPb vy_info;
     if (graph_def.has_extension()) {
       graph_def.extension().UnpackTo(&vy_info);
@@ -160,6 +161,7 @@ LoadGraph(const grape::CommSpec& comm_spec, vineyard::Client& client,
 
     graph_def.set_key(graph_name);
     graph_def.set_compact_edges(frag->compact_edges());
+    graph_def.set_use_perfect_hash(frag->use_perfect_hash());
 
     gs::rpc::graph::VineyardInfoPb vy_info;
     if (graph_def.has_extension()) {
@@ -211,9 +213,14 @@ ToArrowFragment(vineyard::Client& client, const grape::CommSpec& comm_spec,
                 std::shared_ptr<gs::IFragmentWrapper>& wrapper_in,
                 const std::string& dst_graph_name) {
 #ifdef NETWORKX
-  static_assert(std::is_same<vid_t, gs::DynamicFragment::vid_t>::value,
-                "The type of ArrowFragment::vid_t does not match with the "
-                "DynamicFragment::vid_t");
+  if (!std::is_same<vid_t, gs::DynamicFragment::vid_t>::value) {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidValueError,
+                    "The type of vid_t '" + vineyard::type_name<vid_t>() +
+                        "' does not match with the "
+                        "DynamicFragment::vid_t '" +
+                        vineyard::type_name<gs::DynamicFragment::vid_t>() +
+                        "'");
+  }
 
   if (wrapper_in->graph_def().graph_type() !=
       gs::rpc::graph::DYNAMIC_PROPERTY) {
@@ -252,7 +259,7 @@ ToArrowFragment(vineyard::Client& client, const grape::CommSpec& comm_spec,
                         std::string(vineyard::type_name<oid_t>()));
   }
 
-  gs::DynamicToArrowConverter<oid_t, vertex_map_t, compact_v> converter(
+  gs::DynamicToArrowConverter<oid_t, vid_t, vertex_map_t, compact_v> converter(
       comm_spec, client);
   BOOST_LEAF_AUTO(arrow_frag, converter.Convert(dynamic_frag));
   VINEYARD_CHECK_OK(client.Persist(arrow_frag->id()));
@@ -264,6 +271,7 @@ ToArrowFragment(vineyard::Client& client, const grape::CommSpec& comm_spec,
   gs::rpc::graph::GraphDefPb graph_def;
   graph_def.set_key(dst_graph_name);
   graph_def.set_compact_edges(arrow_frag->compact_edges());
+  graph_def.set_use_perfect_hash(arrow_frag->use_perfect_hash());
   gs::rpc::graph::VineyardInfoPb vy_info;
   if (graph_def.has_extension()) {
     graph_def.extension().UnpackTo(&vy_info);
@@ -310,6 +318,7 @@ ToDynamicFragment(const grape::CommSpec& comm_spec,
   graph_def.set_directed(dynamic_frag->directed());
   graph_def.set_graph_type(gs::rpc::graph::DYNAMIC_PROPERTY);
   graph_def.set_compact_edges(false);
+  graph_def.set_use_perfect_hash(false);
   gs::rpc::graph::MutableGraphInfoPb graph_info;
   if (graph_def.has_extension()) {
     graph_def.extension().UnpackTo(&graph_info);
@@ -354,6 +363,7 @@ AddLabelsToGraph(vineyard::ObjectID origin_frag_id,
 
   graph_def.set_key(graph_name);
   graph_def.set_compact_edges(frag->compact_edges());
+  graph_def.set_use_perfect_hash(frag->use_perfect_hash());
 
   gs::rpc::graph::VineyardInfoPb vy_info;
   if (graph_def.has_extension()) {
@@ -373,6 +383,7 @@ AddLabelsToGraph(vineyard::ObjectID origin_frag_id,
       graph_name, graph_def, frag);
   return std::dynamic_pointer_cast<gs::IFragmentWrapper>(wrapper);
 }
+
 }  // namespace detail
 
 /**

@@ -118,7 +118,7 @@ impl TryFrom<pb::pattern::Sentence> for BaseSentence {
             let start_tag: NameOrId = pb
                 .start
                 .clone()
-                .ok_or(ParsePbError::EmptyFieldError("Pattern::Sentence::start".to_string()))?
+                .ok_or_else(|| ParsePbError::EmptyFieldError("Pattern::Sentence::start".to_string()))?
                 .try_into()?;
 
             let end_tag: Option<NameOrId> = pb
@@ -1851,24 +1851,14 @@ mod test {
         assert_eq!(
             plan.nodes.get(8).unwrap().opr.clone().unwrap(),
             pb::Join {
-                left_keys: vec![common_pb::Variable {
-                    tag: Some("a".into()),
-                    property: None,
-                    node_type: None
-                },common_pb::Variable {
-                    tag: Some("c".into()),
-                    property: None,
-                    node_type: None
-                }],
-                right_keys: vec![common_pb::Variable {
-                    tag: Some("a".into()),
-                    property: None,
-                    node_type: None
-                },common_pb::Variable {
-                    tag: Some("c".into()),
-                    property: None,
-                    node_type: None
-                }],
+                left_keys: vec![
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None }
+                ],
+                right_keys: vec![
+                    common_pb::Variable { tag: Some("a".into()), property: None, node_type: None },
+                    common_pb::Variable { tag: Some("c".into()), property: None, node_type: None }
+                ],
                 kind: 5 // inner join
             }
             .into()

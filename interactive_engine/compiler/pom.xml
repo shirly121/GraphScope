@@ -20,6 +20,10 @@
             <artifactId>protobuf-java</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java-util</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.alibaba.pegasus</groupId>
             <artifactId>pegasus-client</artifactId>
         </dependency>
@@ -118,7 +122,15 @@
         </dependency>
         <dependency>
             <groupId>com.alibaba.graphscope</groupId>
-            <artifactId>sdk-common</artifactId>
+            <artifactId>interactive-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.neo4j</groupId>
+            <artifactId>neo4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.neo4j.driver</groupId>
+            <artifactId>neo4j-java-driver</artifactId>
         </dependency>
         <dependency>
             <groupId>org.immutables</groupId>
@@ -219,7 +231,7 @@
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>libs/</classpathPrefix>
                             <mainClass>
-                                com.alibaba.graphscope.common.SubmitPlanServiceMain
+                                com.alibaba.graphscope.GraphServer
                             </mainClass>
                         </manifest>
                     </archive>
@@ -239,7 +251,9 @@
                     <excludes>
                         <exclude>**/IrGremlinTest.java</exclude>
                         <exclude>**/IrLdbcTest.java</exclude>
+                        <exclude>**/SimpleMatchTest.java</exclude>
                         <exclude>**/IrPatternTest.java</exclude>
+                        <exclude>**/MovieTest.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>

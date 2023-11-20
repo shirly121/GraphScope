@@ -25,8 +25,11 @@ query
     ;
 
 // g
+// g.with(ARGS_EVAL_TIMEOUT, 2000L)
+// g.with(Tokens.ARGS_EVAL_TIMEOUT, 2000L)
+// g.with('evaluationTimeout', 2000L)
 traversalSource
-    : TRAVERSAL_ROOT
+    : TRAVERSAL_ROOT (DOT traversalMethod_with) *
     ;
 
 // g.rootTraversal()
@@ -61,7 +64,8 @@ traversalMethod
     | traversalMethod_inE  // inE()[.outV()]
     | traversalMethod_bothE  // bothE()[.otherV()]
     | traversalMethod_limit    // limit()
-    | traversalMethod_valueMap  // valueMap()
+    | traversalMethod_valueMap // valueMap()
+    | traversalMethod_elementMap // elementMap()
     | traversalMethod_order  // order()
     | traversalMethod_select  // select()
     | traversalMethod_dedup   // dedup()
@@ -76,12 +80,15 @@ traversalMethod
     | traversalMethod_otherV  // otherV()
     | traversalMethod_not  // not()
     | traversalMethod_union // union()
+    | traversalMethod_identity // identity()
     | traversalMethod_match // match()
     | traversalMethod_subgraph // subgraph()
     | traversalMethod_bothV // bothV()
+    | traversalMethod_unfold // unfold()
     | traversalMethod_aggregate_func
     | traversalMethod_hasNot // hasNot()
     | traversalMethod_coin  // coin()
+    | traversalMethod_sample    // sample()
     | traversalMethod_with  // with()
     | traversalMethod_id    // id()
     | traversalMethod_label // label()
@@ -164,8 +171,20 @@ traversalMethod_bothE
 // with('PATH_OPT', 'SIMPLE' | 'ARBITRARY')
 // with('RESULT_OPT', 'ALL_V' | 'END_V')
 // with('UNTIL', expression)
+// with('ARGS_EVAL_TIMEOUT', 2000L) // set evaluation timeout to 2 seconds
+// with('Tokens.ARGS_EVAL_TIMEOUT', 2000L) // set evaluation timeout to 2 seconds
+// with('evaluationTimeout', 2000L) // set evaluation timeout to 2 seconds
 traversalMethod_with
-    : 'with' LPAREN stringLiteral COMMA stringLiteral RPAREN
+    : 'with' LPAREN stringLiteral COMMA genericLiteral RPAREN
+    | 'with' LPAREN evaluationTimeoutKey COMMA evaluationTimeoutValue RPAREN
+    ;
+
+evaluationTimeoutKey
+    : 'ARGS_EVAL_TIMEOUT' | 'Tokens.ARGS_EVAL_TIMEOUT'
+    ;
+
+evaluationTimeoutValue
+    : integerLiteral
     ;
 
 // outV()
@@ -197,6 +216,12 @@ traversalMethod_limit
 // valueMap('s1', ...)
 traversalMethod_valueMap
     : 'valueMap' LPAREN stringLiteralList RPAREN
+    ;
+
+// elementMap()
+// elementMap('s1', ...)
+traversalMethod_elementMap
+    : 'elementMap' LPAREN stringLiteralList RPAREN
     ;
 
 // order()
@@ -238,12 +263,14 @@ traversalMethod_select
 // by()
 // by("name")
 // by(valueMap())
+// by(elementMap())
 // by(out().count())
 // by(T.label/T.id)
 traversalMethod_selectby
     : 'by' LPAREN RPAREN
     | 'by' LPAREN stringLiteral RPAREN
     | 'by' LPAREN (ANON_TRAVERSAL_ROOT DOT)? traversalMethod_valueMap RPAREN
+    | 'by' LPAREN (ANON_TRAVERSAL_ROOT DOT)? traversalMethod_elementMap RPAREN
     | 'by' LPAREN nestedTraversal RPAREN
     | 'by' LPAREN traversalToken RPAREN
     ;
@@ -429,9 +456,29 @@ traversalMethod_union
     : 'union' LPAREN nestedTraversalExpr RPAREN
     ;
 
+traversalMethod_identity
+    : 'identity' LPAREN RPAREN
+    ;
+
+// coin(0.5)
 traversalMethod_coin
 	: 'coin' LPAREN floatLiteral RPAREN
 	;
+
+// sample(100)
+// sample(100).by(T.id)
+// sample(100).by('name')
+// sample(100).by(select('a').by('name'))
+// sample(100).by(out().count())
+traversalMethod_sample
+    : 'sample' LPAREN integerLiteral RPAREN (DOT traversalMethod_sampleby) ?
+    ;
+
+traversalMethod_sampleby
+    : 'by' LPAREN traversalToken RPAREN
+    | 'by' LPAREN stringLiteral RPAREN
+    | 'by' LPAREN nestedTraversal RPAREN
+    ;
 
 nestedTraversalExpr
     : nestedTraversal (COMMA nestedTraversal)*
@@ -453,6 +500,10 @@ traversalMethod_subgraph
 traversalMethod_bothV
 	: 'bothV' LPAREN RPAREN
 	;
+
+traversalMethod_unfold
+    : 'unfold' LPAREN RPAREN
+    ;
 
 traversalMethod_id
 	: 'id' LPAREN RPAREN

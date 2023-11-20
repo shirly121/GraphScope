@@ -21,6 +21,7 @@ import os
 import platform
 from abc import ABCMeta
 from abc import abstractmethod
+from typing import List
 
 from gscoordinator.utils import GRAPHSCOPE_HOME
 
@@ -40,7 +41,7 @@ def configure_environ():
     if os.path.isdir(os.path.join(GRAPHSCOPE_HOME, "open-mpi")):
         opal_prefix = os.path.join(GRAPHSCOPE_HOME, "open-mpi")
     if opal_prefix is None:
-        logger.warning(
+        logger.info(
             "Failed to resolve the openmpi path, moving towards the system-wide one"
         )
     else:
@@ -74,12 +75,13 @@ def configure_environ():
 
 class AbstractLauncher(metaclass=ABCMeta):
     def __init__(self):
-        self._instance_id = None
-        self._num_workers = None
-        self._hosts = ""
-        self._analytical_engine_process = None
-        self._analytical_engine_endpoint = None
-        self._session_workspace = None
+        self._instance_id: str = None
+        self._num_workers: int = None
+        self._hosts: List[str] = []
+        self._analytical_engine_endpoint: str = None
+        self._vineyard_endpoint: str = None
+        self._vineyard_socket: str = None
+        self._session_workspace: str = None
         configure_environ()
 
     @abstractmethod
@@ -87,11 +89,15 @@ class AbstractLauncher(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def create_interactive_instance(self, object_id: int, schema_path: str):
+    def create_interactive_instance(
+        self, object_id: int, schema_path: str, params: dict, with_cypher: bool
+    ):
         pass
 
     @abstractmethod
-    def create_learning_instance(self, object_id: int, handle: str, config: str):
+    def create_learning_instance(
+        self, object_id: int, handle: str, config: str, learning_backend: int
+    ):
         pass
 
     @abstractmethod
@@ -127,7 +133,7 @@ class AbstractLauncher(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_engine_config(self):
+    def get_engine_config(self) -> dict:
         pass
 
     @abstractmethod
@@ -139,25 +145,29 @@ class AbstractLauncher(metaclass=ABCMeta):
         pass
 
     @property
-    def analytical_engine_endpoint(self):
+    def vineyard_endpoint(self) -> str:
+        return self._vineyard_endpoint
+
+    @property
+    def vineyard_socket(self) -> str:
+        return self._vineyard_socket
+
+    @property
+    def analytical_engine_endpoint(self) -> str:
         return self._analytical_engine_endpoint
 
     @property
-    def analytical_engine_process(self):
-        return self._analytical_engine_process
-
-    @property
-    def num_workers(self):
+    def num_workers(self) -> int:
         if self._num_workers is None:
             raise RuntimeError("Get None value of workers number.")
         return int(self._num_workers)
 
     @property
-    def instance_id(self):
+    def instance_id(self) -> str:
         return self._instance_id
 
     @property
-    def hosts(self):
+    def hosts(self) -> List[str]:
         return self._hosts
 
     @abstractmethod
@@ -173,8 +183,8 @@ class AbstractLauncher(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def set_session_workspace(self, session_id):
+    def set_session_workspace(self, session_id: str):
         pass
 
-    def get_namespace(self):
+    def get_namespace(self) -> str:
         pass

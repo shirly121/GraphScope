@@ -47,8 +47,8 @@
 #include "core/app/pregel/pregel_property_app_base.h"
 #include "core/error.h"
 #include "frame/ctx_wrapper_builder.h"
-#include "graphscope/proto/data_types.pb.h"
-#include "graphscope/proto/types.pb.h"
+#include "proto/data_types.pb.h"
+#include "proto/types.pb.h"
 
 #include QUOTE(_APP_HEADER)
 
@@ -173,25 +173,21 @@ __attribute__((visibility("hidden"))) std::nullptr_t DeleteWorker(
   return nullptr;
 }
 
-__attribute__((visibility("hidden"))) std::nullptr_t Query(
+__attribute__((visibility("hidden"))) bl::result<std::nullptr_t> Query(
     void* worker_handler, const gs::rpc::QueryArgs& query_args,
     const std::string& context_key,
     std::shared_ptr<gs::IFragmentWrapper> frag_wrapper,
-    std::shared_ptr<gs::IContextWrapper>& ctx_wrapper,
-    bl::result<nullptr_t>& wrapper_error) {
+    std::shared_ptr<gs::IContextWrapper>& ctx_wrapper) {
   auto worker = static_cast<worker_handler_t*>(worker_handler)->worker;
   auto result = gs::AppInvoker<_APP_TYPE>::Query(worker, query_args);
-  if (!result) {
-    wrapper_error = std::move(result);
-    return nullptr;
+  if (result) {
+    if (!context_key.empty()) {
+      auto ctx = worker->GetContext();
+      ctx_wrapper = gs::CtxWrapperBuilder<typename _APP_TYPE::context_t>::build(
+          context_key, frag_wrapper, ctx);
+    }
   }
-
-  if (!context_key.empty()) {
-    auto ctx = worker->GetContext();
-    ctx_wrapper = gs::CtxWrapperBuilder<typename _APP_TYPE::context_t>::build(
-        context_key, frag_wrapper, ctx);
-  }
-  return nullptr;
+  return result;
 }
 
 }  // namespace detail
@@ -218,6 +214,6 @@ void Query(void* worker_handler, const gs::rpc::QueryArgs& query_args,
            bl::result<nullptr_t>& wrapper_error) {
   __FRAME_CATCH_AND_ASSIGN_GS_ERROR(
       wrapper_error, detail::Query(worker_handler, query_args, context_key,
-                                   frag_wrapper, ctx_wrapper, wrapper_error));
+                                   frag_wrapper, ctx_wrapper));
 }
 }  // extern "C"

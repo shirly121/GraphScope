@@ -1,11 +1,11 @@
 package com.alibaba.graphscope.groot.frontend.write;
 
+import com.alibaba.graphscope.groot.common.util.EdgeRecordKey;
+import com.alibaba.graphscope.groot.common.util.VertexRecordKey;
 import com.alibaba.graphscope.groot.operation.OperationType;
-import com.alibaba.graphscope.proto.write.DataRecordPb;
-import com.alibaba.graphscope.proto.write.WriteRequestPb;
-import com.alibaba.graphscope.proto.write.WriteTypePb;
-import com.alibaba.graphscope.sdkcommon.common.EdgeRecordKey;
-import com.alibaba.graphscope.sdkcommon.common.VertexRecordKey;
+import com.alibaba.graphscope.proto.groot.DataRecordPb;
+import com.alibaba.graphscope.proto.groot.WriteRequestPb;
+import com.alibaba.graphscope.proto.groot.WriteTypePb;
 
 import java.util.Collections;
 import java.util.Map;
@@ -59,6 +59,8 @@ public class WriteRequest {
                 return new WriteRequest(OperationType.UPDATE_VERTEX, dataRecord);
             case DELETE:
                 return new WriteRequest(OperationType.DELETE_VERTEX, dataRecord);
+            case CLEAR_PROPERTY:
+                return new WriteRequest(OperationType.CLEAR_VERTEX_PROPERTIES, dataRecord);
             default:
                 throw new IllegalArgumentException("Invalid write type [" + typePb + "]");
         }
@@ -72,6 +74,8 @@ public class WriteRequest {
                 return new WriteRequest(OperationType.UPDATE_EDGE, dataRecord);
             case DELETE:
                 return new WriteRequest(OperationType.DELETE_EDGE, dataRecord);
+            case CLEAR_PROPERTY:
+                return new WriteRequest(OperationType.CLEAR_EDGE_PROPERTIES, dataRecord);
             default:
                 throw new IllegalArgumentException("Invalid write type [" + typePb + "]");
         }

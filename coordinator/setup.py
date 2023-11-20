@@ -152,6 +152,11 @@ def _get_extra_data():  # noqa: C901
             data["/usr/include/rapidjson"] = os.path.join(RUNTIME_ROOT, "include")
             data["/usr/include/msgpack"] = os.path.join(RUNTIME_ROOT, "include")
             data["/usr/include/msgpack.hpp"] = os.path.join(RUNTIME_ROOT, "include")
+            # recent protobuf requires include absl directly
+            if os.path.isdir(f"{GRAPHSCOPE_HOME}/include/absl"):
+                data[f"{GRAPHSCOPE_HOME}/include/absl"] = os.path.join(
+                    RUNTIME_ROOT, "include"
+                )
         elif platform.system() == "Darwin":
             homebrew_prefix = __get_homebrew_prefix()
             data[f"{homebrew_prefix}/include/rapidjson"] = os.path.join(
@@ -163,6 +168,11 @@ def _get_extra_data():  # noqa: C901
             data[f"{homebrew_prefix}/include/msgpack.hpp"] = os.path.join(
                 RUNTIME_ROOT, "include"
             )
+            # recent protobuf requires include absl directly
+            if os.path.isdir(f"{homebrew_prefix}/include/absl"):
+                data[f"{homebrew_prefix}/include/absl"] = os.path.join(
+                    RUNTIME_ROOT, "include"
+                )
     elif name == "gs-apps":
         # precompiled applications
         data = {
@@ -391,7 +401,7 @@ setup(
         "parse": parse_version,
     },
     setup_requires=[
-        "setuptools_scm>=5.0.0",
+        "setuptools_scm>=5.0.0,<8",
     ],
     package_dir=parsed_package_dir(),
     packages=parsed_packages(),
@@ -411,7 +421,7 @@ setup(
 if os.name == "nt":
 
     class _ReprableString(str):
-        def __repr__(self) -> str:
+        def __repr__(self) -> str:  # pylint: disable=invalid-repr-returned
             return self
 
     raise RuntimeError(

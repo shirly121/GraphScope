@@ -13,11 +13,11 @@
  */
 package com.alibaba.graphscope.groot.store;
 
-import com.alibaba.graphscope.compiler.api.exception.GrootException;
 import com.alibaba.graphscope.groot.CompletionCallback;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
 import com.alibaba.graphscope.groot.common.config.StoreConfig;
+import com.alibaba.graphscope.groot.common.exception.GrootException;
 import com.alibaba.graphscope.groot.common.util.ThreadFactoryUtils;
 import com.alibaba.graphscope.groot.meta.MetaService;
 import com.alibaba.graphscope.groot.metrics.AvgMetric;
@@ -33,6 +33,7 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -148,6 +149,10 @@ public class StoreService implements MetricsAgent {
         return this.idToPartition;
     }
 
+    public int getStoreId() {
+        return storeId;
+    }
+
     public void stop() {
         this.shouldStop = true;
         if (this.idToPartition != null) {
@@ -224,9 +229,11 @@ public class StoreService implements MetricsAgent {
         long snapshotId = storeDataBatch.getSnapshotId();
         List<Map<Integer, OperationBatch>> dataBatch = storeDataBatch.getDataBatch();
         AtomicBoolean hasDdl = new AtomicBoolean(false);
+        int maxRetry = 10;
         for (Map<Integer, OperationBatch> partitionToBatch : dataBatch) {
-            while (!shouldStop && partitionToBatch.size() != 0) {
+            while (!shouldStop && partitionToBatch.size() != 0 && maxRetry > 0) {
                 partitionToBatch = writeStore(snapshotId, partitionToBatch, hasDdl);
+                maxRetry--;
             }
         }
         return hasDdl.get();
@@ -364,12 +371,11 @@ public class StoreService implements MetricsAgent {
     }
 
     public void clearIngest(String dataPath) throws IOException {
-        String dataRoot = StoreConfig.STORE_DATA_PATH.get(storeConfigs);
         if (dataPath == null || dataPath.isEmpty()) {
             logger.warn("Must set a sub-path for clearing.");
             return;
         }
-
+        String dataRoot = StoreConfig.STORE_DATA_PATH.get(storeConfigs);
         Path downloadPath = Paths.get(dataRoot, "download", dataPath);
         try {
             logger.info("Clearing directory {}", downloadPath);
@@ -389,7 +395,7 @@ public class StoreService implements MetricsAgent {
         this.garbageCollectExecutor.execute(
                 () -> {
                     try {
-                        logger.info("Garbage collecting, snapshot [{}]", snapshotId);
+                        // logger.debug("Garbage collecting, snapshot [{}]", snapshotId);
                         garbageCollectInternal(snapshotId);
                         callback.onCompleted(null);
                     } catch (Exception e) {
@@ -445,5 +451,13 @@ public class StoreService implements MetricsAgent {
     @Override
     public String[] getMetricKeys() {
         return new String[] {PARTITION_WRITE_PER_SECOND_MS};
+    }
+
+    public long[] getDiskStatus() {
+        String dataRoot = StoreConfig.STORE_DATA_PATH.get(storeConfigs);
+        File file = new File(dataRoot);
+        long total = file.getTotalSpace();
+        long usable = file.getUsableSpace();
+        return new long[] {total, usable};
     }
 }

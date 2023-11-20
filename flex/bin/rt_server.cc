@@ -16,8 +16,8 @@
 #include "grape/util.h"
 
 #include "flex/engines/graph_db/database/graph_db.h"
-#include "flex/engines/graph_db/server/options.h"
-#include "flex/engines/graph_db/server/service.h"
+#include "flex/engines/http_server/graph_db_service.h"
+#include "flex/engines/http_server/options.h"
 
 #include <boost/program_options.hpp>
 #include <seastar/core/alien.hh>
@@ -82,9 +82,10 @@ int main(int argc, char** argv) {
   double t0 = -grape::GetCurrentTime();
   auto& db = gs::GraphDB::get();
 
-  auto ret = gs::Schema::LoadFromYaml(graph_schema_path, bulk_load_config_path);
-  db.Init(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret),
-          std::get<3>(ret), data_path, shard_num);
+  auto schema = gs::Schema::LoadFromYaml(graph_schema_path);
+  auto loading_config =
+      gs::LoadingConfig::ParseFromYaml(schema, bulk_load_config_path);
+  db.Init(schema, loading_config, data_path, shard_num);
 
   t0 += grape::GetCurrentTime();
 
@@ -92,8 +93,8 @@ int main(int argc, char** argv) {
 
   // start service
   LOG(INFO) << "GraphScope http server start to listen on port " << http_port;
-  service::get().init(shard_num, http_port, enable_dpdk);
-  service::get().run_and_wait_for_exit();
+  server::GraphDBService::get().init(shard_num, http_port, enable_dpdk);
+  server::GraphDBService::get().run_and_wait_for_exit();
 
   return 0;
 }

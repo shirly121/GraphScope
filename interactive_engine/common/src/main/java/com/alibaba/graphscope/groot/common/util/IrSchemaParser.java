@@ -16,8 +16,8 @@
 
 package com.alibaba.graphscope.groot.common.util;
 
-import com.alibaba.graphscope.compiler.api.schema.*;
-import com.alibaba.graphscope.sdkcommon.util.JSON;
+import com.alibaba.graphscope.groot.common.schema.api.*;
+import com.alibaba.graphscope.groot.common.schema.wrapper.DataType;
 import com.google.common.collect.ImmutableMap;
 
 import org.slf4j.Logger;
@@ -38,7 +38,7 @@ public class IrSchemaParser {
 
     private IrSchemaParser() {}
 
-    public String parse(GraphSchema graphSchema) {
+    public String parse(GraphSchema graphSchema, boolean isColumnId) {
         List<GraphVertex> vertices = graphSchema.getVertexList();
         List<GraphEdge> edges = graphSchema.getEdgeList();
         List entities = new ArrayList();
@@ -49,7 +49,7 @@ public class IrSchemaParser {
         schemaMap.put("entities", entities);
         schemaMap.put("relations", relations);
         schemaMap.put("is_table_id", true);
-        schemaMap.put("is_column_id", true);
+        schemaMap.put("is_column_id", isColumnId);
         return JSON.toJson(schemaMap);
     }
 
@@ -144,9 +144,15 @@ public class IrSchemaParser {
                 return 8;
             case STRING_LIST:
                 return 9;
-            case UNKNOWN:
+            case DATE:
+                return 12;
+            case TIME32:
+                return 13;
+            case TIMESTAMP:
+                return 14;
             default:
-                return 11;
+                throw new UnsupportedOperationException(
+                        "convert from DataType " + dataType + " to ir core is unsupported yet");
         }
     }
 }

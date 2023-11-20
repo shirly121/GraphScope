@@ -20,6 +20,7 @@ import com.alibaba.graphscope.common.exception.OpArgIllegalException;
 import com.alibaba.graphscope.common.intermediate.ArgUtils;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
 import com.alibaba.graphscope.common.intermediate.operator.*;
+import com.alibaba.graphscope.common.jna.type.*;
 import com.alibaba.graphscope.gremlin.exception.UnsupportedStepException;
 import com.alibaba.graphscope.gremlin.plugin.step.*;
 import com.alibaba.graphscope.gremlin.plugin.step.GroupCountStep;
@@ -52,6 +53,7 @@ public class InterOpCollectionBuilder {
     public InterOpCollection build() throws OpArgIllegalException, UnsupportedStepException {
         InterOpCollection opCollection = new InterOpCollection();
         List<Step> steps = traversal.asAdmin().getSteps();
+
         for (Step step : steps) {
             List<InterOpBase> opList = new ArrayList<>();
             // judge by class type instead of instance
@@ -73,7 +75,10 @@ public class InterOpCollectionBuilder {
                     || Utils.equalClass(step, MeanGlobalStep.class)) {
                 opList.add(StepTransformFactory.AGGREGATE_STEP.apply(step));
             } else if (Utils.equalClass(step, PropertiesStep.class)
-                    || Utils.equalClass(step, PropertyMapStep.class)) {
+                    || Utils.equalClass(step, PropertyMapStep.class)
+                    || Utils.equalClass(step, LabelStep.class)
+                    || Utils.equalClass(step, IdStep.class)
+                    || Utils.equalClass(step, ElementMapStep.class)) {
                 opList.add(StepTransformFactory.VALUES_STEP.apply(step));
             } else if (Utils.equalClass(step, IsStep.class)) {
                 opList.add(StepTransformFactory.IS_STEP.apply(step));
@@ -135,17 +140,23 @@ public class InterOpCollectionBuilder {
                 opList.add(StepTransformFactory.SUBGRAPH_STEP.apply(step));
             } else if (Utils.equalClass(step, IdentityStep.class)) {
                 opList.add(StepTransformFactory.IDENTITY_STEP.apply(step));
-            } else if (Utils.equalClass(step, IdStep.class)) {
-                opList.add(StepTransformFactory.ID_STEP.apply(step));
-            } else if (Utils.equalClass(step, LabelStep.class)) {
-                opList.add(StepTransformFactory.LABEL_STEP.apply(step));
             } else if (Utils.equalClass(step, ConstantStep.class)) {
                 opList.add(StepTransformFactory.CONSTANT_STEP.apply(step));
+            } else if (Utils.equalClass(step, UnfoldStep.class)) {
+                opList.add(StepTransformFactory.UNFOLD_STEP.apply(step));
+            } else if (Utils.equalClass(step, CoinStep.class)) {
+                opList.add(StepTransformFactory.COIN_STEP.apply(step));
+            } else if (Utils.equalClass(step, SampleGlobalStep.class)) {
+                opList.addAll(
+                        TraversalParentTransformFactory.SAMPLE_BY_STEP.apply(
+                                (TraversalParent) step));
             } else {
                 throw new UnsupportedStepException(step.getClass(), "unimplemented yet");
             }
+
             for (int i = 0; i < opList.size(); ++i) {
                 InterOpBase op = opList.get(i);
+
                 // last op
                 if (i == opList.size() - 1) {
                     // set alias
@@ -159,6 +170,7 @@ public class InterOpCollectionBuilder {
                         op.setAlias(new OpArg(ArgUtils.asAlias(label, true)));
                     }
                 }
+
                 opCollection.appendInterOp(op);
             }
         }

@@ -17,7 +17,7 @@ jobs:
       run:
         shell: bash --noprofile --norc -eo pipefail {0}
     container:
-      image: registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-dev:v0.15.0
+      image: registry.cn-hongkong.aliyuncs.com/graphscope/graphscope-dev:v0.16.4
       options:
         --shm-size 4096m
 
@@ -47,6 +47,7 @@ jobs:
 
     - name: Upload Coverage
       uses: codecov/codecov-action@v3
+      continue-on-error: true
       with:
         file: ./python/coverage.xml
-        fail_ci_if_error: true
+        fail_ci_if_error: false

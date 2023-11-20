@@ -64,21 +64,35 @@ END
 #   schema_path: path of graph schema file
 #   pegasus_hosts: hosts and port of executor
 #   executor_count: number of executor, equal to engine count
-#   frontend_port: frontend port
+#   frontend_gremlin_port: frontend gremlin port
+#   frontend_cypher_port: frontend cypher port
+#   neo4j_disabled: whether to disable neo4j
+#   params: parameters of engine
 ##########################
 start_frontend() {
   declare -r GRAPHSCOPE_RUNTIME=$1
   declare -r object_id=$2
   declare -r schema_path=$3
   declare -r pegasus_hosts=$4
-  declare -r frontend_port=$5
+  declare -r frontend_gremlin_port=$5
+  declare -r frontend_cypher_port=$6
+  declare -r neo4j_disabled=$7
+  declare -r params=$8
+
   declare -r threads_per_worker=${THREADS_PER_WORKER:-2}
 
   # create related directories
   declare -r log_dir=${GS_LOG}/${object_id}
   declare -r config_dir=${GRAPHSCOPE_RUNTIME}/config/${object_id}
   declare -r pid_dir=${GRAPHSCOPE_RUNTIME}/pid/${object_id}
+
   mkdir -p ${log_dir} ${config_dir} ${pid_dir}
+
+  # make a "current" link
+  unlink ${GS_LOG}/current || true
+  ln -s ${log_dir} ${GS_LOG}/current
+
+  decoded_params=`echo -n $params | base64 -d`
 
   declare java_opt="-server
             -verbose:gc
@@ -106,9 +120,13 @@ start_frontend() {
   sed -e "s@GRAPH_NAME@${object_id}@g" \
       -e "s@GRAPH_SCHEMA@${schema_path}@g" \
       -e "s@PEGASUS_HOSTS@${pegasus_hosts}@g" \
-      -e "s@FRONTEND_SERVICE_PORT@${frontend_port}@g" \
+      -e "s@FRONTEND_GREMLIN_PORT@${frontend_gremlin_port}@g" \
+      -e "s@FRONTEND_CYPHER_PORT@${frontend_cypher_port}@g" \
+      -e "s@NEO4J_DISABLED@${neo4j_disabled}@g" \
       -e "s@THREADS_PER_WORKER@${threads_per_worker}@g" \
       ${GRAPHSCOPE_HOME}/conf/frontend.vineyard.properties > ${config_dir}/frontend.vineyard.properties
+  echo -e "\n" >> ${config_dir}/frontend.vineyard.properties
+  echo -e "$decoded_params" >> ${config_dir}/frontend.vineyard.properties
 
   # frontend service hold a handle client of coordinator
   java ${java_opt} \
@@ -138,6 +156,8 @@ start_executor() {
   declare -r server_size=$4
   declare -r rpc_port=$5
   declare -r network_servers=$6
+  declare -r params=$7
+
   declare -r threads_per_worker=${THREADS_PER_WORKER:-2}
 
   declare -r log_dir=${GS_LOG}/${object_id}
@@ -149,6 +169,12 @@ start_executor() {
   export LD_LIBRARY_PATH=${GRAPHSCOPE_HOME}/lib:${LD_LIBRARY_PATH}
   export DYLD_LIBRARY_PATH=${GRAPHSCOPE_HOME}/lib:${DYLD_LIBRARY_PATH}
 
+  # make a "current" link
+  unlink ${GS_LOG}/current || true
+  ln -s ${log_dir} ${GS_LOG}/current
+
+  decoded_params=`echo -n $params | base64 -d`
+
   # set executor config file
   sed -e "s@GRAPH_NAME@${object_id}@g" \
       -e "s@VINEYARD_OBJECT_ID@${object_id}@g" \
@@ -158,6 +184,8 @@ start_executor() {
       -e "s@NETWORK_SERVERS@${network_servers}@g" \
       -e "s@THREADS_PER_WORKER@${threads_per_worker}@g" \
       ${GRAPHSCOPE_HOME}/conf/executor.vineyard.properties > ${config_dir}/executor.$server_id.vineyard.properties
+  echo -e "\n" >> ${config_dir}/executor.$server_id.vineyard.properties
+  echo "$decoded_params" >> ${config_dir}/executor.$server_id.vineyard.properties
 
   cp ${GRAPHSCOPE_HOME}/conf/log4rs.yml  ${config_dir}/log4rs.yml
 
@@ -181,8 +209,11 @@ start_executor() {
 #   server_id: global server id of executor
 #   executor_port
 #   executor_rpc_port
-#   frontend_port
+#   frontend_gremlin_port
+#   frontend_cypher_port
 #   vineyard_ipc_socket
+#   neo4j_disabled: whether to disable neo4j
+#   params: parameters of engine
 ##########################
 create_gremlin_instance_on_local() {
   declare -r GRAPHSCOPE_RUNTIME=$1
@@ -191,8 +222,11 @@ create_gremlin_instance_on_local() {
   declare -r server_size=$4
   declare -r executor_port=$5
   declare -r executor_rpc_port=$6
-  declare -r frontend_port=$7
-  export VINEYARD_IPC_SOCKET=$8
+  declare -r frontend_gremlin_port=$7
+  declare -r frontend_cypher_port=$8
+  export VINEYARD_IPC_SOCKET=$9
+  declare -r neo4j_disabled=${10}
+  declare -r params=${11}
 
   declare -r cluster_type="local"
   declare -r executor_count="1"  # local mode only start one executor
@@ -206,9 +240,6 @@ create_gremlin_instance_on_local() {
   mkdir -p ${GS_LOG}
 
   declare -r log_dir=${GS_LOG}/${object_id}
-  # make a "current" link
-  unlink ${GS_LOG}/current || true
-  ln -s ${log_dir} ${GS_LOG}/current
 
   # Frontend use executor rpc port
   network_servers=""
@@ -223,121 +254,71 @@ create_gremlin_instance_on_local() {
   pegasus_hosts=${pegasus_hosts:1}
 
   start_frontend ${GRAPHSCOPE_RUNTIME} ${object_id} ${schema_path} ${pegasus_hosts} \
-                 ${frontend_port}
+                 ${frontend_gremlin_port} ${frontend_cypher_port} ${neo4j_disabled} ${params}
 
-  log "FRONTEND_ENDPOINT:127.0.0.1:${frontend_port}"
+  log "FRONTEND_GREMLIN_ENDPOINT:127.0.0.1:${frontend_gremlin_port}"
+  if [ "${neo4j_disabled}" = "true" ]; then
+    log "cypher is disabled"
+  else
+    log "FRONTEND_CYPHER_ENDPOINT:127.0.0.1:${frontend_cypher_port}"
+  fi
 
   # executor use executor inner port
   for server_id in $(seq 0 $(($server_size - 1))); do
     current_executor_port=$(($executor_port + 2 * $server_id))
     current_executor_rpc_port=$(($executor_rpc_port + 2 * $server_id))
     start_executor ${GRAPHSCOPE_RUNTIME} ${object_id} ${server_id} ${server_size} ${current_executor_rpc_port} \
-                   ${network_servers}
+                   ${network_servers} ${params}
   done
 }
 
 ##########################
-# create interactive engine instance on k8s.
+# create k8s service
 # Globals:
-#   None
+#   GREMLIN_EXPOSE
 # Arguments:
-#   GRAPHSCOPE_RUNTIME: runtime workspace
+#   lang: gremlin or cypher
 #   object_id: id of vineyard object
-#   schema_path: path of graph schema file
-#   pod_name_list:
-#   engine_container: container name of engine
-#   executor_port
-#   executor_rpc_port
-#   frontend_port
-#   coordinator_name: name of coordinator deployment object in k8s
-#   engine_selector: the label name of engine selector
+#   instance_id: id of instance
+#   frontend_deployment_name: name of frontend deployment
+#   frontend_port: port of frontend
+#   frontend_external_port: external port of frontend
 ##########################
-create_gremlin_instance_on_k8s() {
-  declare -r GRAPHSCOPE_RUNTIME=$1
+create_k8s_service() {
+  declare -r lang=$1
   declare -r object_id=$2
-  declare -r schema_path=$3
+  declare -r instance_id=$3
+  declare -r frontend_deployment_name=$4
+  declare -r frontend_port=$5
+  declare frontend_external_port=$6
 
-  declare -r pod_hosts=$(echo $4 | awk -F"," '{for(i=1;i<=NF;++i) {print $i" "}}')
-  declare -r server_size=$(echo $4 | awk -F"," '{print NF}')
-
-  declare -r engine_container=$5
-  declare -r executor_port=$6
-  declare -r executor_rpc_port=$7
-  declare -r frontend_port=$8
-  declare -r coordinator_name=$9 # deployment name of coordinator
-  declare -r engine_selector=${10}
-
-  instance_id=${coordinator_name#*-}
-
-  pod_ips=$(kubectl get pod -lapp.kubernetes.io/component=engine,app.kubernetes.io/instance=${instance_id},app.kubernetes.io/engine_selector=${engine_selector} -o jsonpath='{.items[*].status.podIP}')
-
-  pegasus_hosts=""
-  for pod in ${pod_ips}; do
-    pegasus_hosts="${pegasus_hosts},${pod}:${executor_rpc_port}"
-  done
-  pegasus_hosts=${pegasus_hosts:1}
-
-  frontend_name=$(kubectl get pod -lapp.kubernetes.io/component=frontend,app.kubernetes.io/instance=${instance_id},app.kubernetes.io/engine_selector=${engine_selector} -o jsonpath='{.items[*].metadata.name}')
-
-  log "wait for frontend pod ready."
-  kubectl wait --for=condition=Ready pod/${frontend_name} --timeout=60s
-
-  launch_frontend_cmd="GRAPHSCOPE_HOME=${GRAPHSCOPE_HOME} \
-      ${GRAPHSCOPE_HOME}/bin/giectl start_frontend \
-      ${GRAPHSCOPE_RUNTIME} ${object_id} ${schema_path} ${pegasus_hosts} ${frontend_port}"
-  kubectl cp ${schema_path} ${frontend_name}:${schema_path}
-
-  kubectl exec ${frontend_name} -- /bin/bash -c "${launch_frontend_cmd}"
-
-  network_servers=""
-  for pod in ${pod_ips}; do
-    network_servers="${network_servers},${pod}:${executor_port}"
-  done
-  network_servers=${network_servers:1}
-  log "Launch interactive engine(executor) in per engine pod."
-  _server_id=0
-  for pod in $(echo ${pod_hosts})
-  do
-    launch_executor_cmd="GRAPHSCOPE_HOME=${GRAPHSCOPE_HOME} ${GRAPHSCOPE_HOME}/bin/giectl start_executor ${GRAPHSCOPE_RUNTIME} ${object_id} ${_server_id} ${server_size} ${executor_rpc_port} ${network_servers}"
-    # kubectl exec ${pod} -c ${engine_container} -- sudo mkdir -p /var/log/graphscope
-    # kubectl exec ${pod} -c ${engine_container} -- sudo chown -R graphscope:graphscope /var/log/graphscope
-    kubectl exec ${pod} -c ${engine_container} -- /bin/bash -c "${launch_executor_cmd}"
-    (( _server_id+=1 ))
-  done
-
-  log "Expose gremlin server."
-  timeout_seconds=60
-  # random from range [50001, 51000) for interactive engine
-  frontend_external_port=$(( ((RANDOM<<15)|RANDOM) % 1000 + 50000 ))
-  frontend_deployment_name=$(kubectl get deployment -lapp.kubernetes.io/component=frontend,app.kubernetes.io/instance=${instance_id},app.kubernetes.io/engine_selector=${engine_selector} -o jsonpath='{.items[*].metadata.name}')
   if [ "${GREMLIN_EXPOSE}" = "LoadBalancer" ]; then
-    kubectl expose deployment ${frontend_deployment_name} --name=gremlin-${object_id} --port=${frontend_external_port} \
+    kubectl expose deployment ${frontend_deployment_name} --name=${lang}-${object_id} --port=${frontend_external_port} \
       --target-port=${frontend_port} --type=LoadBalancer 1>/dev/null 2>&1
     [ $? -eq 0 ] || exit 1
     wait_period_seconds=0
     while true
     do
-      external_ip=$(kubectl get service gremlin-${object_id} -ojsonpath='{.status.loadBalancer.ingress[0].ip}') || true
+      external_ip=$(kubectl get service ${lang}-${object_id} -ojsonpath='{.status.loadBalancer.ingress[0].ip}') || true
       if [ -n "${external_ip}" ]; then
         break
       fi
       wait_period_seconds=$(($wait_period_seconds+5))
       if [ ${wait_period_seconds} -gt ${timeout_seconds} ];then
-        echo "Get external ip of ${GREMLIN_EXPOSE} failed."
+        echo "Get ${lang} external ip of ${GREMLIN_EXPOSE} failed."
         break
       fi
       sleep 5
     done
   else
     # NodePort service type
-    # expose gremlin service
-    kubectl expose deployment ${frontend_deployment_name} --name=gremlin-${object_id} --port=${frontend_external_port} \
+    kubectl expose deployment ${frontend_deployment_name} --name=${lang}-${object_id} --port=${frontend_external_port} \
       --target-port=${frontend_port} --type=NodePort 1>/dev/null 2>&1
     [ $? -eq 0 ] || exit 1
     wait_period_seconds=0
     while true
     do
-      frontend_external_port=$(kubectl describe services gremlin-${object_id} | grep "NodePort" | grep "TCP" | tr -cd "0-9")
+      frontend_external_port=$(kubectl describe services ${lang}-${object_id} | grep "NodePort" | grep "TCP" | tr -cd "0-9")
       if [ -n "${frontend_external_port}" ]; then
         break
       fi
@@ -357,7 +338,7 @@ create_gremlin_instance_on_k8s() {
       fi
       wait_period_seconds=$(($wait_period_seconds+5))
       if [ ${wait_period_seconds} -gt ${timeout_seconds} ];then
-        log "Get interactive engine frontend host ip of ${GREMLIN_EXPOSE} failed."
+        log "Get interactive engine frontend ${lang} host ip of ${GREMLIN_EXPOSE} failed."
         break
       fi
       sleep 5
@@ -365,8 +346,104 @@ create_gremlin_instance_on_k8s() {
   fi
   # currently support only 1 pod.
   frontend_ip=$(kubectl get pod -lapp.kubernetes.io/component=frontend,app.kubernetes.io/instance=${instance_id} -o jsonpath='{.items[*].status.podIP}')
-  log "FRONTEND_ENDPOINT:${frontend_ip}:${frontend_port}"
-  log "FRONTEND_EXTERNAL_ENDPOINT:${external_ip}:${frontend_external_port}"
+  log "FRONTEND_${lang^^}_ENDPOINT:${frontend_ip}:${frontend_port}"
+  log "FRONTEND_EXTERNAL_${lang^^}_ENDPOINT:${external_ip}:${frontend_external_port}"
+}
+
+##########################
+# create interactive engine instance on k8s.
+# Globals:
+#   None
+# Arguments:
+#   GRAPHSCOPE_RUNTIME: runtime workspace
+#   object_id: id of vineyard object
+#   schema_path: path of graph schema file
+#   pod_name_list:
+#   engine_container: container name of engine
+#   executor_port
+#   executor_rpc_port
+#   frontend_gremlin_port
+#   frontend_cypher_port
+#   coordinator_name: name of coordinator deployment object in k8s
+#   engine_selector: the label name of engine selector
+#   neo4j_disabled: whether to disable neo4j
+#   params: parameters of engine
+##########################
+create_gremlin_instance_on_k8s() {
+  declare -r GRAPHSCOPE_RUNTIME=$1
+  declare -r object_id=$2
+  declare -r schema_path=$3
+
+  declare -r pod_hosts=$(echo $4 | awk -F"," '{for(i=1;i<=NF;++i) {print $i" "}}')
+  declare -r server_size=$(echo $4 | awk -F"," '{print NF}')
+
+  declare -r engine_container=$5
+  declare -r executor_port=$6
+  declare -r executor_rpc_port=$7
+  declare -r frontend_gremlin_port=$8
+  declare -r frontend_cypher_port=$9
+  declare -r coordinator_name=${10} # deployment name of coordinator
+  declare -r engine_selector=${11}
+  declare -r neo4j_disabled=${12}
+  declare -r params=${13}
+
+  instance_id=${coordinator_name#*-}
+
+  pod_ips=$(kubectl get pod -lapp.kubernetes.io/component=engine,app.kubernetes.io/instance=${instance_id},app.kubernetes.io/engine_selector=${engine_selector} -o jsonpath='{.items[*].status.podIP}')
+
+  pegasus_hosts=""
+  for pod in ${pod_ips}; do
+    pegasus_hosts="${pegasus_hosts},${pod}:${executor_rpc_port}"
+  done
+  pegasus_hosts=${pegasus_hosts:1}
+
+  frontend_name=$(kubectl get pod -lapp.kubernetes.io/component=frontend,app.kubernetes.io/instance=${instance_id},app.kubernetes.io/engine_selector=${engine_selector} -o jsonpath='{.items[*].metadata.name}')
+
+  log "wait for frontend pod ready."
+  kubectl wait --for=condition=Ready pod/${frontend_name} --timeout=60s
+
+  launch_frontend_cmd="GRAPHSCOPE_HOME=${GRAPHSCOPE_HOME} \
+      ${GRAPHSCOPE_HOME}/bin/giectl start_frontend \
+      ${GRAPHSCOPE_RUNTIME} ${object_id} ${schema_path} ${pegasus_hosts} ${frontend_gremlin_port} ${frontend_cypher_port} ${neo4j_disabled} '${params}'"
+  kubectl cp ${schema_path} ${frontend_name}:${schema_path}
+
+  log "${frontend_name}"
+  log "${launch_frontend_cmd}"
+
+  kubectl exec ${frontend_name} -- /bin/bash -c "${launch_frontend_cmd}"
+
+  network_servers=""
+  for pod in ${pod_ips}; do
+    network_servers="${network_servers},${pod}:${executor_port}"
+  done
+  network_servers=${network_servers:1}
+  log "Launch interactive engine(executor) in per engine pod."
+  _server_id=0
+  for pod in $(echo ${pod_hosts})
+  do
+    launch_executor_cmd="GRAPHSCOPE_HOME=${GRAPHSCOPE_HOME} ${GRAPHSCOPE_HOME}/bin/giectl \
+        start_executor ${GRAPHSCOPE_RUNTIME} ${object_id} ${_server_id} ${server_size} \
+        ${executor_rpc_port} ${network_servers} '${params}'"
+    # kubectl exec ${pod} -c ${engine_container} -- sudo mkdir -p /var/log/graphscope
+    # kubectl exec ${pod} -c ${engine_container} -- sudo chown -R graphscope:graphscope /var/log/graphscope
+    kubectl exec ${pod} -c ${engine_container} -- /bin/bash -c "${launch_executor_cmd}"
+    (( _server_id+=1 ))
+  done
+
+  log "Expose gremlin server."
+  timeout_seconds=60
+  frontend_deployment_name=$(kubectl get deployment -lapp.kubernetes.io/component=frontend,app.kubernetes.io/instance=${instance_id},app.kubernetes.io/engine_selector=${engine_selector} -o jsonpath='{.items[*].metadata.name}')
+  # random from range [50001, 51000) for interactive engine
+  frontend_external_gremlin_port=$(( ((RANDOM<<15)|RANDOM) % 1000 + 50000 ))
+  create_k8s_service gremlin ${object_id} ${instance_id} ${frontend_deployment_name} ${frontend_gremlin_port} ${frontend_external_gremlin_port} 
+
+  if [ "${neo4j_disabled}" = "true" ]; then
+    log "cypher is disabled"
+  else
+    frontend_external_cypher_port=$(( ((RANDOM<<15)|RANDOM) % 1000 + 50000 ))
+    create_k8s_service cypher ${object_id} ${instance_id} ${frontend_deployment_name} ${frontend_cypher_port} ${frontend_external_cypher_port}
+  fi
+
   exit 0
 }
 
@@ -419,6 +496,8 @@ close_gremlin_instance_on_k8s() {
   # delete service
   log "delete gremlin service"
   kubectl delete service gremlin-${object_id} || true
+  log "delete cypher service"
+  kubectl delete service cypher-${object_id} || true
 
   # kill frontend and coordinator process
   log "Close frontend process."

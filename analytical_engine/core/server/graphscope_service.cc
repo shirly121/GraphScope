@@ -26,11 +26,11 @@
 #include "grpcpp/support/sync_stream.h"
 
 #include "core/server/rpc_utils.h"
-#include "graphscope/proto/attr_value.pb.h"
-#include "graphscope/proto/error_codes.pb.h"
-#include "graphscope/proto/graph_def.pb.h"
-#include "graphscope/proto/message.pb.h"
-#include "graphscope/proto/op_def.pb.h"
+#include "proto/attr_value.pb.h"
+#include "proto/error_codes.pb.h"
+#include "proto/graph_def.pb.h"
+#include "proto/message.pb.h"
+#include "proto/op_def.pb.h"
 
 namespace gs {
 struct CommandDetail;
@@ -200,6 +200,9 @@ Status GraphScopeService::HeartBeat(ServerContext* context,
                                            graph_def.is_multigraph());
         merged_graph_def.set_compact_edges(merged_graph_def.compact_edges() ||
                                            graph_def.compact_edges());
+        merged_graph_def.set_use_perfect_hash(
+            merged_graph_def.use_perfect_hash() ||
+            graph_def.use_perfect_hash());
       }
       op_result->mutable_graph_def()->CopyFrom(merged_graph_def);
       break;

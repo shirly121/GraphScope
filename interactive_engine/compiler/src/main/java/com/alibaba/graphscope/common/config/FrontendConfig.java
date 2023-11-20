@@ -17,6 +17,32 @@
 package com.alibaba.graphscope.common.config;
 
 public class FrontendConfig {
-    public static final Config<Integer> FRONTEND_SERVICE_PORT =
-            Config.intConfig("frontend.service.port", 8182);
+    public static final Config<Boolean> GREMLIN_SERVER_DISABLED =
+            Config.boolConfig("gremlin.server.disabled", false);
+
+    public static final Config<Integer> GREMLIN_SERVER_PORT =
+            Config.intConfig("gremlin.server.port", 8182);
+
+    public static final Config<Boolean> NEO4J_BOLT_SERVER_DISABLED =
+            Config.boolConfig("neo4j.bolt.server.disabled", false);
+
+    public static final Config<Integer> NEO4J_BOLT_SERVER_PORT =
+            Config.intConfig("neo4j.bolt.server.port", 7687);
+
+    public static final Config<Integer> QUERY_EXECUTION_TIMEOUT_MS =
+            Config.intConfig("query.execution.timeout.ms", 3000000);
+
+    public static final Config<String> ENGINE_TYPE = Config.stringConfig("engine.type", "pegasus");
+
+    public static final Config<Integer> FRONTEND_SERVER_ID =
+            Config.intConfig("frontend.server.id", 0);
+
+    public static final Config<Integer> FRONTEND_SERVER_NUM =
+            Config.intConfig("frontend.server.num", 1);
+
+    public static final Config<String> CALCITE_DEFAULT_CHARSET =
+            Config.stringConfig("calcite.default.charset", "UTF-8");
+
+    public static final Config<Integer> QUERY_CACHE_SIZE =
+            Config.intConfig("query.cache.size", 100);
 }

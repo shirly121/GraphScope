@@ -74,8 +74,8 @@
     },
     {
       "label": {
-        "id": 11,
-        "name": "COMPANY"
+        "id": 2,
+        "name": "COMMENT"
       },
       "columns": [
         {
@@ -88,28 +88,12 @@
         },
         {
           "key": {
-            "id": 8,
-            "name": "name"
+            "id": 2,
+            "name": "creationDate"
           },
-          "data_type": 4,
+          "data_type": 2,
           "is_primary_key": false
         },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
-        "id": 2,
-        "name": "COMMENT"
-      },
-      "columns": [
         {
           "key": {
             "id": 4,
@@ -178,38 +162,6 @@
     },
     {
       "label": {
-        "id": 10,
-        "name": "CONTINENT"
-      },
-      "columns": [
-        {
-          "key": {
-            "id": 0,
-            "name": "id"
-          },
-          "data_type": 2,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 8,
-            "name": "name"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
         "id": 0,
         "name": "PLACE"
       },
@@ -234,6 +186,14 @@
           "key": {
             "id": 9,
             "name": "url"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 18,
+            "name": "type"
           },
           "data_type": 4,
           "is_primary_key": false
@@ -392,98 +352,10 @@
         },
         {
           "key": {
-            "id": 8,
-            "name": "name"
+            "id": 18,
+            "name": "type"
           },
           "data_type": 4,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
-        "id": 9,
-        "name": "CITY"
-      },
-      "columns": [
-        {
-          "key": {
-            "id": 0,
-            "name": "id"
-          },
-          "data_type": 2,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 8,
-            "name": "name"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
-        "id": 12,
-        "name": "UNIVERSITY"
-      },
-      "columns": [
-        {
-          "key": {
-            "id": 0,
-            "name": "id"
-          },
-          "data_type": 2,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 8,
-            "name": "name"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        },
-        {
-          "key": {
-            "id": 9,
-            "name": "url"
-          },
-          "data_type": 4,
-          "is_primary_key": false
-        }
-      ]
-    },
-    {
-      "label": {
-        "id": 8,
-        "name": "COUNTRY"
-      },
-      "columns": [
-        {
-          "key": {
-            "id": 0,
-            "name": "id"
-          },
-          "data_type": 2,
           "is_primary_key": false
         },
         {
@@ -518,8 +390,8 @@
             "name": "PERSON"
           },
           "dst": {
-            "id": 12,
-            "name": "UNIVERSITY"
+            "id": 5,
+            "name": "ORGANISATION"
           }
         }
       ],
@@ -546,8 +418,8 @@
             "name": "PERSON"
           },
           "dst": {
-            "id": 11,
-            "name": "COMPANY"
+            "id": 5,
+            "name": "ORGANISATION"
           }
         }
       ],
@@ -570,22 +442,12 @@
       "entity_pairs": [
         {
           "src": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           },
           "dst": {
-            "id": 8,
-            "name": "COUNTRY"
-          }
-        },
-        {
-          "src": {
-            "id": 8,
-            "name": "COUNTRY"
-          },
-          "dst": {
-            "id": 10,
-            "name": "CONTINENT"
+            "id": 0,
+            "name": "PLACE"
           }
         }
       ],
@@ -850,28 +712,18 @@
             "name": "PERSON"
           },
           "dst": {
-            "id": 9,
-            "name": "CITY"
+            "id": 0,
+            "name": "PLACE"
           }
         },
         {
           "src": {
-            "id": 12,
-            "name": "UNIVERSITY"
+            "id": 5,
+            "name": "ORGANISATION"
           },
           "dst": {
-            "id": 9,
-            "name": "CITY"
-          }
-        },
-        {
-          "src": {
-            "id": 11,
-            "name": "COMPANY"
-          },
-          "dst": {
-            "id": 8,
-            "name": "COUNTRY"
+            "id": 0,
+            "name": "PLACE"
           }
         }
       ],

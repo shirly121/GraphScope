@@ -928,7 +928,7 @@ public class PositiveEvalTest {
                 eval("g.V().has(\"name\", TextP.notEndingWith(\"marko\"))"));
     }
 
-    // g.V().as("a").select("a").by(out("1..2").with("Result_Opt", AllV).count())
+    // g.V().as("a").select("a").by(out("1..2").with("Result_Opt", ALL_V).count())
     @Test
     public void g_V_as_select_a_by_out_1_2_endV_count_test() {
         Assert.assertEquals(
@@ -1163,5 +1163,10 @@ public class PositiveEvalTest {
     public void g_V_has_P_outside_not() {
         Assert.assertEquals(
                 g.V().has("age", P.outside(20, 30)), eval("g.V().has(\"age\", P.outside(20, 30))"));
+    }
+
+    @Test
+    public void g_V_identity() {
+        Assert.assertEquals(g.V().identity(), eval("g.V().identity()"));
     }
 }

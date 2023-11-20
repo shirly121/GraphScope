@@ -23,6 +23,7 @@ and the vineyard store that offers efficient in-memory data transfers.
 
    overview/intro
    overview/getting_started
+   loading_graphs
    overview/graph_analytics_workloads
    overview/graph_interactive_workloads
    overview/graph_learning_workloads
@@ -46,6 +47,12 @@ and the vineyard store that offers efficient in-memory data transfers.
 
 .. toctree::
    :maxdepth: 1
+   :caption: GraphScope Flex
+
+   flex/interactive_intro
+
+.. toctree::
+   :maxdepth: 1
    :caption: Graph Analytical Engine
 
    analytical_engine/getting_started
@@ -64,11 +71,13 @@ and the vineyard store that offers efficient in-memory data transfers.
    interactive_engine/getting_started
    interactive_engine/deployment
    interactive_engine/tinkerpop_eco
-   interactive_engine/guide_and_examples
+   interactive_engine/neo4j_eco
+   interactive_engine/optimizer
+   .. interactive_engine/guide_and_examples
    interactive_engine/design_of_gie
-   interactive_engine/supported_gremlin_steps
+   .. interactive_engine/supported_gremlin_steps
    interactive_engine/dev_and_test.md
-   interactive_engine/faq.md
+   .. interactive_engine/faq.md
 
 .. toctree::
    :maxdepth: 1
@@ -117,6 +126,7 @@ and the vineyard store that offers efficient in-memory data transfers.
    reference/python_index
    reference/analytical_engine_index
    Analytical Engine Java API Reference <reference/gae_java/index>
+   Flex API Reference <reference/flex/index>
 
 .. toctree::
    :maxdepth: 2
@@ -130,4 +140,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

@@ -16,10 +16,11 @@
 
 package com.alibaba.graphscope.common.ir.rex;
 
-import com.alibaba.graphscope.common.ir.runtime.proto.RexToProtoConverter;
 import com.alibaba.graphscope.common.ir.type.GraphProperty;
 
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexChecker;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexVisitor;
 import org.apache.commons.lang3.StringUtils;
@@ -38,21 +39,20 @@ public class RexGraphVariable extends RexInputRef {
     // 'a.name'
     private @Nullable GraphProperty property;
 
-    protected RexGraphVariable(int aliasId, @Nullable String name, RelDataType type) {
-        this(name, type);
+    protected RexGraphVariable(int aliasId, int columnId, @Nullable String name, RelDataType type) {
+        super(columnId, type);
         this.aliasId = aliasId;
+        this.digest = (name == null) ? StringUtils.EMPTY : name;
     }
 
     protected RexGraphVariable(
-            int aliasId, GraphProperty property, @Nullable String name, RelDataType type) {
-        this(name, type);
-        this.aliasId = aliasId;
+            int aliasId,
+            GraphProperty property,
+            int columnId,
+            @Nullable String name,
+            RelDataType type) {
+        this(aliasId, columnId, name, type);
         this.property = Objects.requireNonNull(property);
-    }
-
-    protected RexGraphVariable(@Nullable String name, RelDataType type) {
-        super(0, type);
-        this.digest = (name == null) ? StringUtils.EMPTY : name;
     }
 
     /**
@@ -62,8 +62,9 @@ public class RexGraphVariable extends RexInputRef {
      * @param type
      * @return
      */
-    public static RexGraphVariable of(int aliasId, @Nullable String name, RelDataType type) {
-        return new RexGraphVariable(aliasId, name, type);
+    public static RexGraphVariable of(
+            int aliasId, int columnId, @Nullable String name, RelDataType type) {
+        return new RexGraphVariable(aliasId, columnId, name, type);
     }
 
     /**
@@ -75,18 +76,25 @@ public class RexGraphVariable extends RexInputRef {
      * @return
      */
     public static RexGraphVariable of(
-            int aliasId, GraphProperty property, @Nullable String name, RelDataType type) {
-        return new RexGraphVariable(aliasId, property, name, type);
+            int aliasId,
+            GraphProperty property,
+            int columnId,
+            @Nullable String name,
+            RelDataType type) {
+        return new RexGraphVariable(aliasId, property, columnId, name, type);
     }
 
     @Override
     public <R> R accept(RexVisitor<R> rexVisitor) {
-        return (rexVisitor instanceof RexVariableAliasCollector
-                        || rexVisitor instanceof RexVariableAliasConverter
-                        || rexVisitor instanceof RexTmpVariableConverter
-                        || rexVisitor instanceof RexToProtoConverter)
-                ? rexVisitor.visitInputRef(this)
-                : null;
+        if (rexVisitor instanceof RexChecker) {
+            return null;
+        } else if (rexVisitor instanceof RelOptUtil.RexInputConverter) {
+            return (R)
+                    new RexConverterAdaptor(true, (RelOptUtil.RexInputConverter) rexVisitor)
+                            .visitInputRef(this);
+        } else {
+            return rexVisitor.visitInputRef(this);
+        }
     }
 
     @Override

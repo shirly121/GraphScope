@@ -157,6 +157,12 @@ where
 
     type SubmitStream = UnboundedReceiverStream<Result<pb::JobResponse, Status>>;
 
+    async fn cancel(&self, req: Request<pb::CancelRequest>) -> Result<Response<Empty>, Status> {
+        let pb::CancelRequest { job_id } = req.into_inner();
+        pegasus::cancel_job(job_id);
+        Ok(Response::new(Empty {}))
+    }
+
     async fn submit(&self, req: Request<pb::JobRequest>) -> Result<Response<Self::SubmitStream>, Status> {
         debug!("accept new request from {:?};", req.remote_addr());
         let pb::JobRequest { conf, source, plan, resource } = req.into_inner();
@@ -165,6 +171,7 @@ where
         }
 
         let conf = parse_conf_req(conf.unwrap());
+        info!("job conf {:?}", conf);
         pegasus::wait_servers_ready(conf.servers());
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let rpc_sink = RpcSink::new(conf.job_id, tx);

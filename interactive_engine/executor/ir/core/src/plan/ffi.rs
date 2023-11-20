@@ -58,7 +58,7 @@ use std::os::raw::c_char;
 use ir_common::expr_parse::str_to_expr_pb;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
-use ir_physical_client::physical_builder::JobBuilder;
+use ir_physical_client::physical_builder::PlanBuilder;
 use pegasus::BuildJobError;
 use prost::Message;
 
@@ -529,33 +529,32 @@ impl From<FfiKeyType> for KeyType {
     }
 }
 
-/// Query prop_name by given prop_id
+/// Query entity/relation/property name by given id
 #[no_mangle]
 pub extern "C" fn get_key_name(key_id: i32, key_type: FfiKeyType) -> FfiResult {
     use super::meta::STORE_META;
     if let Ok(meta) = STORE_META.read() {
         if let Some(schema) = &meta.schema {
             let key_name = match key_type {
-                FfiKeyType::Entity => schema
-                    .get_entity_name(key_id)
-                    .ok_or(FfiResult::new(
+                FfiKeyType::Entity => schema.get_entity_name(key_id).ok_or_else(|| {
+                    FfiResult::new(
                         ResultCode::TableNotExistError,
                         format!("entity label_id {:?} is not found", key_id),
-                    )),
-                FfiKeyType::Relation => schema
-                    .get_relation_name(key_id)
-                    .ok_or(FfiResult::new(
+                    )
+                }),
+                FfiKeyType::Relation => schema.get_relation_name(key_id).ok_or_else(|| {
+                    FfiResult::new(
                         ResultCode::TableNotExistError,
                         format!("relation label_id {:?} is not found", key_id),
-                    )),
-                FfiKeyType::Column => schema
-                    .get_column_name(key_id)
-                    .ok_or(FfiResult::new(
+                    )
+                }),
+                FfiKeyType::Column => schema.get_column_name(key_id).ok_or_else(|| {
+                    FfiResult::new(
                         ResultCode::ColumnNotExistError,
                         format!("prop_id {:?} is not found", key_id),
-                    )),
+                    )
+                }),
             };
-
             match key_name {
                 Ok(key_name) => {
                     let key_name_cstr = string_to_cstr(key_name.clone());
@@ -592,7 +591,7 @@ fn ptr_to_pb<T: Message + Default>(pb_ptr: FfiPbPointer) -> Result<T, FfiResult>
 /// We have provided  the [`destroy_logical_plan`] api for deallocating the pointer of the logical plan.
 #[no_mangle]
 pub extern "C" fn init_logical_plan() -> *const c_void {
-    let plan = Box::new(LogicalPlan::default());
+    let plan = Box::new(LogicalPlan::with_root());
     Box::into_raw(plan) as *const c_void
 }
 
@@ -613,35 +612,39 @@ pub extern "C" fn destroy_ffi_data(data: FfiData) {
     }
 }
 
+// To release a cstr pointer
+#[no_mangle]
+pub extern "C" fn destroy_cstr_pointer(cstr: *const c_char) {
+    if !cstr.is_null() {
+        let _ = unsafe { std::ffi::CString::from_raw(cstr as *mut c_char) };
+    }
+}
+
 /// To build a physical plan from the logical plan.
 #[no_mangle]
 pub extern "C" fn build_physical_plan(
-    ptr_plan: *const c_void, num_workers: u32, num_servers: u32,
+    ptr_plan: *const c_void, num_workers: u32, num_servers: u32, plan_id: i32,
 ) -> FfiData {
     let mut plan = unsafe { Box::from_raw(ptr_plan as *mut LogicalPlan) };
     if num_workers > 1 || num_servers > 1 {
         plan.meta = plan.meta.with_partition();
     }
     let mut plan_meta = plan.meta.clone();
-    let mut builder = JobBuilder::default();
+    let mut builder = PlanBuilder::new(plan_id);
+    // let mut builder = PlanBuilder::default();
     let build_result = plan.add_job_builder(&mut builder, &mut plan_meta);
     let result = match build_result {
         Ok(_) => {
-            let req_result = builder.build();
-            match req_result {
-                Ok(req) => {
-                    let mut req_bytes = req.encode_to_vec().into_boxed_slice();
-                    let data = FfiData {
-                        ptr: req_bytes.as_mut_ptr() as *mut c_void,
-                        len: req_bytes.len(),
-                        error: FfiResult::success(),
-                    };
-                    std::mem::forget(req_bytes);
+            let physical_plan = builder.build();
+            let mut plan_bytes = physical_plan.encode_to_vec().into_boxed_slice();
+            let data = FfiData {
+                ptr: plan_bytes.as_mut_ptr() as *mut c_void,
+                len: plan_bytes.len(),
+                error: FfiResult::success(),
+            };
+            std::mem::forget(plan_bytes);
 
-                    data
-                }
-                Err(e) => e.into(),
-            }
+            data
         }
         Err(e) => e.into(),
     };
@@ -1021,6 +1024,11 @@ mod params {
 
         result
     }
+
+    #[no_mangle]
+    pub extern "C" fn destroy_query_params(ptr: *const c_void) {
+        destroy_ptr::<pb::QueryParams>(ptr)
+    }
 }
 
 mod project {
@@ -1331,6 +1339,7 @@ mod groupby {
         ToList = 5,
         ToSet = 6,
         Avg = 7,
+        First = 8,
     }
 
     /*
@@ -1744,6 +1753,7 @@ mod scan {
                 extra: HashMap::new(),
             }),
             idx_predicate: None,
+            is_count_only: false,
             meta_data: None,
         });
         Box::into_raw(scan) as *const c_void
@@ -1758,7 +1768,11 @@ mod scan {
     fn parse_equiv_predicate(
         key: FfiProperty, value: FfiConst,
     ) -> Result<pb::index_predicate::Triplet, FfiResult> {
-        Ok(pb::index_predicate::Triplet { key: key.try_into()?, value: Some(value.try_into()?), cmp: None })
+        Ok(pb::index_predicate::Triplet {
+            key: key.try_into()?,
+            value: Some(pb::index_predicate::triplet::Value::Const(value.try_into()?)),
+            cmp: None,
+        })
     }
 
     #[no_mangle]
@@ -1847,6 +1861,14 @@ mod scan {
         set_alias(ptr_scan, alias, InnerOpt::Scan)
     }
 
+    #[no_mangle]
+    pub extern "C" fn set_count_only(ptr: *const c_void, is_count_only: i32) -> FfiResult {
+        let mut scan = unsafe { Box::from_raw(ptr as *mut pb::Scan) };
+        scan.is_count_only = is_count_only != 0;
+        std::mem::forget(scan);
+        FfiResult::success()
+    }
+
     /// Append a scan operator to the logical plan
     #[no_mangle]
     pub extern "C" fn append_scan_operator(
@@ -1920,6 +1942,74 @@ mod as_opr {
     #[no_mangle]
     pub extern "C" fn destroy_as_operator(ptr: *const c_void) {
         destroy_ptr::<pb::As>(ptr)
+    }
+}
+
+mod sample {
+    use super::*;
+
+    /// To initialize a Sample operator
+    #[no_mangle]
+    pub extern "C" fn init_sample_operator() -> *const c_void {
+        let sample: Box<pb::Sample> =
+            Box::new(pb::Sample { sample_type: None, seed: None, sample_weight: None });
+        Box::into_raw(sample) as *const c_void
+    }
+
+    /// Set the sample type for the sample operator
+    #[no_mangle]
+    pub extern "C" fn set_sample_type(
+        ptr_sample: *const c_void, ptr_sample_type: FfiPbPointer,
+    ) -> FfiResult {
+        let mut result = FfiResult::success();
+        let mut sample = unsafe { Box::from_raw(ptr_sample as *mut pb::Sample) };
+        let sample_type_res = ptr_to_pb::<pb::sample::SampleType>(ptr_sample_type);
+        match sample_type_res {
+            Ok(sample_type) => sample.sample_type = Some(sample_type),
+            Err(e) => result = e,
+        }
+        std::mem::forget(sample);
+        result
+    }
+
+    /// Set the sample seed for the sample operator
+    #[no_mangle]
+    pub extern "C" fn set_sample_seed(ptr_sample: *const c_void, sample_seed: i32) -> FfiResult {
+        let mut sample = unsafe { Box::from_raw(ptr_sample as *mut pb::Sample) };
+        sample.seed = Some(sample_seed);
+        std::mem::forget(sample);
+        FfiResult::success()
+    }
+
+    /// Set the sample weight for the sample operator
+    #[no_mangle]
+    pub extern "C" fn set_sample_weight_variable(
+        ptr_sample: *const c_void, ptr_weight_var_pb: FfiPbPointer,
+    ) -> FfiResult {
+        let mut result = FfiResult::success();
+        let mut sample = unsafe { Box::from_raw(ptr_sample as *mut pb::Sample) };
+        let sample_weight_result = ptr_to_pb::<common_pb::Variable>(ptr_weight_var_pb);
+        if let Ok(sample_weight) = sample_weight_result {
+            sample.sample_weight = Some(sample_weight);
+        } else {
+            result = sample_weight_result.err().unwrap();
+        }
+        std::mem::forget(sample);
+        result
+    }
+
+    /// Append a Sample  operator to the logical plan
+    #[no_mangle]
+    pub extern "C" fn append_sample_operator(
+        ptr_plan: *const c_void, ptr_sample: *const c_void, parent: i32, id: *mut i32,
+    ) -> FfiResult {
+        let sample = unsafe { Box::from_raw(ptr_sample as *mut pb::Sample) };
+        append_operator(ptr_plan, sample.as_ref().clone().into(), vec![parent], id)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn destroy_sample_operator(ptr: *const c_void) {
+        destroy_ptr::<pb::Sample>(ptr)
     }
 }
 
@@ -2175,6 +2265,7 @@ mod graph {
     pub enum PathResultOpt {
         EndV = 0,
         AllV = 1,
+        AllVE = 2,
     }
 
     /// To initialize an path expand operator from an edge_expand base

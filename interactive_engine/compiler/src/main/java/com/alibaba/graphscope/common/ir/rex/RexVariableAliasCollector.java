@@ -62,4 +62,14 @@ public class RexVariableAliasCollector<R> extends RexVisitorImpl<List<R>> {
     public List<R> visitGraphVariable(RexGraphVariable variable) {
         return ImmutableList.of(collectFunc.apply(variable));
     }
+
+    @Override
+    public List<R> visitDynamicParam(RexDynamicParam dynamicParam) {
+        return ImmutableList.of();
+    }
+
+    @Override
+    public List<R> visitSubQuery(RexSubQuery subQuery) {
+        return ImmutableList.of();
+    }
 }

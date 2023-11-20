@@ -28,9 +28,9 @@ from graphscope.proto import op_def_pb2
 from graphscope.proto import types_pb2
 from graphscope.proto.error_codes_pb2 import OK
 
+from gscoordinator.launcher import AbstractLauncher
 from gscoordinator.monitor import Monitor
 from gscoordinator.object_manager import GraphMeta
-from gscoordinator.object_manager import GremlinResultSet
 from gscoordinator.object_manager import LibMeta
 from gscoordinator.utils import ANALYTICAL_BUILTIN_SPACE
 from gscoordinator.utils import ANALYTICAL_ENGINE_JAVA_INIT_CLASS_PATH
@@ -53,7 +53,7 @@ logger = logging.getLogger("graphscope")
 
 
 class OperationExecutor:
-    def __init__(self, session_id: str, launcher, object_manager):
+    def __init__(self, session_id: str, launcher: AbstractLauncher, object_manager):
         self._session_id = session_id
         self._launcher = launcher
 
@@ -111,7 +111,7 @@ class OperationExecutor:
                 # TODO: make the stacktrace separated from normal error messages
                 # Too verbose.
                 if len(e.details()) > 3072:  # 3k bytes
-                    msg = f"{e.details()[:30]} ... [truncated]"
+                    msg = f"{e.details()[:1024]} ... [truncated]"
                 else:
                     msg = e.details()
                 raise AnalyticalEngineInternalError(msg)
@@ -131,7 +131,11 @@ class OperationExecutor:
             )
 
             # Handle op that depends on loader (data source)
-            if op.op == types_pb2.CREATE_GRAPH or op.op == types_pb2.ADD_LABELS:
+            if op.op in [
+                types_pb2.CREATE_GRAPH,
+                types_pb2.CONSOLIDATE_COLUMNS,
+                types_pb2.ADD_LABELS,
+            ]:
                 for key_of_parent_op in op.parents:
                     parent_op = self._key_to_op[key_of_parent_op]
                     if parent_op.op == types_pb2.DATA_SOURCE:
@@ -154,6 +158,7 @@ class OperationExecutor:
                 )
                 or op.op == types_pb2.TRANSFORM_GRAPH
                 or op.op == types_pb2.PROJECT_TO_SIMPLE
+                or op.op == types_pb2.CONSOLIDATE_COLUMNS
                 or op.op == types_pb2.ADD_LABELS
                 or op.op == types_pb2.ARCHIVE_GRAPH
             ):
@@ -188,6 +193,7 @@ class OperationExecutor:
             if op.op in (
                 types_pb2.CREATE_GRAPH,
                 types_pb2.PROJECT_GRAPH,
+                types_pb2.CONSOLIDATE_COLUMNS,
                 types_pb2.PROJECT_TO_SIMPLE,
                 types_pb2.TRANSFORM_GRAPH,
                 types_pb2.ADD_LABELS,
@@ -356,7 +362,7 @@ class OperationExecutor:
                 time.sleep(delay)
                 delay *= 2  # back off
         raise RuntimeError(
-            "Failed to connect to engine in 60s, deployment may failed. Please check coordinator log for details"
+            "Failed to connect to engine in a reasonable time, deployment may failed. Please check coordinator log for details"
         )
 
     @property
@@ -441,11 +447,7 @@ class OperationExecutor:
         for op in dag_def.op:
             self._key_to_op[op.key] = op
             op_pre_process(op, self._op_result_pool, self._key_to_op)
-            if op.op == types_pb2.GREMLIN_QUERY:
-                op_result = self._execute_gremlin_query(op)
-            elif op.op == types_pb2.FETCH_GREMLIN_RESULT:
-                op_result = self._fetch_gremlin_result(op)
-            elif op.op == types_pb2.SUBGRAPH:
+            if op.op == types_pb2.SUBGRAPH:
                 op_result = self._gremlin_to_subgraph(op)
             else:
                 raise RuntimeError("Unsupported op type: " + str(op.op))
@@ -453,39 +455,6 @@ class OperationExecutor:
             # record op result
             self._op_result_pool[op.key] = op_result
         return message_pb2.RunStepResponse(head=response_head), []
-
-    def _execute_gremlin_query(self, op: op_def_pb2.OpDef):
-        logger.debug("execute gremlin query")
-        message = op.attr[types_pb2.GIE_GREMLIN_QUERY_MESSAGE].s.decode()
-        request_options = None
-        if types_pb2.GIE_GREMLIN_REQUEST_OPTIONS in op.attr:
-            request_options = json.loads(
-                op.attr[types_pb2.GIE_GREMLIN_REQUEST_OPTIONS].s.decode()
-            )
-        object_id = op.attr[types_pb2.VINEYARD_ID].i
-        gremlin_client = self._object_manager.get(object_id)
-        rlt = gremlin_client.submit(message, request_options=request_options)
-        logger.debug("put %s, client %s", op.key, gremlin_client)
-        self._object_manager.put(op.key, GremlinResultSet(op.key, rlt))
-        return op_def_pb2.OpResult(code=OK, key=op.key)
-
-    def _fetch_gremlin_result(self, op: op_def_pb2.OpDef):
-        fetch_result_type = op.attr[types_pb2.GIE_GREMLIN_FETCH_RESULT_TYPE].s.decode()
-        key_of_parent_op = op.parents[0]
-        result_set = self._object_manager.get(key_of_parent_op).result_set
-        if fetch_result_type == "one":
-            rlt = result_set.one()
-        elif fetch_result_type == "all":
-            rlt = result_set.all().result()
-        else:
-            raise RuntimeError("Not supported fetch result type: " + fetch_result_type)
-        # Large data should be fetched use gremlin pagination
-        # meta = op_def_pb2.OpResult.Meta(has_large_result=True)
-        return op_def_pb2.OpResult(
-            code=OK,
-            key=op.key,
-            result=pickle.dumps(rlt),
-        )
 
     def _gremlin_to_subgraph(self, op: op_def_pb2.OpDef):
         gremlin_script = op.attr[types_pb2.GIE_GREMLIN_QUERY_MESSAGE].s.decode()
@@ -639,6 +608,7 @@ class OperationExecutor:
                 types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
                 types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
                 types_pb2.COMPACT_EDGES: utils.b_to_attr(False),
+                types_pb2.USE_PERFECT_HASH: utils.b_to_attr(False),
             }
             new_op = create_graph(
                 self._session_id,
@@ -679,15 +649,7 @@ class OperationExecutor:
         else:
             executor_workers_num = self._launcher.num_workers
             threads_per_executor = threads_per_worker
-        if self._launcher.type() == types_pb2.HOSTS:
-            engine_config = self.get_analytical_engine_config()
-            vineyard_rpc_endpoint = engine_config["vineyard_rpc_endpoint"]
-        else:
-            vineyard_rpc_endpoint = self._launcher._vineyard_internal_endpoint
-            if self._launcher.vineyard_deployment_exists():
-                vineyard_rpc_endpoint = self._launcher._vineyard_service_endpoint
-            else:
-                vineyard_rpc_endpoint = self._launcher._vineyard_internal_endpoint
+        vineyard_rpc_endpoint = self._launcher.vineyard_endpoint
         total_builder_chunks = executor_workers_num * threads_per_executor
 
         (
@@ -739,11 +701,106 @@ class OperationExecutor:
                 op_result = self._process_data_source(op, dag_bodies, loader_op_bodies)
             elif op.op == types_pb2.DATA_SINK:
                 op_result = self._process_data_sink(op)
+            elif op.op == types_pb2.SERIALIZE_GRAPH:
+                op_result = self._process_serialize_graph(op)
+            elif op.op == types_pb2.DESERIALIZE_GRAPH:
+                op_result = self._process_deserialize_graph(op)
             else:
                 raise RuntimeError("Unsupported op type: " + str(op.op))
             response_head.results.append(op_result)
             self._op_result_pool[op.key] = op_result
         return message_pb2.RunStepResponse(head=response_head), []
+
+    def _process_serialize_graph(self, op: op_def_pb2.OpDef):
+        try:
+            import vineyard
+            import vineyard.io
+        except ImportError:
+            raise RuntimeError(
+                "Saving context to locations requires 'vineyard', "
+                "please install those two dependencies via "
+                "\n"
+                "\n"
+                "    pip3 install vineyard vineyard-io"
+                "\n"
+                "\n"
+            )
+        storage_options = json.loads(op.attr[types_pb2.STORAGE_OPTIONS].s.decode())
+        vineyard_endpoint = self._launcher.vineyard_endpoint
+        vineyard_ipc_socket = self._launcher.vineyard_socket
+        deployment, hosts = self._launcher.get_vineyard_stream_info()
+        path = op.attr[types_pb2.GRAPH_SERIALIZATION_PATH].s.decode()
+        obj_id = op.attr[types_pb2.VINEYARD_ID].i
+        vineyard.io.serialize(
+            path,
+            vineyard.ObjectID(obj_id),
+            type="global",
+            vineyard_ipc_socket=vineyard_ipc_socket,
+            vineyard_endpoint=vineyard_endpoint,
+            storage_options=storage_options,
+            deployment=deployment,
+            hosts=hosts,
+        )
+        return op_def_pb2.OpResult(code=OK, key=op.key)
+
+    def _process_deserialize_graph(self, op: op_def_pb2.OpDef):
+        try:
+            import vineyard
+            import vineyard.io
+        except ImportError:
+            raise RuntimeError(
+                "Saving context to locations requires 'vineyard', "
+                "please install those two dependencies via "
+                "\n"
+                "\n"
+                "    pip3 install vineyard vineyard-io"
+                "\n"
+                "\n"
+            )
+        storage_options = json.loads(op.attr[types_pb2.STORAGE_OPTIONS].s.decode())
+        vineyard_endpoint = self._launcher.vineyard_endpoint
+        vineyard_ipc_socket = self._launcher.vineyard_socket
+        deployment, hosts = self._launcher.get_vineyard_stream_info()
+        path = op.attr[types_pb2.GRAPH_SERIALIZATION_PATH].s.decode()
+        graph_id = vineyard.io.deserialize(
+            path,
+            type="global",
+            vineyard_ipc_socket=vineyard_ipc_socket,
+            vineyard_endpoint=vineyard_endpoint,
+            storage_options=storage_options,
+            deployment=deployment,
+            hosts=hosts,
+        )
+        # create graph_def
+        # run create graph on analytical engine
+        create_graph_op = create_single_op_dag(
+            types_pb2.CREATE_GRAPH,
+            config={
+                types_pb2.GRAPH_TYPE: utils.graph_type_to_attr(
+                    graph_def_pb2.ARROW_PROPERTY
+                ),
+                types_pb2.OID_TYPE: utils.s_to_attr("int64_t"),
+                types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
+                types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(True),
+                types_pb2.VINEYARD_ID: utils.i_to_attr(int(graph_id)),
+            },
+        )
+        try:
+            response_head, response_body = self.run_on_analytical_engine(
+                create_graph_op, [], {}
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                "Create graph failed, code: %s, details: %s",
+                e.code().name,
+                e.details(),
+            )
+            if e.code() == grpc.StatusCode.INTERNAL:
+                raise AnalyticalEngineInternalError(e.details())
+            else:
+                raise
+        response_head.head.results[0].key = op.key
+        return response_head.head.results[0]
 
     def _process_data_sink(self, op: op_def_pb2.OpDef):
         import vineyard
@@ -753,12 +810,8 @@ class OperationExecutor:
         write_options = json.loads(op.attr[types_pb2.WRITE_OPTIONS].s.decode())
         fd = op.attr[types_pb2.FD].s.decode()
         df = op.attr[types_pb2.VINEYARD_ID].s.decode()
-        engine_config = self.get_analytical_engine_config()
-        if self._launcher.type() == types_pb2.HOSTS:
-            vineyard_endpoint = engine_config["vineyard_rpc_endpoint"]
-        else:
-            vineyard_endpoint = self._launcher._vineyard_internal_endpoint
-        vineyard_ipc_socket = engine_config["vineyard_socket"]
+        vineyard_endpoint = self._launcher.vineyard_endpoint
+        vineyard_ipc_socket = self._launcher.vineyard_socket
         deployment, hosts = self._launcher.get_vineyard_stream_info()
         dfstream = vineyard.io.open(
             "vineyard://" + str(df),
@@ -852,15 +905,8 @@ class OperationExecutor:
                 loader.attr[types_pb2.PROTOCOL].CopyFrom(utils.s_to_attr(new_protocol))
                 loader.attr[types_pb2.SOURCE].CopyFrom(utils.s_to_attr(new_source))
 
-        engine_config = self.get_analytical_engine_config()
-        if self._launcher.type() == types_pb2.HOSTS:
-            vineyard_endpoint = engine_config["vineyard_rpc_endpoint"]
-        else:
-            if self._launcher.vineyard_deployment_exists():
-                vineyard_endpoint = self._launcher._vineyard_service_endpoint
-            else:
-                vineyard_endpoint = self._launcher._vineyard_internal_endpoint
-        vineyard_ipc_socket = engine_config["vineyard_socket"]
+        vineyard_endpoint = self._launcher.vineyard_endpoint
+        vineyard_ipc_socket = self._launcher.vineyard_socket
 
         for loader in op.large_attr.chunk_meta_list.items:
             # handle vertex or edge loader

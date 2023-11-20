@@ -1,10 +1,10 @@
 package com.alibaba.graphscope.groot.frontend;
 
 import com.alibaba.graphscope.groot.CompletionCallback;
+import com.alibaba.graphscope.groot.common.util.UuidUtils;
 import com.alibaba.graphscope.groot.frontend.write.GraphWriter;
 import com.alibaba.graphscope.groot.frontend.write.WriteRequest;
-import com.alibaba.graphscope.proto.write.*;
-import com.alibaba.graphscope.sdkcommon.util.UuidUtils;
+import com.alibaba.graphscope.proto.groot.*;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -42,7 +42,7 @@ public class ClientWriteService extends ClientWriteGrpc.ClientWriteImplBase {
         String writeSession = request.getClientId();
         int writeRequestsCount = request.getWriteRequestsCount();
         List<WriteRequest> writeRequests = new ArrayList<>(writeRequestsCount);
-        logger.info(
+        logger.debug(
                 "received batchWrite request. requestId ["
                         + requestId
                         + "] writeSession ["

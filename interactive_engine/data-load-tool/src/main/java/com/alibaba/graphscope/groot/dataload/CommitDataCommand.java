@@ -1,10 +1,10 @@
 package com.alibaba.graphscope.groot.dataload;
 
-import com.alibaba.graphscope.compiler.api.schema.GraphEdge;
-import com.alibaba.graphscope.compiler.api.schema.GraphElement;
+import com.alibaba.graphscope.groot.common.schema.api.GraphEdge;
+import com.alibaba.graphscope.groot.common.schema.api.GraphElement;
 import com.alibaba.graphscope.groot.dataload.databuild.ColumnMappingInfo;
 import com.alibaba.graphscope.groot.sdk.GrootClient;
-import com.alibaba.graphscope.sdkcommon.common.DataLoadTarget;
+import com.alibaba.graphscope.proto.groot.DataLoadTargetPb;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -22,13 +22,13 @@ public class CommitDataCommand extends DataCommand {
                         .setUsername(username)
                         .setPassword(password)
                         .build();
-        Map<Long, DataLoadTarget> tableToTarget = new HashMap<>();
+        Map<Long, DataLoadTargetPb> tableToTarget = new HashMap<>();
         for (ColumnMappingInfo columnMappingInfo : columnMappingInfos.values()) {
             long tableId = columnMappingInfo.getTableId();
             int labelId = columnMappingInfo.getLabelId();
             GraphElement graphElement = schema.getElement(labelId);
             String label = graphElement.getLabel();
-            DataLoadTarget.Builder builder = DataLoadTarget.newBuilder();
+            DataLoadTargetPb.Builder builder = DataLoadTargetPb.newBuilder();
             builder.setLabel(label);
             if (graphElement instanceof GraphEdge) {
                 builder.setSrcLabel(
@@ -41,6 +41,5 @@ public class CommitDataCommand extends DataCommand {
         System.out.println("Commit data. unique path: " + uniquePath);
         client.commitDataLoad(tableToTarget, uniquePath);
         System.out.println("Commit complete.");
-        client.close();
     }
 }

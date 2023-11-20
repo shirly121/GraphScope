@@ -52,12 +52,14 @@ def load_from(
     ] = None,
     directed=True,
     oid_type="int64_t",
+    vid_type="uint64_t",
     generate_eid=True,
     retain_oid=True,
     vformat=None,
     eformat=None,
     vertex_map="global",
     compact_edges=False,
+    use_perfect_hash=False,
 ) -> Graph:
     """Load a Arrow property graph using a list of vertex/edge specifications.
 
@@ -152,6 +154,8 @@ def load_from(
         directed (bool, optional): Indicate whether the graph
             should be treated as directed or undirected.
         oid_type (str, optional): ID type of graph. Can be "int32_t", "int64_t" or "string". Defaults to "int64_t".
+        vid_type (str, optional): Internal vertex ID type of graph. Can be "uint32_t" and "uint64_t".
+            Defaults to "uint64_t".
         generate_eid (bool, optional): Whether to generate a unique edge id for each edge. Generated eid will be placed
             in third column. This feature is for cooperating with interactive engine.
             If you only need to work with analytical engine, set it to False. Defaults to True.
@@ -162,6 +166,8 @@ def load_from(
         compact_edges (bool, optional): Compact edges (CSR) using varint and delta encoding. Defaults to False.
             Note that compact edges helps to half the memory usage of edges in graph data structure, but may cause
             at most 10%~20% performance degeneration in some algorithms.
+        use_perfect_hash (bool, optional): Use perfect hashmap in vertex map to optimize the memory usage.
+             Defaults to False.
     """
 
     # Don't import the :code:`nx` in top-level statments to improve the
@@ -174,6 +180,9 @@ def load_from(
     oid_type = utils.normalize_data_type_str(oid_type)
     if oid_type not in ("int32_t", "int64_t", "std::string"):
         raise ValueError("oid_type can only be int32_t, int64_t or string.")
+    vid_type = utils.normalize_data_type_str(vid_type)
+    if vid_type not in ("uint32_t", "uint64_t"):
+        raise ValueError("vid_type can only be uint32_t or uint64_t.")
     v_labels = normalize_parameter_vertices(vertices, oid_type, vformat)
     e_labels = normalize_parameter_edges(edges, oid_type, eformat)
     # generate and add a loader op to dag
@@ -184,13 +193,14 @@ def load_from(
     config = {
         types_pb2.DIRECTED: utils.b_to_attr(directed),
         types_pb2.OID_TYPE: utils.s_to_attr(oid_type),
+        types_pb2.VID_TYPE: utils.s_to_attr(vid_type),
         types_pb2.GENERATE_EID: utils.b_to_attr(generate_eid),
         types_pb2.RETAIN_OID: utils.b_to_attr(retain_oid),
-        types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
         types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
         types_pb2.IS_FROM_GAR: utils.b_to_attr(False),
         types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(vertex_map),
         types_pb2.COMPACT_EDGES: utils.b_to_attr(compact_edges),
+        types_pb2.USE_PERFECT_HASH: utils.b_to_attr(use_perfect_hash),
     }
     op = dag_utils.create_graph(
         sess.session_id, graph_def_pb2.ARROW_PROPERTY, inputs=[loader_op], attrs=config
@@ -198,11 +208,13 @@ def load_from(
     graph = sess.g(
         op,
         oid_type=oid_type,
+        vid_type=vid_type,
         directed=directed,
         generate_eid=generate_eid,
         retain_oid=retain_oid,
         vertex_map=vertex_map,
         compact_edges=compact_edges,
+        use_perfect_hash=use_perfect_hash,
     )
     return graph
 
@@ -211,16 +223,25 @@ def load_from_gar(
     graph_info_path: str,
     directed=True,
     oid_type="int64_t",
+    vid_type="uint64_t",
     vertex_map="global",
     compact_edges=False,
+    use_perfect_hash=False,
 ) -> Graph:
     sess = get_default_session()
     oid_type = utils.normalize_data_type_str(oid_type)
     if oid_type not in ("int32_t", "int64_t", "std::string"):
         raise ValueError("The 'oid_type' can only be int32_t, int64_t or string.")
+    vid_type = utils.normalize_data_type_str(vid_type)
+    if vid_type not in ("uint32_t", "uint64_t"):
+        raise ValueError("The 'vid_type' can only be uint32_t or uint64_t.")
     if compact_edges:
         raise ValueError(
             "Loading from gar with 'compact_edges' hasn't been supported yet."
+        )
+    if use_perfect_hash:
+        raise ValueError(
+            "Loading from gar with 'use_perfect_hash' hasn't been supported yet."
         )
     # generate and add a loader op to dag
     vertex_map = utils.vertex_map_type_to_enum(vertex_map)
@@ -228,13 +249,14 @@ def load_from_gar(
     config = {
         types_pb2.DIRECTED: utils.b_to_attr(directed),
         types_pb2.OID_TYPE: utils.s_to_attr(oid_type),
+        types_pb2.VID_TYPE: utils.s_to_attr(vid_type),
         types_pb2.GENERATE_EID: utils.b_to_attr(False),
         types_pb2.RETAIN_OID: utils.b_to_attr(False),
-        types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
         types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
         types_pb2.IS_FROM_GAR: utils.b_to_attr(True),
         types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(vertex_map),
         types_pb2.COMPACT_EDGES: utils.b_to_attr(compact_edges),
+        types_pb2.USE_PERFECT_HASH: utils.b_to_attr(use_perfect_hash),
         types_pb2.GRAPH_INFO_PATH: utils.s_to_attr(graph_info_path),
     }
     op = dag_utils.create_graph(
@@ -243,8 +265,10 @@ def load_from_gar(
     graph = sess.g(
         op,
         oid_type=oid_type,
+        vid_type=vid_type,
         directed=directed,
         vertex_map=vertex_map,
         compact_edges=compact_edges,
+        use_perfect_hash=use_perfect_hash,
     )
     return graph

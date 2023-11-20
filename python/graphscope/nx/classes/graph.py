@@ -20,7 +20,6 @@
 #
 
 import copy
-import threading
 
 import orjson as json
 from networkx import freeze
@@ -369,6 +368,15 @@ class Graph(_GraphBase):
         self._saved_signature = self.signature
         self._is_client_view = False
 
+        # statically create the unload op
+        #
+        # networkx operations update the op, but keep the key as same, thus
+        # the unload op don't need to be refreshed.
+        if self.op is None:
+            self._unload_op = None
+        else:
+            self._unload_op = dag_utils.unload_graph(self)
+
     def _is_gs_graph(self, incoming_graph_data):
         return (
             hasattr(incoming_graph_data, "graph_type")
@@ -376,22 +384,19 @@ class Graph(_GraphBase):
         )
 
     def __del__(self):
-        if self._session.info["status"] != "active" or self._key is None:
+        if self._key is None or self._session.disconnected:
             return
 
-        # use thread to avoid dead-lock
-        def _del(graph):
-            # cancel cache fetch future
-            if graph.cache.enable_iter_cache:
-                graph.cache.shutdown()
-            op = dag_utils.unload_graph(graph)
-            op.eval()
-            graph._key = None
+        if self.cache.enable_iter_cache:
+            try:
+                self.cache.shutdown()
+            except:  # noqa: E722, pylint: disable=bare-except
+                pass
+        self.cache.shutdown_executor()
 
-        if not self._is_client_view:
-            t = threading.Thread(target=_del, args=(self,))
-            t.daemon = True
-            t.start()
+        if not self._is_client_view and self._unload_op is not None:
+            self._unload_op.eval()
+        self._key = None
 
     @property
     def op(self):
@@ -462,13 +467,17 @@ class Graph(_GraphBase):
             oid_type = utils.normalize_data_type_str(
                 utils.data_type_to_cpp(self._schema.oid_type)
             )
-            vid_type = self._schema.vid_type
+            vid_type = utils.normalize_data_type_str(
+                utils.data_type_to_cpp(self._schema.vid_type)
+            )
             s = f"vineyard::ArrowFragment<{oid_type},{vid_type}>"
         elif self._graph_type == graph_def_pb2.ARROW_FLATTENED:
             oid_type = utils.normalize_data_type_str(
                 utils.data_type_to_cpp(self._schema.oid_type)
             )
-            vid_type = self._schema.vid_type
+            vid_type = utils.normalize_data_type_str(
+                utils.data_type_to_cpp(self._schema.vid_type)
+            )
             vdata_type = utils.data_type_to_cpp(self._schema.vdata_type)
             edata_type = utils.data_type_to_cpp(self._schema.edata_type)
             s = f"gs::ArrowFlattenedFragment<{oid_type},{vid_type},{vdata_type},{edata_type}>"
@@ -476,7 +485,9 @@ class Graph(_GraphBase):
             oid_type = utils.normalize_data_type_str(
                 utils.data_type_to_cpp(self._schema.oid_type)
             )
-            vid_type = self._schema.vid_type
+            vid_type = utils.normalize_data_type_str(
+                utils.data_type_to_cpp(self._schema.vid_type)
+            )
             vdata_type = utils.data_type_to_cpp(self._schema.vdata_type)
             edata_type = utils.data_type_to_cpp(self._schema.edata_type)
             s = f"gs::ArrowProjectedFragment<{oid_type},{vid_type},{vdata_type},{edata_type}>"

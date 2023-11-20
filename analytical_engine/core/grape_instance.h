@@ -38,7 +38,7 @@
 #include "core/object/object_manager.h"
 #include "core/server/dispatcher.h"
 #include "core/server/rpc_utils.h"
-#include "graphscope/proto/types.pb.h"
+#include "proto/types.pb.h"
 
 namespace bl = boost::leaf;
 
@@ -164,6 +164,10 @@ class GrapeInstance : public Subscriber {
 
   bl::result<rpc::graph::GraphDefPb> addLabelsToGraph(
       const rpc::GSParams& params);
+
+  bl::result<rpc::graph::GraphDefPb> consolidateColumns(
+      const rpc::GSParams& params);
+
   bl::result<std::string> getContextData(const rpc::GSParams& params);
 
   bl::result<std::shared_ptr<grape::InArchive>> graphToNumpy(

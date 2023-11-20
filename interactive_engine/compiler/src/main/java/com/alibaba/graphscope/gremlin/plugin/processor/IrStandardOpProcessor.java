@@ -29,68 +29,63 @@ import com.alibaba.graphscope.common.IrPlan;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
+import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.intermediate.InterOpCollection;
-import com.alibaba.graphscope.common.ir.runtime.PhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
-import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gremlin.InterOpCollectionBuilder;
 import com.alibaba.graphscope.gremlin.Utils;
-import com.alibaba.graphscope.gremlin.plugin.script.AntlrCypherScriptEngineFactory;
+import com.alibaba.graphscope.gremlin.plugin.MetricsCollector;
+import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
+import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.graphscope.gremlin.plugin.script.AntlrGremlinScriptEngineFactory;
 import com.alibaba.graphscope.gremlin.plugin.strategy.ExpandFusionStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.RemoveUselessStepStrategy;
 import com.alibaba.graphscope.gremlin.plugin.strategy.ScanFusionStepStrategy;
-import com.alibaba.graphscope.gremlin.result.processor.CypherResultProcessor;
+import com.alibaba.graphscope.gremlin.plugin.traversal.IrCustomizedTraversal;
+import com.alibaba.graphscope.gremlin.plugin.traversal.IrCustomizedTraversalSource;
+import com.alibaba.graphscope.gremlin.result.processor.AbstractResultProcessor;
 import com.alibaba.graphscope.gremlin.result.processor.GremlinResultProcessor;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Maps;
+import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.apache.calcite.rel.hint.RelHint;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
 import org.apache.tinkerpop.gremlin.groovy.engine.GremlinExecutor;
 import org.apache.tinkerpop.gremlin.groovy.jsr223.TimedInterruptTimeoutException;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
+import org.apache.tinkerpop.gremlin.process.traversal.TraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.TraversalStrategies;
 import org.apache.tinkerpop.gremlin.process.traversal.TraversalStrategy;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.strategy.optimization.InlineFilterStrategy;
 import org.apache.tinkerpop.gremlin.process.traversal.util.DefaultTraversalStrategies;
 import org.apache.tinkerpop.gremlin.server.Context;
-import org.apache.tinkerpop.gremlin.server.Settings;
 import org.apache.tinkerpop.gremlin.server.op.AbstractEvalOpProcessor;
 import org.apache.tinkerpop.gremlin.server.op.OpProcessorException;
 import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import javax.script.SimpleBindings;
 
 public class IrStandardOpProcessor extends StandardOpProcessor {
-    private static Logger metricLogger = LoggerFactory.getLogger("MetricLog");
-    private static Logger logger = LoggerFactory.getLogger(IrStandardOpProcessor.class);
-
-    protected static final AtomicLong JOB_ID_COUNTER = new AtomicLong(0L);
     protected Graph graph;
     protected GraphTraversalSource g;
     protected Configs configs;
@@ -104,6 +99,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
 
     public IrStandardOpProcessor(
             Configs configs,
+            GraphPlanner graphPlanner,
             ChannelFetcher fetcher,
             IrMetaQueryCallback metaQueryCallback,
             Graph graph,
@@ -111,10 +107,9 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         this.graph = graph;
         this.g = g;
         this.configs = configs;
-        this.rpcClient =
-                new RpcClient(PegasusConfig.PEGASUS_GRPC_TIMEOUT.get(configs), fetcher.fetch());
+        this.rpcClient = new RpcClient(fetcher.fetch());
         this.metaQueryCallback = metaQueryCallback;
-        this.graphPlanner = new GraphPlanner(configs);
+        this.graphPlanner = graphPlanner;
     }
 
     @Override
@@ -122,41 +117,37 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
             final Context ctx,
             final Supplier<GremlinExecutor> gremlinExecutorSupplier,
             final AbstractEvalOpProcessor.BindingSupplier bindingsSupplier) {
-        long startTime = System.currentTimeMillis();
-        com.codahale.metrics.Timer.Context timerContext = evalOpTimer.time();
         RequestMessage msg = ctx.getRequestMessage();
         GremlinExecutor gremlinExecutor = gremlinExecutorSupplier.get();
         Map<String, Object> args = msg.getArgs();
         String script = (String) args.get("gremlin");
 
-        // replace with antlr parser
-        String language = getLanguageFromRequest(msg);
+        String defaultValidateQuery = "''";
+        // ad-hoc handling for connection validation
+        if (script.equals(defaultValidateQuery)) {
+            ctx.writeAndFlush(ResponseMessage.build(msg).code(ResponseStatusCode.SUCCESS).create());
+            return;
+        }
 
-        long jobId = JOB_ID_COUNTER.incrementAndGet();
+        String language = AntlrGremlinScriptEngineFactory.LANGUAGE_NAME;
+
+        long jobId = graphPlanner.generateUniqueId();
         IrMeta irMeta = metaQueryCallback.beforeExec();
+        QueryStatusCallback statusCallback = createQueryStatusCallback(script, jobId);
         GremlinExecutor.LifeCycle lifeCycle =
                 createLifeCycle(
-                        ctx, gremlinExecutorSupplier, bindingsSupplier, jobId, script, irMeta);
+                        ctx, gremlinExecutorSupplier, bindingsSupplier, irMeta, statusCallback);
         try {
             CompletableFuture<Object> evalFuture =
                     gremlinExecutor.eval(script, language, new SimpleBindings(), lifeCycle);
             evalFuture.handle(
                     (v, t) -> {
                         metaQueryCallback.afterExec(irMeta);
-                        long elapsed = timerContext.stop();
-                        logger.info(
-                                "query \"{}\" total execution time is {} ms",
-                                script,
-                                elapsed / 1000000.0f);
-                        boolean isSuccess = (t == null);
-                        metricLogger.info(
-                                "{} | {} | {} | {} | {}",
-                                jobId,
-                                script,
-                                isSuccess,
-                                elapsed / 1000000.0f,
-                                startTime);
                         if (t != null) {
+                            statusCallback.onEnd(false);
+                            if (v instanceof AbstractResultProcessor) {
+                                ((AbstractResultProcessor) v).cancel();
+                            }
                             Optional<Throwable> possibleTemporaryException =
                                     determineIfTemporaryException(t);
                             if (possibleTemporaryException.isPresent()) {
@@ -184,7 +175,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                                                             + " increasing the limit given to"
                                                             + " TimedInterruptCustomizerProvider",
                                                     msg);
-                                    logger.warn(errorMessage);
+                                    statusCallback.getQueryLogger().warn(errorMessage);
                                     ctx.writeAndFlush(
                                             ResponseMessage.build(msg)
                                                     .code(ResponseStatusCode.SERVER_ERROR_TIMEOUT)
@@ -200,7 +191,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                                                     "Script evaluation exceeded the configured"
                                                             + " threshold for request [%s]",
                                                     msg);
-                                    logger.warn(errorMessage, t);
+                                    statusCallback.getQueryLogger().warn(errorMessage, t);
                                     ctx.writeAndFlush(
                                             ResponseMessage.build(msg)
                                                     .code(ResponseStatusCode.SERVER_ERROR_TIMEOUT)
@@ -220,7 +211,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                                                         + " allowed by the JVM, please split it"
                                                         + " into multiple smaller statements - %s",
                                                     msg);
-                                    logger.warn(errorMessage);
+                                    statusCallback.getQueryLogger().warn(errorMessage);
                                     ctx.writeAndFlush(
                                             ResponseMessage.build(msg)
                                                     .code(
@@ -232,12 +223,14 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                                 } else {
                                     errorMessage =
                                             t.getMessage() == null ? t.toString() : t.getMessage();
-                                    logger.warn(
-                                            String.format(
-                                                    "Exception processing a script on request"
-                                                            + " [%s].",
-                                                    msg),
-                                            t);
+                                    statusCallback
+                                            .getQueryLogger()
+                                            .warn(
+                                                    String.format(
+                                                            "Exception processing a script on"
+                                                                    + " request [%s].",
+                                                            msg),
+                                                    t);
                                     ctx.writeAndFlush(
                                             ResponseMessage.build(msg)
                                                     .code(
@@ -260,45 +253,20 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         }
     }
 
-    protected String getLanguageFromRequest(RequestMessage msg) {
-        Map<String, Object> args = msg.getArgs();
-        if (args.containsKey("bindings")) {
-            Map<String, Object> bindings = (Map<String, Object>) args.get("bindings");
-            if (bindings.containsKey("language")) {
-                return (String) bindings.get("language");
-            }
-        }
-        // hack ways to get language opt from gremlin console, for this is the only remote
-        // configurations can be set in the console
-        if (args.containsKey("aliases")) {
-            Map<String, String> aliases = (Map<String, String>) args.get("aliases");
-            for (Map.Entry<String, String> alias : aliases.entrySet()) {
-                if (alias.getValue().equals("graph")) {
-                    return alias.getKey();
-                }
-            }
-        }
-        return AntlrGremlinScriptEngineFactory.LANGUAGE_NAME;
+    protected QueryStatusCallback createQueryStatusCallback(String query, long queryId) {
+        return new QueryStatusCallback(
+                new MetricsCollector(evalOpTimer), new QueryLogger(query, queryId));
     }
 
     protected GremlinExecutor.LifeCycle createLifeCycle(
             Context ctx,
             Supplier<GremlinExecutor> gremlinExecutorSupplier,
             BindingSupplier bindingsSupplier,
-            long jobId,
-            String script,
-            IrMeta irMeta) {
-        final RequestMessage msg = ctx.getRequestMessage();
-        final Settings settings = ctx.getSettings();
-        final Map<String, Object> args = msg.getArgs();
-        long seto =
-                args.containsKey("evaluationTimeout")
-                        ? ((Number) args.get("evaluationTimeout")).longValue()
-                        : settings.getEvaluationTimeout();
-        // replace with antlr parser
-        String language = getLanguageFromRequest(msg);
+            IrMeta irMeta,
+            QueryStatusCallback statusCallback) {
+        QueryTimeoutConfig timeoutConfig = new QueryTimeoutConfig(ctx.getRequestTimeout());
         return GremlinExecutor.LifeCycle.build()
-                .evaluationTimeoutOverride(seto)
+                .evaluationTimeoutOverride(timeoutConfig.getExecutionTimeoutMS())
                 .beforeEval(
                         b -> {
                             try {
@@ -323,27 +291,11 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                                     Traversal traversal = (Traversal) o;
                                     processTraversal(
                                             traversal,
-                                            new GremlinResultProcessor(ctx, traversal),
-                                            jobId,
-                                            script,
-                                            irMeta);
-                                } else if (o != null && o instanceof ParseTree) {
-                                    GraphPlanner.PlannerInstance instance =
-                                            graphPlanner.instance((ParseTree) o, irMeta);
-                                    GraphPlanner.Summary summary = instance.plan();
-                                    if (language.equals(
-                                            AntlrGremlinScriptEngineFactory.LANGUAGE_NAME)) {
-                                        // todo: handle gremlin results
-                                    } else if (language.equals(
-                                            AntlrCypherScriptEngineFactory.LANGUAGE_NAME)) {
-                                        processRelNode(
-                                                summary,
-                                                new CypherResultProcessor(ctx, summary),
-                                                jobId,
-                                                script,
-                                                irMeta,
-                                                ctx);
-                                    }
+                                            new GremlinResultProcessor(
+                                                    ctx, traversal, statusCallback),
+                                            irMeta,
+                                            timeoutConfig,
+                                            statusCallback.getQueryLogger());
                                 }
                             } catch (Exception e) {
                                 throw new RuntimeException(e);
@@ -356,101 +308,63 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
     protected void processTraversal(
             Traversal traversal,
             ResultProcessor resultProcessor,
-            long jobId,
-            String script,
-            IrMeta irMeta)
+            IrMeta irMeta,
+            QueryTimeoutConfig timeoutConfig,
+            QueryLogger queryLogger)
             throws InvalidProtocolBufferException, IOException, RuntimeException {
+        // get configs per query from traversal
+        Configs queryConfigs = getQueryConfigs(traversal);
+
         InterOpCollection opCollection = (new InterOpCollectionBuilder(traversal)).build();
         // fuse order with limit to topK
         InterOpCollection.applyStrategies(opCollection);
         // add sink operator
         InterOpCollection.process(opCollection);
 
+        long jobId = queryLogger.getQueryId();
         String jobName = "ir_plan_" + jobId;
         IrPlan irPlan = new IrPlan(irMeta, opCollection);
         // print script and jobName with ir plan
-        logger.info(
-                "gremlin query \"{}\", job conf name \"{}\", ir plan {}",
-                script,
-                jobName,
-                irPlan.getPlanAsJson());
-        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(configs);
+        queryLogger.info("ir plan {}", irPlan.getPlanAsJson());
+        byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
         irPlan.close();
 
-        PegasusClient.JobRequest request = PegasusClient.JobRequest.parseFrom(physicalPlanBytes);
+        PegasusClient.JobRequest request =
+                PegasusClient.JobRequest.newBuilder()
+                        .setPlan(ByteString.copyFrom(physicalPlanBytes))
+                        .build();
         PegasusClient.JobConfig jobConfig =
                 PegasusClient.JobConfig.newBuilder()
                         .setJobId(jobId)
                         .setJobName(jobName)
-                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(configs))
-                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(configs))
-                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(configs))
-                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(configs))
-                        .setTimeLimit(PegasusConfig.PEGASUS_TIMEOUT.get(configs))
+                        .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(queryConfigs))
+                        .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(queryConfigs))
+                        .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(queryConfigs))
+                        .setBatchCapacity(PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(queryConfigs))
+                        .setTimeLimit(timeoutConfig.getEngineTimeoutMS())
                         .setAll(PegasusClient.Empty.newBuilder().build())
                         .build();
         request = request.toBuilder().setConf(jobConfig).build();
-        this.rpcClient.submit(request, resultProcessor);
+        this.rpcClient.submit(request, resultProcessor, timeoutConfig.getChannelTimeoutMS());
     }
 
-    protected void processRelNode(
-            GraphPlanner.Summary summary,
-            ResultProcessor resultProcessor,
-            long jobId,
-            String script,
-            IrMeta irMeta,
-            Context ctx)
-            throws Exception {
-        String jobName = "ir_plan_" + jobId;
-        LogicalPlan logicalPlan = summary.getLogicalPlan();
-        if (logicalPlan.isReturnEmpty()) {
-            logger.info(
-                    "gremlin query \"{}\", job conf name \"{}\", logical plan\n {}",
-                    script,
-                    jobName,
-                    logicalPlan.explain());
-            // return empty results to the client
-            RequestMessage msg = ctx.getRequestMessage();
-            ctx.writeAndFlush(
-                    ResponseMessage.build(msg).code(ResponseStatusCode.NO_CONTENT).create());
-        } else {
-            try (PhysicalBuilder<byte[]> physicalBuilder = summary.getPhysicalBuilder()) {
-                byte[] physicalPlanBytes = physicalBuilder.build();
-                // print script and jobName with ir plan
-                logger.info(
-                        "gremlin query \"{}\", job conf name \"{}\", ir core plan {}",
-                        script,
-                        jobName,
-                        physicalBuilder.explain());
-                PegasusClient.JobRequest request =
-                        PegasusClient.JobRequest.parseFrom(physicalPlanBytes);
-                PegasusClient.JobConfig jobConfig =
-                        PegasusClient.JobConfig.newBuilder()
-                                .setJobId(jobId)
-                                .setJobName(jobName)
-                                .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(configs))
-                                .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(configs))
-                                .setMemoryLimit(PegasusConfig.PEGASUS_MEMORY_LIMIT.get(configs))
-                                .setBatchCapacity(
-                                        PegasusConfig.PEGASUS_OUTPUT_CAPACITY.get(configs))
-                                .setTimeLimit(PegasusConfig.PEGASUS_TIMEOUT.get(configs))
-                                .setAll(PegasusClient.Empty.newBuilder().build())
-                                .build();
-                request = request.toBuilder().setConf(jobConfig).build();
-                this.rpcClient.submit(request, resultProcessor);
+    private Configs getQueryConfigs(Traversal traversal) {
+        // the config priority is query > system env > system property > config file
+        Iterator<Object> keyIterator = this.configs.getKeys();
+        Map configMap = Maps.newHashMap();
+        while (keyIterator.hasNext()) {
+            String key = keyIterator.next().toString();
+            configMap.put(key, this.configs.get(key));
+        }
+        if (traversal instanceof IrCustomizedTraversal) {
+            Optional<TraversalSource> sourceOpt =
+                    ((IrCustomizedTraversal) traversal).getTraversalSource();
+            if (sourceOpt.isPresent()) {
+                // will override the config set before
+                configMap.putAll(((IrCustomizedTraversalSource) sourceOpt.get()).getConfigs());
             }
         }
-    }
-
-    protected List<RelHint> getPlanHints(IrMeta irMeta) {
-        int servers = PegasusConfig.PEGASUS_HOSTS.get(configs).split(",").length;
-        int workers = PegasusConfig.PEGASUS_WORKER_NUM.get(configs);
-        return ImmutableList.of(
-                RelHint.builder("plan")
-                        .hintOption("servers", String.valueOf(servers))
-                        .hintOption("workers", String.valueOf(workers))
-                        .hintOption("isColumnId", String.valueOf(irMeta.getSchema().isColumnId()))
-                        .build());
+        return new Configs(configMap);
     }
 
     public static void applyStrategies(Traversal traversal) {

@@ -1,24 +1,48 @@
 app:
   - algo: pagerank
     type: cpp_pie
-    class_name: grape::PageRankLocal
-    src: pagerank/pagerank_local.h
+    class_name: grape::PageRankOpt
+    src: pagerank/pagerank_opt.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
+      - gs::DynamicProjectedFragment
+  - algo: pagerank_push
+    type: cpp_pie
+    class_name: grape::PageRankPush
+    src: pagerank/pagerank_push.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
+      - gs::DynamicProjectedFragment
+  - algo: pagerank_push_opt
+    type: cpp_pie
+    class_name: grape::PageRankPushOpt
+    src: pagerank/pagerank_push_opt.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
+      - gs::DynamicProjectedFragment
+  - algo: pagerank_directed
+    type: cpp_pie
+    class_name: grape::PageRankDirected
+    src: pagerank/pagerank_directed.h
     compatible_graph:
       - grape::ImmutableEdgecutFragment
       - gs::ArrowProjectedFragment
       - gs::DynamicProjectedFragment
   - algo: sssp
     type: cpp_pie
-    class_name: grape::SSSP
-    src: sssp/sssp.h
+    class_name: grape::SSSPOpt
+    src: sssp/sssp_opt.h
     compatible_graph:
       - grape::ImmutableEdgecutFragment
       - gs::ArrowProjectedFragment
       - gs::DynamicProjectedFragment
   - algo: bfs
     type: cpp_pie
-    class_name: grape::BFS
-    src: bfs/bfs.h
+    class_name: grape::BFSOpt
+    src: bfs/bfs_opt.h
     compatible_graph:
       - grape::ImmutableEdgecutFragment
       - gs::ArrowProjectedFragment
@@ -30,6 +54,20 @@ app:
     compatible_graph:
       - grape::ImmutableEdgecutFragment
       - gs::ArrowProjectedFragment
+  - algo: wcc_opt
+    type: cpp_pie
+    class_name: grape::WCCOpt
+    src: wcc/wcc_opt.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
+  - algo: wcc_auto
+    type: cpp_pie
+    class_name: grape::WCCAuto
+    src: wcc/wcc_auto.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
   - algo: wcc_projected
     type: cpp_pie
     class_name: gs::WCCProjected
@@ -38,17 +76,26 @@ app:
       - grape::ImmutableEdgecutFragment
       - gs::ArrowProjectedFragment
       - gs::DynamicProjectedFragment
-  - algo: wcc_auto
-    type: cpp_pie
-    class_name: grape::WCCAuto
-    src: wcc/wcc_auto.h
-    compatible_graph:
-      - grape::ImmutableEdgecutFragment
-      - gs::ArrowProjectedFragment
   - algo: cdlp
     type: cpp_pie
     class_name: grape::CDLP
     src: cdlp/cdlp.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
+      - gs::DynamicProjectedFragment
+  - algo: lcc
+    type: cpp_pie
+    class_name: grape::LCCOpt
+    src: lcc/lcc_opt.h
+    compatible_graph:
+      - grape::ImmutableEdgecutFragment
+      - gs::ArrowProjectedFragment
+      - gs::DynamicProjectedFragment
+  - algo: lcc_directed
+    type: cpp_pie
+    class_name: grape::LCCDirected
+    src: lcc/lcc_directed.h
     compatible_graph:
       - grape::ImmutableEdgecutFragment
       - gs::ArrowProjectedFragment
@@ -116,12 +163,6 @@ app:
     type: cpp_pie
     class_name: gs::KShell
     src: apps/kshell/kshell.h
-    compatible_graph:
-      - gs::DynamicFragment
-  - algo: lcc
-    type: cpp_pie
-    class_name: grape::LCC
-    src: lcc/lcc.h
     compatible_graph:
       - gs::DynamicFragment
   - algo: clustering

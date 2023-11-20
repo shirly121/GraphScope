@@ -18,10 +18,13 @@ package com.alibaba.graphscope.gremlin.integration.processor;
 
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gremlin.integration.result.GraphProperties;
 import com.alibaba.graphscope.gremlin.integration.result.GremlinTestResultProcessor;
+import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.graphscope.gremlin.plugin.processor.IrStandardOpProcessor;
 import com.alibaba.graphscope.gremlin.plugin.script.AntlrGremlinScriptEngine;
 
@@ -56,12 +59,13 @@ public class IrTestOpProcessor extends IrStandardOpProcessor {
 
     public IrTestOpProcessor(
             Configs configs,
+            GraphPlanner graphPlanner,
             ChannelFetcher fetcher,
             IrMetaQueryCallback metaQueryCallback,
             Graph graph,
             GraphTraversalSource g,
             GraphProperties testGraph) {
-        super(configs, fetcher, metaQueryCallback, graph, g);
+        super(configs, graphPlanner, fetcher, metaQueryCallback, graph, g);
         this.context = new SimpleScriptContext();
         Bindings globalBindings = new SimpleBindings();
         globalBindings.put("g", g);
@@ -90,16 +94,21 @@ public class IrTestOpProcessor extends IrStandardOpProcessor {
                             Traversal traversal =
                                     (Traversal) scriptEngine.eval(script, this.context);
                             applyStrategies(traversal);
-
-                            long jobId = JOB_ID_COUNTER.incrementAndGet();
+                            long jobId = graphPlanner.generateUniqueId();
                             IrMeta irMeta = metaQueryCallback.beforeExec();
+                            QueryStatusCallback statusCallback =
+                                    createQueryStatusCallback(script, jobId);
                             processTraversal(
                                     traversal,
                                     new GremlinTestResultProcessor(
-                                            ctx, traversal, testGraph, this.configs),
-                                    jobId,
-                                    script,
-                                    irMeta);
+                                            ctx,
+                                            traversal,
+                                            statusCallback,
+                                            testGraph,
+                                            this.configs),
+                                    irMeta,
+                                    new QueryTimeoutConfig(ctx.getRequestTimeout()),
+                                    statusCallback.getQueryLogger());
                             metaQueryCallback.afterExec(irMeta);
                         });
                 return op;

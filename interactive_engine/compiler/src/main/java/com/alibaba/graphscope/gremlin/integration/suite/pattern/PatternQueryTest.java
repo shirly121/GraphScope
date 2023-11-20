@@ -20,7 +20,6 @@ import com.alibaba.graphscope.gremlin.integration.suite.utils.__;
 import com.alibaba.graphscope.gremlin.plugin.traversal.IrCustomizedTraversal;
 
 import org.apache.tinkerpop.gremlin.process.AbstractGremlinProcessTest;
-import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.junit.Assert;
@@ -63,256 +62,112 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
     public void run_pattern_1_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_1_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "343476";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(240390L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_2_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_2_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "87328";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(118209L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_3_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_3_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "1547850";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(1247146L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_4_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_4_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "33380";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(23286L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_5_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_5_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "31580";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(5596L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_6_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_6_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "71733";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(43169L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_7_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_7_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "6568";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(20858L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_8_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_8_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "1594426";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(1247146L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_9_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_9_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "33380";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(23286L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_10_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_10_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "7327";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(11547L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_11_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_11_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "908981";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(506513L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_12_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_12_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "89621";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(232854L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_13_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_13_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "2430116";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(1602774L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_14_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_14_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "87328";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(118209L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_15_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_15_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "33380";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(23286L, traversal.next().longValue());
     }
 
     @Test
     public void run_pattern_16_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_16_test();
         this.printTraversalForm(traversal);
-        int counter = 0;
-
-        String expected = "33380";
-        while (traversal.hasNext()) {
-            Long bindings = traversal.next();
-            Assert.assertTrue(bindings.toString().equals(expected));
-            ++counter;
-        }
-
-        Assert.assertEquals(1, counter);
+        Assert.assertEquals(23286L, traversal.next().longValue());
     }
 
     public static class Traversals extends PatternQueryTest {
@@ -321,12 +176,7 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
         @Override
         public Traversal<Vertex, Long> get_pattern_1_test() {
             return g.V().match(
-                            __.as("a").out("KNOWS").as("b"),
-                            __.as("b")
-                                    .outE("KNOWS")
-                                    .has("creationDate", P.gt(20120101000000000L))
-                                    .inV()
-                                    .as("c"))
+                            __.as("a").out("KNOWS").as("b"), __.as("b").outE("KNOWS").inV().as("c"))
                     .count();
         }
 
@@ -337,7 +187,7 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                             __.as("a").out("KNOWS").as("b"),
                             __.as("b")
                                     .hasLabel("PERSON")
-                                    .has("creationDate", P.gt(20120101000000000L))
+                                    .has("gender", "male")
                                     .out("KNOWS")
                                     .as("c"))
                     .count();
@@ -351,9 +201,8 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                             __.as("b").out("KNOWS").as("c"),
                             __.as("c")
                                     .hasLabel("PERSON")
-                                    .has("creationDate", P.gt(20120101000000000L))
+                                    .has("gender", "male")
                                     .outE("KNOWS")
-                                    .has("creationDate", P.gt(20120601000000000L))
                                     .inV()
                                     .as("d"))
                     .count();
@@ -373,21 +222,9 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
         @Override
         public Traversal<Vertex, Long> get_pattern_5_test() {
             return g.V().match(
-                            __.as("a")
-                                    .outE("KNOWS")
-                                    .has("creationDate", P.gt(20110101000000000L))
-                                    .inV()
-                                    .as("b"),
-                            __.as("b")
-                                    .outE("KNOWS")
-                                    .has("creationDate", P.gt(20110101000000000L))
-                                    .inV()
-                                    .as("c"),
-                            __.as("a")
-                                    .outE("KNOWS")
-                                    .has("creationDate", P.gt(20110101000000000L))
-                                    .inV()
-                                    .as("c"))
+                            __.as("a").has("gender", "male").out("KNOWS").as("b"),
+                            __.as("b").has("gender", "female").out("KNOWS").as("c"),
+                            __.as("a").out("KNOWS").as("c"))
                     .count();
         }
 
@@ -408,19 +245,10 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
         public Traversal<Vertex, Long> get_pattern_7_test() {
             return g.V().match(
                             __.as("a").out("KNOWS").as("b"),
-                            __.as("b")
-                                    .has("creationDate", P.gt(20120101000000000L))
-                                    .outE("KNOWS")
-                                    .has("creationDate", P.gt(20120201000000000L))
-                                    .inV()
-                                    .as("c"),
+                            __.as("b").has("gender", "male").outE("KNOWS").inV().as("c"),
                             __.as("a").out("KNOWS").as("c"),
                             __.as("c").out("KNOWS").as("d"),
-                            __.as("b")
-                                    .outE("KNOWS")
-                                    .has("creationDate", P.gt(20120301000000000L))
-                                    .inV()
-                                    .as("d"))
+                            __.as("b").outE("KNOWS").inV().as("d"))
                     .count();
         }
 
@@ -434,7 +262,7 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                             ((IrCustomizedTraversal)
                                             __.as("c")
                                                     .hasLabel("PERSON")
-                                                    .has("creationDate", P.gt(20120101000000000L))
+                                                    .has("gender", "male")
                                                     .out("1..2", "KNOWS"))
                                     .endV()
                                     .as("d"))
@@ -460,10 +288,7 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                                     .endV()
                                     .as("b"),
                             ((IrCustomizedTraversal)
-                                            __.as("b")
-                                                    .has("creationDate", P.gt(20120101000000000L))
-                                                    .outE("KNOWS")
-                                                    .has("creationDate", P.gt(20120601000000000L)))
+                                            __.as("b").has("gender", "female").outE("KNOWS"))
                                     .inV()
                                     .as("c"),
                             ((IrCustomizedTraversal) __.as("a").out("1..2", "KNOWS"))
@@ -501,10 +326,7 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
         public Traversal<Vertex, Long> get_pattern_14_test() {
             return g.V().match(
                             __.as("a").out("KNOWS").as("b"),
-                            __.as("b")
-                                    .hasLabel("PERSON")
-                                    .has("creationDate", P.gt(20120101000000000L))
-                                    .as("b"),
+                            __.as("b").hasLabel("PERSON").has("gender", "male").as("b"),
                             __.as("b").out("KNOWS").as("c"))
                     .count();
         }

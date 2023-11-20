@@ -34,6 +34,8 @@ from graphscope.proto import ddl_service_pb2
 from graphscope.proto import ddl_service_pb2_grpc
 from graphscope.proto import write_service_pb2
 from graphscope.proto import write_service_pb2_grpc
+from graphscope.proto.groot.sdk import client_service_pb2_grpc
+from graphscope.proto.groot.sdk import model_pb2
 
 
 class Graph:
@@ -97,13 +99,14 @@ class Connection:
         self._gremlin_endpoint = gremlin_endpoint
         options = self._get_channel_options()
         channel = grpc.insecure_channel(addr, options=options)
-        self._ddl_service_stub = ddl_service_pb2_grpc.ClientDdlStub(channel)
+        self._ddl_service_stub = ddl_service_pb2_grpc.GrootDdlServiceStub(channel)
         self._write_service_stub = write_service_pb2_grpc.ClientWriteStub(channel)
+        self._client_service_stub = client_service_pb2_grpc.ClientStub(channel)
         self._client_id = None
         self._metadata = self._encode_metadata(username, password)
-        graph_url = "ws://%s/gremlin" % self._gremlin_endpoint
+        gremlin_url = f"ws://{self._gremlin_endpoint}/gremlin"
         self._conn = DriverRemoteConnection(
-            graph_url, "g", username=username, password=password
+            gremlin_url, "g", username=username, password=password
         )
 
     def _get_channel_options(self):
@@ -111,7 +114,7 @@ class Connection:
             {
                 "methodConfig": [
                     {
-                        "name": [{"service": "gs.rpc.ddl_service.v1.ClientDdl"}],
+                        "name": [{"service": "gs.rpc.groot.GrootDdlService"}],
                         "retryPolicy": {
                             "maxAttempts": 5,
                             "initialBackoff": "0.1s",
@@ -173,6 +176,13 @@ class Connection:
             request, metadata=self._metadata
         )
         return response.success
+
+    def get_store_state(self):
+        request = model_pb2.GetStoreStateRequest()
+        response = self._client_service_stub.getStoreState(
+            request, metadata=self._metadata
+        )
+        return response.partitionStates
 
     def _encode_metadata(self, username, password):
         if not (username and password):

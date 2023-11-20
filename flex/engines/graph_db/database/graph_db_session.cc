@@ -15,8 +15,8 @@
 
 #include "flex/engines/graph_db/database/graph_db_session.h"
 #include "flex/engines/graph_db/app/app_base.h"
-#include "flex/engines/graph_db/app/app_utils.h"
 #include "flex/engines/graph_db/database/graph_db.h"
+#include "flex/utils/app_utils.h"
 
 namespace gs {
 
@@ -61,6 +61,37 @@ const Schema& GraphDBSession::schema() const { return db_.schema(); }
 std::shared_ptr<ColumnBase> GraphDBSession::get_vertex_property_column(
     uint8_t label, const std::string& col_name) const {
   return db_.get_vertex_property_column(label, col_name);
+}
+
+std::shared_ptr<RefColumnBase> GraphDBSession::get_vertex_id_column(
+    uint8_t label) const {
+  if (db_.graph().lf_indexers_[label].get_type() == PropertyType::kInt64) {
+    return std::make_shared<TypedRefColumn<int64_t>>(
+        dynamic_cast<const TypedColumn<int64_t>&>(
+            db_.graph().lf_indexers_[label].get_keys()));
+  } else if (db_.graph().lf_indexers_[label].get_type() ==
+             PropertyType::kInt32) {
+    return std::make_shared<TypedRefColumn<int32_t>>(
+        dynamic_cast<const TypedColumn<int32_t>&>(
+            db_.graph().lf_indexers_[label].get_keys()));
+  } else if (db_.graph().lf_indexers_[label].get_type() ==
+             PropertyType::kUInt64) {
+    return std::make_shared<TypedRefColumn<uint64_t>>(
+        dynamic_cast<const TypedColumn<uint64_t>&>(
+            db_.graph().lf_indexers_[label].get_keys()));
+  } else if (db_.graph().lf_indexers_[label].get_type() ==
+             PropertyType::kUInt32) {
+    return std::make_shared<TypedRefColumn<uint32_t>>(
+        dynamic_cast<const TypedColumn<uint32_t>&>(
+            db_.graph().lf_indexers_[label].get_keys()));
+  } else if (db_.graph().lf_indexers_[label].get_type() ==
+             PropertyType::kString) {
+    return std::make_shared<TypedRefColumn<std::string_view>>(
+        dynamic_cast<const TypedColumn<std::string_view>&>(
+            db_.graph().lf_indexers_[label].get_keys()));
+  } else {
+    return nullptr;
+  }
 }
 
 #define likely(x) __builtin_expect(!!(x), 1)

@@ -105,4 +105,135 @@ public class WithTest {
                     + " alias=[a], opt=[VERTEX])",
                 project.explain().trim());
     }
+
+    // test simple case expression
+    @Test
+    public void with_7_test() {
+        RelNode project =
+                Utils.eval(
+                                "Match (a:person) Return CASE a.name WHEN 'marko' THEN 1 WHEN"
+                                        + " 'vadas' THEN 2 ELSE 3 END as d")
+                        .build();
+        Assert.assertEquals(
+                "GraphLogicalProject(d=[CASE(=(a.name, _UTF-8'marko'), 1, =(a.name, _UTF-8'vadas'),"
+                        + " 2, 3)], isAppend=[false])\n"
+                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                        + " alias=[a], opt=[VERTEX])",
+                project.explain().trim());
+    }
+
+    // test searched case expression
+    @Test
+    public void with_8_test() {
+        RelNode project =
+                Utils.eval(
+                                "Match (a:person) Return CASE WHEN a.name = 'marko' THEN 1 WHEN"
+                                        + " a.age > 10 THEN 2 ELSE 3 END as d")
+                        .build();
+        Assert.assertEquals(
+                "GraphLogicalProject(d=[CASE(=(a.name, _UTF-8'marko'), 1, >(a.age, 10), 2, 3)],"
+                        + " isAppend=[false])\n"
+                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                        + " alias=[a], opt=[VERTEX])",
+                project.explain().trim());
+    }
+
+    // else expression is omitted: case a.name when 'marko' then 1 when 'josh' then 2 end
+    @Test
+    public void with_9_test() {
+        RelNode project =
+                Utils.eval(
+                                "Match (a:person) Return CASE a.name WHEN 'marko' THEN 1 WHEN"
+                                        + " 'josh' THEN 2 END as d")
+                        .build();
+        Assert.assertEquals(
+                "GraphLogicalProject(d=[CASE(=(a.name, _UTF-8'marko'), 1, =(a.name, _UTF-8'josh'),"
+                        + " 2, null:NULL)], isAppend=[false])\n"
+                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                        + " alias=[a], opt=[VERTEX])",
+                project.explain().trim());
+    }
+
+    // with + optional match
+    @Test
+    public void with_10_test() {
+        RelNode project =
+                Utils.eval(
+                                "Match (a:person)-[]->(b:person) With b Optional Match"
+                                        + " (b:person)-[]->(c:person) Return b, c")
+                        .build();
+        Assert.assertEquals(
+                "GraphLogicalProject(b=[b], c=[c], isAppend=[false])\n"
+                    + "  LogicalJoin(condition=[=(b, b)], joinType=[left])\n"
+                    + "    GraphLogicalProject(b=[b], isAppend=[false])\n"
+                    + "      GraphLogicalSingleMatch(input=[null],"
+                    + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[b], opt=[END])\n"
+                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
+                    + " alias=[DEFAULT], opt=[OUT])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
+                    + "], matchOpt=[INNER])\n"
+                    + "    GraphLogicalSingleMatch(input=[null],"
+                    + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[c], opt=[END])\n"
+                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
+                    + " alias=[DEFAULT], opt=[OUT])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[b], opt=[VERTEX])\n"
+                    + "], matchOpt=[INNER])",
+                project.explain().trim());
+    }
+
+    @Test
+    public void with_11_test() {
+        RelNode project =
+                Utils.eval("Match (a:person)-[k:knows*1..2]->(b:person) Return length(k)").build();
+        Assert.assertEquals(
+                "GraphLogicalProject(~len=[k.~len], isAppend=[false])\n"
+                    + "  GraphLogicalSingleMatch(input=[null],"
+                    + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[b], opt=[END])\n"
+                    + "  GraphLogicalPathExpand(expand=[GraphLogicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[knows]}], alias=[DEFAULT], opt=[OUT])\n"
+                    + "], getV=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software,"
+                    + " person]}], alias=[DEFAULT], opt=[END])\n"
+                    + "], offset=[1], fetch=[1], path_opt=[ARBITRARY], result_opt=[END_V],"
+                    + " alias=[k])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
+                    + "], matchOpt=[INNER])",
+                project.explain().trim());
+    }
+
+    @Test
+    public void with_12_test() {
+        RelNode project =
+                Utils.eval("Match (a:person)-[]-(b:person) Return [a.name, b.age, 1]").build();
+        Assert.assertEquals(
+                "GraphLogicalProject($f0=[ARRAY(a.name, b.age, 1)], isAppend=[false])\n"
+                    + "  GraphLogicalSingleMatch(input=[null],"
+                    + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[b], opt=[OTHER])\n"
+                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
+                    + " alias=[DEFAULT], opt=[BOTH])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
+                    + "], matchOpt=[INNER])",
+                project.explain().trim());
+    }
+
+    @Test
+    public void with_13_test() {
+        RelNode project =
+                Utils.eval("Match (a:person) Return head(collect(a.name)) as name").build();
+        Assert.assertEquals(
+                "GraphLogicalAggregate(keys=[{variables=[], aliases=[]}],"
+                        + " values=[[{operands=[a.name], aggFunction=FIRST_VALUE, alias='name',"
+                        + " distinct=false}]])\n"
+                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                        + " alias=[a], opt=[VERTEX])",
+                project.explain().trim());
+        Assert.assertEquals("RecordType(CHAR(1) name)", project.getRowType().toString());
+    }
 }

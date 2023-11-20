@@ -23,20 +23,20 @@ cd graphscope
 
 Now you are ready to build the GIE engine (on vineyard store) with the following command:
 ```bash
-./gs make interactive --storage-type=vineyard
+python3 gsctl.py make interactive --storage-type=vineyard
 ```
 You can find the built artifacts in `interactive_engine/assembly/target/graphscope`.
 
 You could install it to a location by
 
 ```bash
-./gs make interactive-install --storage-type=vineyard --install-prefix /opt/graphscope
+python3 gsctl.py make interactive-install --storage-type=vineyard --install-prefix /opt/graphscope
 ```
 
 ## Test GIE with Vineyard Store on Local
 You could test the GIE engine on vineyard store with the following command:
 ```bash
-./gs test interactive --local --storage-type=vineyard
+python3 gsctl.py test interactive --local --storage-type=vineyard
 ```
 
 This will run end2end tests, from compiling a gremlin queries to obtaining and verifying the results from the computed engine. The test includes:
@@ -117,8 +117,11 @@ pegasus.hosts = localhost:1234
 # graph schema path
 graph.schema = /tmp/<v6d_object_id>.json
 
-## Frontend Config
-frontend.service.port = 8182
+## Gremlin Server Port
+gremlin.server.port = 8182
+
+## Bolt Server Port
+neo4j.bolt.server.port = 7687
 
 # disable authentication if username or password is not set
 # auth.username = default
@@ -131,7 +134,7 @@ java -cp ".:$GIE_TEST_HOME/lib/*" -Djna.library.path=$GIE_TEST_HOME/lib com.alib
 ```
 
 With the frontend service, you can open the gremlin console and set the endpoint to
-`localhost:8182`, as given [here](./deployment.md#deploy-your-first-gie-service).
+`localhost:8182`, as given [here](./tinkerpop/tinkerpop_gremlin.md#connecting-via-gremlin-console). Similarly, you can open the cypher-shell and set the url to `neo4j://localhost:7687` by using `-a` option, as given [here](./neo4j/cypher_sdk.md#connecting-via-cypher-shell).
 
 7. Kill the services of `vineyardd`, `gaia_executor` and `frontend`:
 ```
