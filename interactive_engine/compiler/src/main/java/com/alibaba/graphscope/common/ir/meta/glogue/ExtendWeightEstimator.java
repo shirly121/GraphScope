@@ -56,20 +56,22 @@ public class ExtendWeightEstimator {
         // sort edges by their weight in ascending order
         Collections.sort(
                 edges, Comparator.comparingDouble((PatternEdge edge) -> estimate(edge, target)));
-        Pattern pattern = new Pattern();
-        double totalWeight = 0.0d;
+
+        double totalWeight = 1.0d;
         List<PatternVertex> extendFromVertices = Lists.newArrayList();
         for (PatternEdge edge : edges) {
+            Pattern pattern = new Pattern();
             pattern.addVertex(edge.getSrcVertex());
             pattern.addVertex(edge.getDstVertex());
             pattern.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
             extendFromVertices.add(Utils.getExtendFromVertex(edge, target));
-            double weight = handler.handle(pattern);
-            for (PatternVertex vertex : extendFromVertices) {
-                weight /= handler.handle(new Pattern(vertex));
-            }
-            totalWeight += weight;
+            // * edge / src / dst
+            totalWeight *= handler.handle(pattern);
+            totalWeight /= handler.handle(new Pattern(edge.getSrcVertex()));
+            totalWeight /= handler.handle(new Pattern(edge.getDstVertex()));
         }
+        totalWeight *= handler.handle(new Pattern(target));
+
         return totalWeight;
     }
 
