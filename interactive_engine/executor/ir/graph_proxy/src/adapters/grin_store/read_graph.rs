@@ -63,7 +63,7 @@ fn get_vertex_property_as_object(
         } else if prop_type == GRIN_DATATYPE_STRING {
             let c_str = grin_get_vertex_property_value_of_string(graph, vertex, prop_handle).into();
             let rust_str = string_c2rust(c_str);
-            grin_destroy_string_value(graph, c_str);
+            grin_destroy_vertex_property_value_of_string(graph, c_str);
             Ok(Object::String(rust_str))
         } else if prop_type == GRIN_DATATYPE_UNDEFINED {
             Err(GraphProxyError::QueryStoreError("`grin_data_type is undefined`".to_string()))
@@ -98,7 +98,7 @@ fn get_edge_property_as_object(
         } else if prop_type == GRIN_DATATYPE_STRING {
             let c_str = grin_get_edge_property_value_of_string(graph, edge, prop_handle).into();
             let rust_str = string_c2rust(c_str);
-            grin_destroy_string_value(graph, c_str);
+            grin_destroy_vertex_property_value_of_string(graph, c_str);
             Ok(Object::String(rust_str))
         } else if prop_type == GRIN_DATATYPE_UNDEFINED {
             Err(GraphProxyError::QueryStoreError("`grin_data_type is undefined`".to_string()))
