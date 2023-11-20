@@ -1570,4 +1570,12 @@ impl ReadGraph for GrinGraphRuntime {
     fn get_primary_key(&self, _id: &ID) -> GraphProxyResult<Option<PKV>> {
         todo!()
     }
+
+    fn count_vertex(&self, _params: &QueryParams) -> GraphProxyResult<u64> {
+        todo!()
+    }
+
+    fn count_edge(&self, _params: &QueryParams) -> GraphProxyResult<u64> {
+        todo!()
+    }
 }
