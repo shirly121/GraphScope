@@ -217,7 +217,6 @@ pub struct GrinVertexProxy {
 impl Drop for GrinVertexProxy {
     fn drop(&mut self) {
         unsafe {
-            // println!("drop vertex...");
             grin_destroy_vertex_type(self.graph, self.vertex_type);
             grin_destroy_vertex(self.graph, self.vertex);
         }
@@ -383,7 +382,6 @@ impl GrinVertexIter {
 impl Drop for GrinVertexIter {
     fn drop(&mut self) {
         unsafe {
-            println!("drop GrinVertexIter...");
             for (_, iter) in self.vertex_type_iter.drain() {
                 grin_destroy_vertex_list_iter(self.graph, iter);
             }
@@ -442,23 +440,23 @@ impl GrinEdgeIter {
             let mut edge_type_ids = edge_type_ids.clone();
             for edge_type_id in &edge_type_ids {
                 let edge_type = grin_get_edge_type_by_id(graph, *edge_type_id);
-                if edge_type == GRIN_NULL_VERTEX_TYPE {
+                if edge_type == GRIN_NULL_EDGE_TYPE {
                     return Err(GraphProxyError::QueryStoreError(format!(
-                        "`grin_get_vertex_type_by_id`: {:?}, returns null",
+                        "`grin_get_edge_type_by_id`: {:?}, returns null",
                         edge_type_id
                     )));
                 }
                 let etype_list = grin_get_edge_list_by_type_select_master(graph, edge_type);
-                if etype_list == GRIN_NULL_VERTEX_LIST {
+                if etype_list == GRIN_NULL_EDGE_LIST {
                     return Err(GraphProxyError::QueryStoreError(format!(
-                        "`grin_select_type_for_vertex_list`: {:?}, returns null",
+                        "`grin_get_edge_list_by_type_select_master`: {:?}, returns null",
                         edge_type_id
                     )));
                 }
                 let etype_iter = grin_get_edge_list_begin(graph, etype_list);
-                if etype_iter == GRIN_NULL_VERTEX_LIST_ITERATOR {
+                if etype_iter == GRIN_NULL_EDGE_LIST_ITERATOR {
                     return Err(GraphProxyError::QueryStoreError(
-                        "`grin_get_vertex_list_begin` returns null".to_string(),
+                        "`grin_get_edge_list_begin` returns null".to_string(),
                     ));
                 }
                 edge_type_iter.insert(*edge_type_id, etype_iter);
@@ -480,7 +478,6 @@ impl GrinEdgeIter {
 impl Drop for GrinEdgeIter {
     fn drop(&mut self) {
         unsafe {
-            println!("drop GrinEdgeIter...");
             for (_, iter) in self.edge_type_iter.drain() {
                 grin_destroy_edge_list_iter(self.graph, iter);
             }
@@ -572,7 +569,7 @@ impl GrinAdjVertexIter {
 
                 if grin_typed_adj_list == GRIN_NULL_ADJACENT_LIST {
                     return Err(GraphProxyError::QueryStoreError(format!(
-                        "`grin_select_edge_type_for_adjacent_list`: {:?}, returns null",
+                        "`grin_get_adjacent_list_by_edge_type`: {:?}, returns null",
                         edge_type_id
                     )));
                 }
@@ -752,7 +749,6 @@ pub struct GrinEdgeProxy {
 impl Drop for GrinEdgeProxy {
     fn drop(&mut self) {
         unsafe {
-            //   println!("drop edge ...");
             grin_destroy_edge_type(self.graph, self.edge_type);
             grin_destroy_edge(self.graph, self.edge);
         }
