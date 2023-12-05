@@ -178,7 +178,9 @@ where
                 .get_partition_id(vid as VertexId) as PartitionId;
             let worker_partitions = assign_worker_partitions(&self.server_partitions, &self.cluster_info)?;
             if worker_partitions.contains(&partition_id) {
-                Ok(self.get_vertex(&[vid as ID], _params)?.next())
+                let mut params = QueryParams::default();
+                params.labels = vec![label_id];
+                Ok(self.get_vertex(&[vid as ID], params)?.next())
             } else {
                 Ok(None)
             }
@@ -250,8 +252,9 @@ where
         };
 
         let filter = params.filter.clone();
+        // TODO: this is a little bit tricky. we assume all ids has the same label id (i.e., labels[0])
         let partition_label_vertex_ids =
-            get_partition_label_vertex_ids(ids, self.partition_manager.clone());
+            get_partition_label_vertex_ids(ids, params.labels.get(0), self.partition_manager.clone());
 
         let columns = params.columns.clone();
         let result = store
@@ -756,7 +759,7 @@ fn assign_worker_partitions(
 /// Transform type of ids to PartitionLabeledVertexIds as required by graphscope store,
 /// which consists of (PartitionId, Vec<(Option<StoreLabelId>, Vec<VertexId>)>)
 fn get_partition_label_vertex_ids(
-    ids: &[ID], graph_partition_manager: Arc<dyn GraphPartitionManager>,
+    ids: &[ID], label: Option<&LabelId>, graph_partition_manager: Arc<dyn GraphPartitionManager>,
 ) -> Vec<PartitionLabeledVertexIds> {
     let mut partition_label_vid_map = HashMap::new();
     for vid in ids {
@@ -765,7 +768,7 @@ fn get_partition_label_vertex_ids(
             .entry(partition_id)
             .or_insert(HashMap::new());
         label_vid_list
-            .entry(None)
+            .entry(label.cloned())
             .or_insert(vec![])
             .push(*vid as VertexId);
     }
