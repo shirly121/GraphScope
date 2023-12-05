@@ -768,7 +768,11 @@ fn get_partition_label_vertex_ids(
             .entry(partition_id)
             .or_insert(HashMap::new());
         label_vid_list
-            .entry(label.cloned())
+            .entry(
+                label
+                    .cloned()
+                    .map(|label_id| label_id as StoreLabelId),
+            )
             .or_insert(vec![])
             .push(*vid as VertexId);
     }
