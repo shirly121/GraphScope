@@ -291,10 +291,28 @@ pub struct RocksEdgeImpl {
     columns: Option<HashSet<PropId>>,
 }
 
+impl Drop for RocksEdgeImpl {
+    fn drop(&mut self) {
+        if let Some(decoder) = &mut self.decoder {
+            if !decoder.is_pinned() {
+                println!("is_pinned(): RocksEdgeImpl::drop() very strange that drop RocksEdgeImpl when guard is not pinned yet {:?} {:?}",
+                         self.edge_id, self.edge_relation); 
+            }
+            drop(decoder);
+        }
+        drop(&mut self.raw_bytes)
+    }
+}
+
 impl RocksEdgeImpl {
     pub fn new(
         edge_id: EdgeId, edge_relation: EdgeKind, decoder: Option<Decoder>, raw_bytes: RawBytes,
     ) -> Self {
+        if let Some(_decoder) = &decoder {
+            if !_decoder.is_pinned() {
+                println!("is_pinned(): in RocksEdgeImpl::new() very strange, decoder is not pinned");
+            }
+        }
         RocksEdgeImpl::with_columns(
             edge_id,
             edge_relation,
@@ -308,6 +326,11 @@ impl RocksEdgeImpl {
         edge_id: EdgeId, edge_relation: EdgeKind, decoder: Option<Decoder>, raw_bytes: RawBytes,
         columns: Option<HashSet<PropId>>,
     ) -> Self {
+        if let Some(_decoder) = &decoder {
+            if !_decoder.is_pinned() {
+                println!("is_pinned(): in RocksEdgeImpl::with_columns() very strange, decoder is not pinned");
+            }
+        }
         RocksEdgeImpl { edge_id, edge_relation, decoder, raw_bytes, columns }
     }
 
@@ -336,6 +359,9 @@ impl PropertyReader for RocksEdgeImpl {
         match &self.decoder {
             None => None,
             Some(decoder) => {
+                    if !decoder.is_pinned() {
+                        println!("is_pinned(): very strange, decoder is not pinned111");
+                    }
                 let bytes = self.raw_bytes.to_slice();
                 let value_ref = decoder.decode_property(bytes, property_id as i32);
                 value_ref.map(|v| PropertyImpl { property_id, property_value: v.into() })
@@ -347,6 +373,9 @@ impl PropertyReader for RocksEdgeImpl {
         match &self.decoder {
             None => Box::new(std::iter::empty()),
             Some(decoder) => {
+                if !decoder.is_pinned() {
+                    println!("is_pinned(): very strange, decoder is not pinned222");
+                }
                 let bytes = unsafe { std::mem::transmute(self.raw_bytes.to_slice()) };
                 if let Some(ref columns) = self.columns {
                     if columns.is_empty() {
@@ -445,6 +474,9 @@ impl Edge for RocksEdgeImpl {
         match &self.decoder {
             None => None,
             Some(decoder) => {
+                if !decoder.is_pinned() {
+                    println!("is_pinned(): very strange, decoder is not pinned333");
+                }
                 let bytes = self.raw_bytes.to_slice();
                 let value_ref = decoder.decode_property(bytes, property_id);
                 value_ref.map(|v| {
@@ -460,6 +492,9 @@ impl Edge for RocksEdgeImpl {
         match &self.decoder {
             None => Box::new(std::iter::empty()),
             Some(decoder) => {
+                if !decoder.is_pinned() {
+                    println!("is_pinned(): very strange, decoder is not pinned444");
+                }
                 let bytes = unsafe { std::mem::transmute(self.raw_bytes.to_slice()) };
                 let iter = if let Some(ref columns) = self.columns {
                     if columns.is_empty() {

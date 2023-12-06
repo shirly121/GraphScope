@@ -25,7 +25,15 @@ column_filter_push_down = []
 
 [profile.dev]
 # TODO(siyuan): re-enable debug assertions by addressing the reports for misaligned pointer dereferences https://github.com/rust-lang/rust/pull/98112/
+opt-level = 1
+debug = true
 debug-assertions = false
+overflow-checks = true
+lto = false
+panic = 'abort'
+incremental = true
+codegen-units = 256
+rpath = false
 
 [profile.release-with-debug-info]
 inherits = "release"

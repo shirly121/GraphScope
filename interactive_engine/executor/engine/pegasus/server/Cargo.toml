@@ -10,8 +10,7 @@ pegasus_network = { path = "../network"}
 pegasus_memory = { path = "../memory"}
 pegasus = { path = "../pegasus" }
 log = "0.4"
-crossbeam-utils = "0.8.14"
-#crossbeam-channel = "0.5.6"
+crossbeam-utils = { path = "/workspaces/crossbeam/crossbeam-utils" }
 tonic = "0.8"
 prost = "0.11"
 tokio = { version = "1.24", features = ["macros", "sync", "rt-multi-thread"] }

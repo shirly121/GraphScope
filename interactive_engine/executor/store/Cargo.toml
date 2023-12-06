@@ -25,4 +25,4 @@ lto = false
 debug-assertions = true
 codegen-units=1
 # Don't change to "abort", since runtime rely on this to catch unexpected errors in worker threads.
-panic = "unwind"
+panic = "abort"

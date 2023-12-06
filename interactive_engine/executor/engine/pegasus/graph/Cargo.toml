@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 byteorder = "1.4.3"
 nohash-hasher = "0.2.0"
-crossbeam-utils = "0.8.14"
+crossbeam-utils = { path = "/workspaces/crossbeam/crossbeam-utils" }
 #snap = "1"
 rand = "0.8.5"
 memmap = "0.7.0"

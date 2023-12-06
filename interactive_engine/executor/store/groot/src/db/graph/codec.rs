@@ -119,7 +119,14 @@ impl fmt::Debug for Decoder {
 
 impl Decoder {
     fn new(target: &'static Codec, src: &'static Codec, guard: Guard) -> Self {
+        if !epoch::is_pinned() {
+            println!("is_pinned(): in Decoder::new() very strange that new when guard is not pinned yet {:?} {:?}", src, target);
+        }
         Decoder { target, src, _guard: guard }
+    }
+
+    pub fn is_pinned(&self )-> bool {
+        epoch::is_pinned()
     }
 
     pub fn decode_properties<'a>(&self, data: &'a [u8]) -> IterDecoder<'a> {
@@ -221,6 +228,15 @@ impl Clone for Decoder {
     }
 }
 
+// impl Drop for Decoder {
+//     fn drop(&mut self) {
+//         if !epoch::is_pinned() {
+//             println!("is_pinned(): in Decoder::drop() very strange that drop when guard is not pinned yet {:?} {:?}", self.src, self.target);
+//         } 
+//         drop(&mut self._guard)
+//     }
+// }
+
 /// this structure can decode properties as an iterator, each time get one property until all
 /// properties are decoded
 pub struct IterDecoder<'a> {
@@ -310,6 +326,9 @@ impl fmt::Debug for Encoder {
 
 impl Encoder {
     pub fn new(codec: &'static Codec, guard: Guard) -> Self {
+        if !epoch::is_pinned() {
+            println!("is_pinned(), in Encoder::new() very strange that new when guard is not pinned yet {:?}", codec);
+        }
         Encoder { codec, _guard: guard }
     }
 

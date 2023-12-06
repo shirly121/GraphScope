@@ -89,7 +89,7 @@ fn do_user_task(
     // 1. execute task;
     // 2. check task state:
 
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+ //   let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         match task.execute() {
             // if finished or failed, sink result;
             TaskState::Finished => (),
@@ -97,10 +97,10 @@ fn do_user_task(
             TaskState::NotReady => not_readies.push(task),
             TaskState::Ready => re_active.push(RunTask::Users(task)),
         }
-    }));
-    if result.is_err() {
-        error!("Task execute failure;")
-    }
+//    }));
+    // if result.is_err() {
+    //     error!("Task execute failure;")
+    // }
 }
 
 #[inline]
