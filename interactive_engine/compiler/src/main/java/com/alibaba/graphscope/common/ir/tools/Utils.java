@@ -16,11 +16,14 @@
 
 package com.alibaba.graphscope.common.ir.tools;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Range;
-import com.google.common.collect.Sets;
+import com.alibaba.graphscope.common.ir.meta.schema.CommonOptTable;
+import com.alibaba.graphscope.common.ir.rel.CommonTableScan;
+import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
+import com.alibaba.graphscope.common.ir.rel.GraphPattern;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
+import com.google.common.collect.*;
 
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -30,6 +33,7 @@ import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Sarg;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -74,5 +78,50 @@ public class Utils {
             valueBuilder.add(value);
         }
         return valueBuilder.build();
+    }
+
+    public static String toString(RelNode node) {
+        return toString("root:", node, Sets.newHashSet());
+    }
+
+    private static String toString(String header, RelNode node, Set<String> dedup) {
+        StringBuilder builder = new StringBuilder();
+        if (!header.isEmpty()) {
+            dedup.add(header);
+            builder.append(header).append("\n");
+        }
+        builder.append(RelOptUtil.toString(node));
+        List<RelNode> inputs = Lists.newArrayList(node.getInputs());
+        while (!inputs.isEmpty()) {
+            RelNode input = inputs.remove(0);
+            if (input instanceof CommonTableScan) {
+                CommonOptTable optTable = (CommonOptTable) ((CommonTableScan) input).getTable();
+                String name = optTable.getQualifiedName().get(0) + ":";
+                if (!dedup.contains(name)) {
+                    builder.append(toString(name, optTable.getCommon(), dedup));
+                }
+            }
+            inputs.addAll(input.getInputs());
+        }
+        return builder.toString();
+    }
+
+    public static Map<Integer, Pattern> getAllPatterns(RelNode rel) {
+        List<RelNode> queue = Lists.newArrayList(rel);
+        Map<Integer, Pattern> patterns = Maps.newLinkedHashMap();
+        while (!queue.isEmpty()) {
+            RelNode cur = queue.remove(0);
+            if (cur instanceof GraphExtendIntersect) {
+                Pattern src = ((GraphExtendIntersect) cur).getGlogueEdge().getSrcPattern();
+                Pattern dst = ((GraphExtendIntersect) cur).getGlogueEdge().getDstPattern();
+                patterns.put(src.getPatternId(), src);
+                patterns.put(dst.getPatternId(), dst);
+            } else if (cur instanceof GraphPattern) {
+                Pattern pattern = ((GraphPattern) cur).getPattern();
+                patterns.put(pattern.getPatternId(), pattern);
+            }
+            queue.addAll(cur.getInputs());
+        }
+        return patterns;
     }
 }
