@@ -17,28 +17,27 @@
 package com.alibaba.graphscope.common.ir.rel.graph;
 
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
-import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
-import com.google.common.collect.ImmutableList;
 
 import org.apache.calcite.plan.GraphOptCluster;
-import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rel.hint.RelHint;
 import org.apache.calcite.rel.type.*;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 // fuse expand + getv after applying 'ExpandGetVFusionRule'
 public class GraphPhysicalExpandGetV extends SingleRel {
     private final GraphLogicalExpand fusedExpand;
-    private final GraphLogicalGetV fusedGetV;
+    private final Optional<GraphLogicalGetV> fusedGetV;
+    // TODO: refine this.
+    private final RelDataType rowType;
     private final String aliasName;
     private final int aliasId;
 
@@ -47,14 +46,16 @@ public class GraphPhysicalExpandGetV extends SingleRel {
             List<RelHint> hints,
             RelNode input,
             GraphLogicalExpand fusedExpand,
-            GraphLogicalGetV fusedGetV,
+            Optional<GraphLogicalGetV> fusedGetV,
+            RelDataType rowType,
             @Nullable String aliasName) {
         super(cluster, RelTraitSet.createEmpty(), input);
         this.fusedExpand = Objects.requireNonNull(fusedExpand);
-        this.fusedGetV = Objects.requireNonNull(fusedGetV);
+        this.fusedGetV = fusedGetV;
         this.aliasName =
                 AliasInference.inferDefault(
                         aliasName, AliasInference.getUniqueAliasList(input, true));
+        this.rowType = rowType;
         this.aliasId = cluster.getIdGenerator().generate(this.aliasName);
     }
 
@@ -65,12 +66,30 @@ public class GraphPhysicalExpandGetV extends SingleRel {
             GraphLogicalExpand innerExpand,
             GraphLogicalGetV innerGetV,
             @Nullable String alias) {
-        return new GraphPhysicalExpandGetV(cluster, hints, input, innerExpand, innerGetV, alias);
+        return new GraphPhysicalExpandGetV(
+                cluster,
+                hints,
+                input,
+                innerExpand,
+                Optional.of(innerGetV),
+                innerGetV.getRowType(),
+                alias);
+    }
+
+    public static GraphPhysicalExpandGetV create(
+            GraphOptCluster cluster,
+            List<RelHint> hints,
+            RelNode input,
+            GraphLogicalExpand innerExpand,
+            RelDataType rowType,
+            @Nullable String alias) {
+        return new GraphPhysicalExpandGetV(
+                cluster, hints, input, innerExpand, Optional.empty(), rowType, alias);
     }
 
     @Override
     public RelDataType deriveRowType() {
-        return fusedGetV.deriveRowType();
+        return rowType;
     }
 
     public GraphLogicalExpand getFusedExpand() {
@@ -78,7 +97,7 @@ public class GraphPhysicalExpandGetV extends SingleRel {
     }
 
     public GraphLogicalGetV getFusedGetV() {
-        return fusedGetV;
+        return fusedGetV.get();
     }
 
     public String getAliasName() {
