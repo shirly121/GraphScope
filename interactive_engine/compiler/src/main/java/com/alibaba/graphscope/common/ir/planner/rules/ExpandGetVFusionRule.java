@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Alibaba Group Holding Limited.
+ * Copyright 2023 Alibaba Group Holding Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,17 +29,7 @@ import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.rules.TransformationRule;
 import org.apache.calcite.tools.RelBuilderFactory;
-import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
-
-// Try to apply the optimize rule: ExpandE + GetV = ExpandV, it it satisfies:
-// 1. the previous op is ExpandE, and with no alias (which means that the edges won't be accessed
-// later).
-// 2. if `GetV` is GetV(Adj) (i.e., opt=Start/End/Other) without any filters or further query
-// semantics, then it can be merged into GraphPhysicalExpandGetV with getV as None; otherwise, getV
-// saved.
-// 3. the direction should be: outE + inV = out; inE + outV = in; and bothE + otherV = both
-// In addition, if PathExpand + GetV, make opt of GetV to be `End`.
 
 public class ExpandGetVFusionRule<C extends ExpandGetVFusionRule.Config> extends RelRule<C>
         implements TransformationRule {
@@ -50,26 +40,15 @@ public class ExpandGetVFusionRule<C extends ExpandGetVFusionRule.Config> extends
 
     protected RelNode transform(
             GraphLogicalGetV getV, GraphLogicalExpand expand, GraphBuilder builder) {
-        RelNode expandGetV;
-        if (ObjectUtils.isNotEmpty(getV.getFilters())) {
-            expandGetV =
-                    GraphPhysicalExpandGetV.create(
-                            (GraphOptCluster) expand.getCluster(),
-                            ImmutableList.of(),
-                            expand.getInput(0),
-                            expand,
-                            getV,
-                            getV.getAliasName());
-        } else {
-            expandGetV =
-                    GraphPhysicalExpandGetV.create(
-                            (GraphOptCluster) expand.getCluster(),
-                            ImmutableList.of(),
-                            expand.getInput(0),
-                            expand,
-                            getV.deriveRowType(),
-                            getV.getAliasName());
-        }
+        RelNode expandGetV =
+                GraphPhysicalExpandGetV.create(
+                        (GraphOptCluster) expand.getCluster(),
+                        ImmutableList.of(),
+                        expand.getInput(0),
+                        expand,
+                        getV,
+                        getV.getAliasName());
+
         return expandGetV;
     }
 
