@@ -16,8 +16,8 @@
 
 package com.alibaba.graphscope.common.ir.rel.graph.match;
 
-import com.alibaba.graphscope.common.ir.rel.GraphShuttle;
 import com.alibaba.graphscope.common.ir.rel.GraphRelShuttleX;
+import com.alibaba.graphscope.common.ir.rel.GraphShuttle;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.google.common.collect.Lists;
 
@@ -83,7 +83,6 @@ public class GraphLogicalSingleMatch extends AbstractLogicalMatch {
         }
         return shuttle.visit(this);
     }
-
 
     public RelNode getSentence() {
         return sentence;

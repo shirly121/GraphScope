@@ -17,6 +17,8 @@
 package com.alibaba.graphscope.common.ir.runtime.proto;
 
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.ir.meta.schema.CommonOptTable;
+import com.alibaba.graphscope.common.ir.rel.CommonTableScan;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalAggregate;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalProject;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalSort;
@@ -37,17 +39,20 @@ import com.alibaba.graphscope.common.ir.type.GraphLabelType;
 import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebra;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical;
+import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical.PhysicalOpr;
 import com.alibaba.graphscope.gaia.proto.OuterExpression;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
+import org.apache.calcite.rel.rules.MultiJoin;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlKind;
@@ -56,6 +61,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -408,23 +414,13 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 new RelVisitor() {
                     @Override
                     public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-                        if (ordinal == 0) {
-                            super.visit(node, ordinal, parent);
-                            leftPlanBuilder.addPlan(
-                                    (GraphAlgebraPhysical.PhysicalOpr)
-                                            (((PhysicalNode)
-                                                            node.accept(
-                                                                    new GraphRelToProtoConverter(
-                                                                            isColumnId,
-                                                                            graphConfig)))
-                                                    .getNode()));
-                        } else {
-                            throw new UnsupportedOperationException(
-                                    "join node should have two children of type "
-                                            + GraphLogicalSource.class
-                                            + ", but is "
-                                            + node.getClass());
-                        }
+                        super.visit(node, ordinal, parent);
+                        leftPlanBuilder.addAllPlan(
+                                (((PhysicalNode)
+                                                node.accept(
+                                                        new GraphRelToProtoConverter(
+                                                                isColumnId, graphConfig)))
+                                        .getNodes()));
                     }
                 };
         leftVisitor.go(left);
@@ -433,23 +429,13 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 new RelVisitor() {
                     @Override
                     public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-                        if (ordinal == 0) {
-                            super.visit(node, ordinal, parent);
-                            rightPlanBuilder.addPlan(
-                                    (GraphAlgebraPhysical.PhysicalOpr)
-                                            (((PhysicalNode)
-                                                            node.accept(
-                                                                    new GraphRelToProtoConverter(
-                                                                            isColumnId,
-                                                                            graphConfig)))
-                                                    .getNode()));
-                        } else {
-                            throw new UnsupportedOperationException(
-                                    "join node should have two children of type "
-                                            + GraphLogicalSource.class
-                                            + ", but is "
-                                            + node.getClass());
-                        }
+                        super.visit(node, ordinal, parent);
+                        rightPlanBuilder.addAllPlan(
+                                (((PhysicalNode)
+                                                node.accept(
+                                                        new GraphRelToProtoConverter(
+                                                                isColumnId, graphConfig)))
+                                        .getNodes()));
                     }
                 };
         rightVisitor.go(right);
@@ -458,6 +444,79 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setJoin(joinBuilder));
         return new PhysicalNode(join, oprBuilder.build());
+    }
+
+    @Override
+    public RelNode visit(CommonTableScan commonTableScan) {
+        List<GraphAlgebraPhysical.PhysicalOpr> oprList = visitCommon(commonTableScan);
+        return new PhysicalNode(commonTableScan, oprList);
+    }
+
+    private List<GraphAlgebraPhysical.PhysicalOpr> visitCommon(CommonTableScan commonTableScan) {
+        List<GraphAlgebraPhysical.PhysicalOpr> oprList = new ArrayList<>();
+        RelOptTable optTable = commonTableScan.getTable();
+        if (optTable instanceof CommonOptTable) {
+            RelNode common = ((CommonOptTable) optTable).getCommon();
+            RelVisitor subVisitor =
+                    new RelVisitor() {
+                        @Override
+                        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+                            super.visit(node, ordinal, parent);
+                            oprList.addAll(
+                                    (((PhysicalNode)
+                                                    node.accept(
+                                                            new GraphRelToProtoConverter(
+                                                                    isColumnId, graphConfig)))
+                                            .getNodes()));
+                        }
+                    };
+            subVisitor.go(common);
+        }
+        return oprList;
+    }
+
+    @Override
+    public RelNode visit(MultiJoin join) {
+        // TODO: currently, we regard multi-join as intersect.
+        // firstly, build intersect opr.
+        GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+        GraphAlgebraPhysical.Intersect.Builder intersectBuilder =
+                GraphAlgebraPhysical.Intersect.newBuilder();
+        List<RelNode> inputs = join.getInputs();
+        List<RelNode> commonTabelScanNodes = new ArrayList<>();
+        for (RelNode input : inputs) {
+            GraphAlgebraPhysical.PhysicalPlan.Builder subPlanBuilder =
+                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            RelVisitor subVisitor =
+                    new RelVisitor() {
+                        @Override
+                        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+                            if (node instanceof CommonTableScan) {
+                                commonTabelScanNodes.add(node);
+                                return;
+                            }
+                            super.visit(node, ordinal, parent);
+                            PhysicalNode<PhysicalOpr> physicalNode =
+                                    (PhysicalNode<PhysicalOpr>)
+                                            node.accept(
+                                                    new GraphRelToProtoConverter(
+                                                            isColumnId, graphConfig));
+                            subPlanBuilder.addAllPlan(physicalNode.getNodes());
+                        }
+                    };
+            subVisitor.go(input);
+            intersectBuilder.addSubPlans(subPlanBuilder);
+        }
+        oprBuilder.setOpr(
+                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
+                        .setIntersect(intersectBuilder));
+
+        // then, process the common table.
+        RelNode common = commonTabelScanNodes.get(0);
+        List<GraphAlgebraPhysical.PhysicalOpr> oprList = visitCommon((CommonTableScan) common);
+        oprList.add(oprBuilder.build());
+        return new PhysicalNode(join, oprList);
     }
 
     private List<RexGraphVariable> getLeftRightVariables(RexNode condition) {
