@@ -169,6 +169,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(expandGetV.getRowType(), isColumnId));
         if (ObjectUtils.isNotEmpty(getV.getFilters())) {
             GraphAlgebraPhysical.GetV.Builder auxilia = buildAuxilia(getV);
+            auxilia.setTag(Utils.asAliasId(expandGetV.getAliasId()));
             GraphAlgebraPhysical.PhysicalOpr.Builder auxiliaOprBuilder =
                     GraphAlgebraPhysical.PhysicalOpr.newBuilder();
             auxiliaOprBuilder.setOpr(
@@ -480,15 +481,36 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     public RelNode visit(MultiJoin join) {
         // TODO: currently, we regard multi-join as intersect.
         // firstly, build intersect opr.
-        GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
+        GraphAlgebraPhysical.PhysicalOpr.Builder intersectOprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Intersect.Builder intersectBuilder =
                 GraphAlgebraPhysical.Intersect.newBuilder();
+
+        List<RexNode> conditions = RelOptUtil.conjunctions(join.getJoinFilter());
+        int intersectKey = -1;
+        for (RexNode condition : conditions) {
+            String errorMessage =
+                    "join condition in ir core should be 'AND' of equal conditions, each equal"
+                            + " condition has two variables as operands";
+            List<RexGraphVariable> leftRightVars = getLeftRightVariables(condition);
+            Preconditions.checkArgument(leftRightVars.size() == 2, errorMessage);
+            Preconditions.checkArgument(
+                    leftRightVars.get(0).equals(leftRightVars.get(1)), errorMessage);
+            if (intersectKey == -1) {
+                intersectKey = leftRightVars.get(0).getAliasId();
+            } else {
+                Preconditions.checkArgument(
+                        intersectKey == leftRightVars.get(0).getAliasId(), errorMessage);
+            }
+        }
+        intersectBuilder.setKey(intersectKey);
+
         List<RelNode> inputs = join.getInputs();
         List<RelNode> commonTabelScanNodes = new ArrayList<>();
         for (RelNode input : inputs) {
             GraphAlgebraPhysical.PhysicalPlan.Builder subPlanBuilder =
                     GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            input.accept(this);
             RelVisitor subVisitor =
                     new RelVisitor() {
                         @Override
@@ -509,14 +531,24 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             subVisitor.go(input);
             intersectBuilder.addSubPlans(subPlanBuilder);
         }
-        oprBuilder.setOpr(
+        intersectOprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
                         .setIntersect(intersectBuilder));
+
+        GraphAlgebraPhysical.PhysicalOpr.Builder unfoldOprBuilder =
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+        GraphAlgebraPhysical.Unfold.Builder unfoldBuilder =
+                GraphAlgebraPhysical.Unfold.newBuilder();
+        unfoldBuilder.setTag(Utils.asAliasId(intersectKey));
+        unfoldBuilder.setAlias(Utils.asAliasId(intersectKey));
+        unfoldOprBuilder.setOpr(
+                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setUnfold(unfoldBuilder));
 
         // then, process the common table.
         RelNode common = commonTabelScanNodes.get(0);
         List<GraphAlgebraPhysical.PhysicalOpr> oprList = visitCommon((CommonTableScan) common);
-        oprList.add(oprBuilder.build());
+        oprList.add(intersectOprBuilder.build());
+        oprList.add(unfoldOprBuilder.build());
         return new PhysicalNode(join, oprList);
     }
 

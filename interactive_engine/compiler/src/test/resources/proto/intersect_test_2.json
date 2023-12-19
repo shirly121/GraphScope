@@ -1,0 +1,397 @@
+{
+  "plan": [{
+    "opr": {
+      "scan": {
+        "alias": 1,
+        "params": {
+          "tables": [{
+            "id": 0
+          }]
+        }
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "age"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      },
+      "alias": 1
+    }]
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 1,
+        "direction": "BOTH",
+        "params": {
+          "tables": [{
+            "id": 0
+          }]
+        },
+        "alias": 0,
+        "expandOpt": "EDGE"
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "elementOpt": "EDGE",
+          "graphDataType": [{
+            "label": {
+              "srcLabel": 0,
+              "dstLabel": 0
+            },
+            "props": [{
+              "propId": {
+                "name": "weight"
+              },
+              "type": "DOUBLE"
+            }]
+          }]
+        }
+      },
+      "alias": -1
+    }]
+  }, {
+    "opr": {
+      "vertex": {
+        "tag": 0,
+        "opt": "OTHER",
+        "params": {
+          "tables": [{
+            "id": 0
+          }]
+        },
+        "alias": 2
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "age"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      },
+      "alias": 2
+    }]
+  }, {
+    "opr": {
+      "intersect": {
+        "subPlans": [{
+          "plan": [{
+            "opr": {
+              "edge": {
+                "vTag": 1,
+                "direction": "BOTH",
+                "params": {
+                  "tables": [{
+                    "id": 0
+                  }]
+                },
+                "alias": 0
+              }
+            },
+            "metaData": [{
+              "type": {
+                "graphType": {
+                  "graphDataType": [{
+                    "label": {
+                    },
+                    "props": [{
+                      "propId": {
+                        "name": "id"
+                      },
+                      "type": "INT64"
+                    }, {
+                      "propId": {
+                        "name": "name"
+                      },
+                      "type": "STRING"
+                    }, {
+                      "propId": {
+                        "name": "age"
+                      },
+                      "type": "INT32"
+                    }]
+                  }]
+                }
+              }
+            }]
+          }]
+        }, {
+          "plan": [{
+            "opr": {
+              "edge": {
+                "vTag": 2,
+                "direction": "BOTH",
+                "params": {
+                  "tables": [{
+                    "id": 0
+                  }]
+                },
+                "alias": 0
+              }
+            },
+            "metaData": [{
+              "type": {
+                "graphType": {
+                  "graphDataType": [{
+                    "label": {
+                    },
+                    "props": [{
+                      "propId": {
+                        "name": "id"
+                      },
+                      "type": "INT64"
+                    }, {
+                      "propId": {
+                        "name": "name"
+                      },
+                      "type": "STRING"
+                    }, {
+                      "propId": {
+                        "name": "age"
+                      },
+                      "type": "INT32"
+                    }]
+                  }]
+                }
+              }
+            }]
+          }]
+        }]
+      }
+    }
+  }, {
+    "opr": {
+      "unfold": {
+        "tag": 0,
+        "alias": 0
+      }
+    }
+  }, {
+    "opr": {
+      "project": {
+        "mappings": [{
+          "expr": {
+            "operators": [{
+              "var": {
+                "tag": {
+                  "id": 0
+                },
+                "nodeType": {
+                  "graphType": {
+                    "graphDataType": [{
+                      "label": {
+                      },
+                      "props": [{
+                        "propId": {
+                          "name": "id"
+                        },
+                        "type": "INT64"
+                      }, {
+                        "propId": {
+                          "name": "name"
+                        },
+                        "type": "STRING"
+                      }, {
+                        "propId": {
+                          "name": "age"
+                        },
+                        "type": "INT32"
+                      }]
+                    }]
+                  }
+                }
+              },
+              "nodeType": {
+                "graphType": {
+                  "graphDataType": [{
+                    "label": {
+                    },
+                    "props": [{
+                      "propId": {
+                        "name": "id"
+                      },
+                      "type": "INT64"
+                    }, {
+                      "propId": {
+                        "name": "name"
+                      },
+                      "type": "STRING"
+                    }, {
+                      "propId": {
+                        "name": "age"
+                      },
+                      "type": "INT32"
+                    }]
+                  }]
+                }
+              }
+            }]
+          },
+          "alias": 0
+        }, {
+          "expr": {
+            "operators": [{
+              "var": {
+                "tag": {
+                  "id": 1
+                },
+                "nodeType": {
+                  "graphType": {
+                    "graphDataType": [{
+                      "label": {
+                      },
+                      "props": [{
+                        "propId": {
+                          "name": "id"
+                        },
+                        "type": "INT64"
+                      }, {
+                        "propId": {
+                          "name": "name"
+                        },
+                        "type": "STRING"
+                      }, {
+                        "propId": {
+                          "name": "age"
+                        },
+                        "type": "INT32"
+                      }]
+                    }]
+                  }
+                }
+              },
+              "nodeType": {
+                "graphType": {
+                  "graphDataType": [{
+                    "label": {
+                    },
+                    "props": [{
+                      "propId": {
+                        "name": "id"
+                      },
+                      "type": "INT64"
+                    }, {
+                      "propId": {
+                        "name": "name"
+                      },
+                      "type": "STRING"
+                    }, {
+                      "propId": {
+                        "name": "age"
+                      },
+                      "type": "INT32"
+                    }]
+                  }]
+                }
+              }
+            }]
+          },
+          "alias": 1
+        }]
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "age"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      }
+    }, {
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "age"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      },
+      "alias": 1
+    }]
+  }, {
+    "opr": {
+      "sink": {
+        "tags": [{
+        }],
+        "sinkTarget": {
+          "sinkDefault": {
+          }
+        }
+      }
+    }
+  }]
+}

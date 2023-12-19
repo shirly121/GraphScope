@@ -31,6 +31,7 @@ import org.apache.calcite.rel.rules.TransformationRule;
 import org.apache.calcite.tools.RelBuilderFactory;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+// TODO: fuse Expand and getV in CommonTable, PathExpand, etc.
 public class ExpandGetVFusionRule<C extends ExpandGetVFusionRule.Config> extends RelRule<C>
         implements TransformationRule {
 

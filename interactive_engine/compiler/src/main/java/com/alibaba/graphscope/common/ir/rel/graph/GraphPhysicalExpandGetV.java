@@ -116,10 +116,9 @@ public class GraphPhysicalExpandGetV extends SingleRel {
                 .item("tableConfig", fusedExpand.tableConfig)
                 .item("alias", AliasInference.SIMPLE_NAME(getAliasName()))
                 .itemIf(
-                    "startAlias",
-                    fusedExpand.getStartAlias().getAliasName(),
-                    fusedExpand.getStartAlias().getAliasName() != AliasInference.DEFAULT_NAME)
-              
+                        "startAlias",
+                        fusedExpand.getStartAlias().getAliasName(),
+                        fusedExpand.getStartAlias().getAliasName() != AliasInference.DEFAULT_NAME)
                 .itemIf(
                         "fusedProject",
                         fusedExpand.project,
