@@ -5,7 +5,7 @@ import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.ir.Utils;
 import com.alibaba.graphscope.common.ir.meta.schema.GraphOptSchema;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
-import com.alibaba.graphscope.common.ir.planner.GraphOptimizer;
+import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.planner.rules.DegreeFusionRule;
 import com.alibaba.graphscope.common.ir.planner.rules.ExpandGetVFusionRule;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
@@ -534,9 +534,9 @@ public class GraphRelToProtoTest {
                                         "graph.planner.is.on", "true",
                                         "graph.planner.opt", "CBO",
                                         "graph.planner.rules", "ExtendIntersectRule")));
-        GraphOptimizer optimizer = new GraphOptimizer(plannerConfig);
+        GraphRelOptimizer optimizer = new GraphRelOptimizer(plannerConfig);
         RelOptCluster optCluster =
-                GraphOptCluster.create(optimizer.getGraphOptPlanner(), Utils.rexBuilder);
+                GraphOptCluster.create(optimizer.getMatchPlanner(), Utils.rexBuilder);
         optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery());
         GraphBuilder builder =
                 (GraphBuilder)
@@ -586,9 +586,9 @@ public class GraphRelToProtoTest {
                                         "graph.planner.is.on", "true",
                                         "graph.planner.opt", "CBO",
                                         "graph.planner.rules", "ExtendIntersectRule")));
-        GraphOptimizer optimizer = new GraphOptimizer(plannerConfig);
+        GraphRelOptimizer optimizer = new GraphRelOptimizer(plannerConfig);
         RelOptCluster optCluster =
-                GraphOptCluster.create(optimizer.getGraphOptPlanner(), Utils.rexBuilder);
+                GraphOptCluster.create(optimizer.getMatchPlanner(), Utils.rexBuilder);
         optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery());
         GraphBuilder builder =
                 (GraphBuilder)
