@@ -1,11 +1,16 @@
 package com.alibaba.graphscope.common.ir.runtime;
 
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.ir.Utils;
+import com.alibaba.graphscope.common.ir.meta.schema.GraphOptSchema;
+import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
+import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.planner.rules.DegreeFusionRule;
 import com.alibaba.graphscope.common.ir.planner.rules.ExpandGetVFusionRule;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.GraphStdOperatorTable;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.common.ir.tools.config.ExpandConfig;
@@ -18,6 +23,8 @@ import com.alibaba.graphscope.common.utils.FileUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
+import org.apache.calcite.plan.GraphOptCluster;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.JoinRelType;
@@ -514,6 +521,119 @@ public class GraphRelToProtoTest {
             PhysicalPlan plan = protoBuilder.build();
             Assert.assertEquals(
                     FileUtils.readJsonFromResource("proto/edge_expand_vertex_test.json"),
+                    plan.explain().trim());
+        }
+    }
+
+    @Test
+    public void intersect_test_1() throws Exception {
+        PlannerConfig plannerConfig =
+                PlannerConfig.create(
+                        new Configs(
+                                ImmutableMap.of(
+                                        "graph.planner.is.on", "true",
+                                        "graph.planner.opt", "CBO",
+                                        "graph.planner.rules", "ExtendIntersectRule")));
+        GraphRelOptimizer optimizer = new GraphRelOptimizer(plannerConfig);
+        RelOptCluster optCluster =
+                GraphOptCluster.create(optimizer.getMatchPlanner(), Utils.rexBuilder);
+        optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery());
+        GraphBuilder builder =
+                (GraphBuilder)
+                        GraphPlanner.relBuilderFactory.create(
+                                optCluster,
+                                new GraphOptSchema(optCluster, Utils.schemaMeta.getSchema()));
+        RelNode node =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "Match (p1:person)-[:knows]-(p2:person)-[:knows]-(p3:person),"
+                                        + "(p1:person)-[:knows]-(p3:person) Return"
+                                        + " p1, p2",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, Utils.schemaMeta));
+        // Assert.assertEquals(
+        //         "GraphLogicalProject(p1=[p1], p2=[p2], isAppend=[false])\n" + //
+        //                         "  MultiJoin(joinFilter=[=(p1, p1)], isFullOuterJoin=[false],
+        // joinTypes=[[INNER, INNER]], outerJoinConditions=[[NULL, NULL]], projFields=[[ALL,
+        // ALL]])\n" + //
+        //                         "    GraphLogicalGetV(tableConfig=[{isAll=false,
+        // tables=[person]}], alias=[p1], opt=[OTHER])\n" + //
+        //                         "      GraphLogicalExpand(tableConfig=[{isAll=false,
+        // tables=[knows]}], alias=[DEFAULT], startAlias=[p2], opt=[BOTH])\n" + //
+        //                         "        CommonTableScan(table=[[common#116]])\n" + //
+        //                         "    GraphLogicalGetV(tableConfig=[{isAll=false,
+        // tables=[person]}], alias=[p1], opt=[OTHER])\n" + //
+        //                         "      GraphLogicalExpand(tableConfig=[{isAll=false,
+        // tables=[knows]}], alias=[DEFAULT], startAlias=[p3], opt=[BOTH])\n" + //
+        //                         "        CommonTableScan(table=[[common#116]])",
+        //         after.explain().trim());
+        try (PhysicalBuilder protoBuilder =
+                new GraphRelProtoPhysicalBuilder(
+                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(after))) {
+            PhysicalPlan plan = protoBuilder.build();
+            Assert.assertEquals(
+                    FileUtils.readJsonFromResource("proto/intersect_test_1.json"),
+                    plan.explain().trim());
+        }
+    }
+
+    @Test
+    public void intersect_test_2() throws Exception {
+        PlannerConfig plannerConfig =
+                PlannerConfig.create(
+                        new Configs(
+                                ImmutableMap.of(
+                                        "graph.planner.is.on", "true",
+                                        "graph.planner.opt", "CBO",
+                                        "graph.planner.rules", "ExtendIntersectRule")));
+        GraphRelOptimizer optimizer = new GraphRelOptimizer(plannerConfig);
+        RelOptCluster optCluster =
+                GraphOptCluster.create(optimizer.getMatchPlanner(), Utils.rexBuilder);
+        optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery());
+        GraphBuilder builder =
+                (GraphBuilder)
+                        GraphPlanner.relBuilderFactory.create(
+                                optCluster,
+                                new GraphOptSchema(optCluster, Utils.schemaMeta.getSchema()));
+        RelNode node =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "Match (p1:person)-[:knows]-(p2:person)-[:knows]-(p3:person),"
+                                        + "(p1:person)-[:knows]-(p3:person) Return"
+                                        + " p1, p2",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, Utils.schemaMeta));
+        RelOptPlanner planner =
+                Utils.mockPlanner(ExpandGetVFusionRule.BasicExpandGetVFusionRule.Config.DEFAULT);
+        planner.setRoot(after);
+        RelNode afterRBO = planner.findBestExp();
+        // Assert.assertEquals(
+        //    "root:\n" + //
+        //                    "GraphLogicalProject(p1=[p1], p2=[p2], isAppend=[false])\n" + //
+        //                    "  MultiJoin(joinFilter=[=(p1, p1)], isFullOuterJoin=[false],
+        // joinTypes=[[INNER, INNER]], outerJoinConditions=[[NULL, NULL]], projFields=[[ALL,
+        // ALL]])\n" + //
+        //                    "    GraphPhysicalExpandGetV(tableConfig=[{isAll=false,
+        // tables=[knows]}], alias=[p1], startAlias=[p2])\n" + //
+        //                    "      CommonTableScan(table=[[common#116]])\n" + //
+        //                    "    GraphPhysicalExpandGetV(tableConfig=[{isAll=false,
+        // tables=[knows]}], alias=[p1], startAlias=[p3])\n" + //
+        //                    "      CommonTableScan(table=[[common#116]])\n" + //
+        //                    "common#116:\n" + //
+        //                    "GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],
+        // alias=[p3], opt=[OTHER])\n" + //
+        //                    "  GraphLogicalExpand(tableConfig=[{isAll=false, tables=[knows]}],
+        // alias=[DEFAULT], startAlias=[p2], opt=[BOTH])\n" + //
+        //                    "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],
+        // alias=[p2], opt=[VERTEX])",
+        //         com.alibaba.graphscope.common.ir.tools.Utils.toString(afterRBO).trim());
+
+        try (PhysicalBuilder protoBuilder =
+                new GraphRelProtoPhysicalBuilder(
+                        getMockGraphConfig(), Utils.schemaMeta, new LogicalPlan(afterRBO))) {
+            PhysicalPlan plan = protoBuilder.build();
+            Assert.assertEquals(
+                    FileUtils.readJsonFromResource("proto/intersect_test_2.json"),
                     plan.explain().trim());
         }
     }
