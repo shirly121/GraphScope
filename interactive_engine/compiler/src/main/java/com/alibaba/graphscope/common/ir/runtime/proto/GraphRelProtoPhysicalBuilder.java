@@ -20,17 +20,12 @@ import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.rel.GraphRelVisitor;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalBuilder;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
-import com.alibaba.graphscope.common.ir.runtime.type.PhysicalNode;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebra;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical;
-import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical.PhysicalOpr;
 import com.google.protobuf.util.JsonFormat;
-
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.RelVisitor;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,9 +44,10 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
     public GraphRelProtoPhysicalBuilder(
             Configs graphConfig, IrMeta irMeta, LogicalPlan logicalPlan) {
         super(logicalPlan);
-        this.relVisitor =
-                new GraphRelToProtoConverter(irMeta.getSchema().isColumnId(), graphConfig);
         this.physicalBuilder = GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+        this.relVisitor =
+                new GraphRelToProtoConverter(
+                        irMeta.getSchema().isColumnId(), graphConfig, this.physicalBuilder);
     }
 
     @Override
@@ -59,23 +55,7 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
         String plan = null;
         try {
             RelNode regularQuery = this.logicalPlan.getRegularQuery();
-            RelVisitor relVisitor =
-                    new RelVisitor() {
-                        @Override
-                        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-                            if (node.getInputs().size() == 1) {
-                                super.visit(node, ordinal, parent);
-                            }
-                            PhysicalNode<PhysicalOpr> physicalNode =
-                                    (PhysicalNode<PhysicalOpr>)
-                                            node.accept(
-                                                    GraphRelProtoPhysicalBuilder.this.relVisitor);
-                            for (PhysicalOpr opr : physicalNode.getNodes()) {
-                                physicalBuilder.addPlan(opr);
-                            }
-                        }
-                    };
-            relVisitor.go(regularQuery);
+            regularQuery.accept(this.relVisitor);
             appendDefaultSink();
             plan = getPlanAsJson(physicalBuilder.build());
             int planId = Objects.hash(logicalPlan);
@@ -84,7 +64,7 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
             byte[] bytes = physicalPlan.toByteArray();
             return new PhysicalPlan(bytes, plan);
         } catch (Exception e) {
-            logger.error("ir physical plan {}", plan);
+            logger.error("ir physical plan {}, error {}", plan, e);
             throw new RuntimeException(e);
         }
     }
