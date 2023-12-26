@@ -74,7 +74,7 @@ public class Utils {
         return new HepPlanner(hepBuilder.build());
     }
 
-    private static IrMeta mockSchemaMeta(String schemaJson) {
+    public static IrMeta mockSchemaMeta(String schemaJson) {
         try {
             URL schemaResource =
                     Thread.currentThread().getContextClassLoader().getResource(schemaJson);
