@@ -19,6 +19,7 @@ package com.alibaba.graphscope.common.ir.planner;
 import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.ir.meta.glogue.calcite.GraphRelMetadataQuery;
 import com.alibaba.graphscope.common.ir.meta.glogue.calcite.handler.GraphMetadataHandlerProvider;
+import com.alibaba.graphscope.common.ir.planner.rules.ExpandGetVFusionRule;
 import com.alibaba.graphscope.common.ir.planner.rules.ExtendIntersectRule;
 import com.alibaba.graphscope.common.ir.planner.rules.FilterMatchRule;
 import com.alibaba.graphscope.common.ir.planner.rules.NotMatchToAntiJoinRule;
@@ -55,15 +56,21 @@ public class GraphRelOptimizer {
     private final PlannerConfig config;
     private final RelOptPlanner relPlanner;
     private final RelOptPlanner matchPlanner;
+    private final RelOptPlanner physicalPlanner;
 
     public GraphRelOptimizer(PlannerConfig config) {
         this.config = Objects.requireNonNull(config);
         this.relPlanner = createRelPlanner();
         this.matchPlanner = createMatchPlanner();
+        this.physicalPlanner = createPhysicalPlanner();
     }
 
     public RelOptPlanner getMatchPlanner() {
         return matchPlanner;
+    }
+
+    public RelOptPlanner getPhysicalPlanner() {
+        return physicalPlanner;
     }
 
     public @Nullable RelMetadataQuery createMetaDataQuery() {
@@ -82,7 +89,10 @@ public class GraphRelOptimizer {
             // apply rules of 'FilterPushDown' before the match optimization
             relPlanner.setRoot(before);
             RelNode relOptimized = relPlanner.findBestExp();
-            return relOptimized.accept(new MatchOptimizer(ioProcessor));
+            RelNode matchOptimized = relOptimized.accept(new MatchOptimizer(ioProcessor));
+            physicalPlanner.setRoot(matchOptimized);
+            RelNode physicalOptimized = physicalPlanner.findBestExp();
+            return physicalOptimized;
         }
         return before;
     }
@@ -162,5 +172,27 @@ public class GraphRelOptimizer {
         }
         // todo: re-implement heuristic rules in ir core match
         return new HepPlanner(HepProgram.builder().build());
+    }
+
+    private RelOptPlanner createPhysicalPlanner() {
+        HepProgramBuilder hepBuilder = HepProgram.builder();
+        if (config.isOn()) {
+            List<RelRule.Config> ruleConfigs = Lists.newArrayList();
+            config.getRules()
+                    .forEach(
+                            k -> {
+                                if (k.equals(ExpandGetVFusionRule.class.getSimpleName())) {
+                                    ruleConfigs.add(
+                                            ExpandGetVFusionRule.BasicExpandGetVFusionRule.Config
+                                                    .DEFAULT);
+                                }
+                            });
+            ruleConfigs.forEach(
+                    k -> {
+                        hepBuilder.addRuleInstance(
+                                k.withRelBuilderFactory(GraphPlanner.relBuilderFactory).toRule());
+                    });
+        }
+        return new HepPlanner(hepBuilder.build());
     }
 }
