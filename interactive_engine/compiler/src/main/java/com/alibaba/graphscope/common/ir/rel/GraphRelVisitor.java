@@ -74,4 +74,12 @@ public abstract class GraphRelVisitor extends RelShuttleImpl {
     public RelNode visit(GraphPattern graph) {
         return graph;
     }
+
+    public RelNode visit(GraphPhysicalExpand physicalExpand) {
+        return visitChildren(physicalExpand);
+    }
+
+    public RelNode visit(GraphPhysicalGetV physicalGetV) {
+        return visitChildren(physicalGetV);
+    }
 }
