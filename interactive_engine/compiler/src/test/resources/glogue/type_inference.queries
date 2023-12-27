@@ -1,0 +1,1 @@
+Match (p1)<-[:HASCREATOR]-()<-[:CONTAINEROF]-() Return count(p1);

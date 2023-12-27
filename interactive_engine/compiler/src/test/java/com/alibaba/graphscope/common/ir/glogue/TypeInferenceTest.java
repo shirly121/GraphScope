@@ -72,13 +72,7 @@ public class TypeInferenceTest {
                 com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder("schema/ldbc.json");
         RelNode node =
                 Utils.eval(
-                                "Match (forum)-[]->(post),\n"
-                                        + "\t  (forum)-[]->(person1), \n"
-                                        + "\t  (forum)-[]->(person2), \n"
-                                        + "    (person1)-[]->(person2), \n"
-                                        + "\t  (person1)-[]->(post),\n"
-                                        + "\t  (person2)-[]->(post)\n"
-                                        + "Return count(person1);",
+                                "Match (t:TAG)<-[]-()-[]->(:COMMENT) Return count(t);",
                                 builder)
                         .build();
         System.out.println(node.explain());
