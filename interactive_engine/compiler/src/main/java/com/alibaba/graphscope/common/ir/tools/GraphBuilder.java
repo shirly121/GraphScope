@@ -307,12 +307,12 @@ public class GraphBuilder extends RelBuilder {
      * @param opt anti or optional
      */
     public GraphBuilder match(RelNode single, GraphOpt.Match opt) {
-//        single =
-//                new GraphTypeInference(
-//                                (GraphBuilder)
-//                                        GraphPlanner.relBuilderFactory.create(
-//                                                this.cluster, this.relOptSchema))
-//                        .inferTypes(single);
+        single =
+                new GraphTypeInference(
+                                (GraphBuilder)
+                                        GraphPlanner.relBuilderFactory.create(
+                                                this.cluster, this.relOptSchema))
+                        .inferTypes(single);
         RelNode input = size() > 0 ? peek() : null;
         // unwrap match if there is only one source operator in the sentence
         RelNode match =
@@ -350,12 +350,12 @@ public class GraphBuilder extends RelBuilder {
         }
         Preconditions.checkArgument(
                 sentences.size() > 1, "at least two sentences are required in multiple match");
-//        sentences =
-//                new GraphTypeInference(
-//                                (GraphBuilder)
-//                                        GraphPlanner.relBuilderFactory.create(
-//                                                this.cluster, this.relOptSchema))
-//                        .inferTypes(sentences);
+        sentences =
+                new GraphTypeInference(
+                                (GraphBuilder)
+                                        GraphPlanner.relBuilderFactory.create(
+                                                this.cluster, this.relOptSchema))
+                        .inferTypes(sentences);
         RelNode input = size() > 0 ? peek() : null;
         RelNode match =
                 GraphLogicalMultiMatch.create(
