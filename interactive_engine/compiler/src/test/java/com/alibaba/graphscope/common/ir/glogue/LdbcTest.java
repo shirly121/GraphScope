@@ -20,7 +20,7 @@ public class LdbcTest {
     @Test
     public void ldbc_5_test() {
         GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema.json");
+        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
         GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
@@ -45,7 +45,7 @@ public class LdbcTest {
     @Test
     public void ldbc_7_test() {
         GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema.json");
+        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
         GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
@@ -78,7 +78,7 @@ public class LdbcTest {
     @Test
     public void ldbc_8_test() {
         GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema.json");
+        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
         GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
