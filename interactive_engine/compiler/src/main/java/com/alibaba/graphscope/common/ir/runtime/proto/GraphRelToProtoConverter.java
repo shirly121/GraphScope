@@ -17,6 +17,7 @@
 package com.alibaba.graphscope.common.ir.runtime.proto;
 
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.ir.meta.schema.CommonOptTable;
 import com.alibaba.graphscope.common.ir.rel.*;
 import com.alibaba.graphscope.common.ir.rel.graph.*;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
@@ -37,15 +38,19 @@ import com.alibaba.graphscope.gaia.proto.OuterExpression;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
+import org.apache.calcite.rel.rules.MultiJoin;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang3.ObjectUtils;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -433,6 +438,97 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setJoin(joinBuilder));
         physicalBuilder.addPlan(oprBuilder.build());
         return join;
+    }
+
+    @Override
+    public RelNode visit(CommonTableScan commonTableScan) {
+        // When visit the logical plan, we do not convert to physical operators for CommonTableScan
+        // directly, to avoid duplicates.
+        // Instead, convert CommonTabelScan by visitCommon(), which can be called only once when
+        // necessary.
+        return commonTableScan;
+    }
+
+    private RelNode visitCommon(CommonTableScan commonTableScan) {
+        RelOptTable optTable = commonTableScan.getTable();
+        if (optTable instanceof CommonOptTable) {
+            RelNode common = ((CommonOptTable) optTable).getCommon();
+            common.accept(new GraphRelToProtoConverter(isColumnId, graphConfig, physicalBuilder));
+        }
+        return commonTableScan;
+    }
+
+    @Override
+    public RelNode visit(MultiJoin multiJoin) {
+        // currently, we convert multi-join to intersect + unfold
+        GraphAlgebraPhysical.PhysicalOpr.Builder intersectOprBuilder =
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+        GraphAlgebraPhysical.Intersect.Builder intersectBuilder =
+                GraphAlgebraPhysical.Intersect.newBuilder();
+        GraphAlgebraPhysical.PhysicalOpr.Builder unfoldOprBuilder =
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+        GraphAlgebraPhysical.Unfold.Builder unfoldBuilder =
+                GraphAlgebraPhysical.Unfold.newBuilder();
+
+        List<RexNode> conditions = RelOptUtil.conjunctions(multiJoin.getJoinFilter());
+        int intersectKey = -1;
+        for (RexNode condition : conditions) {
+            String errorMessage =
+                    "join condition in ir core should be 'AND' of equal conditions, each equal"
+                            + " condition has two variables as operands";
+            List<RexGraphVariable> leftRightVars = getLeftRightVariables(condition);
+            Preconditions.checkArgument(leftRightVars.size() == 2, errorMessage);
+            Preconditions.checkArgument(
+                    leftRightVars.get(0).equals(leftRightVars.get(1)), errorMessage);
+            if (intersectKey == -1) {
+                intersectKey = leftRightVars.get(0).getAliasId();
+            } else {
+                Preconditions.checkArgument(
+                        intersectKey == leftRightVars.get(0).getAliasId(), errorMessage);
+            }
+        }
+        Preconditions.checkArgument(intersectKey != -1, "intersect key should be set");
+        intersectBuilder.setKey(intersectKey);
+
+        List<RelNode> inputs = multiJoin.getInputs();
+
+        // first, process the common table.
+        RelNode commonInput = inputs.get(0);
+        RelVisitor subVisitor =
+                new RelVisitor() {
+                    @Override
+                    public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+                        if (node instanceof CommonTableScan) {
+                            visitCommon((CommonTableScan) node);
+                        } else {
+                            super.visit(node, ordinal, parent);
+                        }
+                    }
+                };
+        subVisitor.go(commonInput);
+
+        // then, process operators in the intersect branches; specifically, we will skip build
+        // physical oprs for common tables in this step.
+        for (RelNode input : inputs) {
+            GraphAlgebraPhysical.PhysicalPlan.Builder subPlanBuilder =
+                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            input.accept(new GraphRelToProtoConverter(isColumnId, graphConfig, subPlanBuilder));
+            intersectBuilder.addSubPlans(subPlanBuilder);
+        }
+        intersectOprBuilder.setOpr(
+                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
+                        .setIntersect(intersectBuilder));
+        physicalBuilder.addPlan(intersectOprBuilder.build());
+
+        // after intersect, we need to unfold the result.
+        unfoldBuilder.setTag(Utils.asAliasId(intersectKey));
+        unfoldBuilder.setAlias(Utils.asAliasId(intersectKey));
+        unfoldOprBuilder.setOpr(
+                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setUnfold(unfoldBuilder));
+
+        physicalBuilder.addPlan(unfoldOprBuilder.build());
+
+        return multiJoin;
     }
 
     private List<RexGraphVariable> getLeftRightVariables(RexNode condition) {
