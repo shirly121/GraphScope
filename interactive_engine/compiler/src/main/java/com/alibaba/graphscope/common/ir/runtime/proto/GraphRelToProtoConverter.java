@@ -17,6 +17,7 @@
 package com.alibaba.graphscope.common.ir.runtime.proto;
 
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.ir.meta.schema.CommonOptTable;
 import com.alibaba.graphscope.common.ir.rel.*;
 import com.alibaba.graphscope.common.ir.rel.graph.*;
@@ -64,6 +65,7 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
     private final RexBuilder rexBuilder;
     private final Configs graphConfig;
     private GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder;
+    private boolean isPartitioned;
 
     public GraphRelToProtoConverter(
             boolean isColumnId,
@@ -73,6 +75,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         this.rexBuilder = GraphPlanner.rexBuilderFactory.apply(configs);
         this.graphConfig = configs;
         this.physicalBuilder = physicalBuilder;
+        this.isPartitioned =
+                !(PegasusConfig.PEGASUS_HOSTS.get(configs).split(",").length == 1
+                        && PegasusConfig.PEGASUS_WORKER_NUM.get(configs) == 1);
     }
 
     @Override
@@ -102,6 +107,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(expand.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(expand.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return expand;
     }
@@ -159,6 +167,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(expandDegree.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(expandDegree.getFusedExpand().getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return expandDegree;
     }
@@ -173,6 +184,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(physicalExpand.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(physicalExpand.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalExpand;
     }
@@ -187,6 +201,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(auxilia));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(physicalGetV.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(physicalGetV.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalGetV;
     }
@@ -652,6 +669,16 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         // TODO: currently no sample rate fused into tableScan, so directly set as 1.0 for tmp.
         paramsBuilder.setSampleRatio(1.0);
         return paramsBuilder.build();
+    }
+
+    private void addRepartitionToAnother(int reaprtitionKey) {
+        GraphAlgebraPhysical.PhysicalOpr.Builder repartitionOprBuilder =
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+        GraphAlgebraPhysical.Repartition repartition =
+                Utils.protoShuffleRepartition(reaprtitionKey);
+        repartitionOprBuilder.setOpr(
+                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setRepartition(repartition));
+        physicalBuilder.addPlan(repartitionOprBuilder.build());
     }
 
     @Override
