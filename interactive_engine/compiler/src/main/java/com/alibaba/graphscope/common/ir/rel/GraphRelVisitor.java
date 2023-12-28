@@ -84,12 +84,12 @@ public abstract class GraphRelVisitor extends RelShuttleImpl {
         return visitChildren(physicalGetV);
     }
 
-    public RelNode visit(CommonTableScan commonTableScan) {
-        return visitChildren(commonTableScan);
-    }
-
     public RelNode visit(MultiJoin join) {
         return visitChildren(join);
+    }
+
+    public RelNode visit(CommonTableScan tableScan) {
+        return tableScan;
     }
 
     @Override
