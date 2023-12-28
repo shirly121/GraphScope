@@ -25,6 +25,7 @@ physical:=
 procedure:=
 extra:=
 config.path:=conf/ir.compiler.properties
+server.log:=server.log
 
 build:
 	cd $(CUR_DIR)/.. && \
@@ -48,12 +49,13 @@ gremlin_test:
 	mvn test -Dtest=com.alibaba.graphscope.gremlin.integration.standard.IrGremlinTest
 
 run:
-	cd $(CUR_DIR) && $(java) \
+	cd $(CUR_DIR) && rm -rf ${server.log} && touch ${server.log} && $(java) \
 	  -cp ".:./target/libs/*:./target/compiler-0.0.1-SNAPSHOT.jar" \
 	  -Djna.library.path=../executor/ir/target/release \
 	  -Dgraph.schema=${graph.schema} \
 	  -Dgraph.store=${graph.store} \
 	  -Dpegasus.hosts=${pegasus.hosts} \
+	  -Dserver.log=${server.log} \
 	  com.alibaba.graphscope.GraphServer ${config.path}
 
 # make physical_plan config.path='<path to the config file>'

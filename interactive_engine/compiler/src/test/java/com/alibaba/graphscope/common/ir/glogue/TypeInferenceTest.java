@@ -46,7 +46,7 @@ public class TypeInferenceTest {
         RelNode node =
                 Utils.eval(
                                 "Match (p1)<-[]-(p2:POST), (p1)<-[:HASMODERATOR]-()-[]->(p2) Return"
-                                    + " count(p1)",
+                                        + " count(p1)",
                                 builder)
                         .build();
         System.out.println(node.explain());
@@ -59,8 +59,8 @@ public class TypeInferenceTest {
         RelNode node =
                 Utils.eval(
                                 "Match (p1)<-[]-(p2:POST), (p1)<-[:HASMODERATOR]-()-[]->(p2),"
-                                    + " (p1)-[]->(:ORGANISATION)-[]->(p3:PLACE),"
-                                    + " (p3)<-[:ISLOCATEDIN]-()<-[]-(p1) Return count(p1)",
+                                        + " (p1)-[]->(:ORGANISATION)-[]->(p3:PLACE),"
+                                        + " (p3)<-[:ISLOCATEDIN]-()<-[]-(p1) Return count(p1)",
                                 builder)
                         .build();
         System.out.println(node.explain());
@@ -71,9 +71,7 @@ public class TypeInferenceTest {
         GraphBuilder builder =
                 com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder("schema/ldbc.json");
         RelNode node =
-                Utils.eval(
-                                "Match (:POST)-[]->(p1), (p1)-[]->(:PLACE) Return count(p1);",
-                                builder)
+                Utils.eval("Match (p:POST)-[]->(p1), (p1)-[]->(:PLACE) Return count(p1);", builder)
                         .build();
         System.out.println(node.explain());
     }

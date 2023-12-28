@@ -17,10 +17,12 @@
 package com.alibaba.graphscope.cypher.result;
 
 import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
+import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.result.RecordParser;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.pegasus.common.StreamIterator;
 
+import org.apache.commons.io.FileUtils;
 import org.neo4j.fabric.stream.summary.EmptySummary;
 import org.neo4j.fabric.stream.summary.Summary;
 import org.neo4j.graphdb.ExecutionPlanDescription;
@@ -30,7 +32,11 @@ import org.neo4j.graphdb.QueryStatistics;
 import org.neo4j.kernel.impl.query.QueryExecution;
 import org.neo4j.kernel.impl.query.QuerySubscriber;
 import org.neo4j.values.AnyValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -41,13 +47,24 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
     private final QuerySubscriber subscriber;
     private final StreamIterator<IrResult.Record> recordIterator;
     private final Summary summary;
+    private final long engineStartTime;
+    private final GraphPlanner.Summary planSummary;
+    private final Logger logger = LoggerFactory.getLogger(CypherRecordProcessor.class);
+    private final String query;
 
-    public CypherRecordProcessor(RecordParser<AnyValue> recordParser, QuerySubscriber subscriber) {
+    public CypherRecordProcessor(
+            RecordParser<AnyValue> recordParser,
+            QuerySubscriber subscriber,
+            GraphPlanner.Summary planSummary,
+            String query) {
         this.recordParser = recordParser;
         this.subscriber = subscriber;
         this.recordIterator = new StreamIterator<>();
         this.summary = new EmptySummary();
         initializeSubscriber();
+        this.planSummary = planSummary;
+        this.query = query;
+        this.engineStartTime = System.currentTimeMillis();
     }
 
     private void initializeSubscriber() {
@@ -118,14 +135,44 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
     public void onCompleted() {
         try {
             this.recordIterator.finish();
-        } catch (InterruptedException e) {
+            long engineElapsedTime = System.currentTimeMillis() - engineStartTime;
+            // logger.info("uuid {}, query {}, compile elapsed time {} ms, engine elapsed time {}
+            // ms", planSummary.getId(), query, planSummary.getCompileTime(), engineElapsedTime);
+            String logInfo =
+                    String.format(
+                            "uuid %d, query %s, compile total time %d ms, compile logical opt time"
+                                    + " %d ms, engine execution time %d ms",
+                            planSummary.getId(),
+                            query,
+                            planSummary.getCompileTime(),
+                            planSummary.getOptTime(),
+                            engineElapsedTime);
+            FileUtils.writeStringToFile(
+                    new File(System.getProperty("server.log")),
+                    logInfo,
+                    StandardCharsets.UTF_8,
+                    true);
+        } catch (Exception e) {
             onError(e);
         }
     }
 
     @Override
     public void onError(Throwable t) {
-        t = (t == null) ? new RuntimeException("Unknown error") : t;
-        this.recordIterator.fail(t);
+        try {
+            t = (t == null) ? new RuntimeException("Unknown error") : t;
+            this.recordIterator.fail(t);
+            String logError =
+                    String.format(
+                            "uuid %d, query %s, error %s",
+                            planSummary.getId(), query, t.getMessage());
+            FileUtils.writeStringToFile(
+                    new File(System.getProperty("server.log")),
+                    logError,
+                    StandardCharsets.UTF_8,
+                    true);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -102,6 +102,25 @@ public class LdbcTest {
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
+    @Test
+    public void cbo_test() {
+        GraphRelOptimizer optimizer = createOptimizer();
+        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
+        GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
+        RelNode node =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "Match (p:PERSON)-[]->(:ORGANISATION)-[:ISLOCATEDIN]-(:PLACE),\n"
+                                    + "               "
+                                    + " (p:PERSON)<-[:HASCREATOR]-(message:COMMENT|POST),\n"
+                                    + "              (message)-[:HASTAG]->(tag:TAG)\n"
+                                    + "        Return count(p)",
+                                builder)
+                        .build();
+        // System.out.println(node.explain());
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
     private GraphRelOptimizer createOptimizer() {
         PlannerConfig plannerConfig =
                 PlannerConfig.create(

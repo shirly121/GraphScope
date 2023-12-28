@@ -48,6 +48,7 @@ import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.javatuples.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -118,10 +119,18 @@ public class GraphPlanner {
         }
 
         public Summary plan() {
+            long compileStartTime = System.currentTimeMillis();
             long jobId = generateUniqueId();
-            LogicalPlan logicalPlan = planLogical();
+            Pair<LogicalPlan, Long> logicalPlanOpt = planLogicalOpt();
+            PhysicalPlan physicalPlan = planPhysical(logicalPlanOpt.getValue0());
+            long compileElapsed = System.currentTimeMillis() - compileStartTime;
             return new Summary(
-                    jobId, generateUniqueName(jobId), logicalPlan, planPhysical(logicalPlan));
+                    jobId,
+                    generateUniqueName(jobId),
+                    logicalPlanOpt.getValue0(),
+                    physicalPlan,
+                    compileElapsed,
+                    logicalPlanOpt.getValue1());
         }
 
         public LogicalPlan planLogical() {
@@ -141,6 +150,27 @@ public class GraphPlanner {
                 }
             }
             return logicalPlan;
+        }
+
+        public Pair<LogicalPlan, Long> planLogicalOpt() {
+            // build logical plan from parsed query
+            IrGraphSchema schema = irMeta.getSchema();
+            GraphBuilder graphBuilder =
+                    GraphBuilder.create(
+                            null, this.optCluster, new GraphOptSchema(this.optCluster, schema));
+            LogicalPlan logicalPlan = logicalPlanFactory.create(graphBuilder, irMeta, query);
+            long optStartTime = System.currentTimeMillis();
+            // apply optimizations
+            if (logicalPlan.getRegularQuery() != null && !logicalPlan.isReturnEmpty()) {
+                RelNode before = logicalPlan.getRegularQuery();
+                RelNode after =
+                        optimizer.optimize(before, new GraphIOProcessor(graphBuilder, irMeta));
+                if (after != before) {
+                    logicalPlan = new LogicalPlan(after, logicalPlan.getDynamicParams());
+                }
+            }
+            long optElapsed = System.currentTimeMillis() - optStartTime;
+            return Pair.with(logicalPlan, optElapsed);
         }
 
         public PhysicalPlan planPhysical(LogicalPlan logicalPlan) {
@@ -177,12 +207,31 @@ public class GraphPlanner {
         private final String name;
         private final LogicalPlan logicalPlan;
         private final PhysicalPlan physicalPlan;
+        private final long compileTime;
+        private final long optTime;
 
         public Summary(long id, String name, LogicalPlan logicalPlan, PhysicalPlan physicalPlan) {
             this.id = id;
             this.name = name;
             this.logicalPlan = Objects.requireNonNull(logicalPlan);
             this.physicalPlan = Objects.requireNonNull(physicalPlan);
+            this.compileTime = 0l;
+            this.optTime = 0l;
+        }
+
+        public Summary(
+                long id,
+                String name,
+                LogicalPlan logicalPlan,
+                PhysicalPlan physicalPlan,
+                long compileTime,
+                long optTime) {
+            this.id = id;
+            this.name = name;
+            this.logicalPlan = Objects.requireNonNull(logicalPlan);
+            this.physicalPlan = Objects.requireNonNull(physicalPlan);
+            this.compileTime = compileTime;
+            this.optTime = optTime;
         }
 
         public long getId() {
@@ -199,6 +248,16 @@ public class GraphPlanner {
 
         public PhysicalPlan getPhysicalPlan() {
             return physicalPlan;
+        }
+
+        // total compile time : parser + logical plan with opt + physical plan
+        public long getCompileTime() {
+            return compileTime;
+        }
+
+        // logical plan opt time
+        public long getOptTime() {
+            return optTime;
         }
     }
 

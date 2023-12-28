@@ -27,9 +27,11 @@ import org.neo4j.kernel.impl.query.QuerySubscriber;
 
 public abstract class AbstractPlanExecution implements StatementResults.SubscribableExecution {
     private final GraphPlanner.Summary planSummary;
+    private final String query;
 
-    public AbstractPlanExecution(GraphPlanner.Summary planSummary) {
+    public AbstractPlanExecution(GraphPlanner.Summary planSummary, String query) {
         this.planSummary = planSummary;
+        this.query = query;
     }
 
     @Override
@@ -38,7 +40,9 @@ public abstract class AbstractPlanExecution implements StatementResults.Subscrib
             CypherRecordProcessor recordProcessor =
                     new CypherRecordProcessor(
                             new CypherRecordParser(planSummary.getLogicalPlan().getOutputType()),
-                            querySubscriber);
+                            querySubscriber,
+                            planSummary,
+                            query);
             execute(recordProcessor);
             return recordProcessor;
         } catch (Exception e) {
