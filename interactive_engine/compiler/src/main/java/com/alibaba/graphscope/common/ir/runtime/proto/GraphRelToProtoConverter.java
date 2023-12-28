@@ -17,6 +17,7 @@
 package com.alibaba.graphscope.common.ir.runtime.proto;
 
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.ir.meta.schema.CommonOptTable;
 import com.alibaba.graphscope.common.ir.rel.*;
 import com.alibaba.graphscope.common.ir.rel.graph.*;
@@ -64,6 +65,7 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
     private final RexBuilder rexBuilder;
     private final Configs graphConfig;
     private GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder;
+    private boolean isPartitioned;
 
     public GraphRelToProtoConverter(
             boolean isColumnId,
@@ -73,6 +75,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         this.rexBuilder = GraphPlanner.rexBuilderFactory.apply(configs);
         this.graphConfig = configs;
         this.physicalBuilder = physicalBuilder;
+        this.isPartitioned =
+                !(PegasusConfig.PEGASUS_HOSTS.get(configs).split(",").length == 1
+                        && PegasusConfig.PEGASUS_WORKER_NUM.get(configs) == 1);
     }
 
     @Override
@@ -85,7 +90,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
             scanBuilder.setIdxPredicate(indexPredicate);
         }
         scanBuilder.setParams(buildQueryParams(source));
-        scanBuilder.setAlias(Utils.asAliasId(source.getAliasId()));
+        if (source.getAliasId() != AliasInference.DEFAULT_ID) {
+            scanBuilder.setAlias(Utils.asAliasId(source.getAliasId()));
+        }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setScan(scanBuilder));
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(source.getRowType(), isColumnId));
@@ -102,6 +109,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(expand.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(expand.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return expand;
     }
@@ -139,8 +149,12 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         pathExpandBuilder.setResultOpt(Utils.protoPathResultOpt(pxd.getResultOpt()));
         GraphAlgebra.Range range = buildRange(pxd.getOffset(), pxd.getFetch());
         pathExpandBuilder.setHopRange(range);
-        pathExpandBuilder.setAlias(Utils.asAliasId(pxd.getAliasId()));
-        pathExpandBuilder.setStartTag(Utils.asAliasId(pxd.getStartAlias().getAliasId()));
+        if (pxd.getAliasId() != AliasInference.DEFAULT_ID) {
+            pathExpandBuilder.setAlias(Utils.asAliasId(pxd.getAliasId()));
+        }
+        if (pxd.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+            pathExpandBuilder.setStartTag(Utils.asAliasId(pxd.getStartAlias().getAliasId()));
+        }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setPath(pathExpandBuilder));
 
@@ -153,12 +167,14 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         visitChildren(expandDegree);
         GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
-        GraphAlgebraPhysical.EdgeExpand.Builder edgeExpand =
-                buildEdgeExpandDegree(expandDegree.getFusedExpand());
+        GraphAlgebraPhysical.EdgeExpand.Builder edgeExpand = buildEdgeExpandDegree(expandDegree);
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(expandDegree.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(expandDegree.getFusedExpand().getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return expandDegree;
     }
@@ -173,6 +189,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(physicalExpand.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(physicalExpand.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalExpand;
     }
@@ -187,6 +206,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(auxilia));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(physicalGetV.getRowType(), isColumnId));
+        if (isPartitioned) {
+            addRepartitionToAnother(physicalGetV.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalGetV;
     }
@@ -225,7 +247,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
             GraphAlgebraPhysical.Project.ExprAlias.Builder projectExprAliasBuilder =
                     GraphAlgebraPhysical.Project.ExprAlias.newBuilder();
             projectExprAliasBuilder.setExpr(expression);
-            projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+            if (aliasId != AliasInference.DEFAULT_ID) {
+                projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+            }
             projectBuilder.addMappings(projectExprAliasBuilder.build());
         }
         oprBuilder.setOpr(
@@ -265,7 +289,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.Project.ExprAlias.Builder projectExprAliasBuilder =
                         GraphAlgebraPhysical.Project.ExprAlias.newBuilder();
                 projectExprAliasBuilder.setExpr(expr);
-                projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                if (aliasId != AliasInference.DEFAULT_ID) {
+                    projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                }
                 projectBuilder.addMappings(projectExprAliasBuilder.build());
             }
             GraphAlgebra.Dedup.Builder dedupBuilder = GraphAlgebra.Dedup.newBuilder();
@@ -314,7 +340,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.GroupBy.KeyAlias.Builder keyAliasBuilder =
                         GraphAlgebraPhysical.GroupBy.KeyAlias.newBuilder();
                 keyAliasBuilder.setKey(exprVar);
-                keyAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                if (aliasId != AliasInference.DEFAULT_ID) {
+                    keyAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                }
                 groupByBuilder.addMappings(keyAliasBuilder);
             }
             for (int i = 0; i < groupCalls.size(); ++i) {
@@ -343,7 +371,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                         GraphAlgebraPhysical.GroupBy.AggFunc.newBuilder();
                 aggFnAliasBuilder.setAggregate(aggOpt);
                 aggFnAliasBuilder.addVars(var);
-                aggFnAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                if (aliasId != AliasInference.DEFAULT_ID) {
+                    aggFnAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                }
                 groupByBuilder.addFunctions(aggFnAliasBuilder);
             }
             oprBuilder.setOpr(
@@ -548,29 +578,39 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpand(
-            GraphLogicalExpand expand, GraphOpt.PhysicalExpandOpt opt) {
+            GraphLogicalExpand expand, GraphOpt.PhysicalExpandOpt opt, int aliasId) {
         GraphAlgebraPhysical.EdgeExpand.Builder expandBuilder =
                 GraphAlgebraPhysical.EdgeExpand.newBuilder();
         expandBuilder.setDirection(Utils.protoExpandOpt(expand.getOpt()));
         expandBuilder.setParams(buildQueryParams(expand));
-        expandBuilder.setAlias(Utils.asAliasId(expand.getAliasId()));
-        expandBuilder.setVTag(Utils.asAliasId(expand.getStartAlias().getAliasId()));
+        if (aliasId != AliasInference.DEFAULT_ID) {
+            expandBuilder.setAlias(Utils.asAliasId(aliasId));
+        }
+        if (expand.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+            expandBuilder.setVTag(Utils.asAliasId(expand.getStartAlias().getAliasId()));
+        }
         expandBuilder.setExpandOpt(Utils.protoPhysicalExpandOpt(opt));
         return expandBuilder;
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpand(GraphLogicalExpand expand) {
-        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.EDGE);
+        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.EDGE, expand.getAliasId());
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpandVertex(
-            GraphLogicalExpand expand) {
-        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.VERTEX);
+            GraphPhysicalExpand physicalExpand) {
+        return buildEdgeExpand(
+                physicalExpand.getFusedExpand(),
+                GraphOpt.PhysicalExpandOpt.VERTEX,
+                physicalExpand.getAliasId());
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpandDegree(
-            GraphLogicalExpand expand) {
-        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.DEGREE);
+            GraphLogicalExpandDegree expandDegree) {
+        return buildEdgeExpand(
+                expandDegree.getFusedExpand(),
+                GraphOpt.PhysicalExpandOpt.DEGREE,
+                expandDegree.getAliasId());
     }
 
     private GraphAlgebraPhysical.GetV.Builder buildVertex(
@@ -578,8 +618,12 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         GraphAlgebraPhysical.GetV.Builder vertexBuilder = GraphAlgebraPhysical.GetV.newBuilder();
         vertexBuilder.setOpt(Utils.protoPhysicalGetVOpt(opt));
         vertexBuilder.setParams(buildQueryParams(getV));
-        vertexBuilder.setAlias(Utils.asAliasId(getV.getAliasId()));
-        vertexBuilder.setTag(Utils.asAliasId(getV.getStartAlias().getAliasId()));
+        if (getV.getAliasId() != AliasInference.DEFAULT_ID) {
+            vertexBuilder.setAlias(Utils.asAliasId(getV.getAliasId()));
+        }
+        if (getV.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+            vertexBuilder.setTag(Utils.asAliasId(getV.getStartAlias().getAliasId()));
+        }
         return vertexBuilder;
     }
 
@@ -587,8 +631,8 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         return buildVertex(getV, PhysicalGetVOpt.valueOf(getV.getOpt().name()));
     }
 
-    private GraphAlgebraPhysical.GetV.Builder buildAuxilia(GraphLogicalGetV getV) {
-        return buildVertex(getV, PhysicalGetVOpt.ITSELF);
+    private GraphAlgebraPhysical.GetV.Builder buildAuxilia(GraphPhysicalGetV getV) {
+        return buildVertex(getV.getFusedGetV(), PhysicalGetVOpt.ITSELF);
     }
 
     private GraphAlgebra.Range buildRange(RexNode offset, RexNode fetch) {
@@ -652,6 +696,16 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         // TODO: currently no sample rate fused into tableScan, so directly set as 1.0 for tmp.
         paramsBuilder.setSampleRatio(1.0);
         return paramsBuilder.build();
+    }
+
+    private void addRepartitionToAnother(int reaprtitionKey) {
+        GraphAlgebraPhysical.PhysicalOpr.Builder repartitionOprBuilder =
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+        GraphAlgebraPhysical.Repartition repartition =
+                Utils.protoShuffleRepartition(reaprtitionKey);
+        repartitionOprBuilder.setOpr(
+                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setRepartition(repartition));
+        physicalBuilder.addPlan(repartitionOprBuilder.build());
     }
 
     @Override

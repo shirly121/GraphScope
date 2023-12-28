@@ -581,11 +581,13 @@ fn encode_runtime_v_label(v: &LocalVertex<DefaultId>) -> LabelId {
     // exp_store has a hierarchical (two-layer) label structure,
     // e.g., [PERSON, INVALID_LABEL_ID]; or [PLACE, CITY].
     // Currently, we visit either "PERSON", or "CITY".
-    if v.get_label()[1] == INVALID_LABEL_ID {
-        encode_runtime_label(v.get_label()[0])
-    } else {
-        encode_runtime_label(v.get_label()[1])
-    }
+    // if v.get_label()[1] == INVALID_LABEL_ID {
+    //     encode_runtime_label(v.get_label()[0])
+    // } else {
+    //     encode_runtime_label(v.get_label()[1])
+    // }
+    //
+    encode_runtime_label(v.get_label()[0])
 }
 
 #[inline]

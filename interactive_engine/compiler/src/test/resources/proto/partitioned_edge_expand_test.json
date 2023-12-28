@@ -2,6 +2,7 @@
   "plan": [{
     "opr": {
       "scan": {
+        "alias": 0,
         "params": {
           "tables": [{
             "id": 0
@@ -34,17 +35,50 @@
             }]
           }]
         }
-      },
-      "alias": -1
+      }
     }]
   }, {
     "opr": {
-      "limit": {
-        "range": {
-          "upper": 10
+      "repartition": {
+        "toAnother": {
+          "shuffleKey": 0
         }
       }
     }
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 0,
+        "params": {
+          "tables": [{
+            "id": 0
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 0,
+        "expandOpt": "EDGE"
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "elementOpt": "EDGE",
+          "graphDataType": [{
+            "label": {
+              "srcLabel": 0,
+              "dstLabel": 0
+            },
+            "props": [{
+              "propId": {
+                "name": "weight"
+              },
+              "type": "DOUBLE"
+            }]
+          }]
+        }
+      },
+      "alias": -1
+    }]
   }, {
     "opr": {
       "sink": {
