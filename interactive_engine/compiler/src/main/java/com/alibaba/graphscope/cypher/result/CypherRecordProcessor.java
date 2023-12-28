@@ -141,7 +141,7 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
             String logInfo =
                     String.format(
                             "uuid %d, query %s, compile total time %d ms, compile logical opt time"
-                                    + " %d ms, engine execution time %d ms",
+                                    + " %d ms, engine execution time %d ms\n\n\n",
                             planSummary.getId(),
                             query,
                             planSummary.getCompileTime(),
@@ -164,7 +164,7 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
             this.recordIterator.fail(t);
             String logError =
                     String.format(
-                            "uuid %d, query %s, error %s",
+                            "uuid %d, query %s, error %s\n\n\n",
                             planSummary.getId(), query, t.getMessage());
             FileUtils.writeStringToFile(
                     new File(System.getProperty("server.log")),
