@@ -90,7 +90,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
             scanBuilder.setIdxPredicate(indexPredicate);
         }
         scanBuilder.setParams(buildQueryParams(source));
-        scanBuilder.setAlias(Utils.asAliasId(source.getAliasId()));
+        if (source.getAliasId() != AliasInference.DEFAULT_ID) {
+            scanBuilder.setAlias(Utils.asAliasId(source.getAliasId()));
+        }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setScan(scanBuilder));
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(source.getRowType(), isColumnId));
@@ -147,8 +149,12 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         pathExpandBuilder.setResultOpt(Utils.protoPathResultOpt(pxd.getResultOpt()));
         GraphAlgebra.Range range = buildRange(pxd.getOffset(), pxd.getFetch());
         pathExpandBuilder.setHopRange(range);
-        pathExpandBuilder.setAlias(Utils.asAliasId(pxd.getAliasId()));
-        pathExpandBuilder.setStartTag(Utils.asAliasId(pxd.getStartAlias().getAliasId()));
+        if (pxd.getAliasId() != AliasInference.DEFAULT_ID) {
+            pathExpandBuilder.setAlias(Utils.asAliasId(pxd.getAliasId()));
+        }
+        if (pxd.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+            pathExpandBuilder.setStartTag(Utils.asAliasId(pxd.getStartAlias().getAliasId()));
+        }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setPath(pathExpandBuilder));
 
@@ -242,7 +248,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
             GraphAlgebraPhysical.Project.ExprAlias.Builder projectExprAliasBuilder =
                     GraphAlgebraPhysical.Project.ExprAlias.newBuilder();
             projectExprAliasBuilder.setExpr(expression);
-            projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+            if (aliasId != AliasInference.DEFAULT_ID) {
+                projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+            }
             projectBuilder.addMappings(projectExprAliasBuilder.build());
         }
         oprBuilder.setOpr(
@@ -282,7 +290,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.Project.ExprAlias.Builder projectExprAliasBuilder =
                         GraphAlgebraPhysical.Project.ExprAlias.newBuilder();
                 projectExprAliasBuilder.setExpr(expr);
-                projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                if (aliasId != AliasInference.DEFAULT_ID) {
+                    projectExprAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                }
                 projectBuilder.addMappings(projectExprAliasBuilder.build());
             }
             GraphAlgebra.Dedup.Builder dedupBuilder = GraphAlgebra.Dedup.newBuilder();
@@ -331,7 +341,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.GroupBy.KeyAlias.Builder keyAliasBuilder =
                         GraphAlgebraPhysical.GroupBy.KeyAlias.newBuilder();
                 keyAliasBuilder.setKey(exprVar);
-                keyAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                if (aliasId != AliasInference.DEFAULT_ID) {
+                    keyAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                }
                 groupByBuilder.addMappings(keyAliasBuilder);
             }
             for (int i = 0; i < groupCalls.size(); ++i) {
@@ -360,7 +372,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                         GraphAlgebraPhysical.GroupBy.AggFunc.newBuilder();
                 aggFnAliasBuilder.setAggregate(aggOpt);
                 aggFnAliasBuilder.addVars(var);
-                aggFnAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                if (aliasId != AliasInference.DEFAULT_ID) {
+                    aggFnAliasBuilder.setAlias(Utils.asAliasId(aliasId));
+                }
                 groupByBuilder.addFunctions(aggFnAliasBuilder);
             }
             oprBuilder.setOpr(
@@ -570,8 +584,19 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphAlgebraPhysical.EdgeExpand.newBuilder();
         expandBuilder.setDirection(Utils.protoExpandOpt(expand.getOpt()));
         expandBuilder.setParams(buildQueryParams(expand));
-        expandBuilder.setAlias(Utils.asAliasId(expand.getAliasId()));
-        expandBuilder.setVTag(Utils.asAliasId(expand.getStartAlias().getAliasId()));
+        System.out.println(
+                "expand: "
+                        + expand
+                        + ", alias:"
+                        + expand.getAliasId()
+                        + ", startTag: "
+                        + expand.getStartAlias().getAliasId());
+        if (expand.getAliasId() != AliasInference.DEFAULT_ID) {
+            expandBuilder.setAlias(Utils.asAliasId(expand.getAliasId()));
+        }
+        if (expand.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+            expandBuilder.setVTag(Utils.asAliasId(expand.getStartAlias().getAliasId()));
+        }
         expandBuilder.setExpandOpt(Utils.protoPhysicalExpandOpt(opt));
         return expandBuilder;
     }
@@ -595,8 +620,19 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         GraphAlgebraPhysical.GetV.Builder vertexBuilder = GraphAlgebraPhysical.GetV.newBuilder();
         vertexBuilder.setOpt(Utils.protoPhysicalGetVOpt(opt));
         vertexBuilder.setParams(buildQueryParams(getV));
-        vertexBuilder.setAlias(Utils.asAliasId(getV.getAliasId()));
-        vertexBuilder.setTag(Utils.asAliasId(getV.getStartAlias().getAliasId()));
+        System.out.println(
+                "getv: "
+                        + getV
+                        + ", alias:"
+                        + getV.getAliasId()
+                        + ", startTag: "
+                        + getV.getStartAlias().getAliasId());
+        if (getV.getAliasId() != AliasInference.DEFAULT_ID) {
+            vertexBuilder.setAlias(Utils.asAliasId(getV.getAliasId()));
+        }
+        if (getV.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+            vertexBuilder.setTag(Utils.asAliasId(getV.getStartAlias().getAliasId()));
+        }
         return vertexBuilder;
     }
 
