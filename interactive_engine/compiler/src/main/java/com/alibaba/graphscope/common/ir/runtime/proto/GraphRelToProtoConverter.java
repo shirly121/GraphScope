@@ -167,8 +167,7 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         visitChildren(expandDegree);
         GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
-        GraphAlgebraPhysical.EdgeExpand.Builder edgeExpand =
-                buildEdgeExpandDegree(expandDegree.getFusedExpand());
+        GraphAlgebraPhysical.EdgeExpand.Builder edgeExpand = buildEdgeExpandDegree(expandDegree);
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setEdge(edgeExpand));
         oprBuilder.addAllMetaData(
@@ -579,20 +578,13 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpand(
-            GraphLogicalExpand expand, GraphOpt.PhysicalExpandOpt opt) {
+            GraphLogicalExpand expand, GraphOpt.PhysicalExpandOpt opt, int aliasId) {
         GraphAlgebraPhysical.EdgeExpand.Builder expandBuilder =
                 GraphAlgebraPhysical.EdgeExpand.newBuilder();
         expandBuilder.setDirection(Utils.protoExpandOpt(expand.getOpt()));
         expandBuilder.setParams(buildQueryParams(expand));
-        System.out.println(
-                "expand: "
-                        + expand
-                        + ", alias:"
-                        + expand.getAliasId()
-                        + ", startTag: "
-                        + expand.getStartAlias().getAliasId());
-        if (expand.getAliasId() != AliasInference.DEFAULT_ID) {
-            expandBuilder.setAlias(Utils.asAliasId(expand.getAliasId()));
+        if (aliasId != AliasInference.DEFAULT_ID) {
+            expandBuilder.setAlias(Utils.asAliasId(aliasId));
         }
         if (expand.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
             expandBuilder.setVTag(Utils.asAliasId(expand.getStartAlias().getAliasId()));
@@ -602,17 +594,23 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpand(GraphLogicalExpand expand) {
-        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.EDGE);
+        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.EDGE, expand.getAliasId());
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpandVertex(
-            GraphLogicalExpand expand) {
-        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.VERTEX);
+            GraphPhysicalExpand physicalExpand) {
+        return buildEdgeExpand(
+                physicalExpand.getFusedExpand(),
+                GraphOpt.PhysicalExpandOpt.VERTEX,
+                physicalExpand.getAliasId());
     }
 
     private GraphAlgebraPhysical.EdgeExpand.Builder buildEdgeExpandDegree(
-            GraphLogicalExpand expand) {
-        return buildEdgeExpand(expand, GraphOpt.PhysicalExpandOpt.DEGREE);
+            GraphLogicalExpandDegree expandDegree) {
+        return buildEdgeExpand(
+                expandDegree.getFusedExpand(),
+                GraphOpt.PhysicalExpandOpt.DEGREE,
+                expandDegree.getAliasId());
     }
 
     private GraphAlgebraPhysical.GetV.Builder buildVertex(
@@ -620,13 +618,6 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         GraphAlgebraPhysical.GetV.Builder vertexBuilder = GraphAlgebraPhysical.GetV.newBuilder();
         vertexBuilder.setOpt(Utils.protoPhysicalGetVOpt(opt));
         vertexBuilder.setParams(buildQueryParams(getV));
-        System.out.println(
-                "getv: "
-                        + getV
-                        + ", alias:"
-                        + getV.getAliasId()
-                        + ", startTag: "
-                        + getV.getStartAlias().getAliasId());
         if (getV.getAliasId() != AliasInference.DEFAULT_ID) {
             vertexBuilder.setAlias(Utils.asAliasId(getV.getAliasId()));
         }
@@ -640,8 +631,8 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         return buildVertex(getV, PhysicalGetVOpt.valueOf(getV.getOpt().name()));
     }
 
-    private GraphAlgebraPhysical.GetV.Builder buildAuxilia(GraphLogicalGetV getV) {
-        return buildVertex(getV, PhysicalGetVOpt.ITSELF);
+    private GraphAlgebraPhysical.GetV.Builder buildAuxilia(GraphPhysicalGetV getV) {
+        return buildVertex(getV.getFusedGetV(), PhysicalGetVOpt.ITSELF);
     }
 
     private GraphAlgebra.Range buildRange(RexNode offset, RexNode fetch) {
