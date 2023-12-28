@@ -1,0 +1,7 @@
+Match (forum:TAG)<-[:HASTAG]-(post:POST|COMMENT),
+	  (forum)<-[:HASINTEREST]-(person1:PERSON), 
+	  (forum)<-[:HASINTEREST]-(person2:PERSON), 
+    (person1:PERSON)-[:KNOWS]->(person2:PERSON), 
+	  (person1:PERSON)-[:LIKES]->(post:POST|COMMENT),
+	  (person2:PERSON)-[:LIKES]->(post:POST|COMMENT)
+Return count(person1);

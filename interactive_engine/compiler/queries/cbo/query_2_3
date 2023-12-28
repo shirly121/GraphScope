@@ -1,0 +1,5 @@
+Match (person1)-[]->(message), 
+	    (message:POST)-[]->(person2), 
+	    (person1:PERSON)-[]->(place), 
+      (person2)-[]->(place:PLACE)
+Return count(person1);

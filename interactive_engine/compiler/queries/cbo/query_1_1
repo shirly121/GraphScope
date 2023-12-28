@@ -1,0 +1,4 @@
+Match (message:COMMENT)-[:HASCREATOR]->(person:PERSON), 
+      (message:COMMENT)-[:HASTAG]->(tag:TAG), 
+      (person:PERSON)-[:HASINTEREST]->(tag:TAG)
+Return count(person);
