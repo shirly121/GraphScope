@@ -136,7 +136,7 @@ public class LdbcTest {
                                         "FilterMatchRule, ExtendIntersectRule,"
                                             + " ExpandGetVFusionRule",
                                         "graph.planner.cbo.glogue.schema",
-                                        "./conf/ldbc1_statistics.txt")));
+                                        "./conf/ldbc30_statistics.txt")));
         return new GraphRelOptimizer(plannerConfig);
     }
 
