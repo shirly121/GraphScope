@@ -645,38 +645,35 @@ fn generate_source_operator(
 ) -> IrPatternResult<pb::logical_plan::Operator> {
     let source_vertex_id = source_extend.get_target_vertex_id();
     let inferred_vertex_table = generate_vertex_table(pattern, source_vertex_id)?;
-    // // Fuse `source_vertex_label` into source, for efficiently scan
-    // let source_vertex_param = if let Some(mut vertex_param) = pattern
-    //     .get_vertex_parameters(source_vertex_id)?
-    //     .cloned()
-    // {
-    //     // if user given vertex table is empty, using the inferred vertex table
-    //     // and vise versa
-    //     if vertex_param.tables.len() == 0 {
-    //         vertex_param.tables = inferred_vertex_table;
-    //     }
-    //     // if the two tables are both not empty
-    //     // intersect user given labels and inferred labels
-    //     else if inferred_vertex_table.len() > 0 {
-    //         let user_given_vertex_table = vertex_param.tables;
-    //         vertex_param.tables = vec![];
-    //         for inferred_vertex_label in inferred_vertex_table {
-    //             if user_given_vertex_table.contains(&inferred_vertex_label) {
-    //                 vertex_param.tables.push(inferred_vertex_label)
-    //             }
-    //         }
-    //     }
-    //     vertex_param
-    // } else {
-    //     query_params(inferred_vertex_table, vec![], None)
-    // };
-    let source_vertex_param = pattern
+    // Fuse `source_vertex_label` into source, for efficiently scan
+    let source_vertex_param = if let Some(mut vertex_param) = pattern
         .get_vertex_parameters(source_vertex_id)?
-        .cloned();
+        .cloned()
+    {
+        // if user given vertex table is empty, using the inferred vertex table
+        // and vise versa
+        if vertex_param.tables.len() == 0 {
+            vertex_param.tables = inferred_vertex_table;
+        }
+        // if the two tables are both not empty
+        // intersect user given labels and inferred labels
+        else if inferred_vertex_table.len() > 0 {
+            let user_given_vertex_table = vertex_param.tables;
+            vertex_param.tables = vec![];
+            for inferred_vertex_label in inferred_vertex_table {
+                if user_given_vertex_table.contains(&inferred_vertex_label) {
+                    vertex_param.tables.push(inferred_vertex_label)
+                }
+            }
+        }
+        vertex_param
+    } else {
+        query_params(inferred_vertex_table, vec![], None)
+    };
     let source_scan = pb::Scan {
         scan_opt: 0,
         alias: Some((source_vertex_id as KeyId).into()),
-        params: source_vertex_param,
+        params: Some(source_vertex_param),
         idx_predicate: None,
         is_count_only: false,
         meta_data: None,
@@ -1074,34 +1071,34 @@ fn assign_src_dst_vertex_labels(
     let mut candi_src_vertex_labels = BTreeSet::new();
     let mut candi_dst_vertex_labels = BTreeSet::new();
 
-    // if let Ok(store_meta) = STORE_META.read() {
-    //     if let Some(schema) = store_meta.schema.as_ref() {
-    //         for edge_label in edge_labels {
-    //             if let Some(bound_labels) = schema.get_bound_labels(edge_label) {
-    //                 for (src_label_meta, dst_label_meta) in bound_labels {
-    //                     let src_label = src_label_meta.get_id();
-    //                     let dst_label = dst_label_meta.get_id();
-    //                     match edge_direction {
-    //                         pb::edge_expand::Direction::Out => {
-    //                             candi_src_vertex_labels.insert(src_label);
-    //                             candi_dst_vertex_labels.insert(dst_label);
-    //                         }
-    //                         pb::edge_expand::Direction::In => {
-    //                             candi_src_vertex_labels.insert(dst_label);
-    //                             candi_dst_vertex_labels.insert(src_label);
-    //                         }
-    //                         pb::edge_expand::Direction::Both => {
-    //                             candi_src_vertex_labels.insert(src_label);
-    //                             candi_src_vertex_labels.insert(dst_label);
-    //                             candi_dst_vertex_labels.insert(src_label);
-    //                             candi_dst_vertex_labels.insert(dst_label);
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
+    if let Ok(store_meta) = STORE_META.read() {
+        if let Some(schema) = store_meta.schema.as_ref() {
+            for edge_label in edge_labels {
+                if let Some(bound_labels) = schema.get_bound_labels(edge_label) {
+                    for (src_label_meta, dst_label_meta) in bound_labels {
+                        let src_label = src_label_meta.get_id();
+                        let dst_label = dst_label_meta.get_id();
+                        match edge_direction {
+                            pb::edge_expand::Direction::Out => {
+                                candi_src_vertex_labels.insert(src_label);
+                                candi_dst_vertex_labels.insert(dst_label);
+                            }
+                            pb::edge_expand::Direction::In => {
+                                candi_src_vertex_labels.insert(dst_label);
+                                candi_dst_vertex_labels.insert(src_label);
+                            }
+                            pb::edge_expand::Direction::Both => {
+                                candi_src_vertex_labels.insert(src_label);
+                                candi_src_vertex_labels.insert(dst_label);
+                                candi_dst_vertex_labels.insert(src_label);
+                                candi_dst_vertex_labels.insert(dst_label);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // For a chosen candidates:
     // - if the required src label is some, its src vertex label must match the requirement
