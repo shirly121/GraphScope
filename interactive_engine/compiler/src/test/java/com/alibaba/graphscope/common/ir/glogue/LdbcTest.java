@@ -13,8 +13,12 @@ import com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.junit.Test;
+
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
 
 public class LdbcTest {
     @Test
@@ -103,27 +107,27 @@ public class LdbcTest {
     }
 
     @Test
-    public void cbo_test() {
+    public void cbo_test() throws Exception {
         GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
+        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
         GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person1:PERSON), \n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person2:PERSON), \n"
-                                        + "    (person1:PERSON)-[:KNOWS]->(person2:PERSON), \n"
-                                        + "\t  (person1:PERSON)-[:LIKES]->(post:POST),\n"
-                                        + "\t  (person2:PERSON)-[:LIKES]->(post:POST)\n"
-                                        + "Return count(person1);",
+                                "Match (person1:PERSON)-[:LIKES]->(message:COMMENT|POST), \n" +
+                                        "\t   (message:COMMENT|POST)-[:HASCREATOR]->(person2:PERSON), \n" +
+                                        "\t   (person1:PERSON)-[:ISLOCATEDIN]->(place:CITY), \n" +
+                                        "     (person2:PERSON)-[:ISLOCATEDIN]->(place:CITY)\n" +
+                                        "Return count(person1);",
                                 builder)
                         .build();
         // System.out.println(node.explain());
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
+        planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
-    private GraphRelOptimizer createOptimizer() {
+    public static GraphRelOptimizer createOptimizer() {
         PlannerConfig plannerConfig =
                 PlannerConfig.create(
                         new Configs(
@@ -136,11 +140,11 @@ public class LdbcTest {
                                         "FilterMatchRule, ExtendIntersectRule,"
                                             + " ExpandGetVFusionRule",
                                         "graph.planner.cbo.glogue.schema",
-                                        "./conf/ldbc30_statistics.txt")));
+                                        "./conf/ldbc30_hierarchy_statistics.txt")));
         return new GraphRelOptimizer(plannerConfig);
     }
 
-    private GraphBuilder createGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {
+    public static GraphBuilder createGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {
         RelOptCluster optCluster =
                 GraphOptCluster.create(optimizer.getMatchPlanner(), Utils.rexBuilder);
         optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery());
