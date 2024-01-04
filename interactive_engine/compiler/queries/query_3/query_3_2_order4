@@ -1,0 +1,1 @@
+g.V().hasLabel('TAG').in('HASTAG', 'HASINTEREST').out('LIKES', 'REPLYOF').hasLabel('COMMENT').out('HASCREATOR').out('ISLOCATEDIN').count()
