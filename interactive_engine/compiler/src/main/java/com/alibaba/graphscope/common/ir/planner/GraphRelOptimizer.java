@@ -74,6 +74,10 @@ public class GraphRelOptimizer {
         return physicalPlanner;
     }
 
+    public RelOptPlanner getRelPlanner() {
+        return relPlanner;
+    }
+
     public @Nullable RelMetadataQuery createMetaDataQuery() {
         if (config.isOn() && config.getOpt() == PlannerConfig.Opt.CBO) {
             GlogueSchema g = config.getGlogueSchema();

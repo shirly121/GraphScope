@@ -1,6 +1,7 @@
 package com.alibaba.graphscope.common.ir.glogue;
 
 import com.google.common.base.Preconditions;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;

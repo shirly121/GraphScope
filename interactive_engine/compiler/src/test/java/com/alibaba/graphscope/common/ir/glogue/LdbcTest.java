@@ -113,11 +113,10 @@ public class LdbcTest {
         GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (person1:PERSON)-[:LIKES]->(message:COMMENT|POST), \n" +
-                                        "\t   (message:COMMENT|POST)-[:HASCREATOR]->(person2:PERSON), \n" +
-                                        "\t   (person1:PERSON)-[:ISLOCATEDIN]->(place:CITY), \n" +
-                                        "     (person2:PERSON)-[:ISLOCATEDIN]->(place:CITY)\n" +
-                                        "Return count(person1);",
+                                "Match (p:COMMENT)-[]->(:PERSON)-[]->(:CITY),\n"
+                                        + "    \t(p)<-[]-(message),\n"
+                                        + "      (message)-[]->(tag:TAG)\n"
+                                        + "Return count(p);",
                                 builder)
                         .build();
         // System.out.println(node.explain());
@@ -138,7 +137,7 @@ public class LdbcTest {
                                         "CBO",
                                         "graph.planner.rules",
                                         "FilterMatchRule, ExtendIntersectRule,"
-                                            + " ExpandGetVFusionRule",
+                                                + " ExpandGetVFusionRule",
                                         "graph.planner.cbo.glogue.schema",
                                         "./conf/ldbc30_hierarchy_statistics.txt")));
         return new GraphRelOptimizer(plannerConfig);

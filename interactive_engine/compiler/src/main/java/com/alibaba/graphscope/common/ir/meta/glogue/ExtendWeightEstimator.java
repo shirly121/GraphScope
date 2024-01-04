@@ -59,19 +59,16 @@ public class ExtendWeightEstimator {
         Pattern pattern = new Pattern();
         double totalWeight = 0.0d;
         List<PatternVertex> extendFromVertices = Lists.newArrayList();
-        int i = 0;
         for (PatternEdge edge : edges) {
             pattern.addVertex(edge.getSrcVertex());
             pattern.addVertex(edge.getDstVertex());
             pattern.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
             extendFromVertices.add(Utils.getExtendFromVertex(edge, target));
-            if (i++ == edges.size() - 1) {
-                double weight = handler.handle(pattern);
-                for (PatternVertex vertex : extendFromVertices) {
-                    weight /= handler.handle(new Pattern(vertex));
-                }
-                totalWeight += weight;
+            double weight = handler.handle(pattern);
+            for (PatternVertex vertex : extendFromVertices) {
+                weight /= handler.handle(new Pattern(vertex));
             }
+            totalWeight += weight;
         }
         return totalWeight;
     }

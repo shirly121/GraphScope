@@ -1,5 +1,5 @@
-Match (person1)-[]->(message), 
-	    (message:POST)-[]->(person2), 
-	    (person1:PERSON)-[]->(place), 
-      (person2)-[]->(place:PLACE)
+Match (person1:PERSON)-[:LIKES]->(message:POST), 
+	    (message:POST)<-[:CONTAINEROF]-(person2:FORUM), 
+	    (person1:PERSON)-[:KNOWS|HASINTEREST]->(place:PERSON|TAG), 
+      (person2:FORUM)-[:HASMODERATOR|HASTAG]->(place:PERSON|TAG)
 Return count(person1);

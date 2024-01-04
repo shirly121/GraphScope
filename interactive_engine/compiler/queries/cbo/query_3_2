@@ -1,4 +1,0 @@
-Match (p:PERSON)-[]->(:ORGANISATION)-[:ISLOCATEDIN]-(:PLACE),
-    	(p:PERSON)<-[:HASCREATOR]-(message:COMMENT|POST),
-      (message)-[:HASTAG]->(tag:TAG)
-Return count(p);
