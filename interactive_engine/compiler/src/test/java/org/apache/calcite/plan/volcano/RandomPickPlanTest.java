@@ -6,8 +6,11 @@ import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
 import com.alibaba.graphscope.common.client.type.ExecutionRequest;
 import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
-import com.alibaba.graphscope.common.config.*;
-import com.alibaba.graphscope.common.ir.Utils;
+import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.FrontendConfig;
+import com.alibaba.graphscope.common.config.PlannerConfig;
+import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.ir.meta.reader.LocalMetaDataReader;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
@@ -20,6 +23,7 @@ import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
+import com.alibaba.graphscope.common.store.ExperimentalMetaFetcher;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.pegasus.common.StreamIterator;
@@ -65,7 +69,7 @@ public class RandomPickPlanTest {
         }
         logFile.createNewFile();
         optimizer = new GraphRelOptimizer(PlannerConfig.create(configs));
-        ldbcMeta = Utils.mockSchemaMeta(GraphConfig.GRAPH_SCHEMA.get(configs));
+        ldbcMeta = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs)).fetch().get();
         client = ExecutionClient.Factory.create(configs, new HostsRpcChannelFetcher(configs));
     }
 
