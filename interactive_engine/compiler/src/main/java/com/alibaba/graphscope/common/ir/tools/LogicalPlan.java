@@ -73,7 +73,8 @@ public class LogicalPlan {
 
     public String explain() {
         if (this.regularQuery != null) {
-            return this.regularQuery.explain();
+            // return this.regularQuery.explain();
+            return Utils.toString(this.regularQuery);
         } else if (this.procedureCall != null) {
             return this.procedureCall.toString();
         } else {

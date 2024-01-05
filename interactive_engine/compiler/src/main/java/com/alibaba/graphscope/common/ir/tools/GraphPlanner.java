@@ -169,6 +169,7 @@ public class GraphPlanner {
                     logicalPlan = new LogicalPlan(after, logicalPlan.getDynamicParams());
                 }
             }
+            logger.info("cypher query \"{}\", logical plan\n {}", query, logicalPlan.explain());
             long optElapsed = System.currentTimeMillis() - optStartTime;
             return Pair.with(logicalPlan, optElapsed);
         }
