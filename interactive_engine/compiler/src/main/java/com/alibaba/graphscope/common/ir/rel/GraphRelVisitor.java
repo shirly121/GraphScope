@@ -99,4 +99,8 @@ public abstract class GraphRelVisitor extends RelShuttleImpl {
         }
         return visitChildren(other);
     }
+
+    public RelNode visit(GraphJoinDecomposition decomposition) {
+        return decomposition;
+    }
 }

@@ -23,10 +23,7 @@ import com.alibaba.graphscope.common.ir.planner.type.DataValue;
 import com.alibaba.graphscope.common.ir.planner.type.EdgeDataKey;
 import com.alibaba.graphscope.common.ir.planner.type.VertexDataKey;
 import com.alibaba.graphscope.common.ir.rel.*;
-import com.alibaba.graphscope.common.ir.rel.graph.AbstractBindableTableScan;
-import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalExpand;
-import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalGetV;
-import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalSource;
+import com.alibaba.graphscope.common.ir.rel.graph.*;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendEdge;
@@ -47,9 +44,11 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rules.MultiJoin;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVariable;
@@ -143,6 +142,15 @@ public class GraphIOProcessor {
                                 PatternVertex vertex = visitAndAddVertex((GraphLogicalGetV) parent);
                                 visitAndAddEdge((GraphLogicalExpand) node, lastVisited, vertex);
                                 lastVisited = vertex;
+                            } else if (node instanceof GraphLogicalPathExpand) {
+                                Preconditions.checkArgument(
+                                        parent instanceof GraphLogicalGetV,
+                                        "there should be a getV operator after path expand since"
+                                                + " edge in patten should have two endpoints");
+                                PatternVertex vertex = visitAndAddVertex((GraphLogicalGetV) parent);
+                                visitAndAddPxdEdge(
+                                        (GraphLogicalPathExpand) node, lastVisited, vertex);
+                                lastVisited = vertex;
                             }
                             if (parent != null
                                     && (node instanceof GraphLogicalSource
@@ -221,6 +229,70 @@ public class GraphIOProcessor {
                                     src = right;
                                     dst = left;
                             }
+                            PatternEdge edge = visitEdge(expand, src, dst);
+                            pattern.addEdge(src, dst, edge);
+                            vertexOrEdgeDetails.put(
+                                    edge, new DataValue(expand.getAliasName(), getFilters(expand)));
+                            return edge;
+                        }
+
+                        private PatternEdge visitAndAddPxdEdge(
+                                GraphLogicalPathExpand pxd,
+                                PatternVertex left,
+                                PatternVertex right) {
+                            GraphLogicalExpand expand = (GraphLogicalExpand) pxd.getExpand();
+                            PatternVertex src, dst;
+                            switch (expand.getOpt()) {
+                                case OUT:
+                                case BOTH:
+                                    src = left;
+                                    dst = right;
+                                    break;
+                                case IN:
+                                default:
+                                    src = right;
+                                    dst = left;
+                            }
+                            PatternEdge expandEdge = visitEdge(expand, src, dst);
+                            if (pxd.getOffset() != null && pxd.getFetch() != null) {
+                                int offset =
+                                        ((RexLiteral) pxd.getOffset())
+                                                .getValueAs(Number.class)
+                                                .intValue();
+                                int fetch =
+                                        ((RexLiteral) pxd.getFetch())
+                                                .getValueAs(Number.class)
+                                                .intValue();
+                                ElementDetails newDetails =
+                                        new ElementDetails(
+                                                expandEdge.getDetails().getSelectivity(),
+                                                new PathExpandRange(offset, fetch));
+                                expandEdge =
+                                        expandEdge.isDistinct()
+                                                ? new SinglePatternEdge(
+                                                        expandEdge.getSrcVertex(),
+                                                        expandEdge.getDstVertex(),
+                                                        expandEdge.getEdgeTypeIds().get(0),
+                                                        expandEdge.getId(),
+                                                        expandEdge.isBoth(),
+                                                        newDetails)
+                                                : new FuzzyPatternEdge(
+                                                        expandEdge.getSrcVertex(),
+                                                        expandEdge.getDstVertex(),
+                                                        expandEdge.getEdgeTypeIds(),
+                                                        expandEdge.getId(),
+                                                        expandEdge.isBoth(),
+                                                        newDetails);
+                            }
+                            pattern.addEdge(src, dst, expandEdge);
+                            vertexOrEdgeDetails.put(
+                                    expandEdge,
+                                    new DataValue(pxd.getAliasName(), getFilters(expand)));
+                            return expandEdge;
+                        }
+
+                        private PatternEdge visitEdge(
+                                GraphLogicalExpand expand, PatternVertex src, PatternVertex dst) {
                             boolean isBoth = expand.getOpt() == GraphOpt.Expand.BOTH;
                             List<EdgeTypeId> edgeTypeIds =
                                     com.alibaba.graphscope.common.ir.meta.glogue.Utils
@@ -243,9 +315,6 @@ public class GraphIOProcessor {
                                                     edgeId,
                                                     isBoth,
                                                     new ElementDetails(selectivity));
-                            pattern.addEdge(src, dst, edge);
-                            vertexOrEdgeDetails.put(
-                                    edge, new DataValue(expand.getAliasName(), getFilters(expand)));
                             return edge;
                         }
                     };
@@ -329,12 +398,7 @@ public class GraphIOProcessor {
                     pattern);
             PatternVertex vertex = pattern.getVertexSet().iterator().next();
             VertexDataKey key = new VertexDataKey(pattern.getVertexOrder(vertex));
-            DataValue value;
-            Preconditions.checkArgument(
-                    (value = details.get(key)) != null,
-                    "can not find vertex key %s in details map %s",
-                    key,
-                    details);
+            DataValue value = getVertexValue(key, details, vertex);
             builder.source(
                     new SourceConfig(
                             GraphOpt.Source.VERTEX,
@@ -350,6 +414,9 @@ public class GraphIOProcessor {
         public RelNode visit(GraphExtendIntersect intersect) {
             GlogueExtendIntersectEdge glogueEdge = intersect.getGlogueEdge();
             Map<DataKey, DataValue> edgeDetails = getGlogueEdgeDetails(glogueEdge);
+            this.details =
+                    createSubDetails(
+                            glogueEdge.getSrcPattern(), glogueEdge.getSrcToTargetOrderMapping());
             ExtendStep extendStep = glogueEdge.getExtendStep();
             List<ExtendEdge> extendEdges = extendStep.getExtendEdges();
             RelNode child = visitChildren(intersect).getInput(0);
@@ -393,6 +460,90 @@ public class GraphIOProcessor {
                     null);
         }
 
+        @Override
+        public RelNode visit(GraphJoinDecomposition decomposition) {
+            Map<Integer, Integer> probeOrderMap =
+                    decomposition.getOrderMappings().getLeftToTargetOrderMap();
+            Map<Integer, Integer> buildOrderMap =
+                    decomposition.getOrderMappings().getRightToTargetOrderMap();
+            List<GraphJoinDecomposition.JoinVertexPair> jointVertices =
+                    decomposition.getJoinVertexPairs();
+            Map<DataKey, DataValue> parentVertexDetails =
+                    getJointVertexDetails(jointVertices, buildOrderMap);
+            Map<DataKey, DataValue> probeDetails =
+                    createSubDetails(decomposition.getProbePattern(), probeOrderMap);
+            Map<DataKey, DataValue> buildDetails =
+                    createSubDetails(decomposition.getBuildPattern(), buildOrderMap);
+            this.details = probeDetails;
+            RelNode newLeft = visitChild(decomposition, 0, decomposition.getLeft()).getInput(0);
+            this.details = buildDetails;
+            RelNode newRight = visitChild(decomposition, 1, decomposition.getRight()).getInput(1);
+            RexNode joinCondition =
+                    createJoinFilter(
+                            jointVertices,
+                            parentVertexDetails,
+                            newLeft,
+                            newRight,
+                            buildOrderMap,
+                            decomposition.getBuildPattern());
+            // here we assume all inputs of the join come from different sources
+            return LogicalJoin.create(
+                    newLeft,
+                    newRight,
+                    ImmutableList.of(),
+                    joinCondition,
+                    ImmutableSet.of(),
+                    JoinRelType.INNER);
+        }
+
+        private RexNode createJoinFilter(
+                List<GraphJoinDecomposition.JoinVertexPair> jointVertices,
+                Map<DataKey, DataValue> vertexDetails,
+                RelNode left,
+                RelNode right,
+                Map<Integer, Integer> buildOrderMap,
+                Pattern buildPattern) {
+            List<RexNode> joinCondition = Lists.newArrayList();
+            for (GraphJoinDecomposition.JoinVertexPair jointVertex : jointVertices) {
+                Integer targetOrderId = buildOrderMap.get(jointVertex.getRightOrderId());
+                if (targetOrderId == null) {
+                    targetOrderId = -1;
+                }
+                DataValue value =
+                        getVertexValue(
+                                new VertexDataKey(targetOrderId),
+                                vertexDetails,
+                                buildPattern.getVertexByOrder(jointVertex.getRightOrderId()));
+                builder.push(left);
+                RexVariable leftVar = builder.variable(value.getAlias());
+                builder.build();
+                builder.push(right);
+                RexVariable rightVar = builder.variable(value.getAlias());
+                builder.build();
+                joinCondition.add(builder.equals(leftVar, rightVar));
+            }
+
+            return RexUtil.composeConjunction(builder.getRexBuilder(), joinCondition);
+        }
+
+        private Map<DataKey, DataValue> getJointVertexDetails(
+                List<GraphJoinDecomposition.JoinVertexPair> jointVertices,
+                Map<Integer, Integer> buildOrderMap) {
+            Map<DataKey, DataValue> vertexDetails = Maps.newHashMap();
+            jointVertices.forEach(
+                    k -> {
+                        Integer targetOrderId = buildOrderMap.get(k.getRightOrderId());
+                        if (targetOrderId != null) {
+                            VertexDataKey dataKey = new VertexDataKey(targetOrderId);
+                            DataValue value = details.get(dataKey);
+                            if (value != null) {
+                                vertexDetails.put(dataKey, value);
+                            }
+                        }
+                    });
+            return vertexDetails;
+        }
+
         private @Nullable RelDataType deriveIntersectType(List<RelNode> inputs) {
             return inputs.isEmpty() ? null : Utils.getOutputType(inputs.get(0));
         }
@@ -403,12 +554,13 @@ public class GraphIOProcessor {
                 List<RelNode> inputs) {
             ExtendStep step = glogueEdge.getExtendStep();
             VertexDataKey targetKey = new VertexDataKey(step.getTargetVertexOrder());
-            DataValue targetValue;
-            Preconditions.checkArgument(
-                    (targetValue = edgeDetails.get(targetKey)) != null,
-                    "can not find target vertex key %s in details map %s",
-                    targetKey,
-                    edgeDetails);
+            DataValue targetValue =
+                    getVertexValue(
+                            targetKey,
+                            edgeDetails,
+                            glogueEdge
+                                    .getDstPattern()
+                                    .getVertexByOrder(step.getTargetVertexOrder()));
             String alias = targetValue.getAlias();
             List<RexNode> intersectFilters = Lists.newArrayList();
             for (int i = 0; i < inputs.size() - 1; ++i) {
@@ -428,19 +580,25 @@ public class GraphIOProcessor {
                 RelNode input) {
             builder.push(input);
             ExtendStep extendStep = glogueEdge.getExtendStep();
-            EdgeDataKey key = createEdgeKey(edge, glogueEdge);
-            DataValue value = edgeDetails.get(key);
-            Preconditions.checkArgument(
-                    value != null, "can not find edge key %s in details map %s", key, edgeDetails);
+            DataValue edgeValue = getEdgeValue(createEdgeKey(edge, glogueEdge), edgeDetails);
             Map<Integer, Integer> srcToTargetMap = glogueEdge.getSrcToTargetOrderMapping();
-            VertexDataKey srcKey = new VertexDataKey(srcToTargetMap.get(edge.getSrcVertexOrder()));
-            DataValue srcValue;
-            Preconditions.checkArgument(
-                    (srcValue = edgeDetails.get(srcKey)) != null,
-                    "can not find src vertex key %s in details map %s",
-                    srcKey,
-                    edgeDetails);
-            builder.expand(
+            Integer srcInTargetOrderId = srcToTargetMap.get(edge.getSrcVertexOrder());
+            if (srcInTargetOrderId == null) {
+                srcInTargetOrderId = -1;
+            }
+            DataValue srcValue =
+                    getVertexValue(
+                            new VertexDataKey(srcInTargetOrderId),
+                            edgeDetails,
+                            glogueEdge.getSrcPattern().getVertexByOrder(edge.getSrcVertexOrder()));
+            PatternVertex target =
+                    glogueEdge.getDstPattern().getVertexByOrder(extendStep.getTargetVertexOrder());
+            DataValue targetValue =
+                    getVertexValue(
+                            new VertexDataKey(extendStep.getTargetVertexOrder()),
+                            edgeDetails,
+                            target);
+            ExpandConfig expandConfig =
                     new ExpandConfig(
                             createExpandOpt(edge.getDirection()),
                             createLabels(
@@ -448,29 +606,53 @@ public class GraphIOProcessor {
                                             .map(k -> k.getEdgeLabelId())
                                             .collect(Collectors.toList()),
                                     false),
-                            value.getAlias(),
-                            srcValue.getAlias()));
-            if (value.getFilter() != null) {
-                builder.filter(value.getFilter());
-            }
-            int targetOrderId = extendStep.getTargetVertexOrder();
-            PatternVertex target = glogueEdge.getDstPattern().getVertexByOrder(targetOrderId);
-            VertexDataKey targetKey = new VertexDataKey(targetOrderId);
-            DataValue targetValue = edgeDetails.get(targetKey);
-            Preconditions.checkArgument(
-                    targetValue != null,
-                    "can not find target vertex key %s in details map %s",
-                    targetKey,
-                    edgeDetails);
-            builder.getV(
+                            edgeValue.getAlias(),
+                            srcValue.getAlias());
+            GetVConfig getVConfig =
                     new GetVConfig(
                             createGetVOpt(edge.getDirection()),
                             createLabels(target.getVertexTypeIds(), true),
-                            targetValue.getAlias()));
-            if (targetValue.getFilter() != null) {
-                builder.filter(targetValue.getFilter());
+                            targetValue.getAlias());
+            if (edge.getRange() != null) {
+                PathExpandConfig.Builder pxdBuilder = PathExpandConfig.newBuilder(builder);
+                pxdBuilder.expand(expandConfig);
+                if (edgeValue.getFilter() != null) {
+                    pxdBuilder.filter(edgeValue.getFilter());
+                }
+                pxdBuilder
+                        .getV(getVConfig)
+                        .resultOpt(GraphOpt.PathExpandResult.END_V)
+                        .pathOpt(GraphOpt.PathExpandPath.ARBITRARY)
+                        .alias(edgeValue.getAlias())
+                        .startAlias(srcValue.getAlias())
+                        .range(edge.getRange().getOffset(), edge.getRange().getFetch());
+                builder.pathExpand(pxdBuilder.build()).getV(getVConfig);
+            } else {
+                builder.expand(expandConfig);
+                if (edgeValue.getFilter() != null) {
+                    builder.filter(edgeValue.getFilter());
+                }
+                builder.getV(getVConfig);
+                if (targetValue.getFilter() != null) {
+                    builder.filter(targetValue.getFilter());
+                }
             }
             return builder.build();
+        }
+
+        private DataValue getVertexValue(
+                VertexDataKey key, Map<DataKey, DataValue> edgeDetails, PatternVertex vertex) {
+            DataValue vertexValue = edgeDetails.get(key);
+            return (vertexValue != null)
+                    ? vertexValue
+                    : new DataValue("PATTERN_VERTEX$" + vertex.getId(), null);
+        }
+
+        private DataValue getEdgeValue(EdgeDataKey key, Map<DataKey, DataValue> edgeDetails) {
+            DataValue edgeValue = edgeDetails.get(key);
+            return (edgeValue != null)
+                    ? edgeValue
+                    : new DataValue(AliasInference.DEFAULT_NAME, null);
         }
 
         private LabelConfig createLabels(List<Integer> typeIds, boolean isVertex) {
@@ -515,88 +697,82 @@ public class GraphIOProcessor {
             ExtendStep extendStep = edge.getExtendStep();
             VertexDataKey targetKey = new VertexDataKey(extendStep.getTargetVertexOrder());
             DataValue targetValue = details.get(targetKey);
-            Preconditions.checkArgument(
-                    targetKey != null,
-                    "can not find target vertex key %s in details map %s",
-                    targetKey,
-                    details);
-            edgeDetails.put(targetKey, targetValue);
+            if (targetValue != null) {
+                edgeDetails.put(targetKey, targetValue);
+            }
             extendStep
                     .getExtendEdges()
                     .forEach(
                             k -> {
                                 EdgeDataKey key = createEdgeKey(k, edge);
                                 DataValue value = details.get(key);
-                                Preconditions.checkArgument(
-                                        value != null,
-                                        "can not find edge key %s in details map %s",
-                                        key,
-                                        details);
-                                edgeDetails.put(key, value);
-                                VertexDataKey key2 =
-                                        new VertexDataKey(
-                                                srcToTargetMap.get(k.getSrcVertexOrder()));
-                                DataValue value2;
-                                Preconditions.checkArgument(
-                                        (value2 = details.get(key2)) != null,
-                                        "can not find vertex key %s in details map %s",
-                                        key2,
-                                        details);
-                                edgeDetails.put(key2, value2);
+                                if (value != null) {
+                                    edgeDetails.put(key, value);
+                                }
+                                Integer srcInTargetOrderId =
+                                        srcToTargetMap.get(k.getSrcVertexOrder());
+                                if (srcInTargetOrderId != null) {
+                                    VertexDataKey key2 = new VertexDataKey(srcInTargetOrderId);
+                                    DataValue value2 = details.get(key2);
+                                    if (value2 != null) {
+                                        edgeDetails.put(key2, value2);
+                                    }
+                                }
                             });
-            // update details for the recursive invocation
-            Pattern src = edge.getSrcPattern();
-            Map<DataKey, DataValue> newDetails = Maps.newHashMap();
-            src.getVertexSet()
-                    .forEach(
-                            k -> {
-                                int newOrderId = src.getVertexOrder(k);
-                                VertexDataKey oldKey =
-                                        new VertexDataKey(srcToTargetMap.get(newOrderId));
-                                VertexDataKey newKey = new VertexDataKey(newOrderId);
-                                DataValue value = details.get(oldKey);
-                                Preconditions.checkArgument(
-                                        value != null,
-                                        "can not find vertex key %s in details map %s",
-                                        oldKey,
-                                        details);
-                                newDetails.put(newKey, value);
-                            });
-            src.getEdgeSet()
-                    .forEach(
-                            k -> {
-                                int newSrcOrderId = src.getVertexOrder(k.getSrcVertex());
-                                int newDstOrderId = src.getVertexOrder(k.getDstVertex());
-                                PatternDirection direction =
-                                        k.isBoth() ? PatternDirection.BOTH : PatternDirection.OUT;
-                                EdgeDataKey oldKey =
-                                        new EdgeDataKey(
-                                                srcToTargetMap.get(newSrcOrderId),
-                                                srcToTargetMap.get(newDstOrderId),
-                                                direction);
-                                EdgeDataKey newKey =
-                                        new EdgeDataKey(newSrcOrderId, newDstOrderId, direction);
-                                DataValue value = details.get(oldKey);
-                                Preconditions.checkArgument(
-                                        value != null,
-                                        "can not find edge key %s in details map %s",
-                                        oldKey,
-                                        details);
-                                newDetails.put(newKey, value);
-                            });
-            details = newDetails;
             return edgeDetails;
+        }
+
+        private Map<DataKey, DataValue> createSubDetails(
+                Pattern subPattern, Map<Integer, Integer> orderMappings) {
+            Map<DataKey, DataValue> newDetails = Maps.newHashMap();
+            subPattern
+                    .getVertexSet()
+                    .forEach(
+                            k -> {
+                                int newOrderId = subPattern.getVertexOrder(k);
+                                Integer oldOrderId = orderMappings.get(newOrderId);
+                                if (oldOrderId != null) {
+                                    DataValue value = details.get(new VertexDataKey(oldOrderId));
+                                    if (value != null) {
+                                        newDetails.put(new VertexDataKey(newOrderId), value);
+                                    }
+                                }
+                            });
+            subPattern
+                    .getEdgeSet()
+                    .forEach(
+                            k -> {
+                                int newSrcOrderId = subPattern.getVertexOrder(k.getSrcVertex());
+                                int newDstOrderId = subPattern.getVertexOrder(k.getDstVertex());
+                                Integer oldSrcOrderId = orderMappings.get(newSrcOrderId);
+                                Integer oldDstOrderId = orderMappings.get(newDstOrderId);
+                                if (oldSrcOrderId != null && oldDstOrderId != null) {
+                                    PatternDirection direction =
+                                            k.isBoth()
+                                                    ? PatternDirection.BOTH
+                                                    : PatternDirection.OUT;
+                                    EdgeDataKey oldKey =
+                                            new EdgeDataKey(
+                                                    oldSrcOrderId, oldDstOrderId, direction);
+                                    EdgeDataKey newKey =
+                                            new EdgeDataKey(
+                                                    newSrcOrderId, newDstOrderId, direction);
+                                    DataValue value = details.get(oldKey);
+                                    if (value != null) {
+                                        newDetails.put(newKey, value);
+                                    }
+                                }
+                            });
+            return newDetails;
         }
 
         private EdgeDataKey createEdgeKey(ExtendEdge edge, GlogueExtendIntersectEdge glogueEdge) {
             int targetOrderId = glogueEdge.getExtendStep().getTargetVertexOrder();
             Map<Integer, Integer> srcToTargetMap = glogueEdge.getSrcToTargetOrderMapping();
             Integer srcOrderId = srcToTargetMap.get(edge.getSrcVertexOrder());
-            Preconditions.checkArgument(
-                    srcOrderId != null,
-                    "can not find src vertex order %s in srcToTargetMap %s",
-                    edge.getSrcVertexOrder(),
-                    srcToTargetMap);
+            if (srcOrderId == null) {
+                srcOrderId = -1;
+            }
             return new EdgeDataKey(srcOrderId, targetOrderId, edge.getDirection());
         }
     }
