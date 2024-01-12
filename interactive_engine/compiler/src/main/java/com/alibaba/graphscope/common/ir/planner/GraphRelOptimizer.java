@@ -194,6 +194,9 @@ public class GraphRelOptimizer {
                                     ruleConfigs.add(
                                             ExpandGetVFusionRule.BasicExpandGetVFusionRule.Config
                                                     .DEFAULT);
+                                    ruleConfigs.add(
+                                            ExpandGetVFusionRule.PathBaseExpandGetVFusionRule.Config
+                                                    .DEFAULT);
                                 }
                             });
             ruleConfigs.forEach(
