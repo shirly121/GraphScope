@@ -217,6 +217,10 @@ public class GraphLogicalPathExpand extends SingleRel {
         return getV;
     }
 
+    public RelNode getFused() {
+        return fused;
+    }
+
     public @Nullable RexNode getOffset() {
         return offset;
     }
