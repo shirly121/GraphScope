@@ -13,19 +13,101 @@ import com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelNode;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.io.FileOutputStream;
-import java.io.PrintWriter;
-
 public class LdbcTest {
+    private static Configs configs;
+    private static GraphRelOptimizer optimizer;
+    private static IrMeta ldbcMeta;
+    private static GraphBuilder builder;
+
+    @BeforeClass
+    public static void beforeClass() {
+        configs =
+                new Configs(
+                        ImmutableMap.of(
+                                "graph.planner.is.on",
+                                "true",
+                                "graph.planner.opt",
+                                "CBO",
+                                "graph.planner.rules",
+                                "FilterMatchRule, ExtendIntersectRule,"
+                                        + " JoinDecompositionRule, ExpandGetVFusionRule",
+                                "graph.planner.cbo.glogue.schema",
+                                "conf/ldbc30_hierarchy_statistics.txt"));
+        optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
+        ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
+        builder = createGraphBuilder(optimizer, ldbcMeta);
+    }
+
+    @Test
+    public void ldbc_1_test() {
+        RelNode node =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH (p: PERSON{id: 30786325579101})-[:KNOWS*1..4]-(f:"
+                                    + " PERSON)-[:ISLOCATEDIN]->(city),\n"
+                                    + "    \t(f)-[:WORKAT]->(:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY),\n"
+                                    + "     "
+                                    + " (f)-[:STUDYAT]->(:UNIVERSITY)-[:ISLOCATEDIN]->(:CITY)\n"
+                                    + "WHERE f.firstName = \"Ian\" AND f.id <> 30786325579101\n"
+                                    + "RETURN count(p);",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void ldbc_2_test() {
+        RelNode node =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH (p:PERSON{id:"
+                                    + " 19791209300143})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(message"
+                                    + " : POST | COMMENT) \n"
+                                    + "WHERE message.creationDate < 20121128080000000 \n"
+                                    + "return \n"
+                                    + "\tfriend.id AS personId, \n"
+                                    + "\tfriend.firstName AS personFirstName, \n"
+                                    + "  friend.lastName AS personLastName, \n"
+                                    + "  message.id AS postOrCommentId, \n"
+                                    + "  message.content AS content,\n"
+                                    + "  message.imageFile AS imageFile,\n"
+                                    + "  message.creationDate AS postOrCommentCreationDate \n"
+                                    + "ORDER BY \n"
+                                    + "  postOrCommentCreationDate DESC, \n"
+                                    + "  postOrCommentId ASC \n"
+                                    + "LIMIT 20",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void ldbc_3_test() {
+        RelNode node =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                " MATCH (countryX:COUNTRY {name:"
+                                    + " 'Laos'})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]->(otherP:PERSON),\n"
+                                    + "       (countryY:COUNTRY {name:"
+                                    + " 'United_States'})<-[:ISLOCATEDIN]-(messageY)-[:HASCREATOR]->(otherP:PERSON),\n"
+                                    + "      "
+                                    + " (otherP)-[:ISLOCATEDIN]->(city)-[:ISPARTOF]->(countryCity),\n"
+                                    + "       (person:PERSON"
+                                    + " {id:4026})-[:KNOWS]-()-[:KNOWS]-(otherP)\n"
+                                    + "WHERE countryCity.name <> 'Laos' AND countryCity.name <>"
+                                    + " 'United_States'\n"
+                                    + "Return count(countryX);",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
     @Test
     public void ldbc_5_test() {
-        GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
-        GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
                                 "MATCH (person:PERSON"
@@ -40,17 +122,12 @@ public class LdbcTest {
                                     + "LIMIT 20",
                                 builder)
                         .build();
-        // System.out.println(node.explain());
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
-        // change the statistics of 'HASCREATOR'(set to 2909769) to change the plan order
     }
 
     @Test
     public void ldbc_7_test() {
-        GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
-        GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
                                 "MATCH (person:PERSON {id:"
@@ -74,16 +151,12 @@ public class LdbcTest {
                                     + "LIMIT 20",
                                 builder)
                         .build();
-        // System.out.println(node.explain());
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test
     public void ldbc_8_test() {
-        GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
-        GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
         RelNode node =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
                                 "MATCH (person:PERSON {id:"
@@ -101,49 +174,8 @@ public class LdbcTest {
                                     + "LIMIT 20",
                                 builder)
                         .build();
-        // System.out.println(node.explain());
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
-    }
-
-    @Test
-    public void cbo_test() throws Exception {
-        GraphRelOptimizer optimizer = createOptimizer();
-        IrMeta ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
-        GraphBuilder builder = createGraphBuilder(optimizer, ldbcMeta);
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person1:PERSON), \n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person2:PERSON), \n"
-                                        + "    (person1:PERSON)-[:KNOWS]->(person2:PERSON), \n"
-                                        + "\t  (person1:PERSON)-[:LIKES]->(post:POST),\n"
-                                        + "\t  (person2:PERSON)-[:LIKES]->(post:POST)\n"
-                                        + "Return count(person1);",
-                                builder)
-                        .build();
-        // System.out.println(node.explain());
-        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
-        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
-        planner.dump(new PrintWriter(new FileOutputStream("set1.out"), true));
-        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
-    }
-
-    public static GraphRelOptimizer createOptimizer() {
-        PlannerConfig plannerConfig =
-                PlannerConfig.create(
-                        new Configs(
-                                ImmutableMap.of(
-                                        "graph.planner.is.on",
-                                        "true",
-                                        "graph.planner.opt",
-                                        "CBO",
-                                        "graph.planner.rules",
-                                        "FilterMatchRule, ExtendIntersectRule,"
-                                                + " ExpandGetVFusionRule",
-                                        "graph.planner.cbo.glogue.schema",
-                                        "./conf/ldbc1_hierarchy_statistics.txt")));
-        return new GraphRelOptimizer(plannerConfig);
     }
 
     public static GraphBuilder createGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {

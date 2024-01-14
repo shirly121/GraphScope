@@ -632,7 +632,7 @@ public class GraphRelToProtoTest {
     @Test
     public void intersect_test_1() throws Exception {
         PlannerConfig plannerConfig =
-                PlannerConfig.create(
+                new PlannerConfig(
                         new Configs(
                                 ImmutableMap.of(
                                         "graph.planner.is.on", "true",
@@ -684,7 +684,7 @@ public class GraphRelToProtoTest {
     @Test
     public void intersect_test_2() throws Exception {
         PlannerConfig plannerConfig =
-                PlannerConfig.create(
+                new PlannerConfig(
                         new Configs(
                                 ImmutableMap.of(
                                         "graph.planner.is.on", "true",

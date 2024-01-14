@@ -1,0 +1,6 @@
+MATCH (countryX:COUNTRY {name: 'Laos'})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]->(otherP:PERSON),
+       (countryY:COUNTRY {name: 'United_States'})<-[:ISLOCATEDIN]-(messageY)-[:HASCREATOR]->(otherP:PERSON),
+       (otherP)-[:ISLOCATEDIN]->(city)-[:ISPARTOF]->(countryCity),
+       (person:PERSON {id:4026})-[:KNOWS]-()-[:KNOWS]-(otherP)
+WHERE countryCity.name <> 'Laos' AND countryCity.name <> 'United_States'
+Return count(countryX);

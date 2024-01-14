@@ -1,7 +1,5 @@
 package org.apache.calcite.plan.volcano;
 
-import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
-
 import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
 import com.alibaba.graphscope.common.client.type.ExecutionRequest;
@@ -14,6 +12,7 @@ import com.alibaba.graphscope.common.ir.meta.reader.LocalMetaDataReader;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
+import com.alibaba.graphscope.common.ir.rel.GraphJoinDecomposition;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
 import com.alibaba.graphscope.common.ir.rel.GraphRelVisitor;
 import com.alibaba.graphscope.common.ir.rel.graph.match.AbstractLogicalMatch;
@@ -32,7 +31,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
-
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -47,6 +45,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 public class RandomPickPlanTest {
     private static Configs configs;
@@ -68,7 +68,7 @@ public class RandomPickPlanTest {
             logFile.delete();
         }
         logFile.createNewFile();
-        optimizer = new GraphRelOptimizer(PlannerConfig.create(configs));
+        optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
         ldbcMeta = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs)).fetch().get();
         client = ExecutionClient.Factory.create(configs, new HostsRpcChannelFetcher(configs));
     }
@@ -103,7 +103,7 @@ public class RandomPickPlanTest {
         // apply CBO optimize
         GraphIOProcessor ioProcessor = new GraphIOProcessor(builder, ldbcMeta);
         Random random = new SecureRandom();
-        int pickCount = 3;
+        int pickCount = Integer.valueOf(System.getProperty("pick.count"));
         RandomPickOptimizer pickOptimizer =
                 new RandomPickOptimizer(
                         ioProcessor,
@@ -259,13 +259,14 @@ public class RandomPickPlanTest {
 
         private RelNode randomPickOne(VolcanoPlanner planner, Random random, RelSet root) {
             List<GraphPattern> patterns = Lists.newArrayList();
-            List<GraphExtendIntersect> intersects = Lists.newArrayList();
+            List<RelNode> intersects = Lists.newArrayList();
             for (RelSubset subset : root.subsets) {
                 for (RelNode rel : subset.getRelList()) {
                     if (rel instanceof GraphPattern) {
                         patterns.add((GraphPattern) rel);
-                    } else {
-                        intersects.add((GraphExtendIntersect) rel);
+                    } else if (rel instanceof GraphExtendIntersect
+                            || rel instanceof GraphJoinDecomposition) {
+                        intersects.add(rel);
                     }
                 }
             }
@@ -274,11 +275,11 @@ public class RandomPickPlanTest {
                             ? patterns.get(0)
                             : intersects.get(random.nextInt(intersects.size()));
             if (rel.getInputs().size() > 0) {
-                RelSet inputSet = planner.getSet(rel.getInput(0));
-                rel =
-                        rel.copy(
-                                rel.getTraitSet(),
-                                ImmutableList.of(randomPickOne(planner, random, inputSet)));
+                List<RelNode> newInputs =
+                        rel.getInputs().stream()
+                                .map(k -> randomPickOne(planner, random, planner.getSet(k)))
+                                .collect(Collectors.toList());
+                rel = rel.copy(rel.getTraitSet(), newInputs);
             }
             return rel;
         }

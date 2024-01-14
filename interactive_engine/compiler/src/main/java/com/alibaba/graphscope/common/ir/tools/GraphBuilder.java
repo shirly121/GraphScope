@@ -388,6 +388,7 @@ public class GraphBuilder extends RelBuilder {
         for (RelDataTypeField firstField : firstFields) {
             for (RelDataTypeField secondField : secondFields) {
                 if (isGraphElementTypeWithSameOpt(firstField.getType(), secondField.getType())
+                        && firstField.getIndex() != AliasInference.DEFAULT_ID
                         && firstField.getIndex() == secondField.getIndex()) {
                     RexGraphVariable leftKey =
                             RexGraphVariable.of(

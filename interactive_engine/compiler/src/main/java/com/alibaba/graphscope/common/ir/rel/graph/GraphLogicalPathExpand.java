@@ -168,18 +168,29 @@ public class GraphLogicalPathExpand extends SingleRel {
 
     @Override
     public RelWriter explainTerms(RelWriter pw) {
-        return super.explainTerms(pw)
-                .item("direction", ((GraphLogicalExpand) expand).getOpt())
-                .item("tableConfig", ((GraphLogicalExpand) expand).getTableConfig())
-                .itemIf("offset", offset, offset != null)
-                .itemIf("fetch", fetch, fetch != null)
-                //                .item("path_opt", getPathOpt())
-                //                .item("result_opt", getResultOpt())
-                .item("alias", AliasInference.SIMPLE_NAME(getAliasName()))
-                .itemIf(
-                        "start_alias",
-                        startAlias.getAliasName(),
-                        startAlias.getAliasName() != AliasInference.DEFAULT_NAME);
+        RelWriter writer =
+                super.explainTerms(pw)
+                        .itemIf("offset", offset, offset != null)
+                        .itemIf("fetch", fetch, fetch != null)
+                        .item("path_opt", getPathOpt())
+                        .item("result_opt", getResultOpt())
+                        .item("alias", AliasInference.SIMPLE_NAME(getAliasName()))
+                        .itemIf(
+                                "start_alias",
+                                startAlias.getAliasName(),
+                                startAlias.getAliasName() != AliasInference.DEFAULT_NAME);
+        GraphLogicalExpand expandToPrint = null;
+        if (fused != null && fused instanceof GraphPhysicalExpand) {
+            expandToPrint = ((GraphPhysicalExpand) fused).getFusedExpand();
+        } else if (this.expand != null) {
+            expandToPrint = (GraphLogicalExpand) this.expand;
+        }
+        if (expandToPrint != null) {
+            writer =
+                    writer.item("direction", expandToPrint.getOpt())
+                            .item("tableConfig", expandToPrint.getTableConfig());
+        }
+        return writer;
     }
 
     public String getAliasName() {
