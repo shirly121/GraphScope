@@ -571,18 +571,19 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         List<RexNode> conditions = RelOptUtil.conjunctions(multiJoin.getJoinFilter());
         int intersectKey = -1;
         for (RexNode condition : conditions) {
-            String errorMessage =
-                    "join condition in ir core should be 'AND' of equal conditions, each equal"
-                            + " condition has two variables as operands";
             List<RexGraphVariable> leftRightVars = getLeftRightVariables(condition);
-            Preconditions.checkArgument(leftRightVars.size() == 2, errorMessage);
             Preconditions.checkArgument(
-                    leftRightVars.get(0).equals(leftRightVars.get(1)), errorMessage);
+                    leftRightVars.size() == 2,
+                    "the condition of multi-join" + " should be equal condition");
             if (intersectKey == -1) {
                 intersectKey = leftRightVars.get(0).getAliasId();
             } else {
                 Preconditions.checkArgument(
-                        intersectKey == leftRightVars.get(0).getAliasId(), errorMessage);
+                        intersectKey == leftRightVars.get(0).getAliasId(),
+                        "the intersect key should be the same in multi-join: "
+                                + intersectKey
+                                + " "
+                                + leftRightVars.get(0).getAliasId());
             }
         }
         Preconditions.checkArgument(intersectKey != -1, "intersect key should be set");
