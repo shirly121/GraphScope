@@ -27,13 +27,25 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
     @Override
     public void onMatch(RelOptRuleCall relOptRuleCall) {
         GraphPattern pattern = relOptRuleCall.rel(0);
-        if (pattern.getPattern().getVertexNumber() < config.getMinPatternSize()) {
+        if (getMaxVertexNum(pattern.getPattern()) < config.getMinPatternSize()) {
             return;
         }
         List<GraphJoinDecomposition> decompositions = getDecompositions(pattern);
         for (GraphJoinDecomposition decomposition : decompositions) {
             relOptRuleCall.transformTo(decomposition);
         }
+    }
+
+    private int getMaxVertexNum(Pattern pattern) {
+        int maxVertexNum = pattern.getVertexNumber();
+        for (PatternEdge edge : pattern.getEdgeSet()) {
+            if (edge.getDetails().getRange() != null) {
+                PathExpandRange range = edge.getDetails().getRange();
+                int maxHop = range.getOffset() + range.getFetch() - 1;
+                maxVertexNum += (maxHop - 1);
+            }
+        }
+        return maxVertexNum;
     }
 
     // bfs to get all possible decompositions

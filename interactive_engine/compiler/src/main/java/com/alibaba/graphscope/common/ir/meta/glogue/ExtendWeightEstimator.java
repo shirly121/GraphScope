@@ -16,9 +16,7 @@
 
 package com.alibaba.graphscope.common.ir.meta.glogue;
 
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternEdge;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.*;
 import com.google.common.collect.Lists;
 
 import java.util.Collections;
@@ -65,6 +63,12 @@ public class ExtendWeightEstimator {
             pattern.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
             extendFromVertices.add(Utils.getExtendFromVertex(edge, target));
             double weight = handler.handle(pattern);
+            if (edge.getDetails().getRange() != null) {
+                // add path expand intermediate count
+                if (Double.compare(target.getDetails().getSelectivity(), 0.0d) != 0) {
+                    weight += (weight / target.getDetails().getSelectivity());
+                }
+            }
             for (PatternVertex vertex : extendFromVertices) {
                 weight /= handler.handle(new Pattern(vertex));
             }

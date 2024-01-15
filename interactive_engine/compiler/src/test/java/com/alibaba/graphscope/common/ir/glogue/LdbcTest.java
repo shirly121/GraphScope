@@ -13,6 +13,7 @@ import com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.text.StringSubstitutor;
@@ -20,6 +21,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -42,7 +45,9 @@ public class LdbcTest {
                                 "FilterMatchRule, ExtendIntersectRule,"
                                         + " JoinDecompositionRule, ExpandGetVFusionRule",
                                 "graph.planner.cbo.glogue.schema",
-                                "conf/ldbc30_hierarchy_statistics.txt"));
+                                "conf/ldbc30_hierarchy_statistics.txt",
+                                "graph.planner.join.min.pattern.size",
+                                "5"));
         optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
         ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
         builder = createGraphBuilder(optimizer, ldbcMeta);
@@ -208,10 +213,16 @@ public class LdbcTest {
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
-//    @Test
-//    public void case_study_test_1() {
-//        String query = "Match (p1:PERSON)-[:KNOWS*1..5]-(p2:PERSON)";
-//    }
+    @Test
+    public void case_study_test_1() throws Exception {
+        String query =
+                "Match (p1:PERSON {id:1})-[:KNOWS*1..5]->(p2:PERSON {id:5}) Return count(p1)";
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
+        planner.dump(new PrintWriter(new FileOutputStream("case_study.plans"), true));
+    }
 
     public static GraphBuilder createGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {
         RelOptCluster optCluster =
