@@ -119,14 +119,53 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
     @Override
     public RelNode visit(GraphLogicalGetV getV) {
         visitChildren(getV);
-        GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
-                GraphAlgebraPhysical.PhysicalOpr.newBuilder();
-        GraphAlgebraPhysical.GetV.Builder getVertex = buildGetV(getV);
-        oprBuilder.setOpr(
-                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(getVertex));
-        oprBuilder.addAllMetaData(Utils.physicalProtoRowType(getV.getRowType(), isColumnId));
-        physicalBuilder.addPlan(oprBuilder.build());
-        return getV;
+        if (ObjectUtils.isEmpty(getV.getFilters())) {
+            GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
+                    GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+            GraphAlgebraPhysical.GetV.Builder getVertex = buildGetV(getV);
+            oprBuilder.setOpr(
+                    GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(getVertex));
+            oprBuilder.addAllMetaData(Utils.physicalProtoRowType(getV.getRowType(), isColumnId));
+            physicalBuilder.addPlan(oprBuilder.build());
+            return getV;
+        } else {
+            // build getV(adj) + auxilia(filter) if there is a filter in getV
+            GraphAlgebraPhysical.PhysicalOpr.Builder adjOprBuilder =
+                    GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+            GraphAlgebraPhysical.GetV.Builder adjVertexBuilder =
+                    GraphAlgebraPhysical.GetV.newBuilder();
+            adjVertexBuilder.setOpt(
+                    Utils.protoPhysicalGetVOpt(PhysicalGetVOpt.valueOf(getV.getOpt().name())));
+            // build adjV without filter
+            adjVertexBuilder.setParams(buildQueryTables(getV));
+            if (getV.getStartAlias().getAliasId() != AliasInference.DEFAULT_ID) {
+                adjVertexBuilder.setTag(Utils.asAliasId(getV.getStartAlias().getAliasId()));
+            }
+            if (getV.getAliasId() != AliasInference.DEFAULT_ID) {
+                adjVertexBuilder.setAlias(Utils.asAliasId(getV.getAliasId()));
+            }
+            adjOprBuilder.setOpr(
+                    GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
+                            .setVertex(adjVertexBuilder));
+            physicalBuilder.addPlan(adjOprBuilder.build());
+
+            // build auxilia(filter)
+            if (isPartitioned) {
+                addRepartitionToAnother(getV.getAliasId());
+            }
+            GraphAlgebraPhysical.PhysicalOpr.Builder auxiliaOprBuilder =
+                    GraphAlgebraPhysical.PhysicalOpr.newBuilder();
+            GraphAlgebraPhysical.GetV.Builder auxiliaBuilder =
+                    GraphAlgebraPhysical.GetV.newBuilder();
+            auxiliaBuilder.setOpt(Utils.protoPhysicalGetVOpt(PhysicalGetVOpt.ITSELF));
+            // build auxilia(filter)
+            auxiliaBuilder.setParams(buildQueryFiltersOnly(getV));
+            auxiliaOprBuilder.setOpr(
+                    GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
+                            .setVertex(auxiliaBuilder));
+            physicalBuilder.addPlan(auxiliaOprBuilder.build());
+            return getV;
+        }
     }
 
     @Override
@@ -702,6 +741,36 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                 GraphSchemaType.class);
         GraphSchemaType schemaType = (GraphSchemaType) fields.get(0).getType();
         return schemaType.getLabelType();
+    }
+
+    private GraphAlgebra.QueryParams buildQueryTables(AbstractBindableTableScan tableScan) {
+        Set<Integer> uniqueLabelIds =
+                getGraphLabels(tableScan).getLabelsEntry().stream()
+                        .map(k -> k.getLabelId())
+                        .collect(Collectors.toSet());
+        GraphAlgebra.QueryParams.Builder paramsBuilder = GraphAlgebra.QueryParams.newBuilder();
+        uniqueLabelIds.forEach(
+                k -> {
+                    paramsBuilder.addTables(Utils.asNameOrId(k));
+                });
+        // TODO: currently no sample rate fused into tableScan, so directly set as 1.0 for tmp.
+        paramsBuilder.setSampleRatio(1.0);
+        return paramsBuilder.build();
+    }
+
+    private GraphAlgebra.QueryParams buildQueryFiltersOnly(AbstractBindableTableScan tableScan) {
+        GraphAlgebra.QueryParams.Builder paramsBuilder = GraphAlgebra.QueryParams.newBuilder();
+        if (ObjectUtils.isNotEmpty(tableScan.getFilters())) {
+            OuterExpression.Expression expression =
+                    tableScan
+                            .getFilters()
+                            .get(0)
+                            .accept(new RexToProtoConverter(true, isColumnId, this.rexBuilder));
+            paramsBuilder.setPredicate(expression);
+        }
+        // TODO: currently no sample rate fused into tableScan, so directly set as 1.0 for tmp.
+        paramsBuilder.setSampleRatio(1.0);
+        return paramsBuilder.build();
     }
 
     private GraphAlgebra.QueryParams buildQueryParams(AbstractBindableTableScan tableScan) {
