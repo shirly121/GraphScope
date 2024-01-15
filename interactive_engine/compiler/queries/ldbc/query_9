@@ -1,4 +1,13 @@
 MATCH (person:PERSON {id: 4026})-[:KNOWS*1..3]-(friend:PERSON)<-[:HASCREATOR]-(message)
 WHERE friend <> person
 	and message.creationDate < 20130301000000000 
-RETURN count(person);
+RETURN
+  friend.id AS personId,
+  friend.firstName AS personFirstName,
+  friend.lastName AS personLastName,
+  message.id AS commentOrPostId,
+  message.creationDate AS commentOrPostCreationDate
+ORDER BY
+  commentOrPostCreationDate DESC,
+  commentOrPostId ASC
+LIMIT 20;

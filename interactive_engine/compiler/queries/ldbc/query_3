@@ -5,4 +5,12 @@ MATCH (countryX:COUNTRY {name: 'Laos'})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]
 WHERE countryCity.name <> 'Laos' AND countryCity.name <> 'United_States'
       AND messageX.creationDate >= 20100505013715278 and messageX.creationDate <= 20130604130807720
       AND messageY.creationDate >= 20100505013715278 and messageY.creationDate <= 20130604130807720
-Return count(countryX);
+WITH otherP, count(messageX) as xCount, count(messageY) as yCount
+RETURN otherP.id as id,
+			 otherP.firstName as firstName,
+			 otherP.lastName as lastName,
+			 xCount,
+			 yCount,
+			 xCount + yCount as total
+ORDER BY total DESC, id ASC
+Limit 20;

@@ -1,3 +1,15 @@
 MATCH (person:PERSON {id: 4026})<-[:HASCREATOR]-(message)<-[like:LIKES]-(liker:PERSON),
       (liker)-[k:KNOWS]-(person)
-Return count(person);
+WITH liker, message, like.creationDate AS likeTime, person
+ORDER BY likeTime DESC, message.id ASC
+WITH liker, person, head(collect(message)) as message, head(collect(likeTime)) AS likeTime
+RETURN
+    liker.id AS personId,
+    liker.firstName AS personFirstName,
+    liker.lastName AS personLastName,
+    likeTime AS likeCreationDate,
+    message.id AS commentOrPostId
+ORDER BY
+    likeCreationDate DESC,
+    personId ASC
+LIMIT 20;

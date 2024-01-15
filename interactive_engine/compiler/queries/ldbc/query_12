@@ -1,2 +1,11 @@
 MATCH (:PERSON {id: 4026})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comment:COMMENT)-[:REPLYOF]->(:POST)-[:HASTAG]->(tag:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..7]->(baseTagClass:TAGCLASS {name: "Organisation"})
-RETURN count(friend);
+RETURN
+  friend.id AS personId,
+  friend.firstName AS personFirstName,
+  friend.lastName AS personLastName,
+  collect(DISTINCT tag.name) AS tagNames,
+  count(DISTINCT comment) AS replyCount
+ORDER BY
+  replyCount DESC,
+  personId ASC
+LIMIT 20;

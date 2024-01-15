@@ -267,7 +267,10 @@ public class RandomPickPlanTest {
                         patterns.add((GraphPattern) rel);
                     } else if (rel instanceof GraphExtendIntersect
                             || rel instanceof GraphJoinDecomposition) {
-                        intersects.add(rel);
+                        if (rel.getInputs().stream()
+                                .allMatch(k -> ((RelSubset) k).getBest() != null)) {
+                            intersects.add(rel);
+                        }
                     }
                 }
             }

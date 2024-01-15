@@ -1,2 +1,12 @@
 MATCH (person:PERSON {id: 4026})<-[:HASCREATOR]-(message)<-[:REPLYOF]-(comment:COMMENT)-[:HASCREATOR]->(author:PERSON)
-Return count(person);
+RETURN
+	author.id,
+	author.firstName,
+	author.lastName,
+	comment.creationDate as commentDate,
+	comment.id as commentId,
+	comment.content
+ORDER BY
+	commentDate desc,
+	commentId asc
+LIMIT 20;
