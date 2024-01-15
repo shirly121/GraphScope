@@ -1,0 +1,2 @@
+MATCH (person:PERSON {id: $_id_})<-[:HASCREATOR]-(message)<-[:REPLYOF]-(comment:COMMENT)-[:HASCREATOR]->(author:PERSON)
+Return count(person);

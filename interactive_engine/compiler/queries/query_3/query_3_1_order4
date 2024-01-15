@@ -1,1 +1,1 @@
-g.V().hasLabel('FORUM').as('forum').out('CONTAINEROF').in('REPLYOF').as('msg').select('forum').out('HASMEMBER').select('msg').out('HASCREATOR').count()
+g.V().hasLabel('POST').as('post').in('CONTAINEROF').as('forum').select('post').in('REPLYOF').hasLabel('COMMENT').as('comment').select('forum').out('HASMEMBER').select('comment').out('HASCREATOR').count()

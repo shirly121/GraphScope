@@ -1,1 +1,1 @@
-g.V().hasLabel('COMMENT').as('p').in('REPLYOF', 'LIKES').out('HASINTEREST', 'HASTAG').select('p').out('HASCREATOR').out('ISLOCATEDIN').count()
+g.V().hasLabel('TAG').in('HASINTEREST', 'HASTAG').out('REPLYOF', 'LIKES').hasLabel('COMMENT').out('HASCREATOR').out('ISLOCATEDIN').count()

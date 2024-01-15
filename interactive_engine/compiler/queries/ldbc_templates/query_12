@@ -1,0 +1,2 @@
+MATCH (:PERSON {id: $_id_})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comment:COMMENT)-[:REPLYOF]->(:POST)-[:HASTAG]->(tag:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..7]->(baseTagClass:TAGCLASS {name: $_class_})
+RETURN count(friend);

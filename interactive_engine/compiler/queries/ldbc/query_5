@@ -1,0 +1,4 @@
+MATCH (person:PERSON {id:4026})-[k:KNOWS*1..3]-(other)<-[hasMember:HASMEMBER]-(forum:FORUM),
+      (other)<-[:HASCREATOR]-(post:POST)<-[:CONTAINEROF]-(forum)
+WHERE hasMember.joinDate > 20100325000000000
+Return count(person);

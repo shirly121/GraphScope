@@ -1,0 +1,8 @@
+MATCH (countryX:COUNTRY {name: $_xName_})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]->(otherP:PERSON),
+    	(countryY:COUNTRY {name: $_yName_})<-[:ISLOCATEDIN]-(messageY)-[:HASCREATOR]->(otherP:PERSON),
+    	(otherP)-[:ISLOCATEDIN]->(city)-[:ISPARTOF]->(countryCity),
+    	(person:PERSON {id: $_id_})-[:KNOWS*1..3]-(otherP)
+WHERE messageX.creationDate >= $_date1_ and messageX.creationDate < $_date2_ 
+    AND messageY.creationDate >= $_date1_ and messageY.creationDate < $_date2_ 
+    AND countryCity.name <> $_xName_ AND countryCity.name <> $_yName_ 
+Return count(countryX);

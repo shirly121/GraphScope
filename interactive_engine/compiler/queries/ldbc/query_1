@@ -1,0 +1,5 @@
+MATCH (p: PERSON{id: 4026})-[k:KNOWS*1..4]-(f: PERSON)-[:ISLOCATEDIN]->(city),
+      (f)-[:WORKAT]->(:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY),
+      (f)-[:STUDYAT]->(:UNIVERSITY)-[:ISLOCATEDIN]->(:CITY)
+WHERE f.firstName = "Mikhail" AND f.id <> 4026
+RETURN count(p);

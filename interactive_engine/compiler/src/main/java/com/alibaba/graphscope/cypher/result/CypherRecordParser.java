@@ -57,7 +57,7 @@ public class CypherRecordParser implements RecordParser<AnyValue> {
 
     @Override
     public List<AnyValue> parseFrom(IrResult.Record record) {
-        logger.debug("record {}", record);
+        logger.info("record {}", record);
         Preconditions.checkArgument(
                 record.getColumnsCount() == outputType.getFieldCount(),
                 "column size of results "

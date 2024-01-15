@@ -1,0 +1,2 @@
+MATCH (:PERSON {id: 4026})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comment:COMMENT)-[:REPLYOF]->(:POST)-[:HASTAG]->(tag:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..7]->(baseTagClass:TAGCLASS {name: "Organisation"})
+RETURN count(friend);

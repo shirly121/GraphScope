@@ -1,0 +1,1 @@
+g.V().hasLabel('PERSON', 'COMMENT').as('msg').out('REPLYOF', 'LIKES').hasLabel('COMMENT').out('HASCREATOR').as('p1').select('msg').out('HASINTEREST', 'HASTAG').select('p1').out('ISLOCATEDIN').count()

@@ -1,6 +1,8 @@
 MATCH (countryX:COUNTRY {name: 'Laos'})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]->(otherP:PERSON),
        (countryY:COUNTRY {name: 'United_States'})<-[:ISLOCATEDIN]-(messageY)-[:HASCREATOR]->(otherP:PERSON),
        (otherP)-[:ISLOCATEDIN]->(city)-[:ISPARTOF]->(countryCity),
-       (person:PERSON {id:4026})-[:KNOWS]-()-[:KNOWS]-(otherP)
+       (person:PERSON {id:4026})-[:KNOWS*1..3]-(otherP)
 WHERE countryCity.name <> 'Laos' AND countryCity.name <> 'United_States'
+      AND messageX.creationDate >= 20100505013715278 and messageX.creationDate <= 20130604130807720
+      AND messageY.creationDate >= 20100505013715278 and messageY.creationDate <= 20130604130807720
 Return count(countryX);

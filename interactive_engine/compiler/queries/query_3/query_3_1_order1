@@ -1,1 +1,1 @@
-g.V().hasLabel('COMMENT').as('msg').out('HASCREATOR').select('msg').out('REPLYOF').in('CONTAINEROF').out('HASMEMBER').count()
+g.V().hasLabel('COMMENT').as('comment').out('HASCREATOR').select('comment').out('REPLYOF').in('CONTAINEROF').out('HASMEMBER').count()

@@ -1,0 +1,4 @@
+MATCH (person:PERSON {id: $_id_})-[:KNOWS]-(friend:PERSON),
+      (friend)<-[:HASCREATOR]-(post:POST)-[:HASTAG]->(tag)
+Where post.creationDate >= $_date1_ AND post.creationDate <= $_date2_
+Return count(person);

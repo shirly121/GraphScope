@@ -179,16 +179,16 @@ public class GraphLogicalPathExpand extends SingleRel {
                                 "start_alias",
                                 startAlias.getAliasName(),
                                 startAlias.getAliasName() != AliasInference.DEFAULT_NAME);
-        GraphLogicalExpand expandToPrint = null;
         if (fused != null && fused instanceof GraphPhysicalExpand) {
-            expandToPrint = ((GraphPhysicalExpand) fused).getFusedExpand();
-        } else if (this.expand != null) {
-            expandToPrint = (GraphLogicalExpand) this.expand;
-        }
-        if (expandToPrint != null) {
+            GraphLogicalExpand expandToPrint = ((GraphPhysicalExpand) fused).getFusedExpand();
             writer =
-                    writer.item("direction", expandToPrint.getOpt())
-                            .item("tableConfig", expandToPrint.getTableConfig());
+                    writer.item("fused direction", expandToPrint.getOpt())
+                            .item("fused tableConfig", expandToPrint.getTableConfig());
+        } else if (expand != null && getV != null) {
+            GraphLogicalExpand expandToPrint = (GraphLogicalExpand) expand;
+            writer =
+                    writer.item("expand direction", expandToPrint.getOpt())
+                            .item("expand tableConfig", expandToPrint.getTableConfig());
         }
         return writer;
     }

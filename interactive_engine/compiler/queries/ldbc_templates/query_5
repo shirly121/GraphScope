@@ -1,0 +1,4 @@
+MATCH (person:PERSON {id:$_id_})-[k:KNOWS*1..3]-(other)<-[hasMember:HASMEMBER]-(forum:FORUM),
+      (other)<-[:HASCREATOR]-(post:POST)<-[:CONTAINEROF]-(forum)
+WHERE hasMember.joinDate > $_date_
+Return count(person);

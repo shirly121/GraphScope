@@ -631,7 +631,13 @@ public class GraphIOProcessor {
                         .alias(edgeValue.getAlias())
                         .startAlias(srcValue.getAlias())
                         .range(edge.getRange().getOffset(), edge.getRange().getFetch());
-                builder.pathExpand(pxdBuilder.build()).getV(getVConfig);
+                builder.pathExpand(pxdBuilder.build())
+                        .getV(
+                                new GetVConfig(
+                                        GraphOpt.GetV.END,
+                                        getVConfig.getLabels(),
+                                        getVConfig.getAlias(),
+                                        getVConfig.getStartAlias()));
                 if (targetValue.getFilter() != null) {
                     builder.filter(targetValue.getFilter());
                 }

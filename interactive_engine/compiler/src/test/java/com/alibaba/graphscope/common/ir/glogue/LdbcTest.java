@@ -14,8 +14,14 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.RelNode;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.text.StringSubstitutor;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 public class LdbcTest {
     private static Configs configs;
@@ -43,140 +49,169 @@ public class LdbcTest {
     }
 
     @Test
-    public void ldbc_1_test() {
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "MATCH (p: PERSON{id: 30786325579101})-[:KNOWS*1..4]-(f:"
-                                    + " PERSON)-[:ISLOCATEDIN]->(city),\n"
-                                    + "    \t(f)-[:WORKAT]->(:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY),\n"
-                                    + "     "
-                                    + " (f)-[:STUDYAT]->(:UNIVERSITY)-[:ISLOCATEDIN]->(:CITY)\n"
-                                    + "WHERE f.firstName = \"Ian\" AND f.id <> 30786325579101\n"
-                                    + "RETURN count(p);",
-                                builder)
-                        .build();
+    public void ldbc_1_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_1"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026, "fName", "\"Mikhail\"");
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test
-    public void ldbc_2_test() {
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "MATCH (p:PERSON{id:"
-                                    + " 19791209300143})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(message"
-                                    + " : POST | COMMENT) \n"
-                                    + "WHERE message.creationDate < 20121128080000000 \n"
-                                    + "return \n"
-                                    + "\tfriend.id AS personId, \n"
-                                    + "\tfriend.firstName AS personFirstName, \n"
-                                    + "  friend.lastName AS personLastName, \n"
-                                    + "  message.id AS postOrCommentId, \n"
-                                    + "  message.content AS content,\n"
-                                    + "  message.imageFile AS imageFile,\n"
-                                    + "  message.creationDate AS postOrCommentCreationDate \n"
-                                    + "ORDER BY \n"
-                                    + "  postOrCommentCreationDate DESC, \n"
-                                    + "  postOrCommentId ASC \n"
-                                    + "LIMIT 20",
-                                builder)
-                        .build();
+    public void ldbc_2_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_2"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026, "date", 20130301000000000L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test
-    public void ldbc_3_test() {
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                " MATCH (countryX:COUNTRY {name:"
-                                    + " 'Laos'})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]->(otherP:PERSON),\n"
-                                    + "       (countryY:COUNTRY {name:"
-                                    + " 'United_States'})<-[:ISLOCATEDIN]-(messageY)-[:HASCREATOR]->(otherP:PERSON),\n"
-                                    + "      "
-                                    + " (otherP)-[:ISLOCATEDIN]->(city)-[:ISPARTOF]->(countryCity),\n"
-                                    + "       (person:PERSON"
-                                    + " {id:4026})-[:KNOWS]-()-[:KNOWS]-(otherP)\n"
-                                    + "WHERE countryCity.name <> 'Laos' AND countryCity.name <>"
-                                    + " 'United_States'\n"
-                                    + "Return count(countryX);",
-                                builder)
-                        .build();
+    public void ldbc_3_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_3"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of(
+                        "id",
+                        4026,
+                        "xName",
+                        "\"Laos\"",
+                        "yName",
+                        "\"United_States\"",
+                        "date1",
+                        20100505013715278L,
+                        "date2",
+                        20130604130807720L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test
-    public void ldbc_5_test() {
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "MATCH (person:PERSON"
-                                    + " {id:1})-[k:KNOWS]-(other)<-[hasMember:HASMEMBER]-(forum:FORUM),\n"
-                                    + "    (other)<-[:HASCREATOR]-(post:POST)<-[:CONTAINEROF]-(forum)\n"
-                                    + "WHERE hasMember.joinDate > 20100325\n"
-                                    + "RETURN forum.title as title, forum.id as id, count(distinct"
-                                    + " post) AS postCount\n"
-                                    + "ORDER BY\n"
-                                    + "    postCount DESC,\n"
-                                    + "    id ASC\n"
-                                    + "LIMIT 20",
-                                builder)
-                        .build();
+    public void ldbc_4_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_4"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of(
+                        "id", 2783,
+                        "date1", 20100111014617581L,
+                        "date2", 20130604130807720L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test
-    public void ldbc_7_test() {
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "MATCH (person:PERSON {id:"
-                                    + " 1})<-[:HASCREATOR]-(message)<-[like:LIKES]-(liker:PERSON),\n"
-                                    + "\t\t\t(liker)-[k:KNOWS]-(person)\n"
-                                    + "WITH liker, message, like.creationDate AS likeTime, person\n"
-                                    + "ORDER BY likeTime DESC, message.id ASC\n"
-                                    + "WITH liker, person, head(collect(message)) as message,"
-                                    + " head(collect(likeTime)) AS likeTime\n"
-                                    + "RETURN\n"
-                                    + "    liker.id AS personId,\n"
-                                    + "    liker.firstName AS personFirstName,\n"
-                                    + "    liker.lastName AS personLastName,\n"
-                                    + "    likeTime AS likeCreationDate,\n"
-                                    + "    message.id AS commentOrPostId,\n"
-                                    + "    (likeTime - message.creationDate)/1000.0/60.0 AS"
-                                    + " minutesLatency\n"
-                                    + "ORDER BY\n"
-                                    + "    likeCreationDate DESC,\n"
-                                    + "    personId ASC\n"
-                                    + "LIMIT 20",
-                                builder)
-                        .build();
+    public void ldbc_5_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_5"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026, "date", 20100325000000000L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test
-    public void ldbc_8_test() {
-        RelNode node =
-                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "MATCH (person:PERSON {id:"
-                                    + " 1})<-[:HASCREATOR]-(message)<-[:REPLYOF]-(comment:COMMENT)-[:HASCREATOR]->(author:PERSON)\n"
-                                    + "RETURN \n"
-                                    + "\tauthor.id,\n"
-                                    + "\tauthor.firstName,\n"
-                                    + "\tauthor.lastName,\n"
-                                    + "\tcomment.creationDate as commentDate,\n"
-                                    + "\tcomment.id as commentId,\n"
-                                    + "\tcomment.content\n"
-                                    + "ORDER BY\n"
-                                    + "\tcommentDate desc,\n"
-                                    + "\tcommentId asc\n"
-                                    + "LIMIT 20",
-                                builder)
-                        .build();
+    public void ldbc_6_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_6"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of("id", 4026, "tag", "\"North_German_Confederation\"");
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
+
+    @Test
+    public void ldbc_7_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_7"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void ldbc_8_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_8"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void ldbc_9_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_9"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026, "date", 20130301000000000L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void ldbc_11_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_11"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of("id", 2199023261275L, "name", "\"India\"", "year", 2012);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void ldbc_12_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_12"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 4026, "class", "\"Organisation\"");
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        System.out.println("query:\n" + query + "\n\n");
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+//    @Test
+//    public void case_study_test_1() {
+//        String query = "Match (p1:PERSON)-[:KNOWS*1..5]-(p2:PERSON)";
+//    }
 
     public static GraphBuilder createGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {
         RelOptCluster optCluster =

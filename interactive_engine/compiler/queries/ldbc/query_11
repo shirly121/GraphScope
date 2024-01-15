@@ -1,0 +1,4 @@
+MATCH (person:PERSON {id: 2199023261275})-[:KNOWS*1..3]-(friend:PERSON)-[workAt:WORKAT]->(company:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY {name: "India"})
+WHERE person <> friend
+	and	workAt.workFrom < 2012
+Return count(person);
