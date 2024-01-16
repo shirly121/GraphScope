@@ -1,7 +1,5 @@
 package org.apache.calcite.plan.volcano;
 
-import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
-
 import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
 import com.alibaba.graphscope.common.client.type.ExecutionRequest;
@@ -20,6 +18,7 @@ import com.alibaba.graphscope.common.ir.rel.GraphRelVisitor;
 import com.alibaba.graphscope.common.ir.rel.graph.match.AbstractLogicalMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
@@ -33,13 +32,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
-
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelVisitor;
 import org.apache.commons.io.FileUtils;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -48,6 +48,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 public class RandomPickPlanTest {
     private static Configs configs;
@@ -166,7 +168,8 @@ public class RandomPickPlanTest {
                                     FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
                     StringBuilder resultBuilder = new StringBuilder();
                     while (resultIterator.hasNext()) {
-                        resultBuilder.append(resultIterator.next());
+                        // resultBuilder.append(resultIterator.next());
+                        resultIterator.next();
                     }
                     long elapsedTime = System.currentTimeMillis() - startTime;
                     FileUtils.writeStringToFile(
@@ -249,7 +252,9 @@ public class RandomPickPlanTest {
             RelSet rootSet = allSets.get(0);
             while (randomRels.size() < count && maxIter-- > 0) {
                 RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
-                if (!randomDigests.contains(randomRel.getRelDigest())
+                SourceFilterVisitor visitor = new SourceFilterVisitor();
+                visitor.go(randomRel);
+                if (visitor.isSourceHasFilter() && !randomDigests.contains(randomRel.getRelDigest())
                         && !best.getRelDigest().equals(randomRel.getRelDigest())) {
                     randomRels.add(randomRel);
                     randomDigests.add(randomRel.getRelDigest());
@@ -321,6 +326,28 @@ public class RandomPickPlanTest {
                 var6 = parent.copy(parent.getTraitSet(), newInputs);
             }
             return var6;
+        }
+    }
+
+    private class SourceFilterVisitor extends RelVisitor {
+        private boolean sourceHasFilter = false;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent){
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex singleVertex = pattern.getPattern().getVertexSet().iterator().next();
+                    if (Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d) < 0) {
+                        sourceHasFilter = true;
+                    }
+                }
+            }
+        }
+
+        public boolean isSourceHasFilter() {
+            return sourceHasFilter;
         }
     }
 }
