@@ -1,5 +1,7 @@
 package org.apache.calcite.plan.volcano;
 
+import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
+
 import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
 import com.alibaba.graphscope.common.client.type.ExecutionRequest;
@@ -32,6 +34,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
+
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -48,8 +51,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 public class RandomPickPlanTest {
     private static Configs configs;
@@ -254,7 +255,8 @@ public class RandomPickPlanTest {
                 RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
                 SourceFilterVisitor visitor = new SourceFilterVisitor();
                 visitor.go(randomRel);
-                if (visitor.isSourceHasFilter() && !randomDigests.contains(randomRel.getRelDigest())
+                if (visitor.isSourceHasFilter()
+                        && !randomDigests.contains(randomRel.getRelDigest())
                         && !best.getRelDigest().equals(randomRel.getRelDigest())) {
                     randomRels.add(randomRel);
                     randomDigests.add(randomRel.getRelDigest());
@@ -333,12 +335,13 @@ public class RandomPickPlanTest {
         private boolean sourceHasFilter = false;
 
         @Override
-        public void visit(RelNode node, int ordinal, @Nullable RelNode parent){
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
             super.visit(node, ordinal, parent);
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex singleVertex = pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex singleVertex =
+                            pattern.getPattern().getVertexSet().iterator().next();
                     if (Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d) < 0) {
                         sourceHasFilter = true;
                     }

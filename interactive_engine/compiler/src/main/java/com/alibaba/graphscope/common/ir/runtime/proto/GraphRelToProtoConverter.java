@@ -711,12 +711,13 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                     "can not get INTEGER hops from types instead of RexLiteral");
         }
         GraphAlgebra.Range.Builder rangeBuilder = GraphAlgebra.Range.newBuilder();
-        rangeBuilder.setLower(
-                offset == null ? 0 : ((Number) ((RexLiteral) offset).getValue()).intValue());
-        rangeBuilder.setUpper(
+        int lowerVal = offset == null ? 0 : ((Number) ((RexLiteral) offset).getValue()).intValue();
+        int upperVal =
                 fetch == null
                         ? Integer.MAX_VALUE
-                        : ((Number) ((RexLiteral) fetch).getValue()).intValue());
+                        : ((Number) ((RexLiteral) fetch).getValue()).intValue() + lowerVal;
+        rangeBuilder.setLower(lowerVal);
+        rangeBuilder.setUpper(upperVal);
         return rangeBuilder.build();
     }
 
