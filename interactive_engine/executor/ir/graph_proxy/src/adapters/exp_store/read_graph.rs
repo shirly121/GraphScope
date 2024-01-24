@@ -26,7 +26,7 @@ use graph_store::prelude::{
     DefaultId, EdgeId, GlobalStoreTrait, GlobalStoreUpdate, GraphDBConfig, InternalId, LDBCGraphSchema,
     LargeGraphDB, LocalEdge, LocalVertex, MutableGraphDB, Row, INVALID_LABEL_ID,
 };
-use ir_common::{KeyId, LabelId, NameOrId};
+use ir_common::{KeyId, LabelId, NameOrId, OneOrMany};
 use pegasus::configure_with_default;
 use pegasus_common::downcast::*;
 use pegasus_common::impl_as_any;
@@ -37,7 +37,7 @@ use crate::apis::{
     Statement, Vertex, ID,
 };
 use crate::errors::GraphProxyResult;
-use crate::{filter_limit, filter_sample_limit, limit_n, sample_limit, GraphProxyError};
+use crate::{filter_limit, filter_sample_limit, limit_n, sample_limit};
 
 const EXP_STORE_PK: KeyId = 0;
 
@@ -257,11 +257,28 @@ impl ReadGraph for ExpStore {
     }
 
     fn index_scan_vertex(
-        &self, _label: LabelId, _primary_key: &PKV, _params: &QueryParams,
+        &self, label: LabelId, primary_key: &PKV, _params: &QueryParams,
     ) -> GraphProxyResult<Option<Vertex>> {
-        Err(GraphProxyError::unsupported_error(
-            "Experiment storage does not support index_scan_vertex for now",
-        ))?
+        let worker_idx = self.cluster_info.get_worker_index()?;
+        let workers_num = self.cluster_info.get_local_worker_num()?;
+        if worker_idx % workers_num == 0 {
+            let store_indexed_values = match primary_key {
+                OneOrMany::One(pkv) => {
+                    vec![encode_store_prop_val(pkv[0].1.clone())]
+                }
+                OneOrMany::Many(pkvs) => unreachable!("Only single column pk is supported in exp_store"),
+            };
+            let gid: DefaultId =
+                LDBCVertexParser::to_global_id(store_indexed_values[0], label as StoreLabelId);
+            if let Some(local_vertex) = self.store.get_vertex(gid) {
+                let v = to_runtime_vertex(local_vertex, None);
+                Ok(Some(v))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     fn scan_edge(&self, params: &QueryParams) -> GraphProxyResult<Box<dyn Iterator<Item = Edge> + Send>> {
@@ -398,6 +415,13 @@ impl ReadGraph for ExpStore {
                 Ok(0)
             }
         }
+    }
+}
+
+fn encode_store_prop_val(val: Object) -> DefaultId {
+    match val {
+        Object::Primitive(v) => v.as_usize().unwrap(),
+        _ => unreachable!("Only primitive type is supported in exp_store as pk value"),
     }
 }
 

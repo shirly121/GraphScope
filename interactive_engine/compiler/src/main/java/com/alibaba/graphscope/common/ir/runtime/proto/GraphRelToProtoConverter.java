@@ -723,16 +723,10 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
 
     private GraphAlgebra.IndexPredicate buildIndexPredicates(GraphLogicalSource source) {
         RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
-        if (uniqueKeyFilters == null) return null;
-        // 'within' operator in index predicate is unsupported in ir core, here just
-        // expand it to
-        // 'or'
-        // i.e. '~id within [1, 2]' -> '~id == 1 or ~id == 2'
-        RexNode expandSearch = RexUtil.expandSearch(this.rexBuilder, null, uniqueKeyFilters);
-        List<RexNode> disjunctions = RelOptUtil.disjunctions(expandSearch);
-        // TODO: update index scan in proto, and then build it.
-        GraphAlgebra.IndexPredicate.Builder indexBuilder = GraphAlgebra.IndexPredicate.newBuilder();
-        return indexBuilder.build();
+        GraphAlgebra.IndexPredicate indexPredicate =
+                uniqueKeyFilters.accept(
+                        new RexToIndexPbConverter(true, this.isColumnId, this.rexBuilder));
+        return indexPredicate;
     }
 
     private GraphLabelType getGraphLabels(AbstractBindableTableScan tableScan) {
