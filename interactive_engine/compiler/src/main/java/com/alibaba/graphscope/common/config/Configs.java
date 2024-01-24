@@ -81,6 +81,10 @@ public class Configs {
         return this.properties.keys().asIterator();
     }
 
+    public void set(String name, String value) {
+        this.properties.setProperty(name, value);
+    }
+
     @Override
     public String toString() {
         return this.properties.toString();

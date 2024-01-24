@@ -1,4 +1,4 @@
-MATCH (person:PERSON {id: $_id_})-[:KNOWS*1..3]-(friend:PERSON)-[workAt:WORKAT]->(company:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY {name: $_name_})
+MATCH (person:PERSON {id: $_id_})-[:KNOWS*1..3]-(friend:PERSON)-[workAt:WORKAT]->(company)-[:ISLOCATEDIN]->(:PLACE {name: $_name_})
 WHERE person <> friend
 	and	workAt.workFrom < $_year_
 Return count(person);

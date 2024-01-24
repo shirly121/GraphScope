@@ -1,5 +1,5 @@
 MATCH (p: PERSON{id: $_id_})-[k:KNOWS*1..4]-(f: PERSON)-[:ISLOCATEDIN]->(city),
       (f)-[:WORKAT]->(:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY),
       (f)-[:STUDYAT]->(:UNIVERSITY)-[:ISLOCATEDIN]->(:CITY)
-WHERE f.firstName = $_fName_ AND f.id <> $_id_
+WHERE f.firstName = $_fName_ 
 RETURN count(p);

@@ -45,25 +45,34 @@ public class LdbcTest {
                                 "FilterMatchRule, ExtendIntersectRule,"
                                         + " JoinDecompositionRule, ExpandGetVFusionRule",
                                 "graph.planner.cbo.glogue.schema",
-                                "conf/ldbc30_hierarchy_statistics.txt",
+                                "conf/ldbc30_statistics.txt",
                                 "graph.planner.join.min.pattern.size",
                                 "5"));
         optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
-        ldbcMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
+        ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
         builder = createGraphBuilder(optimizer, ldbcMeta);
     }
 
     @Test
     public void ldbc_1_test() throws Exception {
-        String template =
-                FileUtils.readFileToString(
-                        new File("queries/ldbc_templates/query_1"), StandardCharsets.UTF_8);
-        Map<String, Object> params = ImmutableMap.of("id", 4026, "fName", "\"Mikhail\"");
-        String query = StringSubstitutor.replace(template, params, "$_", "_");
-        System.out.println("query:\n" + query + "\n\n");
+        //        String template =
+        //                FileUtils.readFileToString(
+        //                        new File("queries/ldbc_templates/query_1"),
+        // StandardCharsets.UTF_8);
+        //        Map<String, Object> params = ImmutableMap.of("id", 2199023348145L, "fName",
+        // "\"Mikhail\"");
+        //        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        //        System.out.println("query:\n" + query + "\n\n");
+        String query =
+                "MATCH (p: PERSON{id: 1939})-[k:KNOWS*1..5]-(f: PERSON)-[:ISLOCATEDIN]->(city),\n"
+                        + "              (f)-[:WORKAT]->(:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY),\n"
+                        + "              (f)-[:STUDYAT]->(:UNIVERSITY)-[:ISLOCATEDIN]->(:CITY)\n"
+                        + "        RETURN count(p);";
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
+        planner.dump(new PrintWriter(new FileOutputStream("ldbc_1.plans"), true));
     }
 
     @Test
@@ -87,20 +96,22 @@ public class LdbcTest {
         Map<String, Object> params =
                 ImmutableMap.of(
                         "id",
-                        4026,
+                        2199023421984L,
                         "xName",
                         "\"Laos\"",
                         "yName",
                         "\"United_States\"",
                         "date1",
-                        20100505013715278L,
+                        20000505013715278L,
                         "date2",
-                        20130604130807720L);
+                        20300604130807720L);
         String query = StringSubstitutor.replace(template, params, "$_", "_");
         System.out.println("query:\n" + query + "\n\n");
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
+        planner.dump(new PrintWriter(new FileOutputStream("ldbc_3.plans"), true));
     }
 
     @Test
@@ -188,12 +199,19 @@ public class LdbcTest {
 
     @Test
     public void ldbc_11_test() throws Exception {
-        String template =
-                FileUtils.readFileToString(
-                        new File("queries/ldbc_templates/query_11"), StandardCharsets.UTF_8);
-        Map<String, Object> params =
-                ImmutableMap.of("id", 2199023261275L, "name", "\"India\"", "year", 2012);
-        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        //        String template =
+        //                FileUtils.readFileToString(
+        //                        new File("queries/ldbc_templates/query_11"),
+        // StandardCharsets.UTF_8);
+        //        Map<String, Object> params =
+        //                ImmutableMap.of("id", "[1, 2, 3]", "name", "\"India\"", "year", 2012);
+        //        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        String query =
+                "MATCH (person:PERSON {id: [1, 2,"
+                    + " 3]})-[:KNOWS*1..3]-(friend:PERSON)-[workAt:WORKAT]->(company)-[:ISLOCATEDIN]->(:PLACE"
+                    + " {name: \"India\"})\n"
+                    + "WHERE person <> friend\n"
+                    + "Return count(person);";
         System.out.println("query:\n" + query + "\n\n");
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
@@ -216,7 +234,7 @@ public class LdbcTest {
     @Test
     public void case_study_test_1() throws Exception {
         String query =
-                "Match (p1:PERSON {id:1})-[:KNOWS*1..5]->(p2:PERSON {id:5}) Return count(p1)";
+                "Match (p1:PERSON {id: [1, 2]})-[:KNOWS*1..5]->(p2:PERSON {id:5}) Return count(p1)";
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));

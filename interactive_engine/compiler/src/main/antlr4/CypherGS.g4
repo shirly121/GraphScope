@@ -227,10 +227,15 @@ oC_PartialComparisonExpression
                                | ( '>=' SP? oC_StringListNullPredicateExpression )
                                ;
 oC_StringListNullPredicateExpression
-                                 :  oC_AddOrSubtractExpression ( oC_StringPredicateExpression | oC_NullPredicateExpression )* ;
+                                 :  oC_AddOrSubtractExpression ( oC_StringPredicateExpression | oC_NullPredicateExpression | oC_ListPredicateExpression )* ;
 
 oC_StringPredicateExpression
                          :  ( ( SP STARTS SP WITH ) | ( SP ENDS SP WITH ) | ( SP CONTAINS ) ) SP? oC_AddOrSubtractExpression ;
+
+oC_ListPredicateExpression
+                    :  SP IN SP? oC_AddOrSubtractExpression ;
+
+IN : ( 'I' | 'i' ) ( 'N' | 'n' ) ;
 
 STARTS : ( 'S' | 's' ) ( 'T' | 't' ) ( 'A' | 'a' ) ( 'R' | 'r' ) ( 'T' | 't' ) ( 'S' | 's' ) ;
 

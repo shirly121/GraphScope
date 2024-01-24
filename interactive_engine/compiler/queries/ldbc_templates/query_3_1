@@ -1,4 +1,4 @@
 MATCH (countryX:PLACE {name: $_xName_})<-[:ISLOCATEDIN]-(messageX)-[:HASCREATOR]->(otherP:PERSON),
-    	(countryY:PLACE {name: $_yName_})<-[:ISLOCATEDIN]-(messageY)-[:HASCREATOR]->(otherP:PERSON),
+    	(otherP)-[:ISLOCATEDIN]->(city),
     	(person:PERSON {id: $_id_})-[:KNOWS*1..3]-(otherP)
 Return count(countryX);
