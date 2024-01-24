@@ -86,10 +86,12 @@ impl SourceOperator {
                     } else {
                         // query by indexed_scan
                         let primary_key_values = <Vec<Vec<(NameOrId, Object)>>>::try_from(ip2)?;
-                        let pkvs = primary_key_values
-                            .into_iter()
-                            .map(|pkv| PKV::from(pkv))
-                            .collect();
+                        let mut pkvs = vec![];
+                        for pkv in &primary_key_values {
+                            for (k, v) in pkv {
+                                pkvs.push(PKV::from((k.clone(), v.clone())));
+                            }
+                        }
                         source_op.primary_key_values = Some(pkvs);
                         debug!("Runtime source op of indexed scan {:?}", source_op);
                     }

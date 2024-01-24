@@ -259,16 +259,23 @@ impl ReadGraph for ExpStore {
     fn index_scan_vertex(
         &self, label: LabelId, primary_key: &PKV, _params: &QueryParams,
     ) -> GraphProxyResult<Option<Vertex>> {
-        let store_indexed_values = match primary_key {
-            OneOrMany::One(pkv) => {
-                vec![encode_store_prop_val(pkv[0].1.clone())]
+        let worker_idx = self.cluster_info.get_worker_index()?;
+        let workers_num = self.cluster_info.get_local_worker_num()?;
+        if worker_idx % workers_num == 0 {
+            let store_indexed_values = match primary_key {
+                OneOrMany::One(pkv) => {
+                    vec![encode_store_prop_val(pkv[0].1.clone())]
+                }
+                OneOrMany::Many(pkvs) => unreachable!("Only single column pk is supported in exp_store"),
+            };
+            let gid: DefaultId =
+                LDBCVertexParser::to_global_id(store_indexed_values[0], label as StoreLabelId);
+            if let Some(local_vertex) = self.store.get_vertex(gid) {
+                let v = to_runtime_vertex(local_vertex, None);
+                Ok(Some(v))
+            } else {
+                Ok(None)
             }
-            OneOrMany::Many(_pkvs) => unreachable!("Only one pkv is supported in exp_store"),
-        };
-        let gid: DefaultId = LDBCVertexParser::to_global_id(store_indexed_values[0], label as StoreLabelId);
-        if let Some(local_vertex) = self.store.get_vertex(gid) {
-            let v = to_runtime_vertex(local_vertex, None);
-            Ok(Some(v))
         } else {
             Ok(None)
         }
