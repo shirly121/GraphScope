@@ -723,6 +723,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
 
     private GraphAlgebra.IndexPredicate buildIndexPredicates(GraphLogicalSource source) {
         RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
+        if (uniqueKeyFilters == null) {
+            return null;
+        }
         GraphAlgebra.IndexPredicate indexPredicate =
                 uniqueKeyFilters.accept(
                         new RexToIndexPbConverter(true, this.isColumnId, this.rexBuilder));

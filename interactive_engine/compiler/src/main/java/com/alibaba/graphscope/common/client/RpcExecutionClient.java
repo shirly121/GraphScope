@@ -28,9 +28,11 @@ import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.protobuf.ByteString;
-
 import io.grpc.Status;
+import org.apache.commons.io.FileUtils;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -77,6 +79,7 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                                         .build())
                         .build();
         jobRequest = jobRequest.toBuilder().setConf(jobConfig).build();
+        long startTime = System.currentTimeMillis();
         rpcClient.submit(
                 jobRequest,
                 new ResultProcessor() {
@@ -93,6 +96,12 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                     @Override
                     public void finish() {
                         listener.onCompleted();
+                        try {
+                            long elapsedTime = System.currentTimeMillis() - startTime;
+                            FileUtils.writeStringToFile(new File("rpc.log"), "engine execution time is " + elapsedTime + "\n", StandardCharsets.UTF_8, true);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
                     }
 
                     @Override

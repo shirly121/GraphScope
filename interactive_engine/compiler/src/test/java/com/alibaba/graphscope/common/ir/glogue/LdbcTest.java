@@ -242,6 +242,21 @@ public class LdbcTest {
         planner.dump(new PrintWriter(new FileOutputStream("case_study.plans"), true));
     }
 
+    @Test
+    public void case_study_test_2() throws Exception {
+        String query =
+                "MATCH (p:PERSON)\n" +
+                        "WITH COUNT(p) as cnt\n" +
+                        "MATCH (p:PERSON)-[:KNOWS]->(a:PERSON),\n" +
+                        " (a)-[:KNOWS]->(t: PERSON)\n" +
+                        "RETURN t.id, COUNT(p) / cnt";
+        RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
+        RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
+        planner.dump(new PrintWriter(new FileOutputStream("case_study.plans"), true));
+    }
+
     public static GraphBuilder createGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {
         RelOptCluster optCluster =
                 GraphOptCluster.create(optimizer.getMatchPlanner(), Utils.rexBuilder);
