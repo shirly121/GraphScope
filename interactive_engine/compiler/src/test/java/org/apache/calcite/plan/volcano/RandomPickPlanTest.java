@@ -1,7 +1,8 @@
 package org.apache.calcite.plan.volcano;
 
+import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
+
 import com.alibaba.graphscope.common.client.ExecutionClient;
-import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PlannerConfig;
@@ -24,6 +25,7 @@ import com.alibaba.graphscope.common.store.ExperimentalMetaFetcher;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.*;
+
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -45,8 +47,6 @@ import java.security.SecureRandom;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 public class RandomPickPlanTest {
     private static Configs configs;
@@ -106,7 +106,7 @@ public class RandomPickPlanTest {
     }
 
     @Test
-    public void run_ldbc_3_test() throws Exception {
+    public void run_ldbc_3_0_test() throws Exception {
         String template =
                 FileUtils.readFileToString(
                         new File("queries/ldbc_templates/query_3"), StandardCharsets.UTF_8);
@@ -127,13 +127,46 @@ public class RandomPickPlanTest {
                         20130604130807720L);
         String query = StringSubstitutor.replace(template, params, "$_", "_");
         execute_one_query(
-                "ldbc_3",
+                "ldbc_3_0",
                 query,
                 new Function<GraphIOProcessor, GraphRelVisitor>() {
                     @Override
                     public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
                         return new Ldbc3NonOptimizer(
-                                ioProcessor, (VolcanoPlanner) optimizer.getMatchPlanner());
+                                ioProcessor, (VolcanoPlanner) optimizer.getMatchPlanner(), 0);
+                    }
+                });
+    }
+
+    @Test
+    public void run_ldbc_3_1_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_3_1"), StandardCharsets.UTF_8);
+        String countryX = "\"Laos\"";
+        String countryY = "\"United_States\"";
+        List<Long> ids = getRandomPersonIds();
+        Map<String, Object> params =
+                ImmutableMap.of(
+                        "id",
+                        ids,
+                        "xName",
+                        countryX,
+                        "yName",
+                        countryY,
+                        "date1",
+                        20100505013715278L,
+                        "date2",
+                        20130604130807720L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_3_1",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new Ldbc3NonOptimizer(
+                                ioProcessor, (VolcanoPlanner) optimizer.getMatchPlanner(), 1);
                     }
                 });
     }
@@ -159,10 +192,31 @@ public class RandomPickPlanTest {
     }
 
     @Test
+    public void run_ldbc_6_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_6"), StandardCharsets.UTF_8);
+        List<Long> ids = getRandomPersonIds();
+        Map<String, Object> params =
+                ImmutableMap.of("id", ids, "tag", "\"North_German_Confederation\"");
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_6",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new Ldbc6NonOptimizer(
+                                ioProcessor, (VolcanoPlanner) optimizer.getMatchPlanner());
+                    }
+                });
+    }
+
+    @Test
     public void run_case_study_test() throws Exception {
         String query =
                 "Match (p1:PERSON {id: $_id_})-[:KNOWS*1..5]->(p2:PERSON {id: $_id_}) Return"
-                    + " count(p1)";
+                        + " count(p1)";
         List<Long> ids = getRandomPersonIds();
         Map<String, Object> params = ImmutableMap.of("id", ids);
         query = StringSubstitutor.replace(query, params, "$_", "_");
@@ -217,64 +271,77 @@ public class RandomPickPlanTest {
                             String.format("logical plan %d: %s\n", i++, logicalExplain),
                             StandardCharsets.UTF_8,
                             true);
-                    ChannelFetcher fetcher = new HostsRpcChannelFetcher(configs);
-//                    for (int workerNum = 2; workerNum <= 32; workerNum *= 2) {
-//                        configs.set(
-//                                PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
-//                                String.valueOf(workerNum));
-//                        ExecutionClient client1 = new RpcExecutionClient(configs, fetcher);
-//                        PhysicalPlan physicalPlan =
-//                                new GraphRelProtoPhysicalBuilder(configs, ldbcMeta, logicalPlan)
-//                                        .build();
-//                        int queryId = UUID.randomUUID().hashCode();
-//                        ExecutionRequest request =
-//                                new ExecutionRequest(
-//                                        queryId, "ir_plan_" + queryId, logicalPlan, physicalPlan);
-//                        long startTime = System.currentTimeMillis();
-//                        StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
-//                        client1.submit(
-//                                request,
-//                                new ExecutionResponseListener() {
-//                                    @Override
-//                                    public void onNext(IrResult.Record record) {
-//                                        try {
-//                                            resultIterator.putData(record);
-//                                        } catch (Exception e) {
-//                                            throw new RuntimeException(e);
-//                                        }
-//                                    }
-//
-//                                    @Override
-//                                    public void onCompleted() {
-//                                        try {
-//                                            resultIterator.finish();
-//                                        } catch (Exception e) {
-//                                            throw new RuntimeException(e);
-//                                        }
-//                                    }
-//
-//                                    @Override
-//                                    public void onError(Throwable t) {
-//                                        resultIterator.fail(t);
-//                                    }
-//                                },
-//                                new QueryTimeoutConfig(
-//                                        FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
-//                        StringBuilder resultBuilder = new StringBuilder();
-//                        while (resultIterator.hasNext()) {
-//                            resultBuilder.append(resultIterator.next());
-//                            // resultIterator.next();
-//                        }
-//                        long elapsedTime = System.currentTimeMillis() - startTime;
-//                        FileUtils.writeStringToFile(
-//                                logFile,
-//                                String.format(
-//                                        "thread num %d, execution time %d ms, results: %s\n",
-//                                        workerNum, elapsedTime, resultBuilder),
-//                                StandardCharsets.UTF_8,
-//                                true);
-//                        client1.close();
-//                    }
+                    //                    ChannelFetcher fetcher = new
+                    // HostsRpcChannelFetcher(configs);
+                    //                    int totalNum =
+                    // Integer.valueOf(System.getProperty("thread.num", "32"));
+                    //                    for (int workerNum = 2; workerNum <= totalNum; workerNum
+                    // *= 2) {
+                    //                        configs.set(
+                    //                                PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
+                    //                                String.valueOf(workerNum));
+                    //                        ExecutionClient client1 = new
+                    // RpcExecutionClient(configs, fetcher);
+                    //                        PhysicalPlan physicalPlan =
+                    //                                new GraphRelProtoPhysicalBuilder(configs,
+                    // ldbcMeta, logicalPlan)
+                    //                                        .build();
+                    //                        int queryId = UUID.randomUUID().hashCode();
+                    //                        ExecutionRequest request =
+                    //                                new ExecutionRequest(
+                    //                                        queryId, "ir_plan_" + queryId,
+                    // logicalPlan, physicalPlan);
+                    //                        long startTime = System.currentTimeMillis();
+                    //                        StreamIterator<IrResult.Record> resultIterator = new
+                    // StreamIterator<>();
+                    //                        client1.submit(
+                    //                                request,
+                    //                                new ExecutionResponseListener() {
+                    //                                    @Override
+                    //                                    public void onNext(IrResult.Record record)
+                    // {
+                    //                                        try {
+                    //                                            resultIterator.putData(record);
+                    //                                        } catch (Exception e) {
+                    //                                            throw new RuntimeException(e);
+                    //                                        }
+                    //                                    }
+                    //
+                    //                                    @Override
+                    //                                    public void onCompleted() {
+                    //                                        try {
+                    //                                            resultIterator.finish();
+                    //                                        } catch (Exception e) {
+                    //                                            throw new RuntimeException(e);
+                    //                                        }
+                    //                                    }
+                    //
+                    //                                    @Override
+                    //                                    public void onError(Throwable t) {
+                    //                                        resultIterator.fail(t);
+                    //                                    }
+                    //                                },
+                    //                                new QueryTimeoutConfig(
+                    //
+                    // FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+                    //                        StringBuilder resultBuilder = new StringBuilder();
+                    //                        while (resultIterator.hasNext()) {
+                    //                            resultBuilder.append(resultIterator.next());
+                    //                            // resultIterator.next();
+                    //                        }
+                    //                        long elapsedTime = System.currentTimeMillis() -
+                    // startTime;
+                    //                        FileUtils.writeStringToFile(
+                    //                                logFile,
+                    //                                String.format(
+                    //                                        "thread num %d, execution time %d ms,
+                    // results: %s\n",
+                    //                                        workerNum, elapsedTime,
+                    // resultBuilder),
+                    //                                StandardCharsets.UTF_8,
+                    //                                true);
+                    //                        client1.close();
+                    //                    }
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
                             logFile,
@@ -391,7 +458,7 @@ public class RandomPickPlanTest {
                     if (pattern.getPattern().getVertexNumber() == 1) {
                         PatternVertex singleVertex =
                                 pattern.getPattern().getVertexSet().iterator().next();
-                        if (Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d) == 0) {
+                        if (Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d) < 0) {
                             sourceHasFilter = false;
                         }
                     }
@@ -407,11 +474,14 @@ public class RandomPickPlanTest {
     private class Ldbc3NonOptimizer extends GraphRelVisitor {
         private final GraphIOProcessor ioProcessor;
         private final VolcanoPlanner matchPlanner;
+        private final int queryId;
 
-        public Ldbc3NonOptimizer(GraphIOProcessor ioProcessor, VolcanoPlanner matchPlanner) {
+        public Ldbc3NonOptimizer(
+                GraphIOProcessor ioProcessor, VolcanoPlanner matchPlanner, int queryId) {
             this.ioProcessor = ioProcessor;
             this.matchPlanner = matchPlanner;
             this.matchPlanner.allSets.clear();
+            this.queryId = queryId;
         }
 
         @Override
@@ -467,7 +537,7 @@ public class RandomPickPlanTest {
             ImmutableList<RelSet> allSets = ordering.immutableSortedCopy(matchPlanner.allSets);
             RelSet rootSet = allSets.get(0);
             // add best
-            allRels.add(best);
+            // allRels.add(best);
             // add non opt plans with specific pattern
             List<RelNode> nonOptPlans =
                     enumeratePlans(matchPlanner, rootSet).stream()
@@ -498,7 +568,7 @@ public class RandomPickPlanTest {
             private int joinCount;
             private boolean tagHasFilter;
             private boolean isPersonPost;
-            private boolean joinAtPerson;
+            private boolean joinAtPerson = true;
 
             @Override
             public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
@@ -548,11 +618,16 @@ public class RandomPickPlanTest {
                     if (isPersonPerson(join.getProbePattern())) {
                         hasJoin = true;
                     }
-                    List<PatternVertex> jointVertices = join.getJoinVertexPairs().stream().map(k -> {
-                        return join.getProbePattern().getVertexByOrder(k.getLeftOrderId());
-                    }).collect(Collectors.toList());
-                    if (jointVertices.stream().allMatch(k -> k.getVertexTypeIds().get(0) == 1)) {
-                        joinAtPerson = true;
+                    List<PatternVertex> jointVertices =
+                            join.getJoinVertexPairs().stream()
+                                    .map(
+                                            k -> {
+                                                return join.getProbePattern()
+                                                        .getVertexByOrder(k.getLeftOrderId());
+                                            })
+                                    .collect(Collectors.toList());
+                    if (jointVertices.stream().anyMatch(k -> k.getVertexTypeIds().get(0) != 1)) {
+                        joinAtPerson = false;
                     }
                     ++joinCount;
                 }
@@ -628,7 +703,148 @@ public class RandomPickPlanTest {
             public boolean valid() {
                 // return placeAsSource && hasJoin && personAsSource;
                 // return (hasJoin && personAsSource && tagHasFilter);
-                return joinCount == 1 && placeAsSourceCount == 2 && joinAtPerson;
+                return queryId == 0
+                                && joinCount == 2
+                                && placeAsSourceCount == 2
+                                && joinAtPerson
+                                && personAsSource
+                        || (queryId == 1 && placeAsSource);
+            }
+        }
+    }
+
+    private class Ldbc6NonOptimizer extends GraphRelVisitor {
+        private final GraphIOProcessor ioProcessor;
+        private final VolcanoPlanner matchPlanner;
+
+        public Ldbc6NonOptimizer(GraphIOProcessor ioProcessor, VolcanoPlanner matchPlanner) {
+            this.ioProcessor = ioProcessor;
+            this.matchPlanner = matchPlanner;
+            this.matchPlanner.allSets.clear();
+        }
+
+        @Override
+        public RelNode visit(GraphLogicalSingleMatch match) {
+            return findBestWithNonOpt(match);
+        }
+
+        @Override
+        public RelNode visit(GraphLogicalMultiMatch match) {
+            return findBestWithNonOpt(match);
+        }
+
+        @Override
+        protected RelNode visitChild(RelNode parent, int i, RelNode child) {
+            RelNode var6;
+            RelNode child2 = child.accept(this);
+            if (child2 instanceof RelNodeList) {
+                List<RelNode> newRels =
+                        ((RelNodeList) child2)
+                                .rels.stream()
+                                        .map(
+                                                k -> {
+                                                    if (k == child) {
+                                                        return parent;
+                                                    } else {
+                                                        List<RelNode> newInputs =
+                                                                new ArrayList(parent.getInputs());
+                                                        newInputs.set(i, k);
+                                                        return parent.copy(
+                                                                parent.getTraitSet(), newInputs);
+                                                    }
+                                                })
+                                        .collect(Collectors.toList());
+                var6 = new RelNodeList(parent.getCluster(), parent.getTraitSet(), newRels);
+            } else {
+                if (child2 == child) {
+                    RelNode var10 = parent;
+                    return var10;
+                }
+
+                List<RelNode> newInputs = new ArrayList(parent.getInputs());
+                newInputs.set(i, child2);
+                var6 = parent.copy(parent.getTraitSet(), newInputs);
+            }
+            return var6;
+        }
+
+        private RelNode findBestWithNonOpt(AbstractLogicalMatch match) {
+            matchPlanner.setRoot(ioProcessor.processInput(match));
+            RelNode best = matchPlanner.findBestExp();
+            List<RelNode> allRels = Lists.newArrayList();
+            Ordering<RelSet> ordering = Ordering.from(Comparator.comparingInt(o -> o.id));
+            ImmutableList<RelSet> allSets = ordering.immutableSortedCopy(matchPlanner.allSets);
+            RelSet rootSet = allSets.get(0);
+            // add best
+            // allRels.add(best);
+            // add non opt plans with specific pattern
+            List<RelNode> nonOptPlans =
+                    enumeratePlans(matchPlanner, rootSet).stream()
+                            .filter(
+                                    k -> {
+                                        NonOptPlanVisitor visitor = new NonOptPlanVisitor();
+                                        visitor.go(k);
+                                        return visitor.valid();
+                                    })
+                            .collect(Collectors.toList());
+            int pickCount = Integer.valueOf(System.getProperty("pick.count", "2"));
+            nonOptPlans = nonOptPlans.subList(0, Math.min(pickCount, nonOptPlans.size()));
+            allRels.addAll(nonOptPlans);
+            allRels =
+                    allRels.stream()
+                            .map(k -> ioProcessor.processOutput(k))
+                            .collect(Collectors.toList());
+            return new RelNodeList(match.getCluster(), match.getTraitSet(), allRels);
+        }
+
+        private class NonOptPlanVisitor extends RelVisitor {
+            private boolean personAsSource;
+            private boolean tagAsSource;
+            private int joinCount;
+
+            @Override
+            public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+                super.visit(node, ordinal, parent);
+                if (node instanceof GraphPattern) {
+                    GraphPattern pattern = (GraphPattern) node;
+                    if (isPersonWithFilter(pattern.getPattern())) {
+                        personAsSource = true;
+                    }
+                    if (isTagWithoutFilter(pattern.getPattern())) {
+                        tagAsSource = true;
+                    }
+                } else if (node instanceof GraphJoinDecomposition) {
+                    joinCount++;
+                }
+            }
+
+            private boolean isPersonWithFilter(Pattern pattern) {
+                if (pattern.getVertexNumber() == 1) {
+                    PatternVertex singleVertex = pattern.getVertexSet().iterator().next();
+                    if (singleVertex.getVertexTypeIds().get(0) == 1
+                            && Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d)
+                                    < 0) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            private boolean isTagWithoutFilter(Pattern pattern) {
+                if (pattern.getVertexNumber() == 1) {
+                    PatternVertex singleVertex = pattern.getVertexSet().iterator().next();
+                    if (singleVertex.getVertexTypeIds().get(0) == 7
+                            && Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d)
+                                    < 0) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            boolean valid() {
+                // return personAsSource && joinCount == 1 && tagAsSource;
+                return tagAsSource && joinCount == 0;
             }
         }
     }
@@ -661,19 +877,19 @@ public class RandomPickPlanTest {
                 List<RelNode> newRels =
                         ((RelNodeList) child2)
                                 .rels.stream()
-                                .map(
-                                        k -> {
-                                            if (k == child) {
-                                                return parent;
-                                            } else {
-                                                List<RelNode> newInputs =
-                                                        new ArrayList(parent.getInputs());
-                                                newInputs.set(i, k);
-                                                return parent.copy(
-                                                        parent.getTraitSet(), newInputs);
-                                            }
-                                        })
-                                .collect(Collectors.toList());
+                                        .map(
+                                                k -> {
+                                                    if (k == child) {
+                                                        return parent;
+                                                    } else {
+                                                        List<RelNode> newInputs =
+                                                                new ArrayList(parent.getInputs());
+                                                        newInputs.set(i, k);
+                                                        return parent.copy(
+                                                                parent.getTraitSet(), newInputs);
+                                                    }
+                                                })
+                                        .collect(Collectors.toList());
                 var6 = new RelNodeList(parent.getCluster(), parent.getTraitSet(), newRels);
             } else {
                 if (child2 == child) {
@@ -739,7 +955,7 @@ public class RandomPickPlanTest {
                     PatternVertex singleVertex = pattern.getVertexSet().iterator().next();
                     if (singleVertex.getVertexTypeIds().get(0) == 1
                             && Double.compare(singleVertex.getDetails().getSelectivity(), 1.0d)
-                            < 0) {
+                                    < 0) {
                         return true;
                     }
                 }

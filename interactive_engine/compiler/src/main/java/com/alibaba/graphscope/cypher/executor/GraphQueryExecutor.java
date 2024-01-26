@@ -143,7 +143,8 @@ public class GraphQueryExecutor extends FabricExecutor {
                                             planSummary.getId(),
                                             planSummary.getName(),
                                             planSummary.getLogicalPlan(),
-                                            planSummary.getPhysicalPlan());
+                                            planSummary.getPhysicalPlan(),
+                                            statement);
                             QueryTimeoutConfig timeoutConfig = getQueryTimeoutConfig();
                             client.submit(request, listener, timeoutConfig);
                         }

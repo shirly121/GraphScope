@@ -27,6 +27,20 @@ public class ExecutionRequest {
     private final String requestName;
     private final LogicalPlan requestLogical;
     private final PhysicalPlan requestPhysical;
+    private final String query;
+
+    public ExecutionRequest(
+            long requestId,
+            String requestName,
+            LogicalPlan requestLogical,
+            PhysicalPlan requestPhysical,
+            String query) {
+        this.requestId = requestId;
+        this.requestName = requestName;
+        this.requestLogical = requestLogical;
+        this.requestPhysical = requestPhysical;
+        this.query = query;
+    }
 
     public ExecutionRequest(
             long requestId,
@@ -37,6 +51,7 @@ public class ExecutionRequest {
         this.requestName = requestName;
         this.requestLogical = requestLogical;
         this.requestPhysical = requestPhysical;
+        this.query = "";
     }
 
     public long getRequestId() {
@@ -53,5 +68,9 @@ public class ExecutionRequest {
 
     public PhysicalPlan getRequestPhysical() {
         return requestPhysical;
+    }
+
+    public String getQuery() {
+        return query;
     }
 }

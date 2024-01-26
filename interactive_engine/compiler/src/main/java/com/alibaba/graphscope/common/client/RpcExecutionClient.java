@@ -28,7 +28,9 @@ import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.protobuf.ByteString;
+
 import io.grpc.Status;
+
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -98,7 +100,15 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                         listener.onCompleted();
                         try {
                             long elapsedTime = System.currentTimeMillis() - startTime;
-                            FileUtils.writeStringToFile(new File("rpc.log"), "engine execution time is " + elapsedTime + "\n", StandardCharsets.UTF_8, true);
+                            FileUtils.writeStringToFile(
+                                    new File(System.getProperty("server.log")),
+                                    "query: "
+                                            + request.getQuery()
+                                            + "\nengine execution time is "
+                                            + elapsedTime
+                                            + "\n",
+                                    StandardCharsets.UTF_8,
+                                    true);
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }

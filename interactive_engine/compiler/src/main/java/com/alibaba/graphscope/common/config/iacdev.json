@@ -1,0 +1,134 @@
+{
+  "vertices": [
+    {
+      "label": "person",
+      "properties": [
+        {
+          "name": "id",
+          "id": 1,
+          "type": "STRING",
+          "is_primary_key": true,
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "id": 2,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        }
+      ]
+    },
+    {
+      "label": "company",
+      "properties": [
+        {
+          "name": "name",
+          "id": 2,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        },
+        {
+          "name": "id",
+          "id": 1,
+          "type": "STRING",
+          "is_primary_key": true,
+          "comment": ""
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "label": "e2e_invest",
+      "properties": [
+        {
+          "name": "info",
+          "id": 3,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        }
+      ],
+      "relations": [
+        {
+          "src_label": "company",
+          "dst_label": "company"
+        }
+      ]
+    },
+    {
+      "label": "p2e_invest",
+      "properties": [
+        {
+          "name": "info",
+          "id": 3,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        }
+      ],
+      "relations": [
+        {
+          "src_label": "person",
+          "dst_label": "company"
+        }
+      ]
+    },
+    {
+      "label": "p2p_phonebook",
+      "properties": [
+        {
+          "name": "info",
+          "id": 3,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        }
+      ],
+      "relations": [
+        {
+          "src_label": "person",
+          "dst_label": "person"
+        }
+      ]
+    },
+    {
+      "label": "p2p_social",
+      "properties": [
+        {
+          "name": "info",
+          "id": 3,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        }
+      ],
+      "relations": [
+        {
+          "src_label": "person",
+          "dst_label": "person"
+        }
+      ]
+    },
+    {
+      "label": "p2e_office",
+      "properties": [
+        {
+          "name": "info",
+          "id": 3,
+          "type": "STRING",
+          "is_primary_key": false,
+          "comment": ""
+        }
+      ],
+      "relations": [
+        {
+          "src_label": "person",
+          "dst_label": "company"
+        }
+      ]
+    }
+  ]
+}

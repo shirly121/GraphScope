@@ -1,0 +1,60 @@
+{
+  "entities": [
+    {
+      "label": {
+        "id": 1,
+        "name": "person"
+      },
+      "columns": [
+        {
+          "key": {
+            "id": 1,
+            "name": "id"
+          },
+          "data_type": 4,
+          "is_primary_key": true
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "name"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "label": {
+        "id": 4,
+        "name": "p2p_social"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "person"
+          },
+          "dst": {
+            "id": 1,
+            "name": "person"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "key": {
+            "id": 3,
+            "name": "info"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    }
+  ],
+  "is_table_id": true,
+  "is_column_id": false
+}
