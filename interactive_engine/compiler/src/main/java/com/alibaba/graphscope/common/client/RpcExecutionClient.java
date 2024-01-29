@@ -101,7 +101,7 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                         try {
                             long elapsedTime = System.currentTimeMillis() - startTime;
                             FileUtils.writeStringToFile(
-                                    new File(System.getProperty("server.log")),
+                                    new File(System.getProperty("server.log", "server.log")),
                                     "query: "
                                             + request.getQuery()
                                             + "\nengine execution time is "

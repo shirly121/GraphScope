@@ -96,40 +96,13 @@ public abstract class ExpandGetVFusionRule<C extends RelRule.Config> extends Rel
                                                                             .predicate(
                                                                                     (GraphLogicalExpand
                                                                                                     expand) -> {
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        // int alias
-                                                                                        // =
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        // expand
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        // .getAliasId();
+                                                                                        int alias =
+                                                                                                expand
+                                                                                                        .getAliasId();
+
+                                                                                        return alias
+                                                                                                == AliasInference
+                                                                                                        .DEFAULT_ID;
                                                                                         //
                                                                                         //
                                                                                         //
@@ -140,31 +113,7 @@ public abstract class ExpandGetVFusionRule<C extends RelRule.Config> extends Rel
                                                                                         //
                                                                                         //
                                                                                         // return
-                                                                                        // alias
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //      ==
-                                                                                        // AliasInference
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        //
-                                                                                        // .DEFAULT_ID;
-                                                                                        return true;
+                                                                                        // true;
                                                                                     })
                                                                             .anyInputs()));
 

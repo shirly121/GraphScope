@@ -33,6 +33,7 @@ import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt.PhysicalGetVOpt;
 import com.alibaba.graphscope.common.ir.type.GraphLabelType;
 import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
+import com.alibaba.graphscope.gaia.proto.Common;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebra;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical;
 import com.alibaba.graphscope.gaia.proto.OuterExpression;
@@ -792,9 +793,31 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
                             .accept(new RexToProtoConverter(true, isColumnId, this.rexBuilder));
             paramsBuilder.setPredicate(expression);
         }
+        // addColumns(paramsBuilder, tableScan);
         // TODO: currently no sample rate fused into tableScan, so directly set as 1.0 for tmp.
         paramsBuilder.setSampleRatio(1.0);
         return paramsBuilder.build();
+    }
+
+    private void addColumns(
+            GraphAlgebra.QueryParams.Builder paramBuilder, AbstractBindableTableScan tableScan) {
+        paramBuilder.setIsAllColumns(false);
+        GraphSchemaType schemaType =
+                (GraphSchemaType) tableScan.getRowType().getFieldList().get(0).getType();
+        List<RelDataTypeField> fields = schemaType.getFieldList();
+        String columnLimit = System.getProperty("column.limit");
+        int limit =
+                (columnLimit == null)
+                        ? fields.size()
+                        : Math.min(fields.size(), Integer.valueOf(columnLimit));
+        for (int i = 0; i < limit; i++) {
+            RelDataTypeField field = fields.get(i);
+            Common.NameOrId column =
+                    isColumnId
+                            ? Common.NameOrId.newBuilder().setId(field.getIndex()).build()
+                            : Common.NameOrId.newBuilder().setName(field.getName()).build();
+            paramBuilder.addColumns(column);
+        }
     }
 
     private void addRepartitionToAnother(int reaprtitionKey) {

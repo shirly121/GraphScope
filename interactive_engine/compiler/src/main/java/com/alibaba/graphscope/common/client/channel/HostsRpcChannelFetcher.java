@@ -21,6 +21,9 @@ import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.Utils;
 import com.alibaba.pegasus.RpcChannel;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,6 +31,7 @@ import java.util.List;
  * rpc implementation of {@link ChannelFetcher}, init rpc from local config
  */
 public class HostsRpcChannelFetcher implements ChannelFetcher<RpcChannel> {
+    private static final Logger logger = LoggerFactory.getLogger(HostsRpcChannelFetcher.class);
     private Configs config;
 
     public HostsRpcChannelFetcher(Configs config) {

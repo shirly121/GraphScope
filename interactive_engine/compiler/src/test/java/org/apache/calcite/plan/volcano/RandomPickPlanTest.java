@@ -1,11 +1,12 @@
 package org.apache.calcite.plan.volcano;
 
-import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
-
 import com.alibaba.graphscope.common.client.ExecutionClient;
+import com.alibaba.graphscope.common.client.RpcExecutionClient;
+import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
-import com.alibaba.graphscope.common.config.Configs;
-import com.alibaba.graphscope.common.config.PlannerConfig;
+import com.alibaba.graphscope.common.client.type.ExecutionRequest;
+import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
+import com.alibaba.graphscope.common.config.*;
 import com.alibaba.graphscope.common.ir.meta.reader.LocalMetaDataReader;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
@@ -19,13 +20,16 @@ import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
+import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
+import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.common.store.ExperimentalMetaFetcher;
 import com.alibaba.graphscope.common.store.IrMeta;
+import com.alibaba.graphscope.gaia.proto.IrResult;
+import com.alibaba.pegasus.common.StreamIterator;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.*;
-
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -47,6 +51,8 @@ import java.security.SecureRandom;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 public class RandomPickPlanTest {
     private static Configs configs;
@@ -271,77 +277,65 @@ public class RandomPickPlanTest {
                             String.format("logical plan %d: %s\n", i++, logicalExplain),
                             StandardCharsets.UTF_8,
                             true);
-                    //                    ChannelFetcher fetcher = new
-                    // HostsRpcChannelFetcher(configs);
-                    //                    int totalNum =
-                    // Integer.valueOf(System.getProperty("thread.num", "32"));
-                    //                    for (int workerNum = 2; workerNum <= totalNum; workerNum
-                    // *= 2) {
-                    //                        configs.set(
-                    //                                PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
-                    //                                String.valueOf(workerNum));
-                    //                        ExecutionClient client1 = new
-                    // RpcExecutionClient(configs, fetcher);
-                    //                        PhysicalPlan physicalPlan =
-                    //                                new GraphRelProtoPhysicalBuilder(configs,
-                    // ldbcMeta, logicalPlan)
-                    //                                        .build();
-                    //                        int queryId = UUID.randomUUID().hashCode();
-                    //                        ExecutionRequest request =
-                    //                                new ExecutionRequest(
-                    //                                        queryId, "ir_plan_" + queryId,
-                    // logicalPlan, physicalPlan);
-                    //                        long startTime = System.currentTimeMillis();
-                    //                        StreamIterator<IrResult.Record> resultIterator = new
-                    // StreamIterator<>();
-                    //                        client1.submit(
-                    //                                request,
-                    //                                new ExecutionResponseListener() {
-                    //                                    @Override
-                    //                                    public void onNext(IrResult.Record record)
-                    // {
-                    //                                        try {
-                    //                                            resultIterator.putData(record);
-                    //                                        } catch (Exception e) {
-                    //                                            throw new RuntimeException(e);
-                    //                                        }
-                    //                                    }
-                    //
-                    //                                    @Override
-                    //                                    public void onCompleted() {
-                    //                                        try {
-                    //                                            resultIterator.finish();
-                    //                                        } catch (Exception e) {
-                    //                                            throw new RuntimeException(e);
-                    //                                        }
-                    //                                    }
-                    //
-                    //                                    @Override
-                    //                                    public void onError(Throwable t) {
-                    //                                        resultIterator.fail(t);
-                    //                                    }
-                    //                                },
-                    //                                new QueryTimeoutConfig(
-                    //
-                    // FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
-                    //                        StringBuilder resultBuilder = new StringBuilder();
-                    //                        while (resultIterator.hasNext()) {
-                    //                            resultBuilder.append(resultIterator.next());
-                    //                            // resultIterator.next();
-                    //                        }
-                    //                        long elapsedTime = System.currentTimeMillis() -
-                    // startTime;
-                    //                        FileUtils.writeStringToFile(
-                    //                                logFile,
-                    //                                String.format(
-                    //                                        "thread num %d, execution time %d ms,
-                    // results: %s\n",
-                    //                                        workerNum, elapsedTime,
-                    // resultBuilder),
-                    //                                StandardCharsets.UTF_8,
-                    //                                true);
-                    //                        client1.close();
-                    //                    }
+                    ChannelFetcher fetcher = new HostsRpcChannelFetcher(configs);
+                    int totalNum = Integer.valueOf(System.getProperty("thread.num", "32"));
+                    for (int workerNum = 32; workerNum <= totalNum; workerNum *= 2) {
+                        configs.set(
+                                PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
+                                String.valueOf(workerNum));
+                        ExecutionClient client1 = new RpcExecutionClient(configs, fetcher);
+                        PhysicalPlan physicalPlan =
+                                new GraphRelProtoPhysicalBuilder(configs, ldbcMeta, logicalPlan)
+                                        .build();
+                        int queryId = UUID.randomUUID().hashCode();
+                        ExecutionRequest request =
+                                new ExecutionRequest(
+                                        queryId, "ir_plan_" + queryId, logicalPlan, physicalPlan);
+                        long startTime = System.currentTimeMillis();
+                        StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+                        client1.submit(
+                                request,
+                                new ExecutionResponseListener() {
+                                    @Override
+                                    public void onNext(IrResult.Record record) {
+                                        try {
+                                            resultIterator.putData(record);
+                                        } catch (Exception e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onCompleted() {
+                                        try {
+                                            resultIterator.finish();
+                                        } catch (Exception e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onError(Throwable t) {
+                                        resultIterator.fail(t);
+                                    }
+                                },
+                                new QueryTimeoutConfig(
+                                        FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+                        StringBuilder resultBuilder = new StringBuilder();
+                        while (resultIterator.hasNext()) {
+                            resultBuilder.append(resultIterator.next());
+                            // resultIterator.next();
+                        }
+                        long elapsedTime = System.currentTimeMillis() - startTime;
+                        FileUtils.writeStringToFile(
+                                logFile,
+                                String.format(
+                                        "thread num %d, execution time %d ms, results: %s\n",
+                                        workerNum, elapsedTime, resultBuilder),
+                                StandardCharsets.UTF_8,
+                                true);
+                        client1.close();
+                    }
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
                             logFile,
@@ -963,7 +957,7 @@ public class RandomPickPlanTest {
             }
 
             boolean valid() {
-                return personAsSource && joinCount == 1;
+                return personAsSource;
             }
         }
     }

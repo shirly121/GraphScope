@@ -14,7 +14,7 @@ public class PlannerConfig {
             Config.stringConfig(
                     "graph.planner.rules",
                     "FilterIntoJoinRule, FilterMatchRule, NotMatchToAntiJoinRule,"
-                        + " ExtendIntersectRule, JoinDecompositionRule, ExpandGetVFusionRule");
+                            + " ExtendIntersectRule, JoinDecompositionRule, ExpandGetVFusionRule");
     public static final Config<Integer> GRAPH_PLANNER_CBO_GLOGUE_SIZE =
             Config.intConfig("graph.planner.cbo.glogue.size", 3);
     public static final Config<String> GRAPH_PLANNER_CBO_GLOGUE_SCHEMA =
