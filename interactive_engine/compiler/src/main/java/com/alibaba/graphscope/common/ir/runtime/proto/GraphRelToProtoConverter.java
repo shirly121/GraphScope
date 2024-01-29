@@ -225,7 +225,9 @@ public class GraphRelToProtoConverter extends GraphRelVisitor {
         }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setPath(pathExpandBuilder));
-
+        if (isPartitioned) {
+            addRepartitionToAnother(pxd.getStartAlias().getAliasId());
+        }
         physicalBuilder.addPlan(oprBuilder.build());
         return pxd;
     }
