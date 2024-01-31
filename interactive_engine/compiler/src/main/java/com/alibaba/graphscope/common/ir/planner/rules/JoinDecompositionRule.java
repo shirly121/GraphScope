@@ -287,7 +287,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             if (maxHop >= config.getMinPatternSize() - 1) {
                 for (int i = 0; i <= minHop; ++i) {
                     for (int j = 1; j <= maxHop - 1; ++j) {
-                        if (i <= j) {
+                        if (i <= j && (minHop - i) <= (maxHop - j)) {
                             // split the path expand into two path expands
                             // probe part: [i, j]
                             // build part: [minHop - i, maxHop - j]

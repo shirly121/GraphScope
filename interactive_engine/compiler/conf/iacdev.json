@@ -28,8 +28,36 @@
   "relations": [
     {
       "label": {
-        "id": 4,
+        "id": 6,
         "name": "p2p_social"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "person"
+          },
+          "dst": {
+            "id": 1,
+            "name": "person"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "key": {
+            "id": 3,
+            "name": "info"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 5,
+        "name": "p2p_phonebook"
       },
       "entity_pairs": [
         {

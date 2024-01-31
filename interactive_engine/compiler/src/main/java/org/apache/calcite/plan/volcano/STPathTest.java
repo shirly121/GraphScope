@@ -80,6 +80,7 @@ public class STPathTest {
         private final Cluster cluster;
         private final Client gremlinClient;
         private final int limit;
+        private final List<Integer> skipPlanIds;
 
         public STTest() throws Exception {
             configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
@@ -92,7 +93,7 @@ public class STPathTest {
             optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
             ldbcMeta = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs)).fetch().get();
             client = ExecutionClient.Factory.create(configs, new HostsRpcChannelFetcher(configs));
-            limit = Integer.valueOf(System.getProperty("limit", "10"));
+            limit = Integer.valueOf(System.getProperty("limit", "1"));
             int gremlinPort = Integer.valueOf(System.getProperty("gremlin.port", "12312"));
             AuthProperties authProperties = new AuthProperties();
             authProperties
@@ -105,6 +106,11 @@ public class STPathTest {
                             .authProperties(authProperties)
                             .create();
             gremlinClient = cluster.connect();
+            String skipPlans = System.getProperty("skip.plans", "");
+            skipPlanIds =
+                    Utils.convertDotString(skipPlans).stream()
+                            .map(Integer::valueOf)
+                            .collect(Collectors.toList());
         }
 
         public void close() throws Exception {
@@ -138,27 +144,18 @@ public class STPathTest {
         }
 
         private List<String> getRandomPersonIds() {
-            String query = String.format("g.V().hasLabel('person').limit(%s).values('id')", limit);
+            String personId =
+                    System.getProperty("person.id", "6b715e27848807653966ff7ce6e1b98fP01");
+            String query =
+                    String.format(
+                            "g.V().has('person', 'id', '%s').both().limit(%s).values('id')",
+                            personId, limit);
             ResultSet results = gremlinClient.submit(query);
             List<String> ids = Lists.newArrayList();
             for (Result result : results) {
                 ids.add("\"" + result.getString() + "\"");
             }
             return ids;
-            //            List<String> idList = new ArrayList<>();
-            //            try (BufferedReader reader =
-            //                    new BufferedReader(new FileReader(System.getProperty("ids",
-            // "ids")))) {
-            //                String line;
-            //                while ((line = reader.readLine()) != null) {
-            //                    // Assuming each line contains a single ID
-            //                    idList.add("\"" + line.trim() + "\"");
-            //                }
-            //            } catch (IOException e) {
-            //                throw new RuntimeException(e);
-            //            }
-            //
-            //            return idList;
         }
 
         private void execute_one_query(
@@ -196,73 +193,80 @@ public class STPathTest {
                         PhysicalPlan physicalPlan =
                                 new GraphRelProtoPhysicalBuilder(configs, ldbcMeta, logicalPlan)
                                         .build();
+                        ChannelFetcher fetcher = new HostsRpcChannelFetcher(configs);
+                        int workerNum = 32;
+                        configs.set(
+                                PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
+                                String.valueOf(workerNum));
+                        ExecutionClient client1 = new RpcExecutionClient(configs, fetcher);
+                        int queryId = UUID.randomUUID().hashCode();
+                        FileUtils.writeStringToFile(
+                                logFile,
+                                String.format("logical plan %d: %s\n", i, logicalExplain),
+                                StandardCharsets.UTF_8,
+                                true);
+                        FileUtils.writeStringToFile(
+                                new File("physical.log"),
+                                String.format(
+                                        "plan id: %d, query id: %d, physical plan: %s\n",
+                                        i, queryId, physicalPlan.explain()),
+                                StandardCharsets.UTF_8,
+                                true);
+                        if (skipPlanIds.contains(i++)) {
+                            FileUtils.writeStringToFile(
+                                    logFile,
+                                    "skip current logical plan\n",
+                                    StandardCharsets.UTF_8,
+                                    true);
+                            continue;
+                        }
+                        ExecutionRequest request =
+                                new ExecutionRequest(
+                                        queryId, "ir_plan_" + queryId, logicalPlan, physicalPlan);
+                        long startTime = System.currentTimeMillis();
+                        StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+                        client1.submit(
+                                request,
+                                new ExecutionResponseListener() {
+                                    @Override
+                                    public void onNext(IrResult.Record record) {
+                                        try {
+                                            resultIterator.putData(record);
+                                        } catch (Exception e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onCompleted() {
+                                        try {
+                                            resultIterator.finish();
+                                        } catch (Exception e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onError(Throwable t) {
+                                        resultIterator.fail(t);
+                                    }
+                                },
+                                new QueryTimeoutConfig(
+                                        FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+                        StringBuilder resultBuilder = new StringBuilder();
+                        while (resultIterator.hasNext()) {
+                            resultBuilder.append(resultIterator.next());
+                            // resultIterator.next();
+                        }
+                        long elapsedTime = System.currentTimeMillis() - startTime;
                         FileUtils.writeStringToFile(
                                 logFile,
                                 String.format(
-                                        "logical plan %d: %s\n physical plan %s\n",
-                                        i++, logicalExplain, physicalPlan.explain()),
+                                        "thread num %d, execution time %d ms, results: %s\n",
+                                        workerNum, elapsedTime, resultBuilder),
                                 StandardCharsets.UTF_8,
                                 true);
-                        ChannelFetcher fetcher = new HostsRpcChannelFetcher(configs);
-                        int totalNum = Integer.valueOf(System.getProperty("thread.num", "32"));
-                        for (int workerNum = 2; workerNum <= totalNum; workerNum *= 2) {
-                            configs.set(
-                                    PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
-                                    String.valueOf(workerNum));
-                            ExecutionClient client1 = new RpcExecutionClient(configs, fetcher);
-                            int queryId = UUID.randomUUID().hashCode();
-                            ExecutionRequest request =
-                                    new ExecutionRequest(
-                                            queryId,
-                                            "ir_plan_" + queryId,
-                                            logicalPlan,
-                                            physicalPlan);
-                            long startTime = System.currentTimeMillis();
-                            StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
-                            client1.submit(
-                                    request,
-                                    new ExecutionResponseListener() {
-                                        @Override
-                                        public void onNext(IrResult.Record record) {
-                                            try {
-                                                resultIterator.putData(record);
-                                            } catch (Exception e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-
-                                        @Override
-                                        public void onCompleted() {
-                                            try {
-                                                resultIterator.finish();
-                                            } catch (Exception e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        }
-
-                                        @Override
-                                        public void onError(Throwable t) {
-                                            resultIterator.fail(t);
-                                        }
-                                    },
-                                    new QueryTimeoutConfig(
-                                            FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(
-                                                    configs)));
-                            StringBuilder resultBuilder = new StringBuilder();
-                            while (resultIterator.hasNext()) {
-                                resultBuilder.append(resultIterator.next());
-                                // resultIterator.next();
-                            }
-                            long elapsedTime = System.currentTimeMillis() - startTime;
-                            FileUtils.writeStringToFile(
-                                    logFile,
-                                    String.format(
-                                            "thread num %d, execution time %d ms, results: %s\n",
-                                            workerNum, elapsedTime, resultBuilder),
-                                    StandardCharsets.UTF_8,
-                                    true);
-                            client1.close();
-                        }
+                        client1.close();
                     } catch (Exception e) {
                         FileUtils.writeStringToFile(
                                 logFile,

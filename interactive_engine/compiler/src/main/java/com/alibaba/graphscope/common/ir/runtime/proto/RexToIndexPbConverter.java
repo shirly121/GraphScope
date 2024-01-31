@@ -39,6 +39,7 @@ public class RexToIndexPbConverter extends RexVisitorImpl<GraphAlgebra.IndexPred
     @Override
     public GraphAlgebra.IndexPredicate visitCall(RexCall call) {
         GraphAlgebra.IndexPredicate.Builder indexBuilder = GraphAlgebra.IndexPredicate.newBuilder();
+        call = (RexCall) RexUtil.expandSearch(rexBuilder, null, call);
         for (RexNode disjunction : RelOptUtil.disjunctions(call)) {
             if (disjunction instanceof RexCall) {
                 indexBuilder.addOrPredicates(

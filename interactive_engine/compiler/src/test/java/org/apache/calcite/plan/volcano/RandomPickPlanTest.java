@@ -1,5 +1,7 @@
 package org.apache.calcite.plan.volcano;
 
+import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
+
 import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.RpcExecutionClient;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
@@ -30,6 +32,7 @@ import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.pegasus.common.StreamIterator;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.*;
+
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -51,8 +54,6 @@ import java.security.SecureRandom;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 public class RandomPickPlanTest {
     private static Configs configs;

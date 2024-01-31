@@ -45,11 +45,11 @@ public class LdbcTest {
                                 "FilterMatchRule, ExtendIntersectRule,"
                                         + " JoinDecompositionRule, ExpandGetVFusionRule",
                                 "graph.planner.cbo.glogue.schema",
-                                "conf/ldbc30_statistics.txt",
+                                "conf/iacdev_statistics.txt",
                                 "graph.planner.join.min.pattern.size",
                                 "4"));
         optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
-        ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
+        ldbcMeta = Utils.mockSchemaMeta("schema/iacdev.json");
         builder = createGraphBuilder(optimizer, ldbcMeta);
     }
 
@@ -248,11 +248,8 @@ public class LdbcTest {
     @Test
     public void case_study_test_2() throws Exception {
         String query =
-                "MATCH (p:PERSON)\n"
-                        + "WITH COUNT(p) as cnt\n"
-                        + "MATCH (p:PERSON)-[:KNOWS]->(a:PERSON),\n"
-                        + " (a)-[:KNOWS]->(t: PERSON)\n"
-                        + "RETURN t.id, COUNT(p) / cnt";
+                "Match (p1:person {id: 1})-[:p2p_social*4..5]->(p2:person {id: 2})\n"
+                        + "Return count(p1);";
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         RelNode after = optimizer.optimize(node, new GraphIOProcessor(builder, ldbcMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
