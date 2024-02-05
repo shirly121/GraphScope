@@ -45,11 +45,11 @@ public class LdbcTest {
                                 "FilterMatchRule, ExtendIntersectRule,"
                                         + " JoinDecompositionRule, ExpandGetVFusionRule",
                                 "graph.planner.cbo.glogue.schema",
-                                "conf/iacdev_statistics.txt",
+                                "conf/ldbc30_statistics.txt",
                                 "graph.planner.join.min.pattern.size",
                                 "4"));
         optimizer = new GraphRelOptimizer(new PlannerConfig(configs));
-        ldbcMeta = Utils.mockSchemaMeta("schema/iacdev.json");
+        ldbcMeta = Utils.mockSchemaMeta("schema/ldbc.json");
         builder = createGraphBuilder(optimizer, ldbcMeta);
     }
 

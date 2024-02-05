@@ -3,12 +3,13 @@ package org.apache.calcite.plan.volcano;
 import static com.alibaba.graphscope.common.ir.glogue.LdbcTest.createGraphBuilder;
 
 import com.alibaba.graphscope.common.client.ExecutionClient;
-import com.alibaba.graphscope.common.client.RpcExecutionClient;
-import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.client.channel.HostsRpcChannelFetcher;
 import com.alibaba.graphscope.common.client.type.ExecutionRequest;
 import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
-import com.alibaba.graphscope.common.config.*;
+import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.FrontendConfig;
+import com.alibaba.graphscope.common.config.PlannerConfig;
+import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.ir.meta.reader.LocalMetaDataReader;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
@@ -19,6 +20,7 @@ import com.alibaba.graphscope.common.ir.rel.GraphRelVisitor;
 import com.alibaba.graphscope.common.ir.rel.graph.match.AbstractLogicalMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
@@ -220,6 +222,924 @@ public class RandomPickPlanTest {
     }
 
     @Test
+    public void run_ldbc_2_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_2"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 1939, "date", 20130301000000000L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_2",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean hasJoin;
+                                            private boolean personWithFilter;
+                                            private boolean personWithoutFilter;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return personWithFilter
+                                                        && personWithoutFilter
+                                                        && hasJoin;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0) {
+                                                            personWithFilter = true;
+                                                        }
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        == 0) {
+                                                            personWithoutFilter = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    hasJoin = true;
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_ldbc_4_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_4"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of(
+                        "id", 168944,
+                        "date1", 20100111014617581L,
+                        "date2", 20130604130807720L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_4",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean hasJoin;
+                                            private boolean personWithFilter;
+                                            private boolean postWithFilter;
+                                            private boolean joinAtTop = true;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return personWithFilter
+                                                        && hasJoin
+                                                        && joinAtTop
+                                                        && postWithFilter;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0) {
+                                                            personWithFilter = true;
+                                                        }
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 3
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0) {
+                                                            postWithFilter = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    hasJoin = true;
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    if (hasJoin) {
+                                                        joinAtTop = false;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_ldbc_7_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_7"), StandardCharsets.UTF_8);
+        Map<String, Object> params = ImmutableMap.of("id", 2199023382370L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_7",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean hasJoin;
+                                            private boolean personWithFilter = true;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return hasJoin && personWithFilter;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (!((singleVertex
+                                                                                .getVertexTypeIds()
+                                                                                .get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0))) {
+                                                            personWithFilter = false;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    hasJoin = true;
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_ldbc_9_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_9"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of("id", 2199023382370L, "date", 20130301000000000L);
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_9",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean hasJoin;
+                                            private boolean personWithFilter;
+                                            private boolean personWithoutFilter;
+                                            private boolean joinAtTop = true;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return personWithFilter
+                                                        && hasJoin
+                                                        && personWithoutFilter
+                                                        && joinAtTop;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0) {
+                                                            personWithFilter = true;
+                                                        }
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        == 0) {
+                                                            personWithoutFilter = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    hasJoin = true;
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    if (hasJoin) {
+                                                        joinAtTop = false;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_ldbc_12_test() throws Exception {
+        String template =
+                FileUtils.readFileToString(
+                        new File("queries/ldbc_templates/query_12"), StandardCharsets.UTF_8);
+        Map<String, Object> params =
+                ImmutableMap.of("id", 2199023382370L, "class", "\"Organisation\"");
+        String query = StringSubstitutor.replace(template, params, "$_", "_");
+        execute_one_query(
+                "ldbc_12",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private int joinCount = 0;
+                                            private boolean personWithFilter;
+                                            private boolean tagWithFilter;
+                                            private boolean joinAtTop = true;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return personWithFilter
+                                                        && joinCount == 1
+                                                        && tagWithFilter
+                                                        && joinAtTop;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 1
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0) {
+                                                            personWithFilter = true;
+                                                        }
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                        == 6
+                                                                && Double.compare(
+                                                                                singleVertex
+                                                                                        .getDetails()
+                                                                                        .getSelectivity(),
+                                                                                1.0d)
+                                                                        < 0) {
+                                                            tagWithFilter = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    GraphJoinDecomposition join =
+                                                            (GraphJoinDecomposition) node;
+                                                    if (join.getJoinVertexPairs().stream()
+                                                            .allMatch(
+                                                                    k -> {
+                                                                        PatternVertex vertex =
+                                                                                join.getProbePattern()
+                                                                                        .getVertexByOrder(
+                                                                                                k
+                                                                                                        .getLeftOrderId());
+                                                                        return vertex.getVertexTypeIds()
+                                                                                        .get(0)
+                                                                                == 1;
+                                                                    })) {
+                                                        ++joinCount;
+                                                    }
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    if (joinCount > 0) {
+                                                        joinAtTop = false;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_cbo_1_1_test() throws Exception {
+        String query =
+                FileUtils.readFileToString(
+                        new File("queries/cbo/query_1_1"), StandardCharsets.UTF_8);
+        execute_one_query(
+                "cbo_1_1",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean hasJoin;
+                                            private boolean personAsSource = true;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return hasJoin && personAsSource;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                != 1) {
+                                                            personAsSource = false;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    hasJoin = true;
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_cbo_2_1_test() throws Exception {
+        String query =
+                FileUtils.readFileToString(
+                        new File("queries/cbo/query_2_1"), StandardCharsets.UTF_8);
+        execute_one_query(
+                "cbo_2_1",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private int joinCount;
+                                            private boolean joinAtTop = true;
+                                            private boolean personAsSource = true;
+                                            private boolean likesBeforeCreator;
+                                            private boolean hasLikes;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return joinCount == 1
+                                                        && joinAtTop
+                                                        && personAsSource
+                                                        && likesBeforeCreator;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                != 1) {
+                                                            personAsSource = false;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    GraphJoinDecomposition join =
+                                                            (GraphJoinDecomposition) node;
+                                                    if (join.getJoinVertexPairs().size() == 2
+                                                            && join.getJoinVertexPairs().stream()
+                                                                    .allMatch(
+                                                                            k -> {
+                                                                                PatternVertex
+                                                                                        vertex =
+                                                                                                join.getProbePattern()
+                                                                                                        .getVertexByOrder(
+                                                                                                                k
+                                                                                                                        .getLeftOrderId());
+                                                                                return vertex.getVertexTypeIds()
+                                                                                                .get(
+                                                                                                        0)
+                                                                                        == 1;
+                                                                            })) {
+                                                        ++joinCount;
+                                                    }
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    if (joinCount > 0) {
+                                                        joinAtTop = false;
+                                                    }
+                                                    GraphExtendIntersect intersect =
+                                                            (GraphExtendIntersect) node;
+                                                    ExtendEdge edge =
+                                                            intersect
+                                                                    .getGlogueEdge()
+                                                                    .getExtendStep()
+                                                                    .getExtendEdges()
+                                                                    .get(0);
+                                                    if (edge.getEdgeTypeId().getEdgeLabelId()
+                                                            == 13) {
+                                                        hasLikes = true;
+                                                    } else if (hasLikes
+                                                            && edge.getEdgeTypeId().getEdgeLabelId()
+                                                                    == 0) {
+                                                        likesBeforeCreator = true;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_cbo_2_3_test() throws Exception {
+        String query =
+                FileUtils.readFileToString(
+                        new File("queries/cbo/query_2_3"), StandardCharsets.UTF_8);
+        execute_one_query(
+                "cbo_2_3",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean intersectAtPost;
+                                            private boolean forumAsSource;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return forumAsSource && intersectAtPost;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                == 4) {
+                                                            forumAsSource = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    GraphExtendIntersect intersect =
+                                                            (GraphExtendIntersect) node;
+                                                    PatternVertex dstVertex =
+                                                            intersect
+                                                                    .getGlogueEdge()
+                                                                    .getDstPattern()
+                                                                    .getVertexByOrder(
+                                                                            intersect
+                                                                                    .getGlogueEdge()
+                                                                                    .getExtendStep()
+                                                                                    .getTargetVertexOrder());
+                                                    if (intersect
+                                                                            .getGlogueEdge()
+                                                                            .getExtendStep()
+                                                                            .getExtendEdges()
+                                                                            .size()
+                                                                    == 2
+                                                            && dstVertex.getVertexTypeIds().get(0)
+                                                                    == 3) {
+                                                        intersectAtPost = true;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_cbo_3_1_test() throws Exception {
+        String query =
+                FileUtils.readFileToString(
+                        new File("queries/cbo/query_3_1"), StandardCharsets.UTF_8);
+        execute_one_query(
+                "cbo_3_1",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private int joinCount;
+                                            private boolean hasJoin;
+                                            private boolean joinAtTop = true;
+                                            private boolean forumAsSource;
+                                            private boolean personAsSource;
+                                            private boolean containerOfFromForum;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return joinAtTop
+                                                        && joinCount == 1
+                                                        && personAsSource
+                                                        && forumAsSource
+                                                        && hasJoin
+                                                        && containerOfFromForum;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                == 1) {
+                                                            personAsSource = true;
+                                                        } else if (singleVertex
+                                                                        .getVertexTypeIds()
+                                                                        .get(0)
+                                                                == 4) {
+                                                            forumAsSource = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    GraphJoinDecomposition join =
+                                                            (GraphJoinDecomposition) node;
+                                                    ++joinCount;
+                                                    if (join.getJoinVertexPairs().stream()
+                                                            .allMatch(
+                                                                    k -> {
+                                                                        PatternVertex vertex =
+                                                                                join.getProbePattern()
+                                                                                        .getVertexByOrder(
+                                                                                                k
+                                                                                                        .getLeftOrderId());
+                                                                        return vertex.getVertexTypeIds()
+                                                                                        .get(0)
+                                                                                == 4;
+                                                                    })) {
+                                                        hasJoin = true;
+                                                    }
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    if (hasJoin) {
+                                                        joinAtTop = false;
+                                                    }
+                                                    ExtendEdge edge =
+                                                            ((GraphExtendIntersect) node)
+                                                                    .getGlogueEdge()
+                                                                    .getExtendStep()
+                                                                    .getExtendEdges()
+                                                                    .get(0);
+                                                    if (edge.getEdgeTypeId().getEdgeLabelId()
+                                                            == 5) {
+                                                        PatternVertex startVertex =
+                                                                ((GraphExtendIntersect) node)
+                                                                        .getGlogueEdge()
+                                                                        .getSrcPattern()
+                                                                        .getVertexByOrder(
+                                                                                edge
+                                                                                        .getSrcVertexOrder());
+                                                        if (startVertex.getVertexTypeIds().get(0)
+                                                                == 4) {
+                                                            containerOfFromForum = true;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_cbo_4_1_test() throws Exception {
+        String query =
+                FileUtils.readFileToString(
+                        new File("queries/cbo/query_4_1"), StandardCharsets.UTF_8);
+        execute_one_query(
+                "cbo_4_1",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean personAsSource = true;
+                                            private boolean joinAtPersons;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return joinAtPersons && personAsSource;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (singleVertex.getVertexTypeIds().get(0)
+                                                                != 1) {
+                                                            personAsSource = false;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    GraphJoinDecomposition join =
+                                                            (GraphJoinDecomposition) node;
+                                                    if (join.getJoinVertexPairs().size() == 2
+                                                            && join.getJoinVertexPairs().stream()
+                                                                    .allMatch(
+                                                                            k -> {
+                                                                                PatternVertex
+                                                                                        vertex =
+                                                                                                join.getProbePattern()
+                                                                                                        .getVertexByOrder(
+                                                                                                                k
+                                                                                                                        .getLeftOrderId());
+                                                                                return vertex.getVertexTypeIds()
+                                                                                                .get(
+                                                                                                        0)
+                                                                                        == 1;
+                                                                            })) {
+                                                        joinAtPersons = true;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
+    public void run_cbo_4_3_test() throws Exception {
+        String query =
+                FileUtils.readFileToString(
+                        new File("queries/cbo/query_4_3"), StandardCharsets.UTF_8);
+        execute_one_query(
+                "cbo_4_3",
+                query,
+                new Function<GraphIOProcessor, GraphRelVisitor>() {
+                    @Override
+                    public GraphRelVisitor apply(GraphIOProcessor ioProcessor) {
+                        return new NonOptimizer(
+                                ioProcessor,
+                                (VolcanoPlanner) optimizer.getMatchPlanner(),
+                                () ->
+                                        new NonOptVisitor() {
+                                            private boolean personAsSource = true;
+                                            private boolean joinAtPersons;
+                                            private boolean intersectAtPersonPost;
+
+                                            @Override
+                                            public boolean valid() {
+                                                return joinAtPersons
+                                                        && intersectAtPersonPost
+                                                        && personAsSource;
+                                            }
+
+                                            @Override
+                                            public void visit(
+                                                    RelNode node,
+                                                    int ordinal,
+                                                    @Nullable RelNode parent) {
+                                                super.visit(node, ordinal, parent);
+                                                if (node instanceof GraphPattern) {
+                                                    GraphPattern pattern = (GraphPattern) node;
+                                                    if (pattern.getPattern().getVertexNumber()
+                                                            == 1) {
+                                                        PatternVertex singleVertex =
+                                                                pattern.getPattern()
+                                                                        .getVertexSet()
+                                                                        .iterator()
+                                                                        .next();
+                                                        if (!singleVertex.isDistinct()
+                                                                || singleVertex
+                                                                                .getVertexTypeIds()
+                                                                                .get(0)
+                                                                        != 1) {
+                                                            personAsSource = false;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphJoinDecomposition) {
+                                                    GraphJoinDecomposition join =
+                                                            (GraphJoinDecomposition) node;
+                                                    if (join.getJoinVertexPairs().size() == 2) {
+                                                        PatternVertex v1 =
+                                                                join.getProbePattern()
+                                                                        .getVertexByOrder(
+                                                                                join.getJoinVertexPairs()
+                                                                                        .get(0)
+                                                                                        .getLeftOrderId());
+                                                        PatternVertex v2 =
+                                                                join.getProbePattern()
+                                                                        .getVertexByOrder(
+                                                                                join.getJoinVertexPairs()
+                                                                                        .get(1)
+                                                                                        .getLeftOrderId());
+                                                        if (v1.isDistinct()
+                                                                        && v1.getVertexTypeIds()
+                                                                                        .get(0)
+                                                                                == 1
+                                                                        && v2.isDistinct()
+                                                                        && v2.getVertexTypeIds()
+                                                                                        .get(0)
+                                                                                == 7
+                                                                || v1.isDistinct()
+                                                                        && v1.getVertexTypeIds()
+                                                                                        .get(0)
+                                                                                == 7
+                                                                        && v2.isDistinct()
+                                                                        && v2.getVertexTypeIds()
+                                                                                        .get(0)
+                                                                                == 1) {
+                                                            joinAtPersons = true;
+                                                        }
+                                                    }
+                                                } else if (node instanceof GraphExtendIntersect) {
+                                                    GraphExtendIntersect intersect =
+                                                            (GraphExtendIntersect) node;
+                                                    PatternVertex dstVertex =
+                                                            intersect
+                                                                    .getGlogueEdge()
+                                                                    .getDstPattern()
+                                                                    .getVertexByOrder(
+                                                                            intersect
+                                                                                    .getGlogueEdge()
+                                                                                    .getExtendStep()
+                                                                                    .getTargetVertexOrder());
+                                                    if (intersect
+                                                                            .getGlogueEdge()
+                                                                            .getExtendStep()
+                                                                            .getExtendEdges()
+                                                                            .size()
+                                                                    == 3
+                                                            && !dstVertex.isDistinct()
+                                                            && dstVertex.getVertexTypeIds().stream()
+                                                                    .allMatch(
+                                                                            k ->
+                                                                                    k == 1
+                                                                                            || k
+                                                                                                    == 3)) {
+                                                        intersectAtPersonPost = true;
+                                                    }
+                                                }
+                                            }
+                                        });
+                    }
+                });
+    }
+
+    @Test
     public void run_case_study_test() throws Exception {
         String query =
                 "Match (p1:PERSON {id: $_id_})-[:KNOWS*1..5]->(p2:PERSON {id: $_id_}) Return"
@@ -278,65 +1198,56 @@ public class RandomPickPlanTest {
                             String.format("logical plan %d: %s\n", i++, logicalExplain),
                             StandardCharsets.UTF_8,
                             true);
-                    ChannelFetcher fetcher = new HostsRpcChannelFetcher(configs);
-                    int totalNum = Integer.valueOf(System.getProperty("thread.num", "32"));
-                    for (int workerNum = 32; workerNum <= totalNum; workerNum *= 2) {
-                        configs.set(
-                                PegasusConfig.PEGASUS_WORKER_NUM.getKey(),
-                                String.valueOf(workerNum));
-                        ExecutionClient client1 = new RpcExecutionClient(configs, fetcher);
-                        PhysicalPlan physicalPlan =
-                                new GraphRelProtoPhysicalBuilder(configs, ldbcMeta, logicalPlan)
-                                        .build();
-                        int queryId = UUID.randomUUID().hashCode();
-                        ExecutionRequest request =
-                                new ExecutionRequest(
-                                        queryId, "ir_plan_" + queryId, logicalPlan, physicalPlan);
-                        long startTime = System.currentTimeMillis();
-                        StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
-                        client1.submit(
-                                request,
-                                new ExecutionResponseListener() {
-                                    @Override
-                                    public void onNext(IrResult.Record record) {
-                                        try {
-                                            resultIterator.putData(record);
-                                        } catch (Exception e) {
-                                            throw new RuntimeException(e);
-                                        }
+                    PhysicalPlan physicalPlan =
+                            new GraphRelProtoPhysicalBuilder(configs, ldbcMeta, logicalPlan)
+                                    .build();
+                    int queryId = UUID.randomUUID().hashCode();
+                    ExecutionRequest request =
+                            new ExecutionRequest(
+                                    queryId, "ir_plan_" + queryId, logicalPlan, physicalPlan);
+                    long startTime = System.currentTimeMillis();
+                    StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+                    client.submit(
+                            request,
+                            new ExecutionResponseListener() {
+                                @Override
+                                public void onNext(IrResult.Record record) {
+                                    try {
+                                        resultIterator.putData(record);
+                                    } catch (Exception e) {
+                                        throw new RuntimeException(e);
                                     }
+                                }
 
-                                    @Override
-                                    public void onCompleted() {
-                                        try {
-                                            resultIterator.finish();
-                                        } catch (Exception e) {
-                                            throw new RuntimeException(e);
-                                        }
+                                @Override
+                                public void onCompleted() {
+                                    try {
+                                        resultIterator.finish();
+                                    } catch (Exception e) {
+                                        throw new RuntimeException(e);
                                     }
+                                }
 
-                                    @Override
-                                    public void onError(Throwable t) {
-                                        resultIterator.fail(t);
-                                    }
-                                },
-                                new QueryTimeoutConfig(
-                                        FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
-                        StringBuilder resultBuilder = new StringBuilder();
-                        while (resultIterator.hasNext()) {
-                            resultBuilder.append(resultIterator.next());
-                            // resultIterator.next();
-                        }
-                        long elapsedTime = System.currentTimeMillis() - startTime;
-                        FileUtils.writeStringToFile(
-                                logFile,
-                                String.format(
-                                        "thread num %d, execution time %d ms, results: %s\n",
-                                        workerNum, elapsedTime, resultBuilder),
-                                StandardCharsets.UTF_8,
-                                true);
-                        client1.close();
+                                @Override
+                                public void onError(Throwable t) {
+                                    resultIterator.fail(t);
+                                }
+                            },
+                            new QueryTimeoutConfig(
+                                    FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+                    StringBuilder resultBuilder = new StringBuilder();
+                    while (resultIterator.hasNext()) {
+                        resultBuilder.append(resultIterator.next());
+                        // resultIterator.next();
                     }
+                    long elapsedTime = System.currentTimeMillis() - startTime;
+                    FileUtils.writeStringToFile(
+                            logFile,
+                            String.format(
+                                    "execution time %d ms, results: %s\n",
+                                    elapsedTime, resultBuilder),
+                            StandardCharsets.UTF_8,
+                            true);
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
                             logFile,
@@ -705,6 +1616,104 @@ public class RandomPickPlanTest {
                                 && personAsSource
                         || (queryId == 1 && placeAsSource);
             }
+        }
+    }
+
+    private abstract class NonOptVisitor extends RelVisitor {
+        public abstract boolean valid();
+    }
+
+    private interface NonOptVisitorFactory {
+        NonOptVisitor create();
+    }
+
+    private class NonOptimizer extends GraphRelVisitor {
+        private final GraphIOProcessor ioProcessor;
+        private final VolcanoPlanner matchPlanner;
+        private final NonOptVisitorFactory visitorFactory;
+
+        public NonOptimizer(
+                GraphIOProcessor ioProcessor,
+                VolcanoPlanner matchPlanner,
+                NonOptVisitorFactory visitorFactory) {
+            this.ioProcessor = ioProcessor;
+            this.matchPlanner = matchPlanner;
+            this.matchPlanner.allSets.clear();
+            this.visitorFactory = visitorFactory;
+        }
+
+        @Override
+        public RelNode visit(GraphLogicalSingleMatch match) {
+            return findBestWithNonOpt(match);
+        }
+
+        @Override
+        public RelNode visit(GraphLogicalMultiMatch match) {
+            return findBestWithNonOpt(match);
+        }
+
+        @Override
+        protected RelNode visitChild(RelNode parent, int i, RelNode child) {
+            RelNode var6;
+            RelNode child2 = child.accept(this);
+            if (child2 instanceof RelNodeList) {
+                List<RelNode> newRels =
+                        ((RelNodeList) child2)
+                                .rels.stream()
+                                        .map(
+                                                k -> {
+                                                    if (k == child) {
+                                                        return parent;
+                                                    } else {
+                                                        List<RelNode> newInputs =
+                                                                new ArrayList(parent.getInputs());
+                                                        newInputs.set(i, k);
+                                                        return parent.copy(
+                                                                parent.getTraitSet(), newInputs);
+                                                    }
+                                                })
+                                        .collect(Collectors.toList());
+                var6 = new RelNodeList(parent.getCluster(), parent.getTraitSet(), newRels);
+            } else {
+                if (child2 == child) {
+                    RelNode var10 = parent;
+                    return var10;
+                }
+
+                List<RelNode> newInputs = new ArrayList(parent.getInputs());
+                newInputs.set(i, child2);
+                var6 = parent.copy(parent.getTraitSet(), newInputs);
+            }
+            return var6;
+        }
+
+        private RelNode findBestWithNonOpt(AbstractLogicalMatch match) {
+            matchPlanner.setRoot(ioProcessor.processInput(match));
+            RelNode best = matchPlanner.findBestExp();
+            List<RelNode> allRels = Lists.newArrayList();
+            Ordering<RelSet> ordering = Ordering.from(Comparator.comparingInt(o -> o.id));
+            ImmutableList<RelSet> allSets = ordering.immutableSortedCopy(matchPlanner.allSets);
+            RelSet rootSet = allSets.get(0);
+            // add best
+            // allRels.add(best);
+            // add non opt plans with specific pattern
+            List<RelNode> nonOptPlans =
+                    enumeratePlans(matchPlanner, rootSet).stream()
+                            .filter(
+                                    k -> {
+                                        NonOptVisitor visitor = visitorFactory.create();
+                                        visitor.go(k);
+                                        return visitor.valid();
+                                    })
+                            .collect(Collectors.toList());
+            int pickCount = Integer.valueOf(System.getProperty("pick.count", "1"));
+            nonOptPlans = nonOptPlans.subList(0, Math.min(pickCount, nonOptPlans.size()));
+            allRels.addAll(nonOptPlans);
+            allRels =
+                    allRels.stream()
+                            .map(k -> ioProcessor.processOutput(k))
+                            .collect(Collectors.toList());
+            return new RelNodeList(match.getCluster(), match.getTraitSet(), allRels);
         }
     }
 
