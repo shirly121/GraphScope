@@ -81,6 +81,34 @@
           "is_primary_key": false
         }
       ]
+    },
+    {
+      "label": {
+        "id": 8,
+        "name": "p2p_shopping"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "person"
+          },
+          "dst": {
+            "id": 1,
+            "name": "person"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "key": {
+            "id": 3,
+            "name": "info"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
     }
   ],
   "is_table_id": true,
