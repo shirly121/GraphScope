@@ -27,6 +27,7 @@ import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
 
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.rules.MultiJoin;
 
 /**
  * this class provides new visit method for graph rel node
@@ -82,5 +83,9 @@ public abstract class GraphShuttle extends RelShuttleImpl {
 
     public RelNode visit(CommonTableScan tableScan) {
         return tableScan;
+    }
+
+    public RelNode visit(MultiJoin multiJoin) {
+        return visitChildren(multiJoin);
     }
 }
