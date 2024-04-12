@@ -63,6 +63,7 @@ run:
 	  -Dgraph.planner.rules=${graph.planner.rules} \
 	  -Dgraph.planner.opt=${graph.planner.opt} \
 	  -Dgraph.planner.cbo.glogue.schema=${graph.planner.cbo.glogue.schema} \
+	  -Dgraph.type.inference.enabled=${graph.type.inference.enabled} \
 	  com.alibaba.graphscope.GraphServer ${config.path}
 
 # make physical_plan config.path='<path to the config file>'

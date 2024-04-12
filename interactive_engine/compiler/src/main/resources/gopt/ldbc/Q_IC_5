@@ -1,0 +1,7 @@
+MATCH (person:PERSON {id:2199023378950})-[k:KNOWS*1..3]-(other)<-[hasMember:HASMEMBER]-(forum:FORUM),
+      (other)<-[:HASCREATOR]-(post:POST)<-[:CONTAINEROF]-(forum)
+RETURN forum.title as title, forum.id as id, count(distinct post) AS postCount
+ORDER BY
+    postCount DESC,
+    id ASC
+LIMIT 20;

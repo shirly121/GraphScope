@@ -1,0 +1,368 @@
+{
+  "plan": [{
+    "opr": {
+      "scan": {
+        "alias": 2,
+        "params": {
+          "tables": [{
+            "id": 9
+          }],
+          "sampleRatio": 1.0
+        }
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 9
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }]
+        }
+      },
+      "alias": 2
+    }]
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 2,
+        "direction": "IN",
+        "params": {
+          "tables": [{
+            "id": 11
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 1
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 1
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "firstName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "lastName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "gender"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "birthday"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }]
+          }]
+        }
+      },
+      "alias": 1
+    }]
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 1,
+        "direction": "IN",
+        "params": {
+          "tables": [{
+            "id": 0
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 0
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 2
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "content"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "length"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      }
+    }]
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 0,
+        "direction": "IN",
+        "params": {
+          "tables": [{
+            "id": 3
+          }, {
+            "id": 13
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 3
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 1
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "firstName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "lastName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "gender"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "birthday"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 2
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "content"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "length"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      },
+      "alias": 3
+    }]
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 3,
+        "params": {
+          "tables": [{
+            "id": 1
+          }, {
+            "id": 10
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 4
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 7
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }]
+        }
+      },
+      "alias": 4
+    }]
+  }, {
+    "opr": {
+      "groupBy": {
+        "functions": [{
+          "vars": [{
+            "tag": {
+              "id": 4
+            },
+            "nodeType": {
+              "graphType": {
+                "graphDataType": [{
+                  "label": {
+                    "label": 7
+                  },
+                  "props": [{
+                    "propId": {
+                      "name": "id"
+                    },
+                    "type": "INT64"
+                  }, {
+                    "propId": {
+                      "name": "name"
+                    },
+                    "type": "STRING"
+                  }, {
+                    "propId": {
+                      "name": "url"
+                    },
+                    "type": "STRING"
+                  }]
+                }]
+              }
+            }
+          }],
+          "aggregate": "COUNT",
+          "alias": 5
+        }]
+      }
+    },
+    "metaData": [{
+      "type": {
+        "dataType": "INT64"
+      },
+      "alias": 5
+    }]
+  }, {
+    "opr": {
+      "sink": {
+        "sinkTarget": {
+          "sinkDefault": {
+          }
+        }
+      }
+    }
+  }]
+}
+

@@ -79,6 +79,10 @@ public class Configs implements Context {
         }
     }
 
+    public void set(String name, String value) {
+        this.properties.setProperty(name, value);
+    }
+
     public Iterator<Object> getKeys() {
         return this.properties.keys().asIterator();
     }
