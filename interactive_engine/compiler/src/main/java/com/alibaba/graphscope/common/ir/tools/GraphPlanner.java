@@ -96,8 +96,13 @@ public class GraphPlanner {
         }
 
         public Summary plan() {
+            long startTime = System.currentTimeMillis();
             LogicalPlan logicalPlan = planLogical();
-            return new Summary(logicalPlan, planPhysical(logicalPlan));
+            System.out.println("logical plan cost: " + (System.currentTimeMillis() - startTime) + " ms");
+            startTime = System.currentTimeMillis();
+            PhysicalPlan physicalPlan = planPhysical(logicalPlan);
+            System.out.println("physical plan cost: " + (System.currentTimeMillis() - startTime) + " ms");
+            return new Summary(logicalPlan, physicalPlan);
         }
 
         public LogicalPlan planLogical() {

@@ -102,16 +102,26 @@ public class GraphRelOptimizer {
         if (config.isOn()) {
             // apply rules of 'FilterPushDown' before the match optimization
             relPlanner.setRoot(before);
+            long startTime = System.currentTimeMillis();
+            // rbo
             RelNode relOptimized = relPlanner.findBestExp();
+            System.out.println("RBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
+            startTime = System.currentTimeMillis();
+
             if (config.getOpt() == PlannerConfig.Opt.CBO) {
+                // cbo
                 relOptimized = relOptimized.accept(new MatchOptimizer(ioProcessor));
+                System.out.println("CBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
+                startTime = System.currentTimeMillis();
             }
             // apply rules of 'FieldTrim' after the match optimization
             if (config.getRules().contains(FieldTrimRule.class.getSimpleName())) {
                 relOptimized = FieldTrimRule.trim(ioProcessor.getBuilder(), relOptimized);
             }
             physicalPlanner.setRoot(relOptimized);
+            // physical rbo
             RelNode physicalOptimized = physicalPlanner.findBestExp();
+            System.out.println("Physical RBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
             return physicalOptimized;
         }
         return before;
