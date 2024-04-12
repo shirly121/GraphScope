@@ -130,11 +130,11 @@ public class GraphQueryExecutor extends FabricExecutor {
             if (planSummary.getLogicalPlan().isReturnEmpty()) {
                 return StatementResults.initial();
             }
-            logger.info(
-                    "cypher query \"{}\", job conf name \"{}\", ir core logical plan {}",
-                    statement,
-                    jobName,
-                    planSummary.getPhysicalPlan().explain());
+            // logger.info(
+            //         "cypher query \"{}\", job conf name \"{}\", ir core logical plan {}",
+            //         statement,
+            //         jobName,
+            //         planSummary.getPhysicalPlan().explain());
             StatementResults.SubscribableExecution execution;
             if (cacheValue.result != null && cacheValue.result.isCompleted) {
                 execution =

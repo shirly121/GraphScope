@@ -53,6 +53,9 @@ import org.apache.calcite.rel.rules.CoreRules;
 import org.apache.calcite.rel.rules.FilterJoinRule;
 import org.apache.calcite.tools.RelBuilderFactory;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -61,6 +64,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Optimize graph relational tree which consists of match and other relational operators
  */
 public class GraphRelOptimizer {
+    private static final Logger logger = LoggerFactory.getLogger(GraphRelOptimizer.class);
     private final PlannerConfig config;
     private final RelOptPlanner relPlanner;
     private final RelOptPlanner matchPlanner;
@@ -102,16 +106,17 @@ public class GraphRelOptimizer {
         if (config.isOn()) {
             // apply rules of 'FilterPushDown' before the match optimization
             relPlanner.setRoot(before);
-            long startTime = System.currentTimeMillis();
+            long totalStartTime = System.currentTimeMillis();
+            long startTime = totalStartTime;
             // rbo
             RelNode relOptimized = relPlanner.findBestExp();
-            System.out.println("RBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
+            logger.info("RBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
             startTime = System.currentTimeMillis();
 
             if (config.getOpt() == PlannerConfig.Opt.CBO) {
                 // cbo
                 relOptimized = relOptimized.accept(new MatchOptimizer(ioProcessor));
-                System.out.println("CBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
+                logger.info("CBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
                 startTime = System.currentTimeMillis();
             }
             // apply rules of 'FieldTrim' after the match optimization
@@ -121,7 +126,8 @@ public class GraphRelOptimizer {
             physicalPlanner.setRoot(relOptimized);
             // physical rbo
             RelNode physicalOptimized = physicalPlanner.findBestExp();
-            System.out.println("Physical RBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
+            logger.info("Physical RBO time cost: " + (System.currentTimeMillis() - startTime) + " milliseconds");
+            logger.info("Total time cost: " + (System.currentTimeMillis() - totalStartTime) + " milliseconds");
             return physicalOptimized;
         }
         return before;
