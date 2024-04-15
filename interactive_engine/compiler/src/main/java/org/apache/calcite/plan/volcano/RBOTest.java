@@ -57,14 +57,14 @@ public class RBOTest {
 
     private static class Test {
         private final Configs configs;
-        private final boolean withOpt;
+        private final String opt;
         private final IrMetaFetcher metaFetcher;
         private final RpcExecutionClient executionClient;
         private final File log;
 
         public Test() throws Exception {
             configs = new Configs("conf/ir.compiler.properties");
-            withOpt = PlannerConfig.GRAPH_PLANNER_IS_ON.get(configs);
+            opt = System.getProperty("opt", "without");
             metaFetcher = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs));
             executionClient = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
             log = new File("rbo_result.txt");
@@ -76,7 +76,7 @@ public class RBOTest {
 
         public void Q_R_1() throws Exception {
             String physicalJson;
-            if (withOpt) {
+            if (opt.equals("with")) {
                 physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_1_with_opt");
             } else {
                 physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_1_without_opt");
@@ -131,7 +131,7 @@ public class RBOTest {
 
         public void Q_R_2() throws Exception {
             String physicalJson;
-            if (withOpt) {
+            if (opt.equals("with")) {
                 physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_2_with_opt");
             } else {
                 physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_2_without_opt");
@@ -185,7 +185,7 @@ public class RBOTest {
         }
 
         public void Q_R_3() throws Exception {
-            if (withOpt) {
+            if (opt.equals("with")) {
                 configs.set(
                         PlannerConfig.GRAPH_PLANNER_RULES.getKey(),
                         "NotMatchToAntiJoinRule, FilterIntoJoinRule, FilterMatchRule,"
@@ -254,7 +254,7 @@ public class RBOTest {
         }
 
         public void Q_R_4() throws Exception {
-            if (withOpt) {
+            if (opt.equals("with")) {
                 configs.set(
                         PlannerConfig.GRAPH_PLANNER_RULES.getKey(),
                         "NotMatchToAntiJoinRule, FilterIntoJoinRule, FilterMatchRule,"
@@ -323,7 +323,7 @@ public class RBOTest {
         }
 
         public void Q_R_5() throws Exception {
-            if (withOpt) {
+            if (opt.equals("with")) {
                 configs.set(
                         PlannerConfig.GRAPH_PLANNER_RULES.getKey(),
                         "NotMatchToAntiJoinRule, FilterIntoJoinRule, FilterMatchRule,"
@@ -391,7 +391,7 @@ public class RBOTest {
         }
 
         public void Q_R_6() throws Exception {
-            if (withOpt) {
+            if (opt.equals("with")) {
                 configs.set(
                         PlannerConfig.GRAPH_PLANNER_RULES.getKey(),
                         "NotMatchToAntiJoinRule, FilterIntoJoinRule, FilterMatchRule,"

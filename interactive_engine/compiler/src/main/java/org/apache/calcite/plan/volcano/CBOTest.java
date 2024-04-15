@@ -36,7 +36,6 @@ import com.alibaba.graphscope.common.ir.rel.GraphShuttle;
 import com.alibaba.graphscope.common.ir.rel.graph.match.AbstractLogicalMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
@@ -62,11 +61,9 @@ import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.commons.io.FileUtils;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -113,7 +110,7 @@ public class CBOTest {
             Preconditions.checkArgument(
                     queryDir.exists() && queryDir.isDirectory(),
                     queryDir + " is not a valid directory");
-            logFile = new File(System.getProperty("log", "log"));
+            logFile = new File("cbo_result.txt");
             if (logFile.exists()) {
                 logFile.delete();
             }
@@ -326,10 +323,9 @@ public class CBOTest {
                 RelSet rootSet = allSets.get(0);
                 while (randomRels.size() < count && maxIter-- > 0) {
                     RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
-                    SourceFilterVisitor visitor = new SourceFilterVisitor();
-                    visitor.go(randomRel);
-                    if (visitor.isSourceHasFilter()
-                            && !randomDigests.contains(randomRel.getRelDigest())
+                    //                    SourceFilterVisitor visitor = new SourceFilterVisitor();
+                    //                    visitor.go(randomRel);
+                    if (!randomDigests.contains(randomRel.getRelDigest())
                             && !best.getRelDigest().equals(randomRel.getRelDigest())) {
                         randomRels.add(randomRel);
                         randomDigests.add(randomRel.getRelDigest());
@@ -403,30 +399,6 @@ public class CBOTest {
                     var6 = parent.copy(parent.getTraitSet(), newInputs);
                 }
                 return var6;
-            }
-        }
-
-        private class SourceFilterVisitor extends RelVisitor {
-            private boolean sourceHasFilter = false;
-
-            @Override
-            public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-                super.visit(node, ordinal, parent);
-                if (node instanceof GraphPattern) {
-                    GraphPattern pattern = (GraphPattern) node;
-                    if (pattern.getPattern().getVertexNumber() == 1) {
-                        PatternVertex singleVertex =
-                                pattern.getPattern().getVertexSet().iterator().next();
-                        if (Double.compare(singleVertex.getElementDetails().getSelectivity(), 1.0d)
-                                < 0) {
-                            sourceHasFilter = true;
-                        }
-                    }
-                }
-            }
-
-            public boolean isSourceHasFilter() {
-                return sourceHasFilter;
             }
         }
 

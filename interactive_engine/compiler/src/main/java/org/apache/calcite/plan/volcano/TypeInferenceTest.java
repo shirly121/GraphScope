@@ -42,6 +42,7 @@ import org.apache.tinkerpop.gremlin.driver.Client;
 import org.apache.tinkerpop.gremlin.driver.Cluster;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -50,10 +51,11 @@ public class TypeInferenceTest {
     public static void main(String[] args) throws Exception {
         Test test = new Test();
         test.Q_T_1();
-        test.Q_T_2();
+        // test.Q_T_2();
         test.Q_T_3();
         test.Q_T_4();
         test.Q_T_5();
+        test.close();
     }
 
     public static class Test {
@@ -90,12 +92,12 @@ public class TypeInferenceTest {
             String query;
             if (withOpt) {
                 query =
-                        com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                                "gopt/Q_T_1_with_opt.json");
+                        FileUtils.readFileToString(
+                                new File("gopt/Q_T_1_with_opt"), StandardCharsets.UTF_8);
             } else {
                 query =
-                        com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                                "gopt/Q_T_1_without_opt.json");
+                        FileUtils.readFileToString(
+                                new File("gopt/Q_T_1_without_opt"), StandardCharsets.UTF_8);
             }
             FileUtils.writeStringToFile(
                     log,
@@ -110,12 +112,12 @@ public class TypeInferenceTest {
             String query;
             if (withOpt) {
                 query =
-                        com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                                "gopt/Q_T_2_with_opt.json");
+                        FileUtils.readFileToString(
+                                new File("gopt/Q_T_2_with_opt"), StandardCharsets.UTF_8);
             } else {
                 query =
-                        com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                                "gopt/Q_T_2_without_opt.json");
+                        FileUtils.readFileToString(
+                                new File("gopt/Q_T_2_without_opt"), StandardCharsets.UTF_8);
             }
             FileUtils.writeStringToFile(
                     log,
@@ -130,12 +132,12 @@ public class TypeInferenceTest {
             String query;
             if (withOpt) {
                 query =
-                        com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                                "gopt/Q_T_3_with_opt.json");
+                        FileUtils.readFileToString(
+                                new File("gopt/Q_T_3_with_opt"), StandardCharsets.UTF_8);
             } else {
                 query =
-                        com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                                "gopt/Q_T_3_without_opt.json");
+                        FileUtils.readFileToString(
+                                new File("gopt/Q_T_3_without_opt"), StandardCharsets.UTF_8);
             }
             FileUtils.writeStringToFile(
                     log,
@@ -148,8 +150,7 @@ public class TypeInferenceTest {
 
         public void Q_T_4() throws Exception {
             String query =
-                    com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                            "gopt/Q_T_4");
+                    FileUtils.readFileToString(new File("gopt/Q_T_4"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -202,8 +203,7 @@ public class TypeInferenceTest {
 
         public void Q_T_5() throws Exception {
             String query =
-                    com.alibaba.graphscope.common.utils.FileUtils.readJsonFromResource(
-                            "gopt/Q_T_5");
+                    FileUtils.readFileToString(new File("gopt/Q_T_5"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -258,6 +258,15 @@ public class TypeInferenceTest {
             long startTime = System.currentTimeMillis();
             call.call();
             return System.currentTimeMillis() - startTime;
+        }
+
+        public void close() {
+            if (cluster != null) {
+                cluster.close();
+            }
+            if (client != null) {
+                client.close();
+            }
         }
     }
 }

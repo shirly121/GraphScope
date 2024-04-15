@@ -112,7 +112,7 @@ public class LDBCTest {
             Preconditions.checkArgument(
                     queryDir.exists() && queryDir.isDirectory(),
                     queryDir + " is not a valid directory");
-            logFile = new File(System.getProperty("log", "log"));
+            logFile = new File("ldbc_result.txt");
             if (logFile.exists()) {
                 logFile.delete();
             }

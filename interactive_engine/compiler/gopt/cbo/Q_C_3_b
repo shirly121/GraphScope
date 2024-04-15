@@ -1,4 +1,4 @@
-Match (p:COMMENT)-[]->(:PERSON)-[]->(:CITY),
+Match (p:COMMENT)-[]->(:PERSON)-[]->(:PLACE),
 (p)<-[]-(message),
 (message)-[]->(tag:TAG)
 Return count(p);
