@@ -67,9 +67,10 @@ public class TypeInferenceTest {
         private final GraphPlanner planner;
         private final IrMetaFetcher metaFetcher;
         private final ExecutionClient executionClient;
+        private final String queryDir;
 
         public Test() throws Exception {
-            configs = new Configs("conf/ir.compiler.properties");
+            configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
             withOpt = FrontendConfig.GRAPH_TYPE_INFERENCE_ENABLED.get(configs);
             cluster = Cluster.build().addContactPoint("localhost").port(8182).create();
             client = cluster.connect();
@@ -86,6 +87,7 @@ public class TypeInferenceTest {
                                             .visit(new CypherAntlr4Parser().parse(q)));
             metaFetcher = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs));
             executionClient = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
+            queryDir = System.getProperty("query", "gopt");
         }
 
         public void Q_T_1() throws Exception {
@@ -93,11 +95,11 @@ public class TypeInferenceTest {
             if (withOpt) {
                 query =
                         FileUtils.readFileToString(
-                                new File("gopt/Q_T_1_with_opt"), StandardCharsets.UTF_8);
+                                new File(queryDir + "/Q_T_1_with_opt"), StandardCharsets.UTF_8);
             } else {
                 query =
                         FileUtils.readFileToString(
-                                new File("gopt/Q_T_1_without_opt"), StandardCharsets.UTF_8);
+                                new File(queryDir + "/Q_T_1_without_opt"), StandardCharsets.UTF_8);
             }
             FileUtils.writeStringToFile(
                     log,
@@ -113,11 +115,11 @@ public class TypeInferenceTest {
             if (withOpt) {
                 query =
                         FileUtils.readFileToString(
-                                new File("gopt/Q_T_2_with_opt"), StandardCharsets.UTF_8);
+                                new File(queryDir + "/Q_T_2_with_opt"), StandardCharsets.UTF_8);
             } else {
                 query =
                         FileUtils.readFileToString(
-                                new File("gopt/Q_T_2_without_opt"), StandardCharsets.UTF_8);
+                                new File(queryDir + "/Q_T_2_without_opt"), StandardCharsets.UTF_8);
             }
             FileUtils.writeStringToFile(
                     log,
@@ -133,11 +135,11 @@ public class TypeInferenceTest {
             if (withOpt) {
                 query =
                         FileUtils.readFileToString(
-                                new File("gopt/Q_T_3_with_opt"), StandardCharsets.UTF_8);
+                                new File(queryDir + "/Q_T_3_with_opt"), StandardCharsets.UTF_8);
             } else {
                 query =
                         FileUtils.readFileToString(
-                                new File("gopt/Q_T_3_without_opt"), StandardCharsets.UTF_8);
+                                new File(queryDir + "/Q_T_3_without_opt"), StandardCharsets.UTF_8);
             }
             FileUtils.writeStringToFile(
                     log,
@@ -150,7 +152,8 @@ public class TypeInferenceTest {
 
         public void Q_T_4() throws Exception {
             String query =
-                    FileUtils.readFileToString(new File("gopt/Q_T_4"), StandardCharsets.UTF_8);
+                    FileUtils.readFileToString(
+                            new File(queryDir + "/Q_T_4"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -203,7 +206,8 @@ public class TypeInferenceTest {
 
         public void Q_T_5() throws Exception {
             String query =
-                    FileUtils.readFileToString(new File("gopt/Q_T_5"), StandardCharsets.UTF_8);
+                    FileUtils.readFileToString(
+                            new File(queryDir + "/Q_T_5"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();

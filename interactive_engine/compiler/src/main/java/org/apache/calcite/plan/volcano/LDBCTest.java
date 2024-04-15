@@ -103,12 +103,7 @@ public class LDBCTest {
 
         public Test() throws Exception {
             configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-            queryDir =
-                    new File(
-                            Thread.currentThread()
-                                    .getContextClassLoader()
-                                    .getResource("gopt/ldbc")
-                                    .toURI());
+            queryDir = new File(System.getProperty("query", "gopt/ldbc"));
             Preconditions.checkArgument(
                     queryDir.exists() && queryDir.isDirectory(),
                     queryDir + " is not a valid directory");

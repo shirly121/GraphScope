@@ -61,9 +61,10 @@ public class RBOTest {
         private final IrMetaFetcher metaFetcher;
         private final RpcExecutionClient executionClient;
         private final File log;
+        private final String queryDir;
 
         public Test() throws Exception {
-            configs = new Configs("conf/ir.compiler.properties");
+            configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
             opt = System.getProperty("opt", "without");
             metaFetcher = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs));
             executionClient = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
@@ -72,14 +73,15 @@ public class RBOTest {
                 log.delete();
             }
             log.createNewFile();
+            queryDir = System.getProperty("query", "gopt");
         }
 
         public void Q_R_1() throws Exception {
             String physicalJson;
             if (opt.equals("with")) {
-                physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_1_with_opt");
+                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_1_with_opt");
             } else {
-                physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_1_without_opt");
+                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_1_without_opt");
             }
             long startTime = System.currentTimeMillis();
             GraphAlgebraPhysical.PhysicalPlan.Builder builder =
@@ -132,9 +134,9 @@ public class RBOTest {
         public void Q_R_2() throws Exception {
             String physicalJson;
             if (opt.equals("with")) {
-                physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_2_with_opt");
+                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_2_with_opt");
             } else {
-                physicalJson = FileUtils.readJsonFromResource("gopt/Q_R_2_without_opt");
+                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_2_without_opt");
             }
             long startTime = System.currentTimeMillis();
             GraphAlgebraPhysical.PhysicalPlan.Builder builder =
@@ -202,7 +204,7 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource("gopt/Q_R_3");
+            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_3");
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -271,7 +273,7 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource("gopt/Q_R_4");
+            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_4");
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -339,7 +341,7 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource("gopt/Q_R_5");
+            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_5");
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -407,7 +409,7 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource("gopt/Q_R_6");
+            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_6");
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
