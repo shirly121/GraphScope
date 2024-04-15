@@ -33,7 +33,6 @@ import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.store.ExperimentalMetaFetcher;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.common.store.IrMetaFetcher;
-import com.alibaba.graphscope.common.utils.FileUtils;
 import com.alibaba.graphscope.cypher.antlr4.parser.CypherAntlr4Parser;
 import com.alibaba.graphscope.cypher.antlr4.visitor.LogicalPlanVisitor;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical;
@@ -41,7 +40,10 @@ import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.pegasus.common.StreamIterator;
 import com.google.protobuf.util.JsonFormat;
 
+import org.apache.commons.io.FileUtils;
+
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 public class RBOTest {
@@ -79,9 +81,13 @@ public class RBOTest {
         public void Q_R_1() throws Exception {
             String physicalJson;
             if (opt.equals("with")) {
-                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_1_with_opt");
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_1_with_opt"), StandardCharsets.UTF_8);
             } else {
-                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_1_without_opt");
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_1_without_opt"), StandardCharsets.UTF_8);
             }
             long startTime = System.currentTimeMillis();
             GraphAlgebraPhysical.PhysicalPlan.Builder builder =
@@ -124,7 +130,7 @@ public class RBOTest {
                 // resultIterator.next();
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            org.apache.commons.io.FileUtils.writeStringToFile(
+            FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_1", elapsedTime),
                     "UTF-8",
@@ -134,9 +140,13 @@ public class RBOTest {
         public void Q_R_2() throws Exception {
             String physicalJson;
             if (opt.equals("with")) {
-                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_2_with_opt");
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_2_with_opt"), StandardCharsets.UTF_8);
             } else {
-                physicalJson = FileUtils.readJsonFromResource(queryDir + "/Q_R_2_without_opt");
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_2_without_opt"), StandardCharsets.UTF_8);
             }
             long startTime = System.currentTimeMillis();
             GraphAlgebraPhysical.PhysicalPlan.Builder builder =
@@ -179,7 +189,7 @@ public class RBOTest {
                 // resultIterator.next();
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            org.apache.commons.io.FileUtils.writeStringToFile(
+            FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_2", elapsedTime),
                     "UTF-8",
@@ -204,7 +214,9 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_3");
+            String query =
+                    FileUtils.readFileToString(
+                            new File(queryDir + "/Q_R_3"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -248,7 +260,7 @@ public class RBOTest {
                 // resultIterator.next();
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            org.apache.commons.io.FileUtils.writeStringToFile(
+            FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_3", elapsedTime),
                     "UTF-8",
@@ -273,7 +285,9 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_4");
+            String query =
+                    FileUtils.readFileToString(
+                            new File(queryDir + "/Q_R_4"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -317,7 +331,7 @@ public class RBOTest {
                 // resultIterator.next();
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            org.apache.commons.io.FileUtils.writeStringToFile(
+            FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_4", elapsedTime),
                     "UTF-8",
@@ -341,7 +355,9 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_5");
+            String query =
+                    FileUtils.readFileToString(
+                            new File(queryDir + "/Q_R_5"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -385,7 +401,7 @@ public class RBOTest {
                 // resultIterator.next();
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            org.apache.commons.io.FileUtils.writeStringToFile(
+            FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_5", elapsedTime),
                     "UTF-8",
@@ -409,7 +425,9 @@ public class RBOTest {
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
                                             .visit(new CypherAntlr4Parser().parse(q)));
-            String query = FileUtils.readJsonFromResource(queryDir + "/Q_R_6");
+            String query =
+                    FileUtils.readFileToString(
+                            new File(queryDir + "/Q_R_6"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
             GraphPlanner.Summary summary =
                     planner.instance(query, metaFetcher.fetch().get()).plan();
@@ -453,7 +471,7 @@ public class RBOTest {
                 // resultIterator.next();
             }
             long elapsedTime = System.currentTimeMillis() - startTime;
-            org.apache.commons.io.FileUtils.writeStringToFile(
+            FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_6", elapsedTime),
                     "UTF-8",
