@@ -184,6 +184,7 @@ graphscope-store:
 		-t graphscope/graphscope-store:${VERSION} \
 		-f $(DOCKERFILES_DIR)/graphscope-store.Dockerfile .
 
+# build gopt benchmark docker image
 gopt-bench:
 	cd $(WORKING_DIR)/.. && \
 	docker build \

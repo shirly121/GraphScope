@@ -14,6 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/target/libs /home/graphscope/GIE/libs
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/target/compiler-0.0.1-SNAPSHOT.jar /home/graphscope/GIE/libs
+COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/target/release/libir_core.so /home/graphscope/GIE/libs
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/conf/ir.compiler.properties /home/graphscope/GIE/config/compiler/compiler.properties
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/core/resource/ldbc_schema.json /home/graphscope/GIE/config/compiler/ldbc_schema.json
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/core/resource/ldbc_schema_exp_hierarchy.json /home/graphscope/GIE/config/compiler/ldbc_schema_hierarchy.json
@@ -26,6 +27,7 @@ COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/quer
 
 RUN apt-get update -y && \
     apt-get install -y default-jdk tzdata && \
+    apt-get install -y curl && \
     apt-get clean -y && \
     rm -rf /var/lib/apt/lists/*
 
@@ -42,5 +44,5 @@ WORKDIR /home/graphscope
 ENV PATH=${PATH}:/home/graphscope/.local/bin
 ENV GIE_HOME=/home/graphscope/GIE
 ENV CONFIG=${GIE_HOME}/config
-ENV DATA=/data/bi_sf30
+ENV DATA=/tmp/data/bi_sf30
 ENV QUERY=${GIE_HOME}/query
