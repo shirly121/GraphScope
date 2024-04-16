@@ -1,1 +1,0 @@
-g.V().out().hasLabel('COMPANY', 'UNIVERSITY').out().hasLabel('CITY', 'COUNTRY').count()

@@ -183,3 +183,13 @@ graphscope-store:
 		--build-arg ENABLE_COORDINATOR=${ENABLE_COORDINATOR} \
 		-t graphscope/graphscope-store:${VERSION} \
 		-f $(DOCKERFILES_DIR)/graphscope-store.Dockerfile .
+
+gopt-bench:
+	cd $(WORKING_DIR)/.. && \
+	docker build \
+	    --target experimental \
+		--progress=$(BUILD_PROGRESS) \
+		--build-arg REGISTRY=$(REGISTRY) \
+		--build-arg BUILDER_VERSION=$(BUILDER_VERSION) \
+		-t graphscope/gopt-bench:${VERSION} \
+		-f $(DOCKERFILES_DIR)/gopt-bench.Dockerfile .

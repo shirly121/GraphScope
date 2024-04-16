@@ -51,7 +51,7 @@ public class TypeInferenceTest {
     public static void main(String[] args) throws Exception {
         Test test = new Test();
         test.Q_T_1();
-        // test.Q_T_2();
+        test.Q_T_2();
         test.Q_T_3();
         test.Q_T_4();
         test.Q_T_5();

@@ -1,1 +1,0 @@
-g.V().hasLabel('PERSON').out('WORKAT', 'STUDYAT').hasLabel('COMPANY', 'UNIVERSITY').out('ISLOCATEDIN').hasLabel('CITY', 'COUNTRY').count()
