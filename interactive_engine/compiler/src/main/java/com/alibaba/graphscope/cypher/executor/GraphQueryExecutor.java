@@ -27,6 +27,10 @@ import com.alibaba.graphscope.common.ir.tools.QueryIdGenerator;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
 import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gaia.proto.IrResult;
+import com.alibaba.graphscope.gremlin.plugin.MetricsCollector;
+import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
+import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
+import com.codahale.metrics.Timer;
 import com.google.common.base.Preconditions;
 
 import org.neo4j.fabric.config.FabricConfig;
@@ -109,14 +113,17 @@ public class GraphQueryExecutor extends FabricExecutor {
             if (statement.equals(GET_ROUTING_TABLE_STATEMENT) || statement.equals(PING_STATEMENT)) {
                 return super.run(fabricTransaction, statement, parameters);
             }
+            BigInteger jobId = idGenerator.generateId();
+            String jobName = idGenerator.generateName(jobId);
+            QueryStatusCallback queryStatus =
+                    new QueryStatusCallback(
+                            new MetricsCollector(new Timer()), new QueryLogger(statement, jobId));
             irMeta = metaQueryCallback.beforeExec();
             QueryCache.Key cacheKey = queryCache.createKey(statement, irMeta);
             QueryCache.Value cacheValue = queryCache.get(cacheKey);
             Preconditions.checkArgument(
                     cacheValue != null,
                     "value should have been loaded automatically in query cache");
-            BigInteger jobId = idGenerator.generateId();
-            String jobName = idGenerator.generateName(jobId);
             GraphPlanner.Summary planSummary =
                     new GraphPlanner.Summary(
                             cacheValue.summary.getLogicalPlan(),
@@ -139,7 +146,7 @@ public class GraphQueryExecutor extends FabricExecutor {
             StatementResults.SubscribableExecution execution;
             if (cacheValue.result != null && cacheValue.result.isCompleted) {
                 execution =
-                        new AbstractPlanExecution(planSummary) {
+                        new AbstractPlanExecution(planSummary, queryStatus) {
                             @Override
                             protected void execute(ExecutionResponseListener listener) {
                                 List<IrResult.Results> records = cacheValue.result.records;
@@ -149,7 +156,7 @@ public class GraphQueryExecutor extends FabricExecutor {
                         };
             } else {
                 execution =
-                        new AbstractPlanExecution(planSummary) {
+                        new AbstractPlanExecution(planSummary, queryStatus) {
                             @Override
                             protected void execute(ExecutionResponseListener listener)
                                     throws Exception {

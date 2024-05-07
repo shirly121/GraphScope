@@ -1,0 +1,693 @@
+{
+  "entities": [
+    {
+      "label": {
+        "id": 0,
+        "name": "Account"
+      },
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "id"
+          },
+          "data_type": 2,
+          "is_primary_key": true
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "isBlocked"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 3,
+            "name": "accoutType"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 4,
+            "name": "nickname"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 5,
+            "name": "phonenum"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 6,
+            "name": "email"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 7,
+            "name": "freqLoginType"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 8,
+            "name": "lastLoginTime"
+          },
+          "data_type": 2,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 9,
+            "name": "accountLevel"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 1,
+        "name": "Company"
+      },
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "id"
+          },
+          "data_type": 2,
+          "is_primary_key": true
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "companyName"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "isBlocked"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 3,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 4,
+            "name": "country"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 5,
+            "name": "city"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 6,
+            "name": "business"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 7,
+            "name": "description"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 8,
+            "name": "url"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 2,
+        "name": "Loan"
+      },
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "id"
+          },
+          "data_type": 2,
+          "is_primary_key": true
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "loanAmount"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "balance"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 3,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 4,
+            "name": "loanUsage"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 5,
+            "name": "interestRate"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 3,
+        "name": "Medium"
+      },
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "id"
+          },
+          "data_type": 2,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "mediumType"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "isBlocked"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 3,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 4,
+            "name": "lastLoginTime"
+          },
+          "data_type": 2,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 5,
+            "name": "riskLevel"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 4,
+        "name": "Person"
+      },
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "id"
+          },
+          "data_type": 2,
+          "is_primary_key": true
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "personName"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "isBlocked"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 3,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 4,
+            "name": "gender"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 5,
+            "name": "birthday"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 6,
+            "name": "country"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 7,
+            "name": "city"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "label": {
+        "id": 0,
+        "name": "AccountRepayLoan"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 0,
+            "name": "Account"
+          },
+          "dst": {
+            "id": 2,
+            "name": "Loan"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "amount"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 1,
+        "name": "AccountTransferAccount"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 0,
+            "name": "Account"
+          },
+          "dst": {
+            "id": 0,
+            "name": "Account"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "amount"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 2,
+            "name": "orderNum"
+          },
+          "data_type": 2,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 3,
+            "name": "comment"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 4,
+            "name": "payType"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 5,
+            "name": "goodsType"
+          },
+          "data_type": 4,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 2,
+        "name": "AccountWithdrawAccount"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 0,
+            "name": "Account"
+          },
+          "dst": {
+            "id": 0,
+            "name": "Account"
+          }
+        }
+      ],
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "amount"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        },
+        {
+          "key": {
+            "id": 1,
+            "name": "createTime"
+          },
+          "data_type": 12,
+          "is_primary_key": false
+        }
+      ]
+    },
+    {
+      "label": {
+        "id": 3,
+        "name": "CompanyApplyLoan"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "Company"
+          },
+          "dst": {
+            "id": 2,
+            "name": "Loan"
+          }
+        }
+      ],
+      "columns": []
+    },
+    {
+      "label": {
+        "id": 4,
+        "name": "CompanyGuaranteeCompany"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "Company"
+          },
+          "dst": {
+            "id": 1,
+            "name": "Company"
+          }
+        }
+      ],
+      "columns": [
+      ]
+    },
+    {
+      "label": {
+        "id": 5,
+        "name": "CompanyInvestCompany"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "Company"
+          },
+          "dst": {
+            "id": 1,
+            "name": "Company"
+          }
+        }
+      ],
+      "columns": []
+    },
+    {
+      "label": {
+        "id": 6,
+        "name": "CompanyOwnAccount"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 1,
+            "name": "Company"
+          },
+          "dst": {
+            "id": 0,
+            "name": "Account"
+          }
+        }
+      ],
+      "columns": [
+      ]
+    },
+    {
+      "label": {
+        "id": 7,
+        "name": "LoanDepositAccount"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 2,
+            "name": "Loan"
+          },
+          "dst": {
+            "id": 0,
+            "name": "Account"
+          }
+        }
+      ],
+      "columns": []
+    },
+    {
+      "label": {
+        "id": 8,
+        "name": "MediumSignInAccount"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 3,
+            "name": "Medium"
+          },
+          "dst": {
+            "id": 0,
+            "name": "Account"
+          }
+        }
+      ],
+      "columns": []
+    },
+    {
+      "label": {
+        "id": 9,
+        "name": "PersonApplyLoan"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 4,
+            "name": "Person"
+          },
+          "dst": {
+            "id": 2,
+            "name": "Loan"
+          }
+        }
+      ],
+      "columns": [
+      ]
+    },
+    {
+      "label": {
+        "id": 10,
+        "name": "PersonGuaranteePerson"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 4,
+            "name": "Person"
+          },
+          "dst": {
+            "id": 4,
+            "name": "Person"
+          }
+        }
+      ],
+      "columns": []
+    },
+    {
+      "label": {
+        "id": 11,
+        "name": "PersonInvestCompany"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 4,
+            "name": "Person"
+          },
+          "dst": {
+            "id": 1,
+            "name": "Company"
+          }
+        }
+      ],
+      "columns": []
+    },
+    {
+      "label": {
+        "id": 12,
+        "name": "PersonOwnAccount"
+      },
+      "entity_pairs": [
+        {
+          "src": {
+            "id": 4,
+            "name": "Person"
+          },
+          "dst": {
+            "id": 0,
+            "name": "Account"
+          }
+        }
+      ],
+      "columns": []
+    }
+  ],
+  "is_table_id": true,
+  "is_column_id": false
+}

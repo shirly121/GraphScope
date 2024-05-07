@@ -1,0 +1,605 @@
+{
+  "vertex_table_to_type": {
+    "Account.csv": "Account",
+    "Company.csv": "Company",
+    "Loan.csv": "Loan",
+    "Medium.csv": "Medium",
+    "Person.csv": "Person"
+  },
+  "edge_table_to_type": {
+    "AccountRepayLoan.csv": {
+      "etype": "AccountRepayLoan",
+      "src_vertex_type": "Account",
+      "dst_vertex_type": "Loan"
+    },
+    "AccountTransferAccount.csv": {
+      "etype": "AccountTransferAccount",
+      "src_vertex_type": "Account",
+      "dst_vertex_type": "Account"
+    },
+    "AccountWithdrawAccount.csv": {
+      "etype": "AccountWithdrawAccount",
+      "src_vertex_type": "Account",
+      "dst_vertex_type": "Account"
+    },
+    "CompanyApplyLoan.csv": {
+      "etype": "CompanyApplyLoan",
+      "src_vertex_type": "Company",
+      "dst_vertex_type": "Loan"
+    },
+    "CompanyGuaranteeCompany.csv": {
+      "etype": "CompanyGuaranteeCompany",
+      "src_vertex_type": "Company",
+      "dst_vertex_type": "Company"
+    },
+    "CompanyInvestCompany.csv": {
+      "etype": "CompanyInvestCompany",
+      "src_vertex_type": "Company",
+      "dst_vertex_type": "Company"
+    },
+    "CompanyOwnAccount.csv": {
+      "etype": "CompanyOwnAccount",
+      "src_vertex_type": "Company",
+      "dst_vertex_type": "Account"
+    },
+    "LoanDepositAccount.csv": {
+      "etype": "LoanDepositAccount",
+      "src_vertex_type": "Loan",
+      "dst_vertex_type": "Account"
+    },
+    "MediumSignInAccount.csv": {
+      "etype": "MediumSignInAccount",
+      "src_vertex_type": "Medium",
+      "dst_vertex_type": "Account"
+    },
+    "PersonApplyLoan.csv": {
+      "etype": "PersonApplyLoan",
+      "src_vertex_type": "Person",
+      "dst_vertex_type": "Loan"
+    },
+    "PersonGuaranteePerson.csv": {
+      "etype": "PersonGuaranteePerson",
+      "src_vertex_type": "Person",
+      "dst_vertex_type": "Person"
+    },
+    "PersonInvestCompany.csv": {
+      "etype": "PersonInvestCompany",
+      "src_vertex_type": "Person",
+      "dst_vertex_type": "Company"
+    },
+    "PersonOwnAccount.csv": {
+      "etype": "PersonOwnAccount",
+      "src_vertex_type": "Person",
+      "dst_vertex_type": "Account"
+    }
+  },
+  "vertex_type_to_id": {
+    "Account": 0,
+    "Company": 1,
+    "Loan": 2,
+    "Medium": 3,
+    "Person": 4
+  },
+  "edge_type_to_id": {
+    "AccountRepayLoan": 0,
+    "AccountTransferAccount": 1,
+    "AccountWithdrawAccount": 2,
+    "CompanyApplyLoan": 3,
+    "CompanyGuaranteeCompany": 4,
+    "CompanyInvestCompany": 5,
+    "CompanyOwnAccount": 6,
+    "LoanDepositAccount": 7,
+    "MediumSignInAccount": 8,
+    "PersonApplyLoan": 9,
+    "PersonGuaranteePerson": 10,
+    "PersonInvestCompany": 11,
+    "PersonOwnAccount": 12
+  },
+  "vertex_type_hierarchy": {},
+  "column_name_to_id": {},
+  "vertex_columns": {
+    "Account": [
+      [
+        "id",
+        "ID",
+        true
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "isBlocked",
+        "String",
+        false
+      ],
+      [
+        "accoutType",
+        "String",
+        false
+      ],
+      [
+        "nickname",
+        "String",
+        false
+      ],
+      [
+        "phonenum",
+        "String",
+        false
+      ],
+      [
+        "email",
+        "String",
+        false
+      ],
+      [
+        "freqLoginType",
+        "String",
+        false
+      ],
+      [
+        "lastLoginTime",
+        "Long",
+        false
+      ],
+      [
+        "accountLevel",
+        "String",
+        false
+      ]
+    ],
+    "Company": [
+      [
+        "id",
+        "ID",
+        true
+      ],
+      [
+        "companyName",
+        "String",
+        false
+      ],
+      [
+        "isBlocked",
+        "String",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "country",
+        "String",
+        false
+      ],
+      [
+        "city",
+        "String",
+        false
+      ],
+      [
+        "business",
+        "String",
+        false
+      ],
+      [
+        "description",
+        "String",
+        false
+      ],
+      [
+        "url",
+        "String",
+        false
+      ]
+    ],
+    "Loan": [
+      [
+        "id",
+        "ID",
+        true
+      ],
+      [
+        "loanAmount",
+        "Double",
+        false
+      ],
+      [
+        "balance",
+        "Double",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "loanUsage",
+        "String",
+        false
+      ],
+      [
+        "interestRate",
+        "Double",
+        false
+      ]
+    ],
+    "Medium": [
+      [
+        "id",
+        "ID",
+        true
+      ],
+      [
+        "mediumType",
+        "String",
+        false
+      ],
+      [
+        "isBlocked",
+        "String",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "lastLoginTime",
+        "Long",
+        false
+      ],
+      [
+        "riskLevel",
+        "String",
+        false
+      ]
+    ],
+    "Person": [
+      [
+        "id",
+        "ID",
+        true
+      ],
+      [
+        "personName",
+        "String",
+        false
+      ],
+      [
+        "isBlocked",
+        "String",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "gender",
+        "String",
+        false
+      ],
+      [
+        "birthday",
+        "Date",
+        false
+      ],
+      [
+        "country",
+        "String",
+        false
+      ],
+      [
+        "city",
+        "String",
+        false
+      ]
+    ]
+  },
+  "edge_columns": {
+    "AccountRepayLoan": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "amount",
+        "Double",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ]
+    ],
+    "AccountTransferAccount": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "amount",
+        "Double",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "orderNum",
+        "Long",
+        false
+      ],
+      [
+        "comment",
+        "String",
+        false
+      ],
+      [
+        "payType",
+        "String",
+        false
+      ],
+      [
+        "goodsType",
+        "String",
+        false
+      ]
+    ],
+    "AccountWithdrawAccount": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "amount",
+        "Double",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ]
+    ],
+    "CompanyApplyLoan": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "org",
+        "String",
+        false
+      ]
+    ],
+    "CompanyGuaranteeCompany": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "relation",
+        "String",
+        false
+      ]
+    ],
+    "CompanyInvestCompany": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "ratio",
+        "Double",
+        false
+      ],
+      [
+        "creatTime",
+        "Date",
+        false
+      ]
+    ],
+    "CompanyOwnAccount": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "creatTime",
+        "Date",
+        false
+      ]
+    ],
+    "LoanDepositAccount": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "amount",
+        "Double",
+        false
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ]
+    ],
+    "MediumSignInAccount": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "location",
+        "String",
+        false
+      ]
+    ],
+    "PersonApplyLoan": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "org",
+        "String",
+        false
+      ]
+    ],
+    "PersonGuaranteePerson": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "createTime",
+        "Date",
+        false
+      ],
+      [
+        "relation",
+        "String",
+        false
+      ]
+    ],
+    "PersonInvestCompany": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "ratio",
+        "Double",
+        false
+      ],
+      [
+        "creatTime",
+        "Date",
+        false
+      ]
+    ],
+    "PersonOwnAccount": [
+      [
+        "start_id",
+        "ID",
+        true
+      ],
+      [
+        "end_id",
+        "ID",
+        true
+      ],
+      [
+        "creatTime",
+        "Date",
+        false
+      ]
+    ]
+  }
+}

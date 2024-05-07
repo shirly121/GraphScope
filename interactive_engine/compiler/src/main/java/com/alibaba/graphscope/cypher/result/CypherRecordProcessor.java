@@ -19,6 +19,7 @@ package com.alibaba.graphscope.cypher.result;
 import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
 import com.alibaba.graphscope.common.result.RecordParser;
 import com.alibaba.graphscope.gaia.proto.IrResult;
+import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.pegasus.common.StreamIterator;
 
 import org.neo4j.fabric.stream.summary.EmptySummary;
@@ -41,12 +42,17 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
     private final QuerySubscriber subscriber;
     private final StreamIterator<IrResult.Record> recordIterator;
     private final Summary summary;
+    private final QueryStatusCallback queryStatus;
 
-    public CypherRecordProcessor(RecordParser<AnyValue> recordParser, QuerySubscriber subscriber) {
+    public CypherRecordProcessor(
+            RecordParser<AnyValue> recordParser,
+            QuerySubscriber subscriber,
+            QueryStatusCallback queryStatus) {
         this.recordParser = recordParser;
         this.subscriber = subscriber;
         this.recordIterator = new StreamIterator<>();
         this.summary = new EmptySummary();
+        this.queryStatus = queryStatus;
         initializeSubscriber();
     }
 
@@ -118,6 +124,7 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
     public void onCompleted() {
         try {
             this.recordIterator.finish();
+            queryStatus.onEnd(true, null);
         } catch (InterruptedException e) {
             onError(e);
         }
@@ -127,5 +134,6 @@ public class CypherRecordProcessor implements QueryExecution, ExecutionResponseL
     public void onError(Throwable t) {
         t = (t == null) ? new RuntimeException("Unknown error") : t;
         this.recordIterator.fail(t);
+        queryStatus.onEnd(false, t.getMessage());
     }
 }
