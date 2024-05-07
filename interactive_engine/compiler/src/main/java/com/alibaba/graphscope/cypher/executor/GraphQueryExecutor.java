@@ -115,9 +115,10 @@ public class GraphQueryExecutor extends FabricExecutor {
             }
             BigInteger jobId = idGenerator.generateId();
             String jobName = idGenerator.generateName(jobId);
+            MetricsCollector metricsCollector = new MetricsCollector(new Timer());
             QueryStatusCallback queryStatus =
-                    new QueryStatusCallback(
-                            new MetricsCollector(new Timer()), new QueryLogger(statement, jobId));
+                    new QueryStatusCallback(metricsCollector, new QueryLogger(statement, jobId));
+            long startTime = metricsCollector.getStartMillis();
             irMeta = metaQueryCallback.beforeExec();
             QueryCache.Key cacheKey = queryCache.createKey(statement, irMeta);
             QueryCache.Value cacheValue = queryCache.get(cacheKey);
@@ -128,6 +129,8 @@ public class GraphQueryExecutor extends FabricExecutor {
                     new GraphPlanner.Summary(
                             cacheValue.summary.getLogicalPlan(),
                             cacheValue.summary.getPhysicalPlan());
+            long compileElapsed = System.currentTimeMillis() - startTime;
+            logger.info("compile elapsed {} ms", compileElapsed);
             logger.debug(
                     "cypher query \"{}\", job conf name \"{}\", calcite logical plan {}, hash id"
                             + " {}",

@@ -589,7 +589,16 @@
           }
         }
       ],
-      "columns": []
+      "columns": [
+        {
+          "key": {
+            "id": 0,
+            "name": "amount"
+          },
+          "data_type": 3,
+          "is_primary_key": false
+        }
+      ]
     },
     {
       "label": {
