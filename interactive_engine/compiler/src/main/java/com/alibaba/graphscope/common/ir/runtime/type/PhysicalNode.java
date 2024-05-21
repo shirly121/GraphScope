@@ -40,7 +40,7 @@ public class PhysicalNode<T> extends AbstractRelNode {
             RelOptCluster cluster, RelTraitSet traitSet, RelNode original, List<T> nodes) {
         super(cluster, traitSet);
         this.original = Objects.requireNonNull(original);
-        this.nodes = ObjectUtils.requireNonEmpty(nodes);
+        this.nodes = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(nodes);
     }
 
     public PhysicalNode(RelNode original, T node) {

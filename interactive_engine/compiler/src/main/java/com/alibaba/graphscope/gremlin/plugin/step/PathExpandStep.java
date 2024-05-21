@@ -107,7 +107,7 @@ public class PathExpandStep extends ExpandFusionStep<Vertex> {
                                 + " insensitive)");
             }
         } else if (key.equals("Until")) {
-            this.untilCondition = ObjectUtils.requireNonEmpty(originalVal);
+            this.untilCondition = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(originalVal);
         } else {
             throw new ExtendGremlinStepException(
                     "key "

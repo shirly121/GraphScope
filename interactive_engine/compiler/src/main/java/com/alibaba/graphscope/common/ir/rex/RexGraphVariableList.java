@@ -46,7 +46,7 @@ public class RexGraphVariableList extends RexGraphVariable implements List<RexGr
             RelDataType type,
             List<RexGraphVariable> innerList) {
         super(aliasId, columnId, name, type);
-        this.innerList = ObjectUtils.requireNonEmpty(innerList);
+        this.innerList = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(innerList);
     }
 
     public static RexGraphVariable of(List<RexGraphVariable> innerList) {

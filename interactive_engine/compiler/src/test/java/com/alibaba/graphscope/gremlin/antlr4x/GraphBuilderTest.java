@@ -1595,4 +1595,10 @@ public class GraphBuilderTest {
                     + "], matchOpt=[INNER])",
                 node.explain().trim());
     }
+
+    @Test
+    public void g_V_hasLabel_test_1() {
+        RelNode node = eval("g.V().has(\"person\", \"id\", 1)");
+        System.out.println(node.explain());
+    }
 }

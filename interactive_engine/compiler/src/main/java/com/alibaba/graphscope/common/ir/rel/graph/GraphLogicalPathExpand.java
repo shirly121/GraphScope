@@ -322,17 +322,17 @@ public class GraphLogicalPathExpand extends SingleRel {
             case ALL_V:
             case END_V:
                 RelNode getV = this.fused != null ? this.fused : this.getV;
-                ObjectUtils.requireNonEmpty(
+                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
                         getV.getRowType().getFieldList(),
                         "data type of getV operator should have at least one column field");
                 return new GraphPathType.ElementType(
                         getV.getRowType().getFieldList().get(0).getType());
             case ALL_V_E:
             default:
-                ObjectUtils.requireNonEmpty(
+                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
                         this.expand.getRowType().getFieldList(),
                         "data type of expand operator should have at least one column field");
-                ObjectUtils.requireNonEmpty(
+                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
                         this.getV.getRowType().getFieldList(),
                         "data type of getV operator should have at least one column field");
                 return new GraphPathType.ElementType(

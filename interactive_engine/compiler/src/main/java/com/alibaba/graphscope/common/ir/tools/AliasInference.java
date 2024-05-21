@@ -90,7 +90,7 @@ public abstract class AliasInference {
             List<@Nullable String> fieldNameList,
             Set<String> uniqueNameList)
             throws IllegalArgumentException {
-        ObjectUtils.requireNonEmpty(exprList);
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(exprList);
         Objects.requireNonNull(fieldNameList);
         Objects.requireNonNull(uniqueNameList);
         while (fieldNameList.size() < exprList.size()) {

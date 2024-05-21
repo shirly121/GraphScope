@@ -34,7 +34,7 @@ public class TableConfig {
     private List<RelOptTable> tables;
 
     public TableConfig(List<RelOptTable> tables) {
-        this.tables = ObjectUtils.requireNonEmpty(tables);
+        this.tables = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(tables);
         this.isAll = false;
     }
 

@@ -56,7 +56,7 @@ public class GraphAggCall implements RelBuilder.AggCall {
     public GraphAggCall(RelOptCluster cluster, SqlAggFunction aggFunction, List<RexNode> operands) {
         this.cluster = Objects.requireNonNull(cluster);
         this.aggFunction = aggFunction;
-        this.operands = ObjectUtils.requireNonEmpty(operands);
+        this.operands = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(operands);
         this.type = validateThenDerive(aggFunction, operands);
     }
 
@@ -92,13 +92,13 @@ public class GraphAggCall implements RelBuilder.AggCall {
 
     @Override
     public GraphAggCall sort(Iterable<RexNode> orderKeys) {
-        this.orderKeys = ImmutableList.copyOf(ObjectUtils.requireNonEmpty(orderKeys));
+        this.orderKeys = ImmutableList.copyOf(com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(orderKeys));
         return this;
     }
 
     @Override
     public GraphAggCall unique(@Nullable Iterable<RexNode> distinctKeys) {
-        this.distinctKeys = ImmutableList.copyOf(ObjectUtils.requireNonEmpty(distinctKeys));
+        this.distinctKeys = ImmutableList.copyOf(com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(distinctKeys));
         return this;
     }
 

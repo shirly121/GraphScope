@@ -161,7 +161,7 @@ public class Utils {
 
     public static ExprVisitorResult binaryCall(
             List<SqlOperator> operators, List<ExprVisitorResult> operands, GraphBuilder builder) {
-        ObjectUtils.requireNonEmpty(operands, "operands count should not be 0");
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(operands, "operands count should not be 0");
         if (operators.size() != operands.size() - 1) {
             throw new IllegalArgumentException(
                     "invalid operators count, should be equal with the count of operands minus 1");
@@ -178,7 +178,7 @@ public class Utils {
 
     public static ExprVisitorResult binaryCall(
             SqlOperator operator, List<ExprVisitorResult> operands, GraphBuilder builder) {
-        ObjectUtils.requireNonEmpty(operands, "operands count should not be 0");
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(operands, "operands count should not be 0");
         RexNode expr = operands.get(0).getExpr();
         List<RelBuilder.AggCall> aggCalls = new ArrayList<>();
         aggCalls.addAll(operands.get(0).getAggCalls());

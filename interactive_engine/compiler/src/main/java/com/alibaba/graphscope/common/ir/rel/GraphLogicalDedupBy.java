@@ -38,7 +38,7 @@ public class GraphLogicalDedupBy extends SingleRel {
             RelOptCluster cluster, RelTraitSet traits, RelNode input, List<RexNode> dedupByKeys) {
         super(cluster, traits, input);
         this.dedupByKeys =
-                ObjectUtils.requireNonEmpty(
+                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
                         dedupByKeys, "there should be at least one key in dedup by");
     }
 

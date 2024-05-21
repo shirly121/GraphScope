@@ -52,7 +52,7 @@ public class GraphOptSchema implements RelOptSchema {
      */
     @Override
     public RelOptTable getTableForMember(List<String> tableName) {
-        ObjectUtils.requireNonEmpty(tableName);
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(tableName);
         String labelName = tableName.get(0);
         try {
             GraphElement element = rootSchema.getElement(labelName);

@@ -30,8 +30,10 @@ import org.apache.calcite.rel.type.RelRecordType;
 import org.apache.calcite.rel.type.StructKind;
 import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Sarg;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public class Utils {
@@ -110,5 +112,18 @@ public class Utils {
             inputs.addAll(input.getInputs());
         }
         return builder.toString();
+    }
+
+    public static <T> T requireNonEmpty(T obj, String message) {
+        Objects.requireNonNull(obj, message);
+        if (ObjectUtils.isEmpty(obj)) {
+            throw new IllegalArgumentException(message);
+        } else {
+            return obj;
+        }
+    }
+
+    public static <T> T requireNonEmpty(T obj) {
+        return requireNonEmpty(obj, "object");
     }
 }

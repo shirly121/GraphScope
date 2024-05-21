@@ -16,14 +16,11 @@
 
 package com.alibaba.graphscope.common.ir.meta.schema;
 
-import static java.util.Objects.requireNonNull;
-
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.type.GraphLabelType;
 import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
 import com.alibaba.graphscope.groot.common.schema.api.*;
 import com.google.common.collect.Lists;
-
 import org.apache.calcite.linq4j.tree.Expression;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
@@ -45,6 +42,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Maintain {@link RelDataType} and {@link Statistic} per entity or per relation
@@ -101,7 +100,7 @@ public class GraphOptTable implements RelOptTable {
                         new GraphSchemaType(
                                 GraphOpt.Source.EDGE, new GraphLabelType(labelEntry), fields));
             }
-            ObjectUtils.requireNonEmpty(fuzzyTypes);
+            com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(fuzzyTypes);
             return (fuzzyTypes.size() == 1)
                     ? fuzzyTypes.get(0)
                     : GraphSchemaType.create(fuzzyTypes, getRelOptSchema().getTypeFactory());

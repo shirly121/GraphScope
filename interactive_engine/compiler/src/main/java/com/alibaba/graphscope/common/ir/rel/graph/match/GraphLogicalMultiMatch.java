@@ -51,7 +51,7 @@ public class GraphLogicalMultiMatch extends AbstractLogicalMatch {
         ImmutableList.Builder<RelNode> builder = ImmutableList.builder();
         this.sentences =
                 builder.add(Objects.requireNonNull(firstSentence))
-                        .addAll(ObjectUtils.requireNonEmpty(otherSentences))
+                        .addAll(com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(otherSentences))
                         .build();
     }
 

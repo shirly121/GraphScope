@@ -49,7 +49,7 @@ public class GraphLabelType extends AbstractSqlType {
 
     public GraphLabelType(List<Entry> labels, SqlTypeName typeName) {
         super(typeName, false, null);
-        this.labels = ObjectUtils.requireNonEmpty(labels);
+        this.labels = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(labels);
         this.computeDigest();
     }
 

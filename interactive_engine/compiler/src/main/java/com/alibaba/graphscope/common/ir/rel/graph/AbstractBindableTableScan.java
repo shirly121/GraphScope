@@ -93,14 +93,14 @@ public abstract class AbstractBindableTableScan extends TableScan {
     @Override
     public RelDataType deriveRowType() {
         List<GraphSchemaType> tableTypes = new ArrayList<>();
-        List<RelOptTable> tables = ObjectUtils.requireNonEmpty(this.tableConfig.getTables());
+        List<RelOptTable> tables = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(this.tableConfig.getTables());
         RelDataTypeFactory typeFactory = tables.get(0).getRelOptSchema().getTypeFactory();
         for (RelOptTable table : tables) {
             GraphSchemaType type = (GraphSchemaType) table.getRowType();
             // flat fuzzy labels to the list
             tableTypes.addAll(type.getSchemaTypeAsList());
         }
-        ObjectUtils.requireNonEmpty(tableTypes);
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(tableTypes);
         boolean nullable = schemaTypeNullable();
         GraphSchemaType graphType =
                 (tableTypes.size() == 1)
