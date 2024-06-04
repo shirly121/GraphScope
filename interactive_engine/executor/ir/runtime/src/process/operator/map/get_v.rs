@@ -15,6 +15,7 @@
 
 use std::convert::TryInto;
 
+use dyn_type::Object;
 use graph_proxy::apis::GraphElement;
 use graph_proxy::apis::{get_graph, DynDetails, GraphPath, QueryParams, Vertex};
 use graph_proxy::utils::expr::eval_pred::EvalPred;
@@ -57,8 +58,20 @@ impl GetVertexOperator {
 
 impl FilterMapFunction<Record, Record> for GetVertexOperator {
     fn exec(&self, mut input: Record) -> FnResult<Option<Record>> {
-        if let Some(entry) = input.get(self.start_tag) {
-            if let Some(e) = entry.as_edge() {
+        let entry_type =
+            if let Some(entry) = input.get(self.start_tag) { entry.get_type() } else { return Ok(None) };
+        match entry_type {
+            EntryType::Edge => {
+                let e = input
+                    .get(self.start_tag)
+                    .ok_or_else(|| FnExecError::Unreachable)?
+                    .as_edge()
+                    .ok_or_else(|| {
+                        FnExecError::unexpected_data_error(&format!(
+                            "entry is not an edge in GetV {:?}",
+                            self
+                        ))
+                    })?;
                 let (id, label) = match self.opt {
                     VOpt::Start => (e.src_id, e.get_src_label()),
                     VOpt::End => (e.dst_id, e.get_dst_label()),
@@ -72,7 +85,13 @@ impl FilterMapFunction<Record, Record> for GetVertexOperator {
                 } else {
                     Ok(None)
                 }
-            } else if let Some(graph_path) = entry.as_graph_path() {
+            }
+            EntryType::Path => {
+                let graph_path = input
+                    .get(self.start_tag)
+                    .ok_or_else(|| FnExecError::Unreachable)?
+                    .as_graph_path()
+                    .ok_or_else(|| FnExecError::Unreachable)?;
                 // Specifically, when dealing with `GetV` on a path entry, we need to consider the following cases:
                 // 1. if the last entry is an edge, we expand the path with the other vertex of the edge; (in which case is expanding the path with a adj vertex)
                 // 2. if the last entry is a vertex, we get the vertex. (in which case is getting the end vertex from the path)
@@ -117,13 +136,35 @@ impl FilterMapFunction<Record, Record> for GetVertexOperator {
                 } else {
                     Err(FnExecError::unexpected_data_error("unreachable path end entry in GetV"))?
                 }
-            } else {
-                Err(FnExecError::unexpected_data_error( &format!(
-                    "Can only apply `GetV` (`Auxilia` instead) on an edge or path entry, while the entry is {:?}", entry
-                )))?
             }
-        } else {
-            Ok(None)
+            EntryType::Object => {
+                let obj = input
+                .get(self.start_tag)
+                .ok_or_else(|| FnExecError::Unreachable)?
+                    .as_object()
+                    .ok_or_else(|| FnExecError::Unreachable)?;
+                if Object::None.eq(obj) {
+                    if self.query_labels.is_empty() {
+                        input.append(Object::None, self.alias);
+                        return Ok(Some(input));
+                    } else {
+                        return Ok(None);
+                    }
+                } else {
+                    Err(FnExecError::unexpected_data_error(
+                        &format!(
+                        "Can only apply `GetV` (`Auxilia` instead) on an edge or path entry, while the entry is {:?}",
+                        entry_type
+                        )
+                    ))?
+                }
+            }
+            _ => Err(FnExecError::unexpected_data_error(
+                &format!(
+                "Can only apply `GetV` (`Auxilia` instead) on an edge or path entry, while the entry is {:?}",
+                entry_type
+                )
+            ))?,
         }
     }
 }

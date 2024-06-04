@@ -15,6 +15,7 @@
 
 use std::convert::TryInto;
 
+use dyn_type::Object;
 use graph_proxy::apis::{
     get_graph, Direction, DynDetails, GraphElement, QueryParams, Statement, Vertex, ID,
 };
@@ -84,6 +85,110 @@ impl<E: Entry + 'static> FlatMapFunction<Record, Record> for EdgeExpandOperator<
                     let curr_path = graph_path.clone();
                     Ok(Box::new(RecordPathExpandIter::new(input, curr_path, iter)))
                 }
+                EntryType::Object => {
+                    let obj = entry
+                        .as_object()
+                        .ok_or_else(|| FnExecError::Unreachable)?;
+                    if Object::None.eq(obj) {
+                        input.append(Object::None, self.alias);
+                        Ok(Box::new(vec![input].into_iter()))
+                    } else {
+                        Err(FnExecError::unexpected_data_error(&format!(
+                            "Cannot Expand from current entry {:?}",
+                            entry
+                        )))?
+                    }
+                }
+                _ => Err(FnExecError::unexpected_data_error(&format!(
+                    "Cannot Expand from current entry {:?}",
+                    entry
+                )))?,
+            }
+        } else {
+            Ok(Box::new(vec![].into_iter()))
+        }
+    }
+}
+
+pub struct OptionalEdgeExpandOperator<E: Entry> {
+    start_v_tag: Option<KeyId>,
+    alias: Option<KeyId>,
+    stmt: Box<dyn Statement<ID, E>>,
+    expand_opt: ExpandOpt,
+}
+
+impl<E: Entry + 'static> FlatMapFunction<Record, Record> for OptionalEdgeExpandOperator<E> {
+    type Target = DynIter<Record>;
+
+    fn exec(&self, mut input: Record) -> FnResult<Self::Target> {
+        if let Some(entry) = input.get(self.start_v_tag) {
+            match entry.get_type() {
+                EntryType::Vertex => {
+                    let id = entry.id();
+                    let mut iter = self.stmt.exec(id)?.peekable();
+                    match self.expand_opt {
+                        // the case of expand edge, and get end vertex;
+                        ExpandOpt::Vertex => {
+                            if iter.peek().is_none() {
+                                input.append(Object::None, self.alias);
+                                Ok(Box::new(vec![input].into_iter()))
+                            } else {
+                                let neighbors_iter = iter.map(|e| {
+                                    if let Some(e) = e.as_edge() {
+                                        Vertex::new(
+                                            e.get_other_id(),
+                                            e.get_other_label().cloned(),
+                                            DynDetails::default(),
+                                        )
+                                    } else {
+                                        unreachable!()
+                                    }
+                                });
+                                Ok(Box::new(RecordExpandIter::new(
+                                    input,
+                                    self.alias.as_ref(),
+                                    Box::new(neighbors_iter),
+                                )))
+                            }
+                        }
+                        // the case of expand neighbors, including edges/vertices
+                        ExpandOpt::Edge => {
+                            if iter.peek().is_none() {
+                                input.append(Object::None, self.alias);
+                                Ok(Box::new(vec![input].into_iter()))
+                            } else {
+                                Ok(Box::new(RecordExpandIter::new(
+                                    input,
+                                    self.alias.as_ref(),
+                                    Box::new(iter),
+                                )))
+                            }
+                        }
+                        // the case of get degree. TODO: this case should be a `Map`
+                        ExpandOpt::Degree => {
+                            let degree = iter.count();
+                            input.append(object!(degree), self.alias);
+                            Ok(Box::new(vec![input].into_iter()))
+                        }
+                    }
+                }
+                EntryType::Path => Err(FnExecError::unsupported_error(
+                    "Have not supported Optional Edge Expand in Path entry yet",
+                ))?,
+                EntryType::Object => {
+                    let obj = entry
+                        .as_object()
+                        .ok_or_else(|| FnExecError::Unreachable)?;
+                    if Object::None.eq(obj) {
+                        input.append(Object::None, self.alias);
+                        Ok(Box::new(vec![input].into_iter()))
+                    } else {
+                        Err(FnExecError::unexpected_data_error(&format!(
+                            "Cannot Expand from current entry {:?}",
+                            entry
+                        )))?
+                    }
+                }
                 _ => Err(FnExecError::unexpected_data_error(&format!(
                     "Cannot Expand from current entry {:?}",
                     entry
@@ -99,9 +204,6 @@ impl FlatMapFuncGen for pb::EdgeExpand {
     fn gen_flat_map(
         self,
     ) -> FnGenResult<Box<dyn FlatMapFunction<Record, Record, Target = DynIter<Record>>>> {
-        if self.is_optional {
-            return Err(FnGenError::unsupported_error("optional edge expand in EdgeExpandOperator"));
-        }
         let graph = get_graph().ok_or_else(|| FnGenError::NullGraphError)?;
         let start_v_tag = self.v_tag;
         let edge_or_end_v_tag = self.alias;
@@ -122,31 +224,61 @@ impl FlatMapFuncGen for pb::EdgeExpand {
                     // Expand vertices with filters on edges.
                     // This can be regarded as a combination of EdgeExpand (with is_edge = true) + GetV
                     let stmt = graph.prepare_explore_edge(direction, &query_params)?;
-                    let edge_expand_operator = EdgeExpandOperator {
-                        start_v_tag,
-                        alias: edge_or_end_v_tag,
-                        stmt,
-                        expand_opt: ExpandOpt::Vertex,
-                    };
-                    Ok(Box::new(edge_expand_operator))
+                    if self.is_optional {
+                        let edge_expand_operator = OptionalEdgeExpandOperator {
+                            start_v_tag,
+                            alias: edge_or_end_v_tag,
+                            stmt,
+                            expand_opt: ExpandOpt::Vertex,
+                        };
+                        Ok(Box::new(edge_expand_operator))
+                    } else {
+                        let edge_expand_operator = EdgeExpandOperator {
+                            start_v_tag,
+                            alias: edge_or_end_v_tag,
+                            stmt,
+                            expand_opt: ExpandOpt::Vertex,
+                        };
+                        Ok(Box::new(edge_expand_operator))
+                    }
                 } else {
                     // Expand vertices without any filters
                     let stmt = graph.prepare_explore_vertex(direction, &query_params)?;
-                    let edge_expand_operator = EdgeExpandOperator {
-                        start_v_tag,
-                        alias: edge_or_end_v_tag,
-                        stmt,
-                        expand_opt: ExpandOpt::Edge,
-                    };
-                    Ok(Box::new(edge_expand_operator))
+                    if self.is_optional {
+                        let edge_expand_operator = OptionalEdgeExpandOperator {
+                            start_v_tag,
+                            alias: edge_or_end_v_tag,
+                            stmt,
+                            expand_opt: ExpandOpt::Edge,
+                        };
+                        Ok(Box::new(edge_expand_operator))
+                    } else {
+                        let edge_expand_operator = EdgeExpandOperator {
+                            start_v_tag,
+                            alias: edge_or_end_v_tag,
+                            stmt,
+                            expand_opt: ExpandOpt::Edge,
+                        };
+                        Ok(Box::new(edge_expand_operator))
+                    }
                 }
             }
             _ => {
                 // Expand edges or degree
                 let stmt = graph.prepare_explore_edge(direction, &query_params)?;
-                let edge_expand_operator =
-                    EdgeExpandOperator { start_v_tag, alias: edge_or_end_v_tag, stmt, expand_opt };
-                Ok(Box::new(edge_expand_operator))
+                if self.is_optional {
+                    let edge_expand_operator = OptionalEdgeExpandOperator {
+                        start_v_tag,
+                        alias: edge_or_end_v_tag,
+                        stmt,
+                        expand_opt,
+                    };
+                    Ok(Box::new(edge_expand_operator))
+                } else {
+                    let edge_expand_operator =
+                        EdgeExpandOperator { start_v_tag, alias: edge_or_end_v_tag, stmt, expand_opt };
+                    Ok(Box::new(edge_expand_operator))
+                }
             }
         }
     }
