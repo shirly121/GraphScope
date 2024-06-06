@@ -22,7 +22,6 @@ import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
-import org.apache.commons.lang3.ObjectUtils;
 
 import java.util.Collections;
 import java.util.List;

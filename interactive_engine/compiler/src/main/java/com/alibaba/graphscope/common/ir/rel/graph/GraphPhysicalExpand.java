@@ -197,4 +197,17 @@ public class GraphPhysicalExpand extends SingleRel {
         }
         return shuttle.visit(this);
     }
+
+    @Override
+    public GraphPhysicalExpand copy(RelTraitSet traitSet, List<RelNode> inputs) {
+        return new GraphPhysicalExpand(
+                getCluster(),
+                ImmutableList.of(),
+                inputs.get(0),
+                fusedExpand,
+                fusedGetV,
+                physicalOpt,
+                aliasName,
+                optional);
+    }
 }

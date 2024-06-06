@@ -21,7 +21,6 @@ import com.alibaba.graphscope.common.jna.type.ResultOpt;
 import com.alibaba.graphscope.gremlin.exception.ExtendGremlinStepException;
 import com.google.common.base.Objects;
 
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.step.filter.RangeGlobalStep;
 import org.apache.tinkerpop.gremlin.structure.Direction;
@@ -107,7 +106,8 @@ public class PathExpandStep extends ExpandFusionStep<Vertex> {
                                 + " insensitive)");
             }
         } else if (key.equals("Until")) {
-            this.untilCondition = com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(originalVal);
+            this.untilCondition =
+                    com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(originalVal);
         } else {
             throw new ExtendGremlinStepException(
                     "key "

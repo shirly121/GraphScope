@@ -33,7 +33,6 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.tools.RelBuilder;
-import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.math.BigDecimal;
@@ -161,7 +160,8 @@ public class Utils {
 
     public static ExprVisitorResult binaryCall(
             List<SqlOperator> operators, List<ExprVisitorResult> operands, GraphBuilder builder) {
-        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(operands, "operands count should not be 0");
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
+                operands, "operands count should not be 0");
         if (operators.size() != operands.size() - 1) {
             throw new IllegalArgumentException(
                     "invalid operators count, should be equal with the count of operands minus 1");
@@ -178,7 +178,8 @@ public class Utils {
 
     public static ExprVisitorResult binaryCall(
             SqlOperator operator, List<ExprVisitorResult> operands, GraphBuilder builder) {
-        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(operands, "operands count should not be 0");
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
+                operands, "operands count should not be 0");
         RexNode expr = operands.get(0).getExpr();
         List<RelBuilder.AggCall> aggCalls = new ArrayList<>();
         aggCalls.addAll(operands.get(0).getAggCalls());

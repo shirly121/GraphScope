@@ -28,7 +28,6 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Litmus;
-import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Collections;
@@ -92,13 +91,17 @@ public class GraphAggCall implements RelBuilder.AggCall {
 
     @Override
     public GraphAggCall sort(Iterable<RexNode> orderKeys) {
-        this.orderKeys = ImmutableList.copyOf(com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(orderKeys));
+        this.orderKeys =
+                ImmutableList.copyOf(
+                        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(orderKeys));
         return this;
     }
 
     @Override
     public GraphAggCall unique(@Nullable Iterable<RexNode> distinctKeys) {
-        this.distinctKeys = ImmutableList.copyOf(com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(distinctKeys));
+        this.distinctKeys =
+                ImmutableList.copyOf(
+                        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(distinctKeys));
         return this;
     }
 

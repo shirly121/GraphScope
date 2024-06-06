@@ -24,7 +24,6 @@ import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rex.RexNode;
-import org.apache.commons.lang3.ObjectUtils;
 
 import java.util.Collections;
 import java.util.List;

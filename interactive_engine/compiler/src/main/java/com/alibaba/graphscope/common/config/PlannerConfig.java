@@ -1,6 +1,7 @@
 package com.alibaba.graphscope.common.config;
 
 import com.alibaba.graphscope.common.ir.rel.metadata.schema.GlogueSchema;
+
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Collections;
@@ -31,14 +32,15 @@ public class PlannerConfig {
     public PlannerConfig(Configs configs) {
         this.configs = configs;
         this.rules = Utils.convertDotString(GRAPH_PLANNER_RULES.get(configs));
-//        try {
-//            this.glogueSchema =
-//                    (isOn() && getOpt() == Opt.CBO)
-//                            ? GlogueSchema.fromFile(GRAPH_PLANNER_CBO_GLOGUE_SCHEMA.get(configs))
-//                            : null;
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
+        //        try {
+        //            this.glogueSchema =
+        //                    (isOn() && getOpt() == Opt.CBO)
+        //                            ?
+        // GlogueSchema.fromFile(GRAPH_PLANNER_CBO_GLOGUE_SCHEMA.get(configs))
+        //                            : null;
+        //        } catch (IOException e) {
+        //            throw new RuntimeException(e);
+        //        }
         this.glogueSchema = null;
     }
 

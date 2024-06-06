@@ -90,7 +90,8 @@ public class GraphSchemaType extends RelRecordType {
 
     public static GraphSchemaType create(
             List<GraphSchemaType> list, RelDataTypeFactory typeFactory, boolean isNullable) {
-        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(list, "schema type list should not be empty");
+        com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
+                list, "schema type list should not be empty");
         if (list.size() == 1) {
             return list.get(0);
         }
