@@ -49,7 +49,7 @@ public class GraphMetadataHandlerProvider implements MetadataHandlerProvider {
         } else if (handlerClass.equals(ExternalMetaData.GlogueEdges.Handler.class)) {
             return new GraphGlogueEdgesHandler(this.glogueQuery);
         } else if (handlerClass.equals(BuiltInMetadata.NonCumulativeCost.Handler.class)) {
-            return new GraphNonCumulativeCostHandler(this.optPlanner, this.plannerConfig);
+            return new GraphNonCumulativeCostHandler(this.optPlanner, this.plannerConfig, this.glogueQuery);
         } else if (handlerClass.equals(BuiltInMetadata.Selectivity.Handler.class)) {
             return new GraphSelectivityHandler();
         } else {

@@ -23,7 +23,6 @@ import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendStep;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternEdge;
@@ -31,7 +30,6 @@ import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVerte
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.tools.RelBuilderFactory;
@@ -74,20 +72,20 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
         if (patternSize <= 1) {
             return edges;
         }
-        if (Utils.canLookUpFromGlogue(pattern, config.getMaxPatternSizeInGlogue())) {
-            Set<GlogueEdge> glogueEdges = mq.getGlogueEdges(graphPattern);
-            glogueEdges.forEach(
-                    k ->
-                            edges.add(
-                                    new GraphExtendIntersect(
-                                            graphPattern.getCluster(),
-                                            graphPattern.getTraitSet(),
-                                            new GraphPattern(
-                                                    graphPattern.getCluster(),
-                                                    graphPattern.getTraitSet(),
-                                                    k.getSrcPattern()),
-                                            (GlogueExtendIntersectEdge) k)));
-        } else {
+//        if (Utils.canLookUpFromGlogue(pattern, config.getMaxPatternSizeInGlogue())) {
+//            Set<GlogueEdge> glogueEdges = mq.getGlogueEdges(graphPattern);
+//            glogueEdges.forEach(
+//                    k ->
+//                            edges.add(
+//                                    new GraphExtendIntersect(
+//                                            graphPattern.getCluster(),
+//                                            graphPattern.getTraitSet(),
+//                                            new GraphPattern(
+//                                                    graphPattern.getCluster(),
+//                                                    graphPattern.getTraitSet(),
+//                                                    k.getSrcPattern()),
+//                                            (GlogueExtendIntersectEdge) k)));
+//        } else {
             PruningStrategy pruningStrategy = new PruningStrategy(pattern);
             for (PatternVertex vertex : pattern.getVertexSet()) {
                 if (pruningStrategy.toPrune(vertex)) {
@@ -95,7 +93,7 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
                 }
                 edges.add(createExtendIntersect(graphPattern, vertex, estimator));
             }
-        }
+//        }
         Collections.sort(edges, comparator.getEdgeComparator());
         return edges;
     }

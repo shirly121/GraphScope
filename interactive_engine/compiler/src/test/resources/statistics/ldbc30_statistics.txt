@@ -1,5 +1,5 @@
-v,3,post,21651343
-v,2,comment,54737516
+v,3,post,1003605
+v,2,comment,2052169
 v,7,tag,16081
 v,0,place,1461
 v,4,forum,1659633
@@ -11,8 +11,8 @@ e,16,workat,person,orgnisation,371635
 e,17,ispartof,place,place,1455
 e,22,issubclassof,tagclass,tagclass,71
 e,6,hasmember,forum,person,90198119
-e,3,replyof,comment,comment,25130259
-e,3,replyof,comment,post,29607258
+e,3,replyof,comment,comment,1040749
+e,3,replyof,comment,post,1011420
 e,13,likes,person,comment,48651550
 e,13,likes,person,post,26908835
 e,10,hasinterest,person,tag,3978965
@@ -28,4 +28,4 @@ e,11,islocatedin,comment,place,54737516
 e,11,islocatedin,post,place,21651343
 e,1,hastag,forum,tag,5467943
 e,1,hastag,post,tag,23426339
-e,1,hastag,comment,tag,70035651
+e,1,hastag,comment,tag,2698393

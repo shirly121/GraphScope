@@ -62,6 +62,10 @@ public class GlogueQuery {
         return glogue.getMaxPatternSize();
     }
 
+    public Double getDeltaCount(int startId, int edgeId, PatternDirection direction) {
+        return glogue.glogueSchema.getDeltaCount(startId, edgeId, direction);
+    }
+
     @Override
     public String toString() {
         return glogue.toString();

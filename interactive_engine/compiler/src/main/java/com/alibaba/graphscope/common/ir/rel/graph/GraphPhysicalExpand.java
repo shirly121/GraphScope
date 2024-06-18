@@ -190,6 +190,10 @@ public class GraphPhysicalExpand extends SingleRel {
                 .itemIf("optional", optional, optional);
     }
 
+    public GraphLogicalGetV getFusedGetV() {
+        return this.fusedGetV;
+    }
+
     @Override
     public RelNode accept(RelShuttle shuttle) {
         if (shuttle instanceof GraphShuttle) {

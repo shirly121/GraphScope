@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.common.ir.rel.metadata.schema;
 
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternDirection;
 import com.alibaba.graphscope.groot.common.schema.api.EdgeRelation;
 import com.alibaba.graphscope.groot.common.schema.api.GraphEdge;
 import com.alibaba.graphscope.groot.common.schema.api.GraphSchema;
@@ -24,10 +25,11 @@ import com.alibaba.graphscope.groot.common.schema.impl.DefaultEdgeRelation;
 import com.alibaba.graphscope.groot.common.schema.impl.DefaultGraphEdge;
 import com.alibaba.graphscope.groot.common.schema.impl.DefaultGraphSchema;
 import com.alibaba.graphscope.groot.common.schema.impl.DefaultGraphVertex;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-
-import org.jgrapht.*;
-import org.jgrapht.graph.*;
+import com.google.common.util.concurrent.AtomicDouble;
+import org.jgrapht.Graph;
+import org.jgrapht.graph.DirectedPseudograph;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -60,6 +62,29 @@ public class GlogueSchema {
 
         this.vertexTypeCardinality = vertexTypeCardinality;
         this.edgeTypeCardinality = edgeTypeCardinality;
+    }
+
+    public Double getDeltaCount(int startId, int edgeId, PatternDirection direction) {
+        List<Integer> endIds = Lists.newArrayList();
+        AtomicDouble edgeCount = new AtomicDouble(0.0d);
+        edgeTypeCardinality.forEach((k, v) -> {
+            switch (direction) {
+                case OUT:
+                    if (k.getSrcLabelId() == startId && k.getEdgeLabelId() == edgeId) {
+                        endIds.add(k.getDstLabelId());
+                        edgeCount.set(edgeCount.doubleValue() + v);
+                    }
+                    break;
+                case IN:
+                    if (k.getDstLabelId() == startId && k.getEdgeLabelId() == edgeId) {
+                        endIds.add(k.getSrcLabelId());
+                        edgeCount.set(edgeCount.doubleValue() + v);
+                    }
+                    break;
+                default:
+            }
+        });
+        return (endIds.size() <= 1 ) ? 0.0d : edgeCount.doubleValue();
     }
 
     public static GlogueSchema fromFile(String schemaPath) throws IOException {

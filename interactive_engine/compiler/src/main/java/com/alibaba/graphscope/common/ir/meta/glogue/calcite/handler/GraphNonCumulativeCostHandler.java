@@ -20,8 +20,12 @@ import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
 import com.alibaba.graphscope.common.ir.rel.GraphJoinDecomposition;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueQuery;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternDirection;
+import com.alibaba.graphscope.common.ir.rel.metadata.schema.EdgeTypeId;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptCostFactory;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -33,11 +37,13 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
     private final RelOptPlanner optPlanner;
     private final RelOptCostFactory costFactory;
     private final PlannerConfig plannerConfig;
+    private final GlogueQuery gq;
 
-    public GraphNonCumulativeCostHandler(RelOptPlanner optPlanner, PlannerConfig plannerConfig) {
+    public GraphNonCumulativeCostHandler(RelOptPlanner optPlanner, PlannerConfig plannerConfig, GlogueQuery gq) {
         this.optPlanner = optPlanner;
         this.costFactory = optPlanner.getCostFactory();
         this.plannerConfig = plannerConfig;
+        this.gq = gq;
     }
     /**
      * estimate the non-cumulative cost of {@code GraphExtendIntersect} or {@code GraphBinaryJoin} operator
@@ -51,7 +57,7 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
             GlogueExtendIntersectEdge glogueEdge = ((GraphExtendIntersect) node).getGlogueEdge();
             double weight = glogueEdge.getExtendStep().getWeight();
             double srcPatternCount = mq.getRowCount(node.getInput(0));
-            double dRows = weight * srcPatternCount;
+            double dRows = weight * srcPatternCount + getDeltaCost(glogueEdge.getExtendStep().getExtendEdges().get(0));
             double dCpu = dRows + 1;
             double dIo = mq.getRowCount(node);
             return costFactory.makeCost(dRows, dCpu, dIo);
@@ -78,5 +84,18 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
         } else {
             return node.computeSelfCost(optPlanner, mq);
         }
+    }
+
+    private double getDeltaCost(ExtendEdge firstEdge) {
+        double weight = 0.0d;
+        for (EdgeTypeId id : firstEdge.getEdgeTypeIds()) {
+            if (firstEdge.getDirection() != PatternDirection.IN) {
+                weight += gq.getDeltaCount(id.getSrcLabelId(), id.getEdgeLabelId(), firstEdge.getDirection());
+            }
+            if (firstEdge.getDirection() != PatternDirection.OUT) {
+                weight += gq.getDeltaCount(id.getDstLabelId(), id.getEdgeLabelId(), firstEdge.getDirection());
+            }
+        }
+        return weight;
     }
 }

@@ -31,9 +31,9 @@ public class CBOTest {
                                 "FilterIntoJoinRule, FilterMatchRule, ExtendIntersectRule,"
                                         + " ExpandGetVFusionRule",
                                 "graph.planner.cbo.glogue.schema",
-                                "target/test-classes/statistics/ldbc30_hierarchy_statistics.txt"));
+                                "target/test-classes/statistics/ldbc30_statistics.txt"));
         optimizer = new GraphRelOptimizer(configs);
-        irMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
+        irMeta = Utils.mockSchemaMeta("schema/ldbc.json");
     }
 
     @Test
@@ -190,5 +190,21 @@ public class CBOTest {
                     + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[FORUM]}],"
                     + " alias=[forum], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
+    }
+
+    @Test
+    public void Q5_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH (message:COMMENT)-[:HASTAG]->(tag1),\n" +
+                                        "(comment:COMMENT)-[:HASTAG]->(tag2),\n" +
+                                        "(comment)-[:REPLYOF]->(message)\n" +
+                                        "WHERE tag1<>tag2\n" +
+                                        "RETURN COUNT(message)",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after.explain());
     }
 }
