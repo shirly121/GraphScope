@@ -47,6 +47,7 @@ struct ServiceConfig {
   uint32_t admin_port;
   uint32_t query_port;
   uint32_t shard_num;
+  uint32_t memory_level;
   bool dpdk_mode;
   bool enable_thread_resource_pool;
   unsigned external_thread_num;
@@ -82,6 +83,10 @@ class HQPSService {
   bool is_running() const;
 
   uint16_t get_query_port() const;
+
+  uint64_t get_start_time() const;
+
+  void reset_start_time();
 
   std::shared_ptr<gs::IGraphMetaStore> get_metadata_store() const;
 
@@ -122,6 +127,7 @@ class HQPSService {
   std::unique_ptr<hqps_http_handler> query_hdl_;
   std::atomic<bool> running_{false};
   std::atomic<bool> initialized_{false};
+  std::atomic<uint64_t> start_time_{0};
   std::mutex mtx_;
 
   ServiceConfig service_config_;

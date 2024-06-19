@@ -199,8 +199,9 @@ class mmap_array {
                        << strerror(errno);
           }
         } else {
-          LOG(FATAL) << "allocating hugepage failed, " << strerror(errno)
+          LOG(ERROR) << "allocating hugepage failed, " << strerror(errno)
                      << ", try with normal pages";
+          data_ = NULL;
           open(filename, false);
         }
       } else {
@@ -290,7 +291,7 @@ class mmap_array {
         if (hugepage_prefered_) {
           new_data = reinterpret_cast<T*>(allocate_hugepages(new_mmap_size));
           if (new_data == MAP_FAILED) {
-            LOG(FATAL) << "mmap with hugepage failed, " << strerror(errno)
+            LOG(ERROR) << "mmap with hugepage failed, " << strerror(errno)
                        << ", try with normal pages";
             new_data = NULL;
           } else {
@@ -345,6 +346,7 @@ class mmap_array {
     std::swap(size_, rhs.size_);
     std::swap(mmap_size_, rhs.mmap_size_);
     std::swap(hugepage_prefered_, rhs.hugepage_prefered_);
+    std::swap(sync_to_file_, rhs.sync_to_file_);
   }
 
   const std::string& filename() const { return filename_; }

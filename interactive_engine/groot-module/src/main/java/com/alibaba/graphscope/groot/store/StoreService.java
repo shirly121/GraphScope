@@ -25,6 +25,7 @@ import com.alibaba.graphscope.groot.operation.StoreDataBatch;
 import com.alibaba.graphscope.groot.store.external.ExternalStorage;
 import com.alibaba.graphscope.groot.store.jna.JnaGraphStore;
 import com.alibaba.graphscope.proto.groot.GraphDefPb;
+import com.alibaba.graphscope.proto.groot.Statistics;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
@@ -69,6 +70,7 @@ public class StoreService {
     private ExecutorService ingestExecutor;
     private ExecutorService garbageCollectExecutor;
     private ExecutorService compactExecutor;
+    private ExecutorService statisticsExecutor;
 
     private ThreadPoolExecutor downloadExecutor;
     private final boolean enableGc;
@@ -107,7 +109,7 @@ public class StoreService {
                         writeThreadCount,
                         writeThreadCount,
                         0L,
-                        TimeUnit.MILLISECONDS,
+                        TimeUnit.SECONDS,
                         new LinkedBlockingQueue<>(),
                         ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
                                 "store-write", logger));
@@ -116,22 +118,17 @@ public class StoreService {
                         1,
                         1,
                         0L,
-                        TimeUnit.MILLISECONDS,
+                        TimeUnit.SECONDS,
                         new LinkedBlockingQueue<>(1),
                         ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
                                 "store-ingest", logger));
-        int partitionCount = partitionIds.size();
-        int compactQueueLength =
-                partitionCount - this.compactThreadCount <= 0
-                        ? 1
-                        : partitionCount - this.compactThreadCount;
         this.compactExecutor =
                 new ThreadPoolExecutor(
                         1,
                         this.compactThreadCount,
                         60L,
                         TimeUnit.SECONDS,
-                        new LinkedBlockingQueue<>(compactQueueLength),
+                        new LinkedBlockingQueue<>(partitionIds.size()),
                         ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
                                 "store-compact", logger));
         this.garbageCollectExecutor =
@@ -139,7 +136,7 @@ public class StoreService {
                         1,
                         1,
                         0L,
-                        TimeUnit.MILLISECONDS,
+                        TimeUnit.SECONDS,
                         new LinkedBlockingQueue<>(),
                         ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
                                 "store-garbage-collect", logger));
@@ -148,12 +145,21 @@ public class StoreService {
                 new ThreadPoolExecutor(
                         16,
                         16,
-                        1000L,
-                        TimeUnit.MILLISECONDS,
+                        1L,
+                        TimeUnit.SECONDS,
                         new LinkedBlockingQueue<>(),
                         ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
                                 "store-download", logger));
         this.downloadExecutor.allowCoreThreadTimeOut(true);
+        this.statisticsExecutor =
+                new ThreadPoolExecutor(
+                        8,
+                        16,
+                        60L,
+                        TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<>(),
+                        ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
+                                "store-statistics", logger));
         logger.info("StoreService started. storeId [" + this.storeId + "]");
     }
 
@@ -297,6 +303,45 @@ public class StoreService {
         return graphPartition.getGraphDefBlob();
     }
 
+    public Map<Integer, Statistics> getGraphStatisticsBlob(long snapshotId) throws IOException {
+        int partitionCount = this.idToPartition.values().size();
+        CountDownLatch countDownLatch = new CountDownLatch(partitionCount);
+        logger.info("Collect statistics of store#{} started", storeId);
+        Map<Integer, Statistics> statisticsMap = new ConcurrentHashMap<>();
+        for (Map.Entry<Integer, GraphPartition> entry : idToPartition.entrySet()) {
+            this.statisticsExecutor.execute(
+                    () -> {
+                        try {
+                            Statistics statistics =
+                                    entry.getValue().getGraphStatisticsBlob(snapshotId);
+                            statisticsMap.put(entry.getKey(), statistics);
+                            logger.debug("Collected statistics of partition#{}", entry.getKey());
+                        } catch (IOException e) {
+                            logger.error(
+                                    "Collect statistics failed for partition {}",
+                                    entry.getKey(),
+                                    e);
+                        } finally {
+                            countDownLatch.countDown();
+                        }
+                    });
+        }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            logger.error("collect statistics has been interrupted", e);
+        }
+        if (statisticsMap.size() != partitionCount) {
+            try {
+                Thread.sleep(1000L);
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+        }
+        logger.info("Collect statistics of store#{} done, size: {}", storeId, statisticsMap.size());
+        return statisticsMap;
+    }
+
     public MetaService getMetaService() {
         return this.metaService;
     }
@@ -309,7 +354,7 @@ public class StoreService {
             downloadPath = Paths.get(dataRoot, "download").toString();
         }
         String[] items = path.split("/");
-        // Get the  unique path  (uuid)
+        // Get the unique path (uuid)
         String unique_path = items[items.length - 1];
         Path uniquePath = Paths.get(downloadPath, unique_path);
         if (!Files.isDirectory(uniquePath)) {
@@ -425,13 +470,14 @@ public class StoreService {
         int partitionCount = this.idToPartition.values().size();
         CountDownLatch compactCountDownLatch = new CountDownLatch(partitionCount);
         AtomicInteger successCompactJobCount = new AtomicInteger(partitionCount);
-        logger.info("compact DB");
+        logger.info("compaction of all DB started");
         for (GraphPartition partition : this.idToPartition.values()) {
             this.compactExecutor.execute(
                     () -> {
                         try {
+                            logger.info("Compaction of {} partition started", partition.getId());
                             partition.compact();
-                            logger.info("Compaction {} partition finished", partition.getId());
+                            logger.info("Compaction of {} partition finished", partition.getId());
                             successCompactJobCount.decrementAndGet();
                         } catch (Exception e) {
                             logger.error("compact DB failed", e);
@@ -448,7 +494,9 @@ public class StoreService {
         }
 
         if (successCompactJobCount.get() > 0) {
-            callback.onError(new Exception("not all partition compact success. please check log."));
+            String msg = "not all partition compact success. please check log.";
+            logger.error(msg);
+            callback.onError(new Exception(msg));
         } else {
             callback.onCompleted(null);
         }

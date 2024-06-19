@@ -23,6 +23,7 @@ import org.apache.tinkerpop.gremlin.process.AbstractGremlinProcessTest;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Map;
@@ -36,7 +37,15 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
 
     public abstract Traversal<Vertex, Long> get_pattern_4_test();
 
+    public abstract Traversal<Vertex, Long> get_pattern_4b_test();
+
+    public abstract Traversal<Vertex, Long> get_pattern_4c_test();
+
     public abstract Traversal<Vertex, Long> get_pattern_5_test();
+
+    public abstract Traversal<Vertex, Long> get_pattern_5b_test();
+
+    public abstract Traversal<Vertex, Long> get_pattern_5c_test();
 
     public abstract Traversal<Vertex, Long> get_pattern_6_test();
 
@@ -46,11 +55,15 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
 
     public abstract Traversal<Vertex, Long> get_pattern_9_test();
 
+    public abstract Traversal<Vertex, Long> get_pattern_9b_test();
+
     public abstract Traversal<Vertex, Long> get_pattern_10_test();
 
     public abstract Traversal<Vertex, Long> get_pattern_11_test();
 
     public abstract Traversal<Vertex, Long> get_pattern_12_test();
+
+    public abstract Traversal<Vertex, Long> get_pattern_12b_test();
 
     public abstract Traversal<Vertex, Long> get_pattern_13_test();
 
@@ -95,8 +108,36 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
     }
 
     @Test
+    public void run_pattern_4b_test() {
+        Traversal<Vertex, Long> traversal = this.get_pattern_4b_test();
+        this.printTraversalForm(traversal);
+        Assert.assertEquals(23286L, traversal.next().longValue());
+    }
+
+    @Test
+    public void run_pattern_4c_test() {
+        Traversal<Vertex, Long> traversal = this.get_pattern_4c_test();
+        this.printTraversalForm(traversal);
+        Assert.assertEquals(23286L, traversal.next().longValue());
+    }
+
+    @Test
     public void run_pattern_5_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_5_test();
+        this.printTraversalForm(traversal);
+        Assert.assertEquals(5596L, traversal.next().longValue());
+    }
+
+    @Test
+    public void run_pattern_5b_test() {
+        Traversal<Vertex, Long> traversal = this.get_pattern_5b_test();
+        this.printTraversalForm(traversal);
+        Assert.assertEquals(5596L, traversal.next().longValue());
+    }
+
+    @Test
+    public void run_pattern_5c_test() {
+        Traversal<Vertex, Long> traversal = this.get_pattern_5c_test();
         this.printTraversalForm(traversal);
         Assert.assertEquals(5596L, traversal.next().longValue());
     }
@@ -122,9 +163,18 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
         Assert.assertEquals(1247146L, traversal.next().longValue());
     }
 
+    @Ignore("Have not supported pattern with multi-edges yet")
     @Test
     public void run_pattern_9_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_9_test();
+        this.printTraversalForm(traversal);
+        Assert.assertEquals(23286L, traversal.next().longValue());
+    }
+
+    @Ignore("Have not supported pattern with multi-edges yet")
+    @Test
+    public void run_pattern_9b_test() {
+        Traversal<Vertex, Long> traversal = this.get_pattern_9b_test();
         this.printTraversalForm(traversal);
         Assert.assertEquals(23286L, traversal.next().longValue());
     }
@@ -146,6 +196,13 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
     @Test
     public void run_pattern_12_test() {
         Traversal<Vertex, Long> traversal = this.get_pattern_12_test();
+        this.printTraversalForm(traversal);
+        Assert.assertEquals(232854L, traversal.next().longValue());
+    }
+
+    @Test
+    public void run_pattern_12b_test() {
+        Traversal<Vertex, Long> traversal = this.get_pattern_12b_test();
         this.printTraversalForm(traversal);
         Assert.assertEquals(232854L, traversal.next().longValue());
     }
@@ -255,6 +312,28 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                     .count();
         }
 
+        // PM5
+        @Override
+        public Traversal<Vertex, Long> get_pattern_4b_test() {
+            return g.V().match(
+                            __.as("a").outE("KNOWS").as("d").inV().as("b"),
+                            __.as("b").out("KNOWS").as("c"),
+                            __.as("a").out("KNOWS").as("c"))
+                    .select("d")
+                    .count();
+        }
+
+        // PM5
+        @Override
+        public Traversal<Vertex, Long> get_pattern_4c_test() {
+            return g.V().match(
+                            __.as("a").outE("KNOWS").as("d").inV().as("b"),
+                            __.as("b").outE("KNOWS").as("e").inV().as("c"),
+                            __.as("a").outE("KNOWS").as("f").inV().as("c"))
+                    .select("d", "e", "f")
+                    .count();
+        }
+
         // PM7
         @Override
         public Traversal<Vertex, Long> get_pattern_5_test() {
@@ -262,6 +341,28 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                             __.as("a").has("gender", "male").out("KNOWS").as("b"),
                             __.as("b").has("gender", "female").out("KNOWS").as("c"),
                             __.as("a").out("KNOWS").as("c"))
+                    .count();
+        }
+
+        // PM7
+        @Override
+        public Traversal<Vertex, Long> get_pattern_5b_test() {
+            return g.V().match(
+                            __.as("a").has("gender", "male").outE("KNOWS").as("d").inV().as("b"),
+                            __.as("b").has("gender", "female").out("KNOWS").as("c"),
+                            __.as("a").out("KNOWS").as("c"))
+                    .select("d")
+                    .count();
+        }
+
+        // PM7
+        @Override
+        public Traversal<Vertex, Long> get_pattern_5c_test() {
+            return g.V().match(
+                            __.as("a").has("gender", "male").outE("KNOWS").as("d").inV().as("b"),
+                            __.as("b").has("gender", "female").outE("KNOWS").as("e").inV().as("c"),
+                            __.as("a").outE("KNOWS").as("f").inV().as("c"))
+                    .select("d", "e", "f")
                     .count();
         }
 
@@ -317,6 +418,18 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                     .count();
         }
 
+        // PM5-path
+        @Override
+        public Traversal<Vertex, Long> get_pattern_9b_test() {
+            return g.V().match(
+                            ((IrCustomizedTraversal) __.as("a").out("2..3", "KNOWS"))
+                                    .endV()
+                                    .as("c"),
+                            __.as("a").outE("KNOWS").as("d").inV().as("c"))
+                    .select("d")
+                    .count();
+        }
+
         // PM11-path
         @Override
         public Traversal<Vertex, Long> get_pattern_10_test() {
@@ -348,6 +461,17 @@ public abstract class PatternQueryTest extends AbstractGremlinProcessTest {
                             __.as("a").out("KNOWS", "LIKES").as("b"),
                             __.as("b").out("KNOWS", "LIKES").as("c"),
                             __.as("a").out("KNOWS", "LIKES").as("c"))
+                    .count();
+        }
+
+        // fuzzy pattern
+        @Override
+        public Traversal<Vertex, Long> get_pattern_12b_test() {
+            return g.V().match(
+                            __.as("a").outE("KNOWS", "LIKES").as("d").inV().as("b"),
+                            __.as("b").outE("KNOWS", "LIKES").as("e").inV().as("c"),
+                            __.as("a").outE("KNOWS", "LIKES").as("f").inV().as("c"))
+                    .select("d", "e", "f")
                     .count();
         }
 

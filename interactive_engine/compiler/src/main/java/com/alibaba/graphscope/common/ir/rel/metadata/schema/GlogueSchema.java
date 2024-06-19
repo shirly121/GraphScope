@@ -16,27 +16,18 @@
 
 package com.alibaba.graphscope.common.ir.rel.metadata.schema;
 
+import com.alibaba.graphscope.common.ir.meta.IrMetaStats;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternDirection;
-import com.alibaba.graphscope.groot.common.schema.api.EdgeRelation;
-import com.alibaba.graphscope.groot.common.schema.api.GraphEdge;
-import com.alibaba.graphscope.groot.common.schema.api.GraphSchema;
-import com.alibaba.graphscope.groot.common.schema.api.GraphVertex;
-import com.alibaba.graphscope.groot.common.schema.impl.DefaultEdgeRelation;
-import com.alibaba.graphscope.groot.common.schema.impl.DefaultGraphEdge;
-import com.alibaba.graphscope.groot.common.schema.impl.DefaultGraphSchema;
-import com.alibaba.graphscope.groot.common.schema.impl.DefaultGraphVertex;
+import com.alibaba.graphscope.groot.common.schema.api.*;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.AtomicDouble;
+
 import org.jgrapht.Graph;
 import org.jgrapht.graph.DirectedPseudograph;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 public class GlogueSchema {
     private Graph<Integer, EdgeTypeId> schemaGraph;
@@ -67,73 +58,57 @@ public class GlogueSchema {
     public Double getDeltaCount(int startId, int edgeId, PatternDirection direction) {
         List<Integer> endIds = Lists.newArrayList();
         AtomicDouble edgeCount = new AtomicDouble(0.0d);
-        edgeTypeCardinality.forEach((k, v) -> {
-            switch (direction) {
-                case OUT:
-                    if (k.getSrcLabelId() == startId && k.getEdgeLabelId() == edgeId) {
-                        endIds.add(k.getDstLabelId());
-                        edgeCount.set(edgeCount.doubleValue() + v);
+        edgeTypeCardinality.forEach(
+                (k, v) -> {
+                    switch (direction) {
+                        case OUT:
+                            if (k.getSrcLabelId() == startId && k.getEdgeLabelId() == edgeId) {
+                                endIds.add(k.getDstLabelId());
+                                edgeCount.set(edgeCount.doubleValue() + v);
+                            }
+                            break;
+                        case IN:
+                            if (k.getDstLabelId() == startId && k.getEdgeLabelId() == edgeId) {
+                                endIds.add(k.getSrcLabelId());
+                                edgeCount.set(edgeCount.doubleValue() + v);
+                            }
+                            break;
+                        default:
                     }
-                    break;
-                case IN:
-                    if (k.getDstLabelId() == startId && k.getEdgeLabelId() == edgeId) {
-                        endIds.add(k.getSrcLabelId());
-                        edgeCount.set(edgeCount.doubleValue() + v);
-                    }
-                    break;
-                default:
-            }
-        });
-        return (endIds.size() <= 1 ) ? 0.0d : edgeCount.doubleValue();
+                });
+        return (endIds.size() <= 1) ? 0.0d : edgeCount.doubleValue();
     }
 
-    public static GlogueSchema fromFile(String schemaPath) throws IOException {
-        try (BufferedReader bufferedReader = new BufferedReader(new FileReader(schemaPath))) {
-            Map<String, GraphVertex> vertexList = Maps.newHashMap();
-            Map<String, GraphEdge> edgeList = Maps.newHashMap();
-            HashMap<Integer, Double> vertexTypeCardinality = new HashMap<Integer, Double>();
-            HashMap<EdgeTypeId, Double> edgeTypeCardinality = new HashMap<EdgeTypeId, Double>();
-            String line;
-            while ((line = bufferedReader.readLine()) != null) {
-                // separate by comma
-                String[] parts = line.split(",");
-                // vertex
-                if (parts[0].equals("v")) {
-                    // v, 0, person, 3
-                    // v, 1, software, 4
-                    int labelId = Integer.parseInt(parts[1]);
-                    String label = parts[2];
-                    Double statistics = Double.parseDouble(parts[3]);
-                    DefaultGraphVertex vertex =
-                            new DefaultGraphVertex(labelId, label, List.of(), List.of(), 0, -1);
-                    vertexList.put(label, vertex);
-                    vertexTypeCardinality.put(labelId, statistics);
-                }
-                // edge
-                else if (parts[0].equals("e")) {
-                    // e, 0, knows, person, person, 5
-                    // e, 1, created, person, software, 6
-                    int labelId = Integer.parseInt(parts[1]);
-                    String label = parts[2];
-                    GraphVertex srcGraphVertex = vertexList.get(parts[3]);
-                    GraphVertex dstGraphVertex = vertexList.get(parts[4]);
-                    Double statistics = Double.parseDouble(parts[5]);
-                    int srcLabelId = srcGraphVertex.getLabelId();
-                    int dstLabelId = dstGraphVertex.getLabelId();
-                    DefaultEdgeRelation relation =
-                            new DefaultEdgeRelation(srcGraphVertex, dstGraphVertex);
-                    DefaultGraphEdge edge =
-                            new DefaultGraphEdge(labelId, label, List.of(), List.of(relation), 0);
-                    String edgeLabel = srcLabelId + label + dstLabelId;
-                    edgeList.put(edgeLabel, edge);
-                    edgeTypeCardinality.put(
-                            new EdgeTypeId(srcLabelId, dstLabelId, labelId), statistics);
-                }
-            }
-            DefaultGraphSchema graphSchema =
-                    new DefaultGraphSchema(vertexList, edgeList, Maps.newHashMap());
-            return new GlogueSchema(graphSchema, vertexTypeCardinality, edgeTypeCardinality);
+    public GlogueSchema(GraphSchema graphSchema, GraphStatistics statistics) {
+        schemaGraph = new DirectedPseudograph<Integer, EdgeTypeId>(EdgeTypeId.class);
+        vertexTypeCardinality = new HashMap<Integer, Double>();
+        edgeTypeCardinality = new HashMap<EdgeTypeId, Double>();
+        for (GraphVertex vertex : graphSchema.getVertexList()) {
+            schemaGraph.addVertex(vertex.getLabelId());
+            vertexTypeCardinality.put(
+                    vertex.getLabelId(),
+                    statistics.getVertexTypeCount(vertex.getLabelId()).doubleValue());
         }
+        for (GraphEdge edge : graphSchema.getEdgeList()) {
+            for (EdgeRelation relation : edge.getRelationList()) {
+                int sourceType = relation.getSource().getLabelId();
+                int targetType = relation.getTarget().getLabelId();
+                EdgeTypeId edgeType = new EdgeTypeId(sourceType, targetType, edge.getLabelId());
+                schemaGraph.addEdge(sourceType, targetType, edgeType);
+                edgeTypeCardinality.put(
+                        edgeType,
+                        statistics
+                                .getEdgeTypeCount(
+                                        Optional.of(sourceType),
+                                        Optional.of(edge.getLabelId()),
+                                        Optional.of(targetType))
+                                .doubleValue());
+            }
+        }
+    }
+
+    public static GlogueSchema fromMeta(IrMetaStats irMeta) {
+        return new GlogueSchema(irMeta.getSchema(), irMeta.getStatistics());
     }
 
     public List<Integer> getVertexTypes() {

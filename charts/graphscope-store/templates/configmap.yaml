@@ -20,11 +20,13 @@ data:
     discovery.mode={{ .Values.discoveryMode }}
     role.name=ROLE
     node.idx=INDEX
+    release.full.name={{ include "graphscope-store.fullname" . }}
 {{- else }}
     rpc.port=0
     discovery.mode=zookeeper
     role.name=""
     node.idx=0
+    release.full.name=localhost
 {{- end }}
 
     store.node.count={{ .Values.store.replicaCount }}
@@ -56,9 +58,16 @@ data:
     gremlin.server.port=12312
     ## disable neo4j when launching groot server by default
     neo4j.bolt.server.disabled=true
+  
+    ## GOpt config
+    graph.planner.is.on={{ .Values.graphPlannerIsOn }}
+    graph.planner.opt={{ .Values.graphPlannerOpt }}
+    graph.planner.rules={{ .Values.graphPlannerRules }}
+    graph.physical.opt={{ .Values.graphPhysicalOpt }}
+    gremlin.script.language.name={{ .Values.gremlinScriptLanguageName }}
+    query.execution.timeout.ms={{ .Values.queryExecutionTimeoutMs }}
 
     log4rs.config=LOG4RS_CONFIG
-    release.full.name={{ include "graphscope-store.fullname" . }}
     ## Auth config
     auth.username={{ .Values.auth.username }}
     auth.password={{ .Values.auth.password }}
@@ -72,6 +81,7 @@ data:
 
     gaia.rpc.port=60000
     gaia.engine.port=60001
+    gaia.write.timeout.ms={{ .Values.pegasus.timeout }}
 
     ## Secondary config
     secondary.instance.enabled={{ .Values.secondary.enabled }}
@@ -79,7 +89,6 @@ data:
     store.gc.interval.ms={{ .Values.storeGcIntervalMs }}
 
     write.ha.enabled={{ .Values.backup.enabled }}
-    tracing.enabled={{ .Values.otel.enabled }}
 
     ## Coordinator Config
     rpc.max.bytes.mb={{ .Values.rpcMaxBytesMb }}
@@ -87,6 +96,8 @@ data:
     offsets.persist.interval.ms={{ .Values.offsetsPersistIntervalMs }}
     file.meta.store.path={{ .Values.fileMetaStorePath }}
     log.recycle.enable={{ .Values.logRecycleEnable }}
+    collect.statistics={{ .Values.collectStatistics }}
+    log.recycle.offset.reserve={{ .Values.logRecycleOffsetReserve }}
 
     ## Extra Config
     {{- if .Values.extraConfig }}
@@ -124,11 +135,28 @@ data:
     export GROOT_CONF_FILE=/etc/groot/groot.config
 
     export OTEL_SDK_DISABLED={{ not .Values.otel.enabled }}
+
     {{- if .Values.otel.enabled }}
-    export OTEL_SERVICE_NAME="compiler"
     export OTEL_TRACES_SAMPLER={{ .Values.otel.traces.sampler.name }}
     export OTEL_TRACES_SAMPLER_ARG={{ .Values.otel.traces.sampler.arg }}
+
+    export OTEL_SERVICE_NAME=groot
+    export OTEL_RESOURCE_ATTRIBUTES=service.name=groot,service.version=1.0.0
+    export OTEL_TRACES_EXPORTER=otlp
+    export OTEL_METRICS_EXPORTER=otlp
+    export OTEL_LOGS_EXPORTER=otlp
+
+    export OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=DELTA
+    export OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION=BASE2_EXPONENTIAL_BUCKET_HISTOGRAM
+    # export OTEL_EXPORTER_OTLP_COMPRESSION=gzip
     {{- end }}
+
+    {{- if .Values.uptrace.enabled }}
+    export UPTRACE_DSN=http://{{ .Values.uptrace.token }}@${{ .Values.uptrace.service }}:14318?grpc=14317
+    export OTEL_EXPORTER_OTLP_ENDPOINT=http://{{ .Values.uptrace.service }}:14317
+    export OTEL_EXPORTER_OTLP_HEADERS=uptrace-dsn=${UPTRACE_DSN}
+    {{- end }}
+
 
     # For core and heap profiling
     # ulimit -c unlimited

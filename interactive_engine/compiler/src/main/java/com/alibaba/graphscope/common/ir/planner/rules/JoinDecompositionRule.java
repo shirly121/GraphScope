@@ -15,10 +15,7 @@ import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.tools.RelBuilderFactory;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> extends RelRule<C> {
@@ -33,10 +30,52 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
         if (getMaxVertexNum(pattern.getPattern()) < config.getMinPatternSize()) {
             return;
         }
-        List<GraphJoinDecomposition> decompositions = getDecompositions(pattern);
+        List<GraphJoinDecomposition> decompositions = joinByEdge(pattern);
+        decompositions.addAll(joinByVertex(pattern));
         for (GraphJoinDecomposition decomposition : decompositions) {
             relOptRuleCall.transformTo(decomposition);
         }
+    }
+
+    private List<GraphJoinDecomposition> joinByEdge(GraphPattern graphPattern) {
+        List<GraphJoinDecomposition> decompositions = Lists.newArrayList();
+        Pattern pattern = graphPattern.getPattern();
+        for (PatternEdge edge : pattern.getEdgeSet()) {
+            PatternVertex srcVertex = edge.getSrcVertex();
+            PatternVertex dstVertex = edge.getDstVertex();
+            if (srcVertex != dstVertex && pattern.getEdgesOf(srcVertex).size() > 1 && pattern.getEdgesOf(dstVertex).size() > 1) {
+                Pattern rightPattern = new Pattern(pattern);
+                rightPattern.removeEdge(edge);
+                if (rightPattern.isConnected()) {
+                    Pattern leftPattern = new Pattern();
+                    leftPattern.addVertex(srcVertex);
+                    leftPattern.addVertex(dstVertex);
+                    leftPattern.addEdge(srcVertex, dstVertex, edge);
+                    leftPattern.reordering();
+                    GraphJoinDecomposition decomposition = createJoinDecomposition(graphPattern, leftPattern, rightPattern, Lists.newArrayList(srcVertex, dstVertex));
+                    addDedupCompositions(decompositions, ImmutableList.of(decomposition));
+                }
+            }
+        }
+        return decompositions;
+    }
+
+    private GraphJoinDecomposition createJoinDecomposition(
+            GraphPattern graphPattern,
+            Pattern probePattern,
+            Pattern buildPattern,
+            List<PatternVertex> jointVertices) {
+        Pattern pattern = graphPattern.getPattern();
+        List<GraphJoinDecomposition.JoinVertexPair> jointVertexPairs = jointVertices.stream().map(k -> new GraphJoinDecomposition.JoinVertexPair(probePattern.getVertexOrder(k), buildPattern.getVertexOrder(k))).collect(Collectors.toList());
+        Map<Integer, Integer> leftToTargetOrderMap = Maps.newHashMap();
+        for (PatternVertex v1 : probePattern.getVertexSet()) {
+            leftToTargetOrderMap.put(probePattern.getVertexOrder(v1), pattern.getVertexOrder(v1));
+        }
+        Map<Integer, Integer> rightToTargetOrderMap = Maps.newHashMap();
+        for (PatternVertex v2 : buildPattern.getVertexSet()) {
+            rightToTargetOrderMap.put(buildPattern.getVertexOrder(v2), pattern.getVertexOrder(v2));
+        }
+        return new GraphJoinDecomposition(graphPattern.getCluster(), graphPattern.getTraitSet(), pattern, probePattern, buildPattern, jointVertexPairs, new GraphJoinDecomposition.OrderMappings(leftToTargetOrderMap, rightToTargetOrderMap));
     }
 
     private int getMaxVertexNum(Pattern pattern) {
@@ -52,15 +91,13 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
     }
 
     // bfs to get all possible decompositions
-    private List<GraphJoinDecomposition> getDecompositions(GraphPattern pattern) {
+    private List<GraphJoinDecomposition> joinByVertex(GraphPattern pattern) {
         List<GraphJoinDecomposition> queues = initDecompositions(pattern);
         int initialSize = queues.size();
         int offset = 0;
-        List<PatternVertex> newAddVertices = Lists.newArrayList();
         while (offset < queues.size()) {
-            List<GraphJoinDecomposition> newCompositions =
-                    getDecompositions(queues.get(offset++), newAddVertices);
-            addDedupCompositions(queues, newCompositions);
+            List<GraphJoinDecomposition> nextCompositions = getDecompositions(queues.get(offset++));
+            addDedupCompositions(queues, nextCompositions);
         }
         return queues.subList(initialSize, queues.size());
     }
@@ -98,6 +135,57 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             results.add(decomposition);
         }
         return results;
+    }
+
+    private List<GraphJoinDecomposition> getDecompositions(GraphJoinDecomposition parent) {
+        // try to put one edge from the build pattern into the probe pattern
+        Pattern probePattern = parent.getProbePattern();
+        Pattern buildPattern = parent.getBuildPattern();
+        PatternVertex jointVertex = buildPattern.getVertexByOrder(parent.getJoinVertexPairs().get(0).getRightOrderId());
+        List<GraphJoinDecomposition> decompositions = Lists.newArrayList();
+        for (PatternEdge edge : buildPattern.getEdgesOf(jointVertex)) {
+            Pattern buildClone = new Pattern(buildPattern);
+            buildClone.removeEdge(edge);
+            PatternVertex disjointVertex = Utils.getExtendFromVertex(edge, jointVertex);
+            boolean connected = buildClone.isConnected();
+            if (buildClone.containsVertex(disjointVertex) && connected) {
+                continue;
+            }
+            Pattern probeClone = new Pattern(probePattern);
+            addEdge(probeClone, edge);
+            if (!connected) {
+                List<PatternVertex> disjointVertices = Lists.newArrayList(disjointVertex);
+                Set<PatternVertex> visited = Sets.newHashSet(disjointVertex);
+                while (!disjointVertices.isEmpty()) {
+                    PatternVertex curVertex = disjointVertices.remove(0);
+                    Set<PatternEdge> nextEdges = buildClone.getEdgesOf(curVertex);
+                    for (PatternEdge nextEdge : nextEdges) {
+                        addEdge(probeClone, nextEdge);
+                        PatternVertex nextVertex = Utils.getExtendFromVertex(nextEdge, curVertex);
+                        if (!visited.contains(nextVertex)) {
+                            visited.add(nextVertex);
+                            disjointVertices.add(nextVertex);
+                        }
+                    }
+                }
+            }
+            if (probeClone.getVertexNumber() > buildClone.getVertexNumber()) {
+                continue;
+            }
+            decompositions.add(createJoinDecomposition(
+                    new GraphPattern(parent.getCluster(), parent.getTraitSet(), parent.getParentPatten()), probeClone, buildClone, Lists.newArrayList(jointVertex)));
+        }
+        return decompositions;
+    }
+
+    private void addEdge(Pattern original, PatternEdge edge) {
+        if (!original.containsVertex(edge.getSrcVertex())) {
+            original.addVertex(edge.getSrcVertex());
+        }
+        if (!original.containsVertex(edge.getDstVertex())) {
+            original.addVertex(edge.getDstVertex());
+        }
+        original.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
     }
 
     private List<GraphJoinDecomposition> getDecompositions(
@@ -382,7 +470,10 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
         // details.
         int newEdgeId = oldEdge.getId();
         ElementDetails newDetails =
-                new ElementDetails(oldEdge.getElementDetails().getSelectivity(), newRange);
+                new ElementDetails(
+                        oldEdge.getElementDetails().getSelectivity(),
+                        newRange,
+                        oldEdge.getElementDetails().getPxdInnerGetVTypes());
         return (oldEdge instanceof SinglePatternEdge)
                 ? new SinglePatternEdge(
                         newSrc,

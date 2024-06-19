@@ -41,6 +41,9 @@ public class Utils {
 
     public static String getHostTemplate(Configs configs, RoleType role) {
         String releaseName = DiscoveryConfig.RELEASE_FULL_NAME.get(configs);
+        if (releaseName.equals("localhost") || releaseName.equals("127.0.0.1")) {
+            return releaseName;
+        }
         // template = "{releaseName}-{role}-{}.{releaseName}-{role}-headless";
         // i.e. demo-graphscope-store-frontend-0.demo-graphscope-store-frontend-headless
         String svcTemplate = "%s-%s";
@@ -170,6 +173,18 @@ public class Utils {
             logger.warn("LOCK {} is unavailable", LOCK);
             return false;
         }
+        return true;
+    }
+
+    public static boolean isMetaFreshEnough(Configs configs, long delta) {
+        String dataRoot = StoreConfig.STORE_DATA_PATH.get(configs);
+        File metaDir = Paths.get(dataRoot, "meta").toAbsolutePath().toFile();
+        if (metaDir.exists()) {
+            long lastModified = metaDir.lastModified();
+            long ts = System.currentTimeMillis();
+            return ts - lastModified < delta;
+        }
+        // not exists also means fresh enough
         return true;
     }
 }

@@ -284,6 +284,26 @@ public class Pattern {
         return this.connectivityInspector.connectedSets();
     }
 
+    public boolean removeEdge(PatternEdge edge) {
+        boolean removed = patternGraph.removeEdge(edge);
+        if (removed) {
+            if (getEdgesOf(edge.getSrcVertex()).isEmpty()) {
+                patternGraph.removeVertex(edge.getSrcVertex());
+            }
+            if (getEdgesOf(edge.getDstVertex()).isEmpty()) {
+                patternGraph.removeVertex(edge.getDstVertex());
+            }
+            this.maxVertexId = this.patternGraph.vertexSet().size();
+            this.maxEdgeId = this.patternGraph.edgeSet().size();
+            this.reordering();
+        }
+        return removed;
+    }
+
+    public boolean isConnected() {
+        return this.connectivityInspector.connectedSets().size() == 1;
+    }
+
     public int getDegree(PatternVertex vertex) {
         return this.patternGraph.degreeOf(vertex);
     }

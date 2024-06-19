@@ -23,47 +23,48 @@ import unittest
 
 import pytest
 
-from interactive_sdk.client.driver import Driver
-from interactive_sdk.openapi.models.base_edge_type_vertex_type_pair_relations_inner import (
+from gs_interactive.client.driver import Driver
+from gs_interactive.models.base_edge_type_vertex_type_pair_relations_inner import (
     BaseEdgeTypeVertexTypePairRelationsInner,
 )
-from interactive_sdk.openapi.models.create_edge_type import CreateEdgeType
-from interactive_sdk.openapi.models.create_graph_request import CreateGraphRequest
-from interactive_sdk.openapi.models.create_graph_schema_request import (
+from gs_interactive.models.create_edge_type import CreateEdgeType
+from gs_interactive.models.create_graph_request import CreateGraphRequest
+from gs_interactive.models.create_graph_schema_request import (
     CreateGraphSchemaRequest,
 )
-from interactive_sdk.openapi.models.create_procedure_request import (
+from gs_interactive.models.create_procedure_request import (
     CreateProcedureRequest,
 )
-from interactive_sdk.openapi.models.create_property_meta import CreatePropertyMeta
-from interactive_sdk.openapi.models.create_vertex_type import CreateVertexType
-from interactive_sdk.openapi.models.edge_mapping import EdgeMapping
-from interactive_sdk.openapi.models.edge_mapping_type_triplet import (
+from gs_interactive.models.create_property_meta import CreatePropertyMeta
+from gs_interactive.models.create_vertex_type import CreateVertexType
+from gs_interactive.models.edge_mapping import EdgeMapping
+from gs_interactive.models.edge_mapping_type_triplet import (
     EdgeMappingTypeTriplet,
 )
-from interactive_sdk.openapi.models.gs_data_type import GSDataType
-from interactive_sdk.openapi.models.job_status import JobStatus
-from interactive_sdk.openapi.models.long_text import LongText
-from interactive_sdk.openapi.models.primitive_type import PrimitiveType
-from interactive_sdk.openapi.models.schema_mapping import SchemaMapping
-from interactive_sdk.openapi.models.schema_mapping_loading_config import (
+from gs_interactive.models.gs_data_type import GSDataType
+from gs_interactive.models.typed_value import TypedValue
+from gs_interactive.models.job_status import JobStatus
+from gs_interactive.models.long_text import LongText
+from gs_interactive.models.primitive_type import PrimitiveType
+from gs_interactive.models.schema_mapping import SchemaMapping
+from gs_interactive.models.schema_mapping_loading_config import (
     SchemaMappingLoadingConfig,
 )
-from interactive_sdk.openapi.models.schema_mapping_loading_config_format import (
+from gs_interactive.models.schema_mapping_loading_config_format import (
     SchemaMappingLoadingConfigFormat,
 )
-from interactive_sdk.openapi.models.start_service_request import StartServiceRequest
-from interactive_sdk.openapi.models.string_type import StringType
-from interactive_sdk.openapi.models.string_type_string import StringTypeString
-from interactive_sdk.openapi.models.vertex_mapping import VertexMapping
-
+from gs_interactive.models.start_service_request import StartServiceRequest
+from gs_interactive.models.string_type import StringType
+from gs_interactive.models.string_type_string import StringTypeString
+from gs_interactive.models.vertex_mapping import VertexMapping
+from gs_interactive.models.query_request import QueryRequest
 
 class TestDriver(unittest.TestCase):
     """Test usage of driver"""
 
     def setUp(self):
-        # get endpoint from environment variable INTERACTIVE_ENDPOINT
-        self._endpoint = os.getenv("INTERACTIVE_ENDPOINT")
+        # get endpoint from environment variable gs_interactive_ENDPOINT
+        self._endpoint = os.getenv("gs_interactive_ENDPOINT")
         if self._endpoint is None:
             self._endpoint = "http://localhost:7777"
         print("endpoint: ", self._endpoint)
@@ -71,14 +72,19 @@ class TestDriver(unittest.TestCase):
         self._sess = self._driver.getDefaultSession()
         self._gremlin_client = self._driver.getGremlinClient()
         self._graph_id = None
-        self._procedure_name = None
+        self._cypher_proc_name = None
+        self._cpp_proc_name = None
         print("finish setup")
 
     def tearDown(self):
         if self._graph_id is not None:
-            if self._procedure_name is not None:
+            if self._cypher_proc_name is not None:
                 print("delete procedure: ")
-                rep1 = self._sess.delete_procedure(self._graph_id, self._procedure_name)
+                rep1 = self._sess.delete_procedure(self._graph_id, self._cypher_proc_name)
+                print("delete procedure: ", rep1)
+            if self._cpp_proc_name is not None:
+                print("delete procedure: ")
+                rep1 = self._sess.delete_procedure(self._graph_id, self._cpp_proc_name)
                 print("delete procedure: ", rep1)
             print("delete graph: ", self._graph_id)
             rep2 = self._sess.delete_graph(self._graph_id)
@@ -88,11 +94,16 @@ class TestDriver(unittest.TestCase):
         self.createGraph()
         self.bulkLoading()
         self.waitJobFinish()
+        self.list_graph()
         self.runCypherQuery()
         self.runGremlinQuery()
-        self.createProcedure()
+        self.createCypherProcedure()
+        self.createCppProcedure()
         self.restart()
+        self.getStatistics()
         self.callProcedure()
+        self.callProcedureWithHttp()
+        self.callProcedureWithHttpCurrent()
 
     def createGraph(self):
         create_graph = CreateGraphRequest(name="test_graph", description="test graph")
@@ -151,7 +162,6 @@ class TestDriver(unittest.TestCase):
         )
         print("test bulk loading: ", self._graph_id)
         schema_mapping = SchemaMapping(
-            graph=self._graph_id,
             loading_config=SchemaMappingLoadingConfig(
                 import_option="init",
                 format=SchemaMappingLoadingConfigFormat(type="csv"),
@@ -189,6 +199,11 @@ class TestDriver(unittest.TestCase):
                 time.sleep(1)
         print("job finished")
 
+    def list_graph(self):
+        resp = self._sess.list_graphs()
+        assert resp.is_ok()
+        print("list graph: ", resp.get_value())
+
     def runCypherQuery(self):
         query = "MATCH (n) RETURN COUNT(n);"
         with self._driver.getNeo4jSession() as session:
@@ -206,13 +221,32 @@ class TestDriver(unittest.TestCase):
                 break
         print(ret)
 
-    def createProcedure(self):
-        self._procedure_name = "test_procedure"
+    def createCypherProcedure(self):
+        self._cypher_proc_name = "test_procedure"
         create_proc_request = CreateProcedureRequest(
-            name=self._procedure_name,
+            name=self._cypher_proc_name,
             description="test procedure",
             query="MATCH (n) RETURN COUNT(n);",
             type="cypher",
+        )
+        resp = self._sess.create_procedure(self._graph_id, create_proc_request)
+        assert resp.is_ok()
+        print("create procedure: ", resp.get_value())
+    
+    def createCppProcedure(self):
+        self._cpp_proc_name = "test_procedure_cpp"
+        # read strings from file ../../java/src/test/resources/sample_app.cc
+        app_path = os.path.join(os.path.dirname(__file__), "../../java/src/test/resources/sample_app.cc")
+        if not os.path.exists(app_path):
+            raise Exception("sample_app.cc not found")
+        with open(app_path, "r") as f:
+            app_content = f.read()
+            
+        create_proc_request = CreateProcedureRequest(
+            name=self._cpp_proc_name,
+            description="test procedure",
+            query=app_content,
+            type="cpp",
         )
         resp = self._sess.create_procedure(self._graph_id, create_proc_request)
         assert resp.is_ok()
@@ -227,11 +261,47 @@ class TestDriver(unittest.TestCase):
         # wait 5 seconds
         time.sleep(5)
 
+    def getStatistics(self):
+        resp = self._sess.get_graph_statistics(self._graph_id)
+        assert resp.is_ok()
+        print("get graph statistics: ", resp.get_value())
+
     def callProcedure(self):
         with self._driver.getNeo4jSession() as session:
             result = session.run("CALL test_procedure();")
             print("call procedure result: ", result)
 
+    def callProcedureWithHttp(self):
+        req = QueryRequest(
+            query_name=self._cpp_proc_name,
+            arguments=[
+                TypedValue(
+                    type=GSDataType(
+                        PrimitiveType(primitive_type="DT_SIGNED_INT32")
+                    ),
+                    value = 1
+                )
+            ]
+        )
+        resp = self._sess.call_procedure(graph_id = self._graph_id, params = req)
+        assert resp.is_ok()
+        print("call procedure result: ", resp.get_value())
+
+    def callProcedureWithHttpCurrent(self):
+        req = QueryRequest(
+            query_name=self._cpp_proc_name,
+            arguments=[
+                TypedValue(
+                    type=GSDataType(
+                        PrimitiveType(primitive_type="DT_SIGNED_INT32")
+                    ),
+                    value = 1
+                )
+            ]
+        )
+        resp = self._sess.call_procedure_current(params = req)
+        assert resp.is_ok()
+        print("call procedure result: ", resp.get_value())
 
 if __name__ == "__main__":
     unittest.main()

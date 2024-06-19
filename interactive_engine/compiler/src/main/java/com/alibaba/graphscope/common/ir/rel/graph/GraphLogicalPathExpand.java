@@ -63,6 +63,8 @@ public class GraphLogicalPathExpand extends SingleRel {
 
     private final boolean optional;
 
+    private final @Nullable RexNode untilCondition;
+
     protected GraphLogicalPathExpand(
             GraphOptCluster cluster,
             @Nullable List<RelHint> hints,
@@ -73,6 +75,7 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
             @Nullable String aliasName,
             AliasNameWithId startAlias,
             boolean optional) {
@@ -97,6 +100,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                 (this.aliasId == AliasInference.DEFAULT_ID)
                         ? resultOpt
                         : GraphOpt.PathExpandResult.ALL_V_E;
+        this.untilCondition = untilCondition;
     }
 
     protected GraphLogicalPathExpand(
@@ -108,6 +112,7 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
             @Nullable String aliasName,
             AliasNameWithId startAlias,
             boolean optional) {
@@ -125,6 +130,7 @@ public class GraphLogicalPathExpand extends SingleRel {
         this.aliasId = cluster.getIdGenerator().generate(this.aliasName);
         this.startAlias = Objects.requireNonNull(startAlias);
         this.optional = optional;
+        this.untilCondition = untilCondition;
     }
 
     public static GraphLogicalPathExpand create(
@@ -137,6 +143,7 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
             String aliasName,
             AliasNameWithId startAlias,
             boolean optional) {
@@ -150,6 +157,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                 fetch,
                 resultOpt,
                 pathOpt,
+                untilCondition,
                 aliasName,
                 startAlias,
                 optional);
@@ -165,6 +173,7 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
             String aliasName,
             AliasNameWithId startAlias) {
         return create(
@@ -177,6 +186,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                 fetch,
                 resultOpt,
                 pathOpt,
+                untilCondition,
                 aliasName,
                 startAlias,
                 false);
@@ -191,6 +201,7 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
             String aliasName,
             AliasNameWithId startAlias) {
         return create(
@@ -202,6 +213,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                 fetch,
                 resultOpt,
                 pathOpt,
+                untilCondition,
                 aliasName,
                 startAlias,
                 false);
@@ -216,6 +228,7 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
             String aliasName,
             AliasNameWithId startAlias,
             boolean optional) {
@@ -231,6 +244,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                 fetch,
                 resultOpt,
                 pathOpt,
+                untilCondition,
                 aliasName,
                 startAlias,
                 optional);
@@ -246,6 +260,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                 .itemIf("fetch", fetch, fetch != null)
                 .item("path_opt", getPathOpt())
                 .item("result_opt", getResultOpt())
+                .itemIf("until_condition", untilCondition, untilCondition != null)
                 .item("alias", AliasInference.SIMPLE_NAME(getAliasName()))
                 .itemIf(
                         "aliasId",
@@ -306,6 +321,10 @@ public class GraphLogicalPathExpand extends SingleRel {
         return optional;
     }
 
+    public @Nullable RexNode getUntilCondition() {
+        return untilCondition;
+    }
+
     @Override
     protected RelDataType deriveRowType() {
         return new RelRecordType(
@@ -317,27 +336,27 @@ public class GraphLogicalPathExpand extends SingleRel {
     }
 
     private GraphPathType.ElementType getElementType() {
-        switch (resultOpt) {
-            case ALL_V:
-            case END_V:
-                RelNode getV = this.fused != null ? this.fused : this.getV;
-                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
-                        getV.getRowType().getFieldList(),
-                        "data type of getV operator should have at least one column field");
-                return new GraphPathType.ElementType(
-                        getV.getRowType().getFieldList().get(0).getType());
-            case ALL_V_E:
-            default:
-                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
-                        this.expand.getRowType().getFieldList(),
-                        "data type of expand operator should have at least one column field");
-                com.alibaba.graphscope.common.ir.tools.Utils.requireNonEmpty(
-                        this.getV.getRowType().getFieldList(),
-                        "data type of getV operator should have at least one column field");
-                return new GraphPathType.ElementType(
-                        this.expand.getRowType().getFieldList().get(0).getType(),
-                        this.getV.getRowType().getFieldList().get(0).getType());
+        GraphLogicalExpand innerExpand = null;
+        GraphLogicalGetV innerGetV = null;
+        if (this.fused instanceof GraphPhysicalGetV) {
+            innerExpand = ((GraphPhysicalExpand) this.fused.getInput(0)).getFusedExpand();
+            innerGetV = ((GraphPhysicalGetV) this.fused).getFusedGetV();
+        } else if (this.fused instanceof GraphPhysicalExpand) {
+            innerExpand = ((GraphPhysicalExpand) this.fused).getFusedExpand();
+            innerGetV = ((GraphPhysicalExpand) this.fused).getFusedGetV();
+        } else if (this.expand != null && this.getV != null) {
+            innerExpand = (GraphLogicalExpand) this.expand;
+            innerGetV = (GraphLogicalGetV) this.getV;
         }
+        Preconditions.checkArgument(
+                innerExpand != null && !innerExpand.getRowType().getFieldList().isEmpty(),
+                "data type of expand operator should have at least one column field");
+        Preconditions.checkArgument(
+                innerGetV != null && !innerGetV.getRowType().getFieldList().isEmpty(),
+                "data type of getV operator should have at least one column field");
+        return new GraphPathType.ElementType(
+                innerExpand.getRowType().getFieldList().get(0).getType(),
+                innerGetV.getRowType().getFieldList().get(0).getType());
     }
 
     @Override
@@ -352,6 +371,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                     getFetch(),
                     getResultOpt(),
                     getPathOpt(),
+                    getUntilCondition(),
                     getAliasName(),
                     getStartAlias(),
                     isOptional());
@@ -366,6 +386,7 @@ public class GraphLogicalPathExpand extends SingleRel {
                     getFetch(),
                     getResultOpt(),
                     getPathOpt(),
+                    getUntilCondition(),
                     getAliasName(),
                     getStartAlias(),
                     isOptional());

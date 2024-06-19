@@ -15,8 +15,8 @@
  */
 package com.alibaba.graphscope.interactive.client.common;
 
-import com.alibaba.graphscope.interactive.openapi.ApiException;
-import com.alibaba.graphscope.interactive.openapi.ApiResponse;
+import com.alibaba.graphscope.interactive.ApiException;
+import com.alibaba.graphscope.interactive.ApiResponse;
 
 /***
  * A class which wrap the result of the API
@@ -27,6 +27,11 @@ public class Result<T> {
 
     public Result(Status status, T value) {
         this.status = status;
+        this.value = value;
+    }
+
+    public Result(T value) {
+        this.status = Status.Ok();
         this.value = value;
     }
 

@@ -64,7 +64,8 @@ void HQPSService::init(const ServiceConfig& config) {
   actor_sys_ = std::make_unique<actor_system>(
       config.shard_num, config.dpdk_mode, config.enable_thread_resource_pool,
       config.external_thread_num, [this]() { set_exit_state(); });
-  query_hdl_ = std::make_unique<hqps_http_handler>(config.query_port);
+  query_hdl_ =
+      std::make_unique<hqps_http_handler>(config.query_port, config.shard_num);
   if (config.start_admin_service) {
     admin_hdl_ = std::make_unique<admin_http_handler>(config.admin_port);
   }
@@ -100,6 +101,7 @@ void HQPSService::init(const ServiceConfig& config) {
   if (config.start_compiler) {
     start_compiler_subprocess();
   }
+  start_time_.store(gs::GetCurrentTimeStamp());
 }
 
 HQPSService::~HQPSService() {
@@ -129,6 +131,14 @@ uint16_t HQPSService::get_query_port() const {
     return query_hdl_->get_port();
   }
   return 0;
+}
+
+uint64_t HQPSService::get_start_time() const {
+  return start_time_.load(std::memory_order_relaxed);
+}
+
+void HQPSService::reset_start_time() {
+  start_time_.store(gs::GetCurrentTimeStamp());
 }
 
 std::shared_ptr<gs::IGraphMetaStore> HQPSService::get_metadata_store() const {
@@ -223,6 +233,9 @@ bool HQPSService::check_compiler_ready() const {
 
 bool HQPSService::start_compiler_subprocess(
     const std::string& graph_schema_path) {
+  if (!service_config_.start_compiler) {
+    return true;
+  }
   LOG(INFO) << "Start compiler subprocess";
   stop_compiler_subprocess();
   auto java_bin_path = boost::process::search_path("java");
@@ -264,6 +277,8 @@ bool HQPSService::start_compiler_subprocess(
     // check query server port is ready
     if (check_compiler_ready()) {
       LOG(INFO) << "Compiler server is ready!";
+      // sleep another 2 seconds to make sure the server is ready
+      std::this_thread::sleep_for(std::chrono::seconds(2));
       return true;
     }
     sleep_time += sleep_interval;
@@ -278,7 +293,31 @@ bool HQPSService::stop_compiler_subprocess() {
   if (compiler_process_.running()) {
     LOG(INFO) << "Terminate previous compiler process with pid: "
               << compiler_process_.id();
-    compiler_process_.terminate();
+    auto pid = compiler_process_.id();
+    ::kill(pid, SIGINT);
+    int32_t sleep_time = 0;
+    int32_t max_sleep_time = 10;
+    int32_t sleep_interval = 2;
+    bool sub_process_exited = false;
+    // sleep for a maximum 10 seconds to wait for the compiler process to stop
+    while (sleep_time < max_sleep_time) {
+      std::this_thread::sleep_for(std::chrono::seconds(sleep_interval));
+      // check if the compiler process is still running
+      if (compiler_process_.running() == false) {
+        sub_process_exited = true;
+        break;
+      }
+      sleep_time += sleep_interval;
+    }
+    // if the compiler process is still running, force to kill it with SIGKILL
+    if (sub_process_exited == false) {
+      LOG(ERROR) << "Fail to stop compiler process! Force to kill it!";
+      ::kill(pid, SIGKILL);
+      std::this_thread::sleep_for(std::chrono::seconds(sleep_interval));
+    } else {
+      LOG(INFO) << "Compiler process stopped successfully in " << sleep_time
+                << " seconds.";
+    }
   }
   return true;
 }
@@ -302,8 +341,8 @@ std::string HQPSService::find_interactive_class_path() {
     }
   }
   // if not, try the relative path from current binary's path
-  auto current_binary_path = boost::filesystem::canonical("/proc/self/exe");
-  auto current_binary_dir = current_binary_path.parent_path();
+  auto current_binary_dir = gs::get_current_binary_directory();
+
   auto ir_core_lib_path =
       current_binary_dir /
       "../../../interactive_engine/executor/ir/target/release/";
@@ -347,8 +386,13 @@ gs::GraphId HQPSService::insert_default_graph_meta() {
     LOG(INFO) << "There are already " << graph_metas_res.value().size()
               << " graph metas in the metadata store.";
 
-    // return the first graph id
-    return graph_metas_res.value().begin()->id;
+    // return the graph id with the smallest value.
+    auto min_graph_id = std::min_element(
+        graph_metas_res.value().begin(), graph_metas_res.value().end(),
+        [](const gs::GraphMeta& a, const gs::GraphMeta& b) {
+          return a.id < b.id;
+        });
+    return min_graph_id->id;
   }
 
   auto default_graph_name = this->service_config_.default_graph;

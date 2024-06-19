@@ -22,12 +22,16 @@ import com.alibaba.graphscope.common.ir.tools.GraphStdOperatorTable;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.tools.config.LabelConfig;
 import com.alibaba.graphscope.common.ir.tools.config.SourceConfig;
+import com.google.common.collect.Lists;
 
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Collections;
+import java.util.List;
 
 public class CaseTest {
     // case when a.name = 'marko' then 1 else 3 end
@@ -78,5 +82,12 @@ public class CaseTest {
         Assert.assertEquals(
                 SqlTypeName.INTEGER,
                 ((RexCall) caseExpr).getOperands().get(1).getType().getSqlTypeName());
+    }
+
+    @Test
+    public void test() {
+        List<Integer> input = Lists.newArrayList(1, 2, 3);
+        Collections.sort(input.subList(1, input.size()), (a, b) -> b - a);
+        System.out.println(input);
     }
 }
