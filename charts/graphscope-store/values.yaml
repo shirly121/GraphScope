@@ -429,7 +429,7 @@ javaOpts: ""
 rpcMaxBytesMb: 20
 
 ## choose between "file" or "zookeeper"
-discoveryMode: "file"
+discoveryMode: "zookeeper"
 
 ## Coordinator Config
 snapshotIncreaseIntervalMs: 1000
@@ -540,6 +540,6 @@ uptrace:
   token: "project2_secret_token"
 
 distributed:
-  enabled: false
+  enabled: true
 
-collectStatistics: false
+collectStatistics: true
