@@ -26,10 +26,14 @@ import com.alibaba.graphscope.groot.common.schema.api.GraphStatistics;
 import com.alibaba.graphscope.groot.common.schema.api.SchemaFetcher;
 import com.google.common.base.Preconditions;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.util.*;
 
 public class GrootIrMetaReader implements IrMetaReader {
+    private static final Logger logger = LoggerFactory.getLogger(GrootIrMetaReader.class);
     private final SchemaFetcher schemaFetcher;
 
     public GrootIrMetaReader(SchemaFetcher schemaFetcher) {
@@ -43,6 +47,10 @@ public class GrootIrMetaReader implements IrMetaReader {
         Map.Entry<Long, GraphSchema> entry = pair.entrySet().iterator().next();
         Long snapshotId = entry.getKey();
         GraphSchema schema = entry.getValue();
+        logger.info(
+                "read schema from groot, vertex list is {}, edge list is {}",
+                schema.getVertexList(),
+                schema.getEdgeList());
         return new IrMeta(new SnapshotId(true, snapshotId), new IrGraphSchema(schema, true));
     }
 
