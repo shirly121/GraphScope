@@ -27,10 +27,11 @@ public class CBOTest {
                                 "true",
                                 "graph.planner.opt",
                                 "CBO",
-                                "graph.planner.join.min.pattern.size", "3",
+                                "graph.planner.join.min.pattern.size",
+                                "5",
                                 "graph.planner.rules",
-                                "FilterIntoJoinRule, FilterMatchRule, ExtendIntersectRule, JoinDecompositionRule,"
-                                        + " ExpandGetVFusionRule"));
+                                "FilterIntoJoinRule, FilterMatchRule, ExtendIntersectRule,"
+                                        + " JoinDecompositionRule, ExpandGetVFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
@@ -246,13 +247,14 @@ public class CBOTest {
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (forum:FORUM)-[:CONTAINEROF]->(POST:POST),\n" +
-                                        "              (forum:FORUM)-[:HASMEMBER]->(PERSON1:PERSON),\n" +
-                                        "              (forum:FORUM)-[:HASMEMBER]->(PERSON2:PERSON),\n" +
-                                        "            (PERSON1:PERSON)-[:KNOWS]->(PERSON2:PERSON),\n" +
-                                        "              (PERSON1:PERSON)-[:LIKES]->(POST:POST),\n" +
-                                        "              (PERSON2:PERSON)-[:LIKES]->(POST:POST)\n" +
-                                        "        Return count(PERSON1);", builder)
+                                "Match (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n" +
+                                        "              (forum:FORUM)-[:HASMEMBER]->(person1:PERSON),\n" +
+                                        "              (forum:FORUM)-[:HASMEMBER]->(person2:PERSON),\n" +
+                                        "            (person1:PERSON)-[:KNOWS]->(person2:PERSON),\n" +
+                                        "              (person1:PERSON)-[:LIKES]->(post:POST),\n" +
+                                        "              (person2:PERSON)-[:LIKES]->(post:POST)\n" +
+                                        "        Return count(person1);",
+                                builder)
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));

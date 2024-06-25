@@ -5,12 +5,12 @@
         {
             "type_id": 3,
             "type_name": "post",
-            "count": 21651343
+            "count": 1003605
         },
         {
             "type_id": 2,
             "type_name": "comment",
-            "count": 54737516
+            "count": 2052169
         },
         {
             "type_id": 7,
@@ -25,7 +25,7 @@
         {
             "type_id": 4,
             "type_name": "forum",
-            "count": 1659633
+            "count": 90492
         },
         {
             "type_id": 6,
@@ -35,7 +35,7 @@
         {
             "type_id": 1,
             "type_name": "person",
-            "count": 170655
+            "count": 9892
         },
         {
             "type_id": 5,
@@ -95,7 +95,7 @@
                 {
                     "source_vertex": "forum",
                     "destination_vertex": "person",
-                    "count": 90198119
+                    "count": 1611869
                 }
             ]
         },
@@ -106,7 +106,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "comment",
-                    "count": 25130259
+                    "count": 1040749
                 }
             ]
         },
@@ -117,7 +117,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "post",
-                    "count": 29607258
+                    "count": 1011420
                 }
             ]
         },
@@ -205,7 +205,7 @@
                 {
                     "source_vertex": "forum",
                     "destination_vertex": "post",
-                    "count": 21651343
+                    "count": 1003605
                 }
             ]
         },
@@ -227,7 +227,7 @@
                 {
                     "source_vertex": "person",
                     "destination_vertex": "place",
-                    "count": 170655
+                    "count": 9892
                 }
             ]
         },
@@ -238,7 +238,7 @@
                 {
                     "source_vertex": "orgnisation",
                     "destination_vertex": "place",
-                    "count": 7956
+                    "count": 7955
                 }
             ]
         },
@@ -249,7 +249,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "place",
-                    "count": 54737516
+                    "count": 2052169
                 }
             ]
         },
@@ -260,7 +260,7 @@
                 {
                     "source_vertex": "post",
                     "destination_vertex": "place",
-                    "count": 21651343
+                    "count": 1003605
                 }
             ]
         },
@@ -271,7 +271,7 @@
                 {
                     "source_vertex": "forum",
                     "destination_vertex": "tag",
-                    "count": 5467943
+                    "count": 309766
                 }
             ]
         },
@@ -282,7 +282,7 @@
                 {
                     "source_vertex": "post",
                     "destination_vertex": "tag",
-                    "count": 23426339
+                    "count": 713258
                 }
             ]
         },
@@ -293,7 +293,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "tag",
-                    "count": 70035651
+                    "count": 2698393
                 }
             ]
         }

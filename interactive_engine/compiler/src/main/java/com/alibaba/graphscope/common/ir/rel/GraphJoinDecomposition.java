@@ -81,7 +81,7 @@ public class GraphJoinDecomposition extends BiRel {
                 joinType);
     }
 
-    protected GraphJoinDecomposition(
+    public GraphJoinDecomposition(
             RelOptCluster cluster,
             RelTraitSet traitSet,
             Pattern parentPattern,

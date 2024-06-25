@@ -10,7 +10,7 @@
         {
             "type_id": 2,
             "type_name": "comment",
-            "count": 2052169
+            "count": 502169
         },
         {
             "type_id": 7,
@@ -263,7 +263,7 @@
                 {
                     "source_vertex": "person",
                     "destination_vertex": "city",
-                    "count": 170655
+                    "count": 9892
                 }
             ]
         },
