@@ -31,16 +31,20 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             return;
         }
         graphPattern.setRowCount(mq.getRowCount(graphPattern));
-        int queueCapacity = 1000;
+        int queueCapacity = 3;
         PriorityQueue<GraphJoinDecomposition> decompositionQueue =
                 new PriorityQueue<>(queueCapacity, comparator.reversed()); // max heap
         (new JoinByEdge(graphPattern, mq, decompositionQueue, queueCapacity)).addDecompositions();
-//        (new JoinByVertex(graphPattern, mq, decompositionQueue, queueCapacity)).addDecompositions();
+        (new JoinByVertex(graphPattern, mq, decompositionQueue, queueCapacity)).addDecompositions();
         List<GraphJoinDecomposition> decompositionsInAscOrder = Lists.newArrayList();
         while (!decompositionQueue.isEmpty()) {
             GraphJoinDecomposition decomposition = decompositionQueue.poll();
+            System.out.println(
+                    ((GraphPattern) decomposition.getLeft()).getRowCount()
+                            + ((GraphPattern) decomposition.getRight()).getRowCount());
             decompositionsInAscOrder.add(0, decomposition);
         }
+        System.out.println(".......");
         for (GraphJoinDecomposition decomposition : decompositionsInAscOrder) {
             relOptRuleCall.transformTo(decomposition);
         }
@@ -98,16 +102,15 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                                         rightPattern,
                                         rightCount,
                                         Lists.newArrayList(srcVertex, dstVertex));
-                        decompositionQueue.add(decomposition);
-//                        if (!containsDecomposition(decompositionQueue.iterator(), decomposition)) {
-//                            if (decompositionQueue.size() < queueCapacity) {
-//                                decompositionQueue.offer(decomposition);
-//                            } else if (comparator.compare(decompositionQueue.peek(), decomposition)
-//                                    > 0) {
-//                                decompositionQueue.poll();
-//                                decompositionQueue.offer(decomposition);
-//                            }
-//                        }
+                        if (!containsDecomposition(decompositionQueue.iterator(), decomposition)) {
+                            if (decompositionQueue.size() < queueCapacity) {
+                                decompositionQueue.offer(decomposition);
+                            } else if (comparator.compare(decompositionQueue.peek(), decomposition)
+                                    > 0) {
+                                decompositionQueue.poll();
+                                decompositionQueue.offer(decomposition);
+                            }
+                        }
                     }
                 }
             }

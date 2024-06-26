@@ -35,8 +35,8 @@ public class CBOTest {
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
-                        "schema/ldbc_schema_exp_hierarchy.json",
-                        "statistics/ldbc30_hierarchy_statistics.json",
+                        "schema/ldbc.json",
+                        "statistics/ldbc30_statistics.json",
                         optimizer.getGlogueHolder());
     }
 
@@ -244,19 +244,23 @@ public class CBOTest {
 
     @Test
     public void Q6_test() {
+        long startTime = System.currentTimeMillis();
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n" +
-                                        "              (forum:FORUM)-[:HASMEMBER]->(person1:PERSON),\n" +
-                                        "              (forum:FORUM)-[:HASMEMBER]->(person2:PERSON),\n" +
-                                        "            (person1:PERSON)-[:KNOWS]->(person2:PERSON),\n" +
-                                        "              (person1:PERSON)-[:LIKES]->(post:POST),\n" +
-                                        "              (person2:PERSON)-[:LIKES]->(post:POST)\n" +
-                                        "        Return count(person1);",
+                                "MATCH (forum:FORUM)-[:HASMEMBER]->(person:PERSON),\n"
+                                        + "      (person:PERSON)-[:ISLOCATEDIN]->(city:PLACE),\n"
+                                        + "      (city:PLACE)-[:ISPARTOF]->(country:PLACE),\n"
+                                        + "      (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n"
+                                        + "      (post:POST)<-[:REPLYOF]-(comment:COMMENT),\n"
+                                        + "      (comment:COMMENT)-[:HASTAG]->(tag:TAG),\n"
+                                        + "      (tag:TAG)-[:HASTYPE]->(tagClass:TAGCLASS)\n"
+                                        + "RETURN COUNT(forum);",
                                 builder)
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        System.out.println("gopt time is " + elapsedTime);
     }
 }
