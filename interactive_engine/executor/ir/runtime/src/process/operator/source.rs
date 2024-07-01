@@ -155,10 +155,13 @@ impl SourceOperator {
                         ))?
                     }
                     let mut source_vertices = vec![];
+                    debug!("IndexScan with labels {:?}, and pkvs {:?}", self.query_params.labels, pkvs);
                     for label in &self.query_params.labels {
                         for pkv in pkvs {
                             if let Some(v) = graph.index_scan_vertex(*label, pkv, &self.query_params)? {
                                 source_vertices.push(v);
+                            } else {
+                                debug!("IndexScan with label {:?}, and pkv {:?} not found", label, pkv);
                             }
                         }
                     }
