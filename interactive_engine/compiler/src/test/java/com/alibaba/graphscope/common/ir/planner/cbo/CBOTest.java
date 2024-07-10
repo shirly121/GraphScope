@@ -30,17 +30,17 @@ public class CBOTest {
                                 "graph.planner.opt",
                                 "CBO",
                                 "graph.planner.join.min.pattern.size",
-                                "4",
-                                "graph.foreign.key",
-                                "src/test/resources/schema/ldbc_foreign_key.json",
+                                "5",
+//                                "graph.foreign.key",
+//                                "src/test/resources/schema/ldbc_foreign_key.json",
                                 "graph.planner.rules",
                                 "FilterIntoJoinRule, FilterMatchRule, ExtendIntersectRule,"
-                                        + " JoinDecompositionRule,  ExpandGetVFusionRule"));
+                                        + " ExpandGetVFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
-                        "schema/ldbc.json",
-                        "statistics/ldbc30_statistics.json",
+                        "schema/imdb_schema.yaml",
+                        "statistics/imdb_statistics.json",
                         optimizer.getGlogueHolder());
     }
 
@@ -265,5 +265,40 @@ public class CBOTest {
         GraphRelProtoPhysicalBuilder builder1 =
                 new GraphRelProtoPhysicalBuilder(configs, irMeta, new LogicalPlan(after1));
         System.out.println(builder1.build().explain());
+    }
+
+    @Test
+    public void Q7_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        long startTime = System.currentTimeMillis();
+        RelNode before1 =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH\n" +
+                                        "(t:TITLE)<-[:COMPLETE_CAST_TITLE]-(cc:COMPLETE_CAST)-[:COMPLETE_CAST_SUBJECT]->(cct1:COMP_CAST_TYPE),\n" +
+                                        "(cc)-[:COMPLETE_CAST_STATUS]->(cct2:COMP_CAST_TYPE),\n" +
+                                        "(t)-[mk:MOVIE_KEYWORD]->(k:KEYWORD),\n" +
+                                        "(t)<-[:KIND_TYPE_TITLE]-(kt:KIND_TYPE),\n" +
+                                        "(t)-[mi_idx:MOVIE_INFO_IDX]->(it2:INFO_TYPE),\n" +
+                                        "(t)<-[:CAST_INFO_TITLE]-(ci:CAST_INFO)-[:CAST_INFO_CHAR]->(chn:CHAR_NAME),\n" +
+                                        "(ci)-[:CAST_INFO_NAME]->(n:NAME)\n" +
+                                        "WHERE cct1.kind = 'cast'\n" +
+                                        "  AND cct2.kind CONTAINS 'complete'\n" +
+                                        "  AND (chn.name CONTAINS 'man' OR chn.name CONTAINS 'Man')\n" +
+                                        "  AND it2.info = 'rating'\n" +
+                                        "  AND k.keyword IN ['superhero', 'marvel-comics', 'based-on-comic', 'tv-special', 'fight', 'violence', 'magnet', 'web', 'claw', 'laser']\n" +
+                                        "  AND kt.kind = 'movie'\n" +
+                                        "  AND mi_idx.info > '7.0'\n" +
+                                        "  AND t.production_year > 2000\n" +
+                                        "RETURN\n" +
+                                        "  MIN(chn.name) AS character_name,\n" +
+                                        "  MIN(mi_idx.info) AS rating,\n" +
+                                        "  MIN(n.name) AS playing_actor,\n" +
+                                        "  MIN(t.title) AS complete_hero_movie;",
+                                builder)
+                        .build();
+        RelNode after1 = optimizer.optimize(before1, new GraphIOProcessor(builder, irMeta));
+        long elapsed = System.currentTimeMillis() - startTime;
+        System.out.println(after1.explain());
+        System.out.println("elapsed time is " + elapsed);
     }
 }

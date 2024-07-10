@@ -17,6 +17,7 @@
 package com.alibaba.graphscope.common.ir.rel;
 
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
+import com.alibaba.graphscope.common.ir.rel.type.JoinVertexEntry;
 
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -27,7 +28,7 @@ import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import org.apache.calcite.util.Pair;
 
 import java.util.Collections;
 import java.util.List;
@@ -126,50 +127,28 @@ public class GraphJoinDecomposition extends BiRel {
         return joinType;
     }
 
-    public static class JoinVertexPair {
-        private final int leftOrderId;
-        private final int rightOrderId;
-        private final @Nullable String leftKey;
-        private final @Nullable String rightKey;
+    public static class JoinVertexPair
+            extends Pair<JoinVertexEntry<Integer>, JoinVertexEntry<Integer>> {
+        private final boolean isForeignKey;
 
-        public JoinVertexPair(int leftOrderId, int rightOrderId) {
-            this.leftOrderId = leftOrderId;
-            this.rightOrderId = rightOrderId;
-            this.leftKey = null;
-            this.rightKey = null;
-        }
-
-        public JoinVertexPair(int leftOrderId, String leftKey, int rightOrderId, String rightKey) {
-            this.leftOrderId = leftOrderId;
-            this.rightOrderId = rightOrderId;
-            this.leftKey = leftKey;
-            this.rightKey = rightKey;
+        public JoinVertexPair(
+                JoinVertexEntry<Integer> left,
+                JoinVertexEntry<Integer> right,
+                boolean isForeignKey) {
+            super(left, right);
+            this.isForeignKey = isForeignKey;
         }
 
         public int getLeftOrderId() {
-            return leftOrderId;
+            return left.getVertex();
         }
 
         public int getRightOrderId() {
-            return rightOrderId;
+            return right.getVertex();
         }
 
-        @Override
-        public String toString() {
-            return "JoinVertexPair{"
-                    + "leftOrderId="
-                    + leftOrderId
-                    + ", rightOrderId="
-                    + rightOrderId
-                    + '}';
-        }
-
-        public String getLeftKey() {
-            return leftKey;
-        }
-
-        public String getRightKey() {
-            return rightKey;
+        public boolean isForeignKey() {
+            return isForeignKey;
         }
     }
 

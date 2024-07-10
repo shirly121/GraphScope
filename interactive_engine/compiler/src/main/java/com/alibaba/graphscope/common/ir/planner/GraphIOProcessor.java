@@ -32,6 +32,7 @@ import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendStep;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.*;
 import com.alibaba.graphscope.common.ir.rel.metadata.schema.EdgeTypeId;
+import com.alibaba.graphscope.common.ir.rel.type.JoinVertexEntry;
 import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
@@ -700,35 +701,13 @@ public class GraphIOProcessor {
             List<RelDataTypeField> leftFields =
                     com.alibaba.graphscope.common.ir.tools.Utils.getOutputType(left).getFieldList();
             for (GraphJoinDecomposition.JoinVertexPair jointVertex : jointVertices) {
-                Integer probeOrderId = probeOrderMap.get(jointVertex.getLeftOrderId());
-                if (probeOrderId == null) {
-                    probeOrderId = -1;
-                }
-                DataValue probeValue =
-                        getVertexValue(
-                                new VertexDataKey(probeOrderId),
-                                vertexDetails,
-                                probePattern.getVertexByOrder(jointVertex.getLeftOrderId()));
                 builder.push(left);
-                RexGraphVariable leftVar =
-                        jointVertex.getLeftKey() != null
-                                ? builder.variable(probeValue.getAlias(), jointVertex.getLeftKey())
-                                : builder.variable(probeValue.getAlias());
-                Integer buildOrderId = buildOrderMap.get(jointVertex.getRightOrderId());
-                if (buildOrderId == null) {
-                    buildOrderId = -1;
-                }
-                DataValue buildValue =
-                        getVertexValue(
-                                new VertexDataKey(buildOrderId),
-                                vertexDetails,
-                                buildPattern.getVertexByOrder(jointVertex.getRightOrderId()));
+                RexNode leftVar =
+                        convert(jointVertex.left, vertexDetails, probeOrderMap, probePattern);
                 builder.build();
                 builder.push(right);
                 RexGraphVariable rightVar =
-                        jointVertex.getRightKey() != null
-                                ? builder.variable(buildValue.getAlias(), jointVertex.getRightKey())
-                                : builder.variable(buildValue.getAlias());
+                        convert(jointVertex.right, vertexDetails, buildOrderMap, buildPattern);
                 rightVar =
                         (rightVar.getProperty() == null)
                                 ? RexGraphVariable.of(
@@ -748,6 +727,25 @@ public class GraphIOProcessor {
             return RexUtil.composeConjunction(builder.getRexBuilder(), joinCondition);
         }
 
+        private RexGraphVariable convert(
+                JoinVertexEntry<Integer> joinVertex,
+                Map<DataKey, DataValue> vertexDetails,
+                Map<Integer, Integer> orderMap,
+                Pattern pattern) {
+            Integer orderId = orderMap.get(joinVertex.getVertex());
+            if (orderId == null) {
+                orderId = -1;
+            }
+            DataValue value =
+                    getVertexValue(
+                            new VertexDataKey(orderId),
+                            vertexDetails,
+                            pattern.getVertexByOrder(joinVertex.getVertex()));
+            return joinVertex.getKeyName() != null
+                    ? builder.variable(value.getAlias(), joinVertex.getKeyName())
+                    : builder.variable(value.getAlias());
+        }
+
         private Map<DataKey, DataValue> getJointVertexDetails(
                 List<GraphJoinDecomposition.JoinVertexPair> jointVertices,
                 Map<Integer, Integer> probeOrderMap,
@@ -763,14 +761,12 @@ public class GraphIOProcessor {
                                 vertexDetails.put(dataKey, value);
                             }
                         }
-                        if (k.getLeftKey() != null) {
-                            Integer probeOrderId = probeOrderMap.get(k.getLeftOrderId());
-                            if (probeOrderId != null) {
-                                VertexDataKey dataKey = new VertexDataKey(probeOrderId);
-                                DataValue value = details.get(dataKey);
-                                if (value != null) {
-                                    vertexDetails.put(dataKey, value);
-                                }
+                        Integer probeOrderId = probeOrderMap.get(k.getLeftOrderId());
+                        if (probeOrderId != null) {
+                            VertexDataKey dataKey = new VertexDataKey(probeOrderId);
+                            DataValue value = details.get(dataKey);
+                            if (!vertexDetails.containsKey(dataKey) && value != null) {
+                                vertexDetails.put(dataKey, value);
                             }
                         }
                     });

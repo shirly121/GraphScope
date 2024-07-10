@@ -89,7 +89,7 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
             List<GraphJoinDecomposition.JoinVertexPair> joinVertexPairs =
                     decomposition.getJoinVertexPairs();
             // foreign key join
-            if (joinVertexPairs.size() == 1 && joinVertexPairs.get(0).getLeftKey() != null) {
+            if (joinVertexPairs.stream().allMatch(k -> k.isForeignKey())) {
                 dRows = Math.min(probeCount, buildCount) * 2;
             } else {
                 dRows =

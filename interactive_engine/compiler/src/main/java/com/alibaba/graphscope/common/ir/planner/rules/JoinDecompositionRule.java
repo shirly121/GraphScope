@@ -1,14 +1,15 @@
 package com.alibaba.graphscope.common.ir.planner.rules;
 
 import com.alibaba.graphscope.common.config.Configs;
-import com.alibaba.graphscope.common.config.GraphConfig;
 import com.alibaba.graphscope.common.ir.meta.glogue.Utils;
+import com.alibaba.graphscope.common.ir.meta.schema.foreign.ForeignKey;
+import com.alibaba.graphscope.common.ir.meta.schema.foreign.ForeignKeyEntry;
+import com.alibaba.graphscope.common.ir.meta.schema.foreign.ForeignKeyMeta;
 import com.alibaba.graphscope.common.ir.rel.GraphJoinDecomposition;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.*;
 import com.alibaba.graphscope.common.ir.rel.metadata.schema.EdgeTypeId;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.alibaba.graphscope.common.ir.rel.type.JoinVertexEntry;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -18,11 +19,9 @@ import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.tools.RelBuilderFactory;
-import org.apache.commons.io.FileUtils;
+import org.apache.calcite.util.Pair;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,7 +30,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
 
     protected JoinDecompositionRule(C config) {
         super(config);
-        this.foreignKeyMeta = new ForeignKeyMeta(config.getConfigs());
+        this.foreignKeyMeta = new ForeignKeyMeta(config.getGraphConfig());
     }
 
     @Override
@@ -42,14 +41,14 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             return;
         }
         graphPattern.setRowCount(mq.getRowCount(graphPattern));
-        int queueCapacity = 3;
+        int queueCapacity = 1;
         PriorityQueue<GraphJoinDecomposition> decompositionQueue =
                 new PriorityQueue<>(queueCapacity, comparator.reversed()); // max heap
         //        (new JoinByEdge(graphPattern, mq, decompositionQueue,
         // queueCapacity)).addDecompositions();
         (new JoinByVertex(graphPattern, mq, decompositionQueue, queueCapacity)).addDecompositions();
-        (new JoinByForeignKey(graphPattern, mq, decompositionQueue, queueCapacity))
-                .addDecompositions();
+        //        (new JoinByForeignKey(graphPattern, mq, decompositionQueue, queueCapacity))
+        //                .addDecompositions();
         List<GraphJoinDecomposition> decompositionsInAscOrder = Lists.newArrayList();
         while (!decompositionQueue.isEmpty()) {
             GraphJoinDecomposition decomposition = decompositionQueue.poll();
@@ -60,82 +59,13 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
         }
     }
 
-    private static class ForeignKeyMeta {
-        private final Map<EdgeTypeId, ForeignKeyEntry> keyMap;
+    private class JoinByRule {
+        protected final GraphPattern graphPattern;
+        protected final RelMetadataQuery mq;
+        protected final PriorityQueue<GraphJoinDecomposition> decompositionQueue;
+        protected final int queueCapacity;
 
-        public ForeignKeyMeta(Configs configs) {
-            this.keyMap = createKeyMap(configs);
-        }
-
-        private Map<EdgeTypeId, ForeignKeyEntry> createKeyMap(Configs configs) {
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-                Map<EdgeTypeId, ForeignKeyEntry> keyMap = Maps.newHashMap();
-                String foreignKeyJson =
-                        FileUtils.readFileToString(
-                                new File(GraphConfig.GRAPH_FOREIGN_KEY.get(configs)),
-                                StandardCharsets.UTF_8);
-                JsonNode jsonNode = mapper.readTree(foreignKeyJson);
-                Iterator<JsonNode> iterator = jsonNode.iterator();
-                while (iterator.hasNext()) {
-                    JsonNode entry = iterator.next();
-                    JsonNode labelNode = entry.get("label");
-                    EdgeTypeId edgeTypeId =
-                            new EdgeTypeId(
-                                    labelNode.get("src_id").asInt(),
-                                    labelNode.get("dst_id").asInt(),
-                                    labelNode.get("id").asInt());
-                    JsonNode foreignNode = entry.get("foreign_keys");
-                    ForeignKeyEntry foreignKeyEntry = new ForeignKeyEntry();
-                    Iterator it0 = foreignNode.iterator();
-                    while (it0.hasNext()) {
-                        JsonNode keyNode = (JsonNode) it0.next();
-                        foreignKeyEntry.add(
-                                new ForeignKey(
-                                        keyNode.get("id").asInt(), keyNode.get("key").asText()));
-                    }
-                    keyMap.put(edgeTypeId, foreignKeyEntry);
-                }
-                return keyMap;
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        public ForeignKeyEntry getForeignKeyEntry(EdgeTypeId typeId) {
-            return this.keyMap.get(typeId);
-        }
-
-        @Override
-        public String toString() {
-            return "ForeignKeyMeta{" + "keyMap=" + keyMap + '}';
-        }
-    }
-
-    private static class ForeignKey {
-        private final int labelId;
-        private final String keyName;
-
-        public ForeignKey(int labelId, String keyName) {
-            this.labelId = labelId;
-            this.keyName = keyName;
-        }
-
-        @Override
-        public String toString() {
-            return "ForeignKey{" + "labelId=" + labelId + ", keyName='" + keyName + '\'' + '}';
-        }
-    }
-
-    private static class ForeignKeyEntry extends ArrayList<ForeignKey> {}
-
-    private class JoinByForeignKey {
-        private final GraphPattern graphPattern;
-        private final RelMetadataQuery mq;
-        private final PriorityQueue<GraphJoinDecomposition> decompositionQueue;
-        private final int queueCapacity;
-
-        public JoinByForeignKey(
+        public JoinByRule(
                 GraphPattern graphPattern,
                 RelMetadataQuery mq,
                 PriorityQueue<GraphJoinDecomposition> decompositionQueue,
@@ -144,6 +74,64 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             this.mq = mq;
             this.decompositionQueue = decompositionQueue;
             this.queueCapacity = queueCapacity;
+        }
+
+        public void addDecompositions() {}
+
+        protected boolean addDecompositionToQueue(GraphJoinDecomposition decomposition) {
+            boolean added = false;
+            if (!containsDecomposition(decompositionQueue.iterator(), decomposition)) {
+                if (decompositionQueue.size() < queueCapacity) {
+                    decompositionQueue.offer(decomposition);
+                    added = true;
+                } else if (comparator.compare(decompositionQueue.peek(), decomposition) > 0) {
+                    decompositionQueue.poll();
+                    decompositionQueue.offer(decomposition);
+                    added = true;
+                }
+            }
+            return added;
+        }
+
+        protected boolean containsDecomposition(
+                Iterator<GraphJoinDecomposition> decompositions, GraphJoinDecomposition target) {
+            Pattern targetProbe = ((GraphPattern) target.getLeft()).getPattern();
+            Pattern targetBuild = ((GraphPattern) target.getRight()).getPattern();
+            while (decompositions.hasNext()) {
+                GraphJoinDecomposition d = decompositions.next();
+                Pattern dProbe = ((GraphPattern) d.getLeft()).getPattern();
+                Pattern dBuild = ((GraphPattern) d.getRight()).getPattern();
+                if (dProbe.isIsomorphicTo(targetProbe) && dBuild.isIsomorphicTo(targetBuild)
+                        || dProbe.isIsomorphicTo(targetBuild) && dBuild.isIsomorphicTo(targetProbe))
+                    return true;
+            }
+            return false;
+        }
+
+        protected double getRowCount(RelNode parent, PatternEdge edge, RelMetadataQuery mq) {
+            Pattern pattern = new Pattern();
+            pattern.addVertex(edge.getSrcVertex());
+            pattern.addVertex(edge.getDstVertex());
+            pattern.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
+            return mq.getRowCount(
+                    new GraphPattern(parent.getCluster(), parent.getTraitSet(), pattern));
+        }
+
+        protected double getRowCount(RelNode parent, PatternVertex vertex, RelMetadataQuery mq) {
+            Pattern pattern = new Pattern();
+            pattern.addVertex(vertex);
+            return mq.getRowCount(
+                    new GraphPattern(parent.getCluster(), parent.getTraitSet(), pattern));
+        }
+    }
+
+    private class JoinByForeignKey extends JoinByRule {
+        public JoinByForeignKey(
+                GraphPattern graphPattern,
+                RelMetadataQuery mq,
+                PriorityQueue<GraphJoinDecomposition> decompositionQueue,
+                int queueCapacity) {
+            super(graphPattern, mq, decompositionQueue, queueCapacity);
         }
 
         public void addDecompositions() {
@@ -155,7 +143,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                 EdgeTypeId typeId = edge.getEdgeTypeIds().get(0);
                 ForeignKeyEntry entry = foreignKeyMeta.getForeignKeyEntry(typeId);
                 if (entry == null) continue;
-                List<Pattern> subgraph = getSubGraph(pattern, edge);
+                List<Pattern> subgraph = splitByEdge(pattern, edge);
                 if (subgraph.size() != 2) continue;
                 Pattern srcPattern = subgraph.get(0);
                 Pattern dstPattern = subgraph.get(1);
@@ -171,56 +159,36 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                                         graphPattern.getCluster(),
                                         graphPattern.getTraitSet(),
                                         dstPattern));
-                GraphJoinDecomposition decomposition;
-                if (srcCount < dstCount) {
-                    decomposition =
-                            createJoinDecomposition0(
-                                    graphPattern,
-                                    srcPattern,
-                                    srcCount,
-                                    dstPattern,
-                                    dstCount,
-                                    Lists.newArrayList(
-                                            getJoinVertex(edge.getSrcVertex(), edge, entry)));
-                } else {
-                    decomposition =
-                            createJoinDecomposition0(
-                                    graphPattern,
-                                    dstPattern,
-                                    dstCount,
-                                    srcPattern,
-                                    srcCount,
-                                    Lists.newArrayList(
-                                            getJoinVertex(edge.getDstVertex(), edge, entry)));
-                }
-                if (!containsDecomposition(decompositionQueue.iterator(), decomposition)) {
-                    if (decompositionQueue.size() < queueCapacity) {
-                        decompositionQueue.offer(decomposition);
-                    } else if (comparator.compare(decompositionQueue.peek(), decomposition) > 0) {
-                        decompositionQueue.poll();
-                        decompositionQueue.offer(decomposition);
-                    }
-                }
+                GraphJoinDecomposition decomposition =
+                        createJoinDecomposition(
+                                graphPattern,
+                                srcPattern,
+                                srcCount,
+                                dstPattern,
+                                dstCount,
+                                Lists.newArrayList(
+                                        getJoinVertex(edge.getSrcVertex(), edge, entry)));
+                addDecompositionToQueue(decomposition);
             }
         }
 
-        private List<Pattern> getSubGraph(Pattern pattern, PatternEdge edge) {
+        private List<Pattern> splitByEdge(Pattern pattern, PatternEdge edge) {
             Pattern clone = new Pattern(pattern);
             clone.removeEdge(edge);
             List<Set<PatternVertex>> connected = clone.getConnectedComponents();
             if (connected.size() != 2) return Lists.newArrayList();
             if (connected.get(0).contains(edge.getSrcVertex())) {
                 return Lists.newArrayList(
-                        buildSubGraph(pattern, connected.get(0)),
-                        buildSubGraph(pattern, connected.get(1)));
+                        createSubgraph(pattern, connected.get(0)),
+                        createSubgraph(pattern, connected.get(1)));
             } else {
                 return Lists.newArrayList(
-                        buildSubGraph(pattern, connected.get(1)),
-                        buildSubGraph(pattern, connected.get(0)));
+                        createSubgraph(pattern, connected.get(1)),
+                        createSubgraph(pattern, connected.get(0)));
             }
         }
 
-        private Pattern buildSubGraph(Pattern pattern, Set<PatternVertex> components) {
+        private Pattern createSubgraph(Pattern pattern, Set<PatternVertex> components) {
             Pattern subgraph = new Pattern();
             for (PatternVertex vertex : components) {
                 for (PatternEdge edge : pattern.getEdgesOf(vertex)) {
@@ -246,36 +214,29 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             String probeKeyName = null;
             String buildKeyName = null;
             for (ForeignKey key : entry) {
-                if (probeVertex.getVertexTypeIds().contains(key.labelId)) {
-                    probeKeyName = key.keyName;
-                } else if (buildVertex.getVertexTypeIds().contains(key.labelId)) {
-                    buildKeyName = key.keyName;
+                if (probeVertex.getVertexTypeIds().contains(key.getLabelId())) {
+                    probeKeyName = key.getKeyName();
+                } else if (buildVertex.getVertexTypeIds().contains(key.getLabelId())) {
+                    buildKeyName = key.getKeyName();
                 }
             }
             Preconditions.checkArgument(
                     probeKeyName != null && buildKeyName != null,
                     "probe key name or build key name should not be null");
-            return new JoinVertex(probeVertex, probeKeyName, buildVertex, buildKeyName);
+            return new JoinVertex(probeVertex, probeKeyName, buildVertex, buildKeyName, true);
         }
     }
 
-    private class JoinByEdge {
-        private final GraphPattern graphPattern;
-        private final RelMetadataQuery mq;
-        private final PriorityQueue<GraphJoinDecomposition> decompositionQueue;
-        private final int queueCapacity;
-
+    private class JoinByEdge extends JoinByRule {
         public JoinByEdge(
                 GraphPattern graphPattern,
                 RelMetadataQuery mq,
                 PriorityQueue<GraphJoinDecomposition> decompositionQueue,
                 int queueCapacity) {
-            this.graphPattern = graphPattern;
-            this.mq = mq;
-            this.decompositionQueue = decompositionQueue;
-            this.queueCapacity = queueCapacity;
+            super(graphPattern, mq, decompositionQueue, queueCapacity);
         }
 
+        @Override
         public void addDecompositions() {
             Pattern pattern = graphPattern.getPattern();
             for (PatternEdge edge : pattern.getEdgeSet()) {
@@ -310,37 +271,23 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                                         leftCount,
                                         rightPattern,
                                         rightCount,
-                                        Lists.newArrayList(srcVertex, dstVertex));
-                        if (!containsDecomposition(decompositionQueue.iterator(), decomposition)) {
-                            if (decompositionQueue.size() < queueCapacity) {
-                                decompositionQueue.offer(decomposition);
-                            } else if (comparator.compare(decompositionQueue.peek(), decomposition)
-                                    > 0) {
-                                decompositionQueue.poll();
-                                decompositionQueue.offer(decomposition);
-                            }
-                        }
+                                        Lists.newArrayList(
+                                                new JoinVertex(srcVertex),
+                                                new JoinVertex(dstVertex)));
+                        addDecompositionToQueue(decomposition);
                     }
                 }
             }
         }
     }
 
-    private class JoinByVertex {
-        private final GraphPattern graphPattern;
-        private final RelMetadataQuery mq;
-        private final PriorityQueue<GraphJoinDecomposition> decompositionQueue;
-        private final int queueCapacity;
-
+    private class JoinByVertex extends JoinByRule {
         public JoinByVertex(
                 GraphPattern graphPattern,
                 RelMetadataQuery mq,
                 PriorityQueue<GraphJoinDecomposition> decompositionQueue,
                 int queueCapacity) {
-            this.graphPattern = graphPattern;
-            this.mq = mq;
-            this.decompositionQueue = decompositionQueue;
-            this.queueCapacity = queueCapacity;
+            super(graphPattern, mq, decompositionQueue, queueCapacity);
         }
 
         public void addDecompositions() {
@@ -353,38 +300,20 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
 
         private List<GraphJoinDecomposition> initDecompositions() {
             Pattern pattern = graphPattern.getPattern();
-            pattern.reordering();
+            double patternCount = graphPattern.getRowCount();
             List<GraphJoinDecomposition> decompositions = Lists.newArrayList();
             for (PatternVertex vertex : pattern.getVertexSet()) {
                 Pattern probePattern = new Pattern(vertex);
                 probePattern.reordering();
-                Map<Integer, Integer> probeOrderMap = Maps.newHashMap();
-                probeOrderMap.put(
-                        probePattern.getVertexOrder(vertex), pattern.getVertexOrder(vertex));
-                Map<Integer, Integer> buildOrderMap = Maps.newHashMap();
-                pattern.getVertexSet()
-                        .forEach(
-                                v -> {
-                                    int orderId = pattern.getVertexOrder(v);
-                                    buildOrderMap.put(orderId, orderId);
-                                });
-                GraphJoinDecomposition decomposition =
-                        new GraphJoinDecomposition(
-                                graphPattern.getCluster(),
-                                graphPattern.getTraitSet(),
-                                pattern,
-                                probePattern,
-                                pattern,
-                                Lists.newArrayList(
-                                        new GraphJoinDecomposition.JoinVertexPair(
-                                                probePattern.getVertexOrder(vertex),
-                                                pattern.getVertexOrder(vertex))),
-                                new GraphJoinDecomposition.OrderMappings(
-                                        probeOrderMap, buildOrderMap));
                 double probeCount = getRowCount(graphPattern, vertex, mq);
-                double buildCount = graphPattern.getRowCount();
-                ((GraphPattern) decomposition.getLeft()).setRowCount(probeCount);
-                ((GraphPattern) decomposition.getRight()).setRowCount(buildCount);
+                GraphJoinDecomposition decomposition =
+                        createJoinDecomposition(
+                                graphPattern,
+                                probePattern,
+                                probeCount,
+                                pattern,
+                                patternCount,
+                                Lists.newArrayList(new JoinVertex(vertex)));
                 decompositions.add(decomposition);
             }
             return decompositions;
@@ -447,109 +376,114 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                                 probeCloneCount,
                                 buildClone,
                                 buildCloneCount,
-                                Lists.newArrayList(newJointVertex));
-                if (!containsDecomposition(decompositionQueue.iterator(), decomposition)) {
-                    if (decompositionQueue.size() < queueCapacity) {
-                        decompositionQueue.offer(decomposition);
-                        decompositions.add(decomposition);
-                    } else if (comparator.compare(decompositionQueue.peek(), decomposition) > 0) {
-                        decompositionQueue.poll();
-                        decompositionQueue.offer(decomposition);
-                        decompositions.add(decomposition);
-                    }
+                                Lists.newArrayList(new JoinVertex(newJointVertex)));
+                if (addDecompositionToQueue(decomposition)) {
+                    decompositions.add(decomposition);
                 }
             }
             return decompositions;
         }
+
+//        private void addPxdInnerVDecompositions() {
+//            Pattern pattern = graphPattern.getPattern();
+//            for (PatternEdge edge : pattern.getEdgeSet()) {
+//                PatternVertex src = edge.getSrcVertex();
+//                PatternVertex dst = edge.getDstVertex();
+//
+//                PathExpandRange pxdRange = edge.getElementDetails().getRange();
+//                // try to split the path expand
+//                if (pxdRange != null) {
+//                    int minHop = pxdRange.getOffset();
+//                    int maxHop = pxdRange.getOffset() + pxdRange.getFetch() - 1;
+//                    if (maxHop >= config.getMinPatternSize() - 1) {
+//
+//                    }
+//                }
+//
+//                // split the path expand into two path expands
+//                // probe part: [i, j]
+//                // build part: [minHop - i, maxHop - j]
+//                PatternVertex anotherVertex =
+//                        Utils.getExtendFromVertex(probeEdge, jointVertex);
+//                PatternVertex splitVertex = createNewVertex(anotherVertex);
+//                newAddVertices.add(splitVertex);
+//                PatternVertex probeSrc, probeDst;
+//                if (probeEdge.getSrcVertex().equals(jointVertex)) {
+//                    probeSrc = jointVertex;
+//                    probeDst = splitVertex;
+//                } else {
+//                    probeSrc = splitVertex;
+//                    probeDst = jointVertex;
+//                }
+//                PatternEdge probeSplit =
+//                        createNewEdge(
+//                                probeEdge,
+//                                probeSrc,
+//                                probeDst,
+//                                new PathExpandRange(i, j - i + 1));
+//                PatternVertex buildSrc, buildDst;
+//                if (probeEdge.getSrcVertex().equals(jointVertex)) {
+//                    buildSrc = splitVertex;
+//                    buildDst = anotherVertex;
+//                } else {
+//                    buildSrc = anotherVertex;
+//                    buildDst = splitVertex;
+//                }
+//                PatternEdge buildSplit =
+//                        createNewEdge(
+//                                probeEdge,
+//                                buildSrc,
+//                                buildDst,
+//                                new PathExpandRange(
+//                                        minHop - i, maxHop - j - (minHop - i) + 1));
+//            }
+//        }
     }
 
-    private double getRowCount(RelNode parent, PatternEdge edge, RelMetadataQuery mq) {
-        Pattern pattern = new Pattern();
-        pattern.addVertex(edge.getSrcVertex());
-        pattern.addVertex(edge.getDstVertex());
-        pattern.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
-        return mq.getRowCount(new GraphPattern(parent.getCluster(), parent.getTraitSet(), pattern));
-    }
+    private static class JoinVertex
+            extends Pair<JoinVertexEntry<PatternVertex>, JoinVertexEntry<PatternVertex>> {
+        private final boolean isForeignKey;
 
-    private double getRowCount(RelNode parent, PatternVertex vertex, RelMetadataQuery mq) {
-        Pattern pattern = new Pattern();
-        pattern.addVertex(vertex);
-        return mq.getRowCount(new GraphPattern(parent.getCluster(), parent.getTraitSet(), pattern));
-    }
-
-    private boolean containsDecomposition(
-            Iterator<GraphJoinDecomposition> decompositions, GraphJoinDecomposition target) {
-        Pattern targetProbe = ((GraphPattern) target.getLeft()).getPattern();
-        Pattern targetBuild = ((GraphPattern) target.getRight()).getPattern();
-        while (decompositions.hasNext()) {
-            GraphJoinDecomposition d = decompositions.next();
-            Pattern dProbe = ((GraphPattern) d.getLeft()).getPattern();
-            Pattern dBuild = ((GraphPattern) d.getRight()).getPattern();
-            if (dProbe.isIsomorphicTo(targetProbe) && dBuild.isIsomorphicTo(targetBuild)
-                    || dProbe.isIsomorphicTo(targetBuild) && dBuild.isIsomorphicTo(targetProbe))
-                return true;
+        public JoinVertex(PatternVertex singleVertex) {
+            this(
+                    new JoinVertexEntry(singleVertex, null),
+                    new JoinVertexEntry(singleVertex, null),
+                    false);
         }
-        return false;
-    }
-
-    private static class JoinVertex {
-        private final PatternVertex probeVertex;
-        @Nullable private final String probeKeyName;
-
-        private final PatternVertex buildVertex;
-        @Nullable private final String buildKeyName;
 
         public JoinVertex(
-                PatternVertex probeVertex,
-                String probeKeyName,
-                PatternVertex buildVertex,
-                String buildKeyName) {
-            this.probeVertex = probeVertex;
-            this.probeKeyName = probeKeyName;
-            this.buildVertex = buildVertex;
-            this.buildKeyName = buildKeyName;
+                PatternVertex left,
+                @Nullable String leftKeyName,
+                PatternVertex right,
+                @Nullable String rightKeyName,
+                boolean isForeignKey) {
+            this(
+                    new JoinVertexEntry(left, leftKeyName),
+                    new JoinVertexEntry(right, rightKeyName),
+                    isForeignKey);
         }
-    }
 
-    private GraphJoinDecomposition createJoinDecomposition0(
-            GraphPattern graphPattern,
-            Pattern probePattern,
-            double probeCount,
-            Pattern buildPattern,
-            double buildCount,
-            List<JoinVertex> jointVertices) {
-        Pattern pattern = graphPattern.getPattern();
-        List<GraphJoinDecomposition.JoinVertexPair> jointVertexPairs =
-                jointVertices.stream()
-                        .map(
-                                k ->
-                                        new GraphJoinDecomposition.JoinVertexPair(
-                                                probePattern.getVertexOrder(k.probeVertex),
-                                                k.probeKeyName,
-                                                buildPattern.getVertexOrder(k.buildVertex),
-                                                k.buildKeyName))
-                        .collect(Collectors.toList());
-        Map<Integer, Integer> leftToTargetOrderMap = Maps.newHashMap();
-        for (PatternVertex v1 : probePattern.getVertexSet()) {
-            leftToTargetOrderMap.put(probePattern.getVertexOrder(v1), pattern.getVertexOrder(v1));
+        public JoinVertex(
+                JoinVertexEntry<PatternVertex> left,
+                JoinVertexEntry<PatternVertex> right,
+                boolean isForeignKey) {
+            super(left, right);
+            this.isForeignKey = isForeignKey;
         }
-        Map<Integer, Integer> rightToTargetOrderMap = Maps.newHashMap();
-        for (PatternVertex v2 : buildPattern.getVertexSet()) {
-            rightToTargetOrderMap.put(buildPattern.getVertexOrder(v2), pattern.getVertexOrder(v2));
+
+        public GraphJoinDecomposition.JoinVertexPair convert(
+                Pattern probePattern, Pattern buildPattern) {
+            return new GraphJoinDecomposition.JoinVertexPair(
+                    new JoinVertexEntry(
+                            probePattern.getVertexOrder(left.getVertex()), left.getKeyName()),
+                    new JoinVertexEntry(
+                            buildPattern.getVertexOrder(right.getVertex()), right.getKeyName()),
+                    isForeignKey);
         }
-        GraphJoinDecomposition decomposition =
-                new GraphJoinDecomposition(
-                        graphPattern.getCluster(),
-                        graphPattern.getTraitSet(),
-                        pattern,
-                        probePattern,
-                        buildPattern,
-                        jointVertexPairs,
-                        new GraphJoinDecomposition.OrderMappings(
-                                leftToTargetOrderMap, rightToTargetOrderMap));
-        ((GraphPattern) decomposition.getLeft()).setRowCount(probeCount);
-        ((GraphPattern) decomposition.getRight()).setRowCount(buildCount);
-        return decomposition;
+
+        public JoinVertex reverse() {
+            return new JoinVertex(right, left, isForeignKey);
+        }
     }
 
     private GraphJoinDecomposition createJoinDecomposition(
@@ -558,15 +492,20 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
             double probeCount,
             Pattern buildPattern,
             double buildCount,
-            List<PatternVertex> jointVertices) {
+            List<JoinVertex> jointVertices) {
+        if (probeCount > buildCount) {
+            return createJoinDecomposition(
+                    graphPattern,
+                    buildPattern,
+                    buildCount,
+                    probePattern,
+                    probeCount,
+                    jointVertices.stream().map(JoinVertex::reverse).collect(Collectors.toList()));
+        }
         Pattern pattern = graphPattern.getPattern();
         List<GraphJoinDecomposition.JoinVertexPair> jointVertexPairs =
                 jointVertices.stream()
-                        .map(
-                                k ->
-                                        new GraphJoinDecomposition.JoinVertexPair(
-                                                probePattern.getVertexOrder(k),
-                                                buildPattern.getVertexOrder(k)))
+                        .map(k -> k.convert(probePattern, buildPattern))
                         .collect(Collectors.toList());
         Map<Integer, Integer> leftToTargetOrderMap = Maps.newHashMap();
         for (PatternVertex v1 : probePattern.getVertexSet()) {
@@ -612,7 +551,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
         private @Nullable String description;
         private RelBuilderFactory builderFactory;
         private int minPatternSize;
-        private Configs configs;
+        private Configs graphConfig;
 
         @Override
         public RelRule toRule() {
@@ -645,12 +584,12 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
         }
 
         public JoinDecompositionRule.Config withGraphConfigs(Configs configs) {
-            this.configs = configs;
+            this.graphConfig = configs;
             return this;
         }
 
-        public Configs getConfigs() {
-            return this.configs;
+        public Configs getGraphConfig() {
+            return this.graphConfig;
         }
 
         @Override
