@@ -21,4 +21,7 @@ public class GraphConfig {
     public static final Config<String> GRAPH_STATISTICS =
             Config.stringConfig("graph.statistics", "");
     public static final Config<String> GRAPH_STORE = Config.stringConfig("graph.store", "exp");
+
+    public static final Config<String> GRAPH_FOREIGN_KEY =
+            Config.stringConfig("graph.foreign.key", "");
 }

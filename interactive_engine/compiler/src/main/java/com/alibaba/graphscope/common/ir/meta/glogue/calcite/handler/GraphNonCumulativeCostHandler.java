@@ -33,6 +33,8 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.BuiltInMetadata;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
+import java.util.List;
+
 public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulativeCost.Handler {
     private final RelOptPlanner optPlanner;
     private final RelOptCostFactory costFactory;
@@ -59,11 +61,13 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
             double weight = glogueEdge.getExtendStep().getWeight();
             double srcPatternCount = mq.getRowCount(node.getInput(0));
             double dRows = weight * srcPatternCount;
-            if (glogueEdge.getExtendStep().getExtendEdges().size() > 1) {
-                dRows *= 3;
-            } else if (glogueEdge.getExtendStep().getExtendEdges().size() == 1) {
-                dRows += getDeltaCost(glogueEdge.getExtendStep().getExtendEdges().get(0));
-            }
+            //            if (glogueEdge.getExtendStep().getExtendEdges().size() > 1) {
+            //                dRows *= 3;
+            //            } else
+            //            if (glogueEdge.getExtendStep().getExtendEdges().size() == 1) {
+            //                dRows +=
+            // getDeltaCost(glogueEdge.getExtendStep().getExtendEdges().get(0));
+            //            }
             double dCpu = dRows + 1;
             double dIo = mq.getRowCount(node);
             return costFactory.makeCost(dRows, dCpu, dIo);
@@ -81,9 +85,17 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
             GraphJoinDecomposition decomposition = (GraphJoinDecomposition) node;
             double probeCount = mq.getRowCount(decomposition.getLeft());
             double buildCount = mq.getRowCount(decomposition.getRight());
-            double dRows =
-                    plannerConfig.getJoinCostFactor1() * probeCount
-                            + plannerConfig.getJoinCostFactor2() * buildCount;
+            double dRows;
+            List<GraphJoinDecomposition.JoinVertexPair> joinVertexPairs =
+                    decomposition.getJoinVertexPairs();
+            // foreign key join
+            if (joinVertexPairs.size() == 1 && joinVertexPairs.get(0).getLeftKey() != null) {
+                dRows = Math.min(probeCount, buildCount) * 2;
+            } else {
+                dRows =
+                        plannerConfig.getJoinCostFactor1() * probeCount
+                                + plannerConfig.getJoinCostFactor2() * buildCount;
+            }
             double dCpu = dRows + 1;
             double dIo = mq.getRowCount(node);
             return costFactory.makeCost(dRows, dCpu, dIo);

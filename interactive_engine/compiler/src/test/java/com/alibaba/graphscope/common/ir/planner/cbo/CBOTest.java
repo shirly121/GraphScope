@@ -5,7 +5,9 @@ import com.alibaba.graphscope.common.ir.Utils;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
+import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.rel.RelNode;
@@ -28,10 +30,12 @@ public class CBOTest {
                                 "graph.planner.opt",
                                 "CBO",
                                 "graph.planner.join.min.pattern.size",
-                                "5",
+                                "4",
+                                "graph.foreign.key",
+                                "src/test/resources/schema/ldbc_foreign_key.json",
                                 "graph.planner.rules",
                                 "FilterIntoJoinRule, FilterMatchRule, ExtendIntersectRule,"
-                                        + " JoinDecompositionRule, ExpandGetVFusionRule"));
+                                        + " JoinDecompositionRule,  ExpandGetVFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
@@ -45,17 +49,17 @@ public class CBOTest {
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (message:COMMENT|POST)-[:HASCREATOR]->(PERSON:PERSON), \n"
+                                "Match (message:COMMENT|POST)-[:HASCREATOR]->(person:PERSON), \n"
                                         + "      (message:COMMENT|POST)-[:HASTAG]->(tag:TAG), \n"
-                                        + "      (PERSON:PERSON)-[:HASINTEREST]->(tag:TAG)\n"
-                                        + "Return count(PERSON);",
+                                        + "      (person:PERSON)-[:HASINTEREST]->(tag:TAG)\n"
+                                        + "Return count(person);",
                                 builder)
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         Assert.assertEquals(
                 "root:\n"
                     + "GraphLogicalAggregate(keys=[{variables=[], aliases=[]}],"
-                    + " values=[[{operands=[PERSON], aggFunction=COUNT, alias='$f0',"
+                    + " values=[[{operands=[person], aggFunction=COUNT, alias='$f0',"
                     + " distinct=false}]])\n"
                     + "  MultiJoin(joinFilter=[=(tag, tag)], isFullOuterJoin=[false],"
                     + " joinTypes=[[INNER, INNER]], outerJoinConditions=[[NULL, NULL]],"
@@ -65,13 +69,13 @@ public class CBOTest {
                     + " opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#-697155798]])\n"
                     + "    GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASINTEREST]}],"
-                    + " alias=[tag], startAlias=[PERSON], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[tag], startAlias=[person], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#-697155798]])\n"
                     + "common#-697155798:\n"
                     + "GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASCREATOR]}],"
-                    + " alias=[message], startAlias=[PERSON], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[message], startAlias=[person], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[PERSON]}],"
-                    + " alias=[PERSON], opt=[VERTEX])",
+                    + " alias=[person], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
     }
 
@@ -80,36 +84,36 @@ public class CBOTest {
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (PERSON1:PERSON)-[:LIKES]->(message:COMMENT|POST), \n"
-                                    + "\t   (message:COMMENT|POST)-[:HASCREATOR]->(PERSON2:PERSON),"
+                                "Match (person1:PERSON)-[:LIKES]->(message:COMMENT|POST), \n"
+                                    + "\t   (message:COMMENT|POST)-[:HASCREATOR]->(person2:PERSON),"
                                     + " \n"
-                                    + "\t   (PERSON1:PERSON)<-[:HASMODERATOR]-(place:FORUM), \n"
-                                    + "     (PERSON2:PERSON)<-[:HASMODERATOR]-(place:FORUM)\n"
-                                    + "Return count(PERSON1);",
+                                    + "\t   (person1:PERSON)<-[:HASMODERATOR]-(place:FORUM), \n"
+                                    + "     (person2:PERSON)<-[:HASMODERATOR]-(place:FORUM)\n"
+                                    + "Return count(person1);",
                                 builder)
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         Assert.assertEquals(
                 "root:\n"
                     + "GraphLogicalAggregate(keys=[{variables=[], aliases=[]}],"
-                    + " values=[[{operands=[PERSON1], aggFunction=COUNT, alias='$f0',"
+                    + " values=[[{operands=[person1], aggFunction=COUNT, alias='$f0',"
                     + " distinct=false}]])\n"
                     + "  MultiJoin(joinFilter=[=(message, message)], isFullOuterJoin=[false],"
                     + " joinTypes=[[INNER, INNER]], outerJoinConditions=[[NULL, NULL]],"
                     + " projFields=[[ALL, ALL]])\n"
                     + "    GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[LIKES]}],"
-                    + " alias=[message], startAlias=[PERSON1], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[message], startAlias=[person1], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#-1649429364]])\n"
                     + "    GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASCREATOR]}],"
-                    + " alias=[message], startAlias=[PERSON2], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[message], startAlias=[person2], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#-1649429364]])\n"
                     + "common#-1649429364:\n"
                     + "GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASMODERATOR]}],"
-                    + " alias=[PERSON1], startAlias=[place], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[person1], startAlias=[place], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "  GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASMODERATOR]}],"
-                    + " alias=[place], startAlias=[PERSON2], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[place], startAlias=[person2], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[PERSON]}],"
-                    + " alias=[PERSON2], opt=[VERTEX])",
+                    + " alias=[person2], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
     }
 
@@ -118,28 +122,28 @@ public class CBOTest {
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (PERSON1:PERSON)<-[:HASCREATOR]-(comment:COMMENT), \n"
-                                        + "\t  (comment:COMMENT)-[:REPLYOF]->(POST:POST),\n"
-                                        + "\t  (POST:POST)<-[:CONTAINEROF]-(forum:FORUM),\n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(PERSON2:PERSON)\n"
-                                        + "Return count(PERSON1);",
+                                "Match (person1:PERSON)<-[:HASCREATOR]-(comment:COMMENT), \n"
+                                        + "\t  (comment:COMMENT)-[:REPLYOF]->(post:POST),\n"
+                                        + "\t  (post:POST)<-[:CONTAINEROF]-(forum:FORUM),\n"
+                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person2:PERSON)\n"
+                                        + "Return count(person1);",
                                 builder)
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         Assert.assertEquals(
                 "root:\n"
                     + "GraphLogicalAggregate(keys=[{variables=[], aliases=[]}],"
-                    + " values=[[{operands=[PERSON1], aggFunction=COUNT, alias='$f0',"
+                    + " values=[[{operands=[person1], aggFunction=COUNT, alias='$f0',"
                     + " distinct=false}]])\n"
                     + "  GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASMEMBER]}],"
-                    + " alias=[PERSON2], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[person2], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "    GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASCREATOR, COMMENT,"
-                    + " PERSON)]], alias=[PERSON1], startAlias=[comment], opt=[OUT],"
+                    + " PERSON)]], alias=[person1], startAlias=[comment], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
                     + "      GraphPhysicalExpand(tableConfig=[[EdgeLabel(REPLYOF, COMMENT, POST)]],"
-                    + " alias=[comment], startAlias=[POST], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[comment], startAlias=[post], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "        GraphPhysicalExpand(tableConfig=[{isAll=false,"
-                    + " tables=[CONTAINEROF]}], alias=[POST], startAlias=[forum], opt=[OUT],"
+                    + " tables=[CONTAINEROF]}], alias=[post], startAlias=[forum], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
                     + "          GraphLogicalSource(tableConfig=[{isAll=false, tables=[FORUM]}],"
                     + " alias=[forum], opt=[VERTEX])",
@@ -151,46 +155,46 @@ public class CBOTest {
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "Match (forum:FORUM)-[:CONTAINEROF]->(POST:POST),\n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(PERSON1:PERSON), \n"
-                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(PERSON2:PERSON), \n"
-                                        + "    (PERSON1:PERSON)-[:KNOWS]->(PERSON2:PERSON), \n"
-                                        + "\t  (PERSON1:PERSON)-[:LIKES]->(POST:POST),\n"
-                                        + "\t  (PERSON2:PERSON)-[:LIKES]->(POST:POST)\n"
-                                        + "Return count(PERSON1);",
+                                "Match (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n"
+                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person1:PERSON), \n"
+                                        + "\t  (forum:FORUM)-[:HASMEMBER]->(person2:PERSON), \n"
+                                        + "    (person1:PERSON)-[:KNOWS]->(person2:PERSON), \n"
+                                        + "\t  (person1:PERSON)-[:LIKES]->(post:POST),\n"
+                                        + "\t  (person2:PERSON)-[:LIKES]->(post:POST)\n"
+                                        + "Return count(person1);",
                                 builder)
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         Assert.assertEquals(
                 "root:\n"
                     + "GraphLogicalAggregate(keys=[{variables=[], aliases=[]}],"
-                    + " values=[[{operands=[PERSON1], aggFunction=COUNT, alias='$f0',"
+                    + " values=[[{operands=[person1], aggFunction=COUNT, alias='$f0',"
                     + " distinct=false}]])\n"
-                    + "  MultiJoin(joinFilter=[=(PERSON1, PERSON1)], isFullOuterJoin=[false],"
+                    + "  MultiJoin(joinFilter=[=(person1, person1)], isFullOuterJoin=[false],"
                     + " joinTypes=[[INNER, INNER, INNER]], outerJoinConditions=[[NULL, NULL,"
                     + " NULL]], projFields=[[ALL, ALL, ALL]])\n"
                     + "    GraphPhysicalExpand(tableConfig=[[EdgeLabel(LIKES, PERSON, POST)]],"
-                    + " alias=[PERSON1], startAlias=[POST], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[person1], startAlias=[post], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#803682572]])\n"
                     + "    GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[KNOWS]}],"
-                    + " alias=[PERSON1], startAlias=[PERSON2], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[person1], startAlias=[person2], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#803682572]])\n"
                     + "    GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASMEMBER]}],"
-                    + " alias=[PERSON1], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[person1], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "      CommonTableScan(table=[[common#803682572]])\n"
                     + "common#803682572:\n"
-                    + "MultiJoin(joinFilter=[=(PERSON2, PERSON2)], isFullOuterJoin=[false],"
+                    + "MultiJoin(joinFilter=[=(person2, person2)], isFullOuterJoin=[false],"
                     + " joinTypes=[[INNER, INNER]], outerJoinConditions=[[NULL, NULL]],"
                     + " projFields=[[ALL, ALL]])\n"
                     + "  GraphPhysicalExpand(tableConfig=[[EdgeLabel(LIKES, PERSON, POST)]],"
-                    + " alias=[PERSON2], startAlias=[POST], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " alias=[person2], startAlias=[post], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "    CommonTableScan(table=[[common#-1025398524]])\n"
                     + "  GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASMEMBER]}],"
-                    + " alias=[PERSON2], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[person2], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "    CommonTableScan(table=[[common#-1025398524]])\n"
                     + "common#-1025398524:\n"
                     + "GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[CONTAINEROF]}],"
-                    + " alias=[POST], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + " alias=[post], startAlias=[forum], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[FORUM]}],"
                     + " alias=[forum], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
@@ -244,23 +248,22 @@ public class CBOTest {
 
     @Test
     public void Q6_test() {
-        long startTime = System.currentTimeMillis();
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
-        RelNode before =
+        RelNode before1 =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
-                                "MATCH (forum:FORUM)-[:HASMEMBER]->(person:PERSON),\n"
-                                        + "      (person:PERSON)-[:ISLOCATEDIN]->(city:PLACE),\n"
-                                        + "      (city:PLACE)-[:ISPARTOF]->(country:PLACE),\n"
-                                        + "      (forum:FORUM)-[:CONTAINEROF]->(post:POST),\n"
-                                        + "      (post:POST)<-[:REPLYOF]-(comment:COMMENT),\n"
-                                        + "      (comment:COMMENT)-[:HASTAG]->(tag:TAG),\n"
-                                        + "      (tag:TAG)-[:HASTYPE]->(tagClass:TAGCLASS)\n"
-                                        + "RETURN COUNT(forum);",
+                                "MATCH (p1:PERSON"
+                                    + " {id:933})-[:KNOWS]-(:PERSON)-[:KNOWS]-(p2:PERSON)<-[:HASCREATOR]-(m:POST)\n"
+                                    + "-[:HASTAG]->(t1:TAG {name:'Rumi'}),\n"
+                                    + "(m)-[:HASTAG]->(t2:TAG)\n"
+                                    + "WHERE t2.name <> 'Rumi'\n"
+                                    + "RETURN t2.name;",
                                 builder)
                         .build();
-        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
-        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
-        long elapsedTime = System.currentTimeMillis() - startTime;
-        System.out.println("gopt time is " + elapsedTime);
+        RelNode after1 = optimizer.optimize(before1, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after1.explain());
+
+        GraphRelProtoPhysicalBuilder builder1 =
+                new GraphRelProtoPhysicalBuilder(configs, irMeta, new LogicalPlan(after1));
+        System.out.println(builder1.build().explain());
     }
 }

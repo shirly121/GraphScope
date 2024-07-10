@@ -27,6 +27,7 @@ import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Collections;
 import java.util.List;
@@ -128,10 +129,21 @@ public class GraphJoinDecomposition extends BiRel {
     public static class JoinVertexPair {
         private final int leftOrderId;
         private final int rightOrderId;
+        private final @Nullable String leftKey;
+        private final @Nullable String rightKey;
 
         public JoinVertexPair(int leftOrderId, int rightOrderId) {
             this.leftOrderId = leftOrderId;
             this.rightOrderId = rightOrderId;
+            this.leftKey = null;
+            this.rightKey = null;
+        }
+
+        public JoinVertexPair(int leftOrderId, String leftKey, int rightOrderId, String rightKey) {
+            this.leftOrderId = leftOrderId;
+            this.rightOrderId = rightOrderId;
+            this.leftKey = leftKey;
+            this.rightKey = rightKey;
         }
 
         public int getLeftOrderId() {
@@ -150,6 +162,14 @@ public class GraphJoinDecomposition extends BiRel {
                     + ", rightOrderId="
                     + rightOrderId
                     + '}';
+        }
+
+        public String getLeftKey() {
+            return leftKey;
+        }
+
+        public String getRightKey() {
+            return rightKey;
         }
     }
 

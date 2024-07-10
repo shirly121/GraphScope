@@ -563,7 +563,7 @@ public class GraphIOProcessor {
             List<GraphJoinDecomposition.JoinVertexPair> jointVertices =
                     decomposition.getJoinVertexPairs();
             Map<DataKey, DataValue> parentVertexDetails =
-                    getJointVertexDetails(jointVertices, buildOrderMap);
+                    getJointVertexDetails(jointVertices, probeOrderMap, buildOrderMap);
             Map<DataKey, DataValue> probeDetails =
                     createSubDetails(
                             decomposition.getProbePattern(),
@@ -586,7 +586,9 @@ public class GraphIOProcessor {
                             parentVertexDetails,
                             newLeft,
                             newRight,
+                            probeOrderMap,
                             buildOrderMap,
+                            decomposition.getProbePattern(),
                             decomposition.getBuildPattern());
             // here we assume all inputs of the join come from different sources
             builder.push(newLeft).push(newRight).join(JoinRelType.INNER, joinCondition);
@@ -690,32 +692,56 @@ public class GraphIOProcessor {
                 Map<DataKey, DataValue> vertexDetails,
                 RelNode left,
                 RelNode right,
+                Map<Integer, Integer> probeOrderMap,
                 Map<Integer, Integer> buildOrderMap,
+                Pattern probePattern,
                 Pattern buildPattern) {
             List<RexNode> joinCondition = Lists.newArrayList();
             List<RelDataTypeField> leftFields =
                     com.alibaba.graphscope.common.ir.tools.Utils.getOutputType(left).getFieldList();
             for (GraphJoinDecomposition.JoinVertexPair jointVertex : jointVertices) {
-                Integer targetOrderId = buildOrderMap.get(jointVertex.getRightOrderId());
-                if (targetOrderId == null) {
-                    targetOrderId = -1;
+                Integer probeOrderId = probeOrderMap.get(jointVertex.getLeftOrderId());
+                if (probeOrderId == null) {
+                    probeOrderId = -1;
                 }
-                DataValue value =
+                DataValue probeValue =
                         getVertexValue(
-                                new VertexDataKey(targetOrderId),
+                                new VertexDataKey(probeOrderId),
+                                vertexDetails,
+                                probePattern.getVertexByOrder(jointVertex.getLeftOrderId()));
+                builder.push(left);
+                RexGraphVariable leftVar =
+                        jointVertex.getLeftKey() != null
+                                ? builder.variable(probeValue.getAlias(), jointVertex.getLeftKey())
+                                : builder.variable(probeValue.getAlias());
+                Integer buildOrderId = buildOrderMap.get(jointVertex.getRightOrderId());
+                if (buildOrderId == null) {
+                    buildOrderId = -1;
+                }
+                DataValue buildValue =
+                        getVertexValue(
+                                new VertexDataKey(buildOrderId),
                                 vertexDetails,
                                 buildPattern.getVertexByOrder(jointVertex.getRightOrderId()));
-                builder.push(left);
-                RexGraphVariable leftVar = builder.variable(value.getAlias());
                 builder.build();
                 builder.push(right);
-                RexGraphVariable rightVar = builder.variable(value.getAlias());
+                RexGraphVariable rightVar =
+                        jointVertex.getRightKey() != null
+                                ? builder.variable(buildValue.getAlias(), jointVertex.getRightKey())
+                                : builder.variable(buildValue.getAlias());
                 rightVar =
-                        RexGraphVariable.of(
-                                rightVar.getAliasId(),
-                                leftFields.size() + rightVar.getIndex(),
-                                rightVar.getName(),
-                                rightVar.getType());
+                        (rightVar.getProperty() == null)
+                                ? RexGraphVariable.of(
+                                        rightVar.getAliasId(),
+                                        leftFields.size() + rightVar.getIndex(),
+                                        rightVar.getName(),
+                                        rightVar.getType())
+                                : RexGraphVariable.of(
+                                        rightVar.getAliasId(),
+                                        rightVar.getProperty(),
+                                        leftFields.size() + rightVar.getIndex(),
+                                        rightVar.getName(),
+                                        rightVar.getType());
                 builder.build();
                 joinCondition.add(builder.equals(leftVar, rightVar));
             }
@@ -724,16 +750,27 @@ public class GraphIOProcessor {
 
         private Map<DataKey, DataValue> getJointVertexDetails(
                 List<GraphJoinDecomposition.JoinVertexPair> jointVertices,
+                Map<Integer, Integer> probeOrderMap,
                 Map<Integer, Integer> buildOrderMap) {
             Map<DataKey, DataValue> vertexDetails = Maps.newHashMap();
             jointVertices.forEach(
                     k -> {
-                        Integer targetOrderId = buildOrderMap.get(k.getRightOrderId());
-                        if (targetOrderId != null) {
-                            VertexDataKey dataKey = new VertexDataKey(targetOrderId);
+                        Integer buildOrderId = buildOrderMap.get(k.getRightOrderId());
+                        if (buildOrderId != null) {
+                            VertexDataKey dataKey = new VertexDataKey(buildOrderId);
                             DataValue value = details.get(dataKey);
                             if (value != null) {
                                 vertexDetails.put(dataKey, value);
+                            }
+                        }
+                        if (k.getLeftKey() != null) {
+                            Integer probeOrderId = probeOrderMap.get(k.getLeftOrderId());
+                            if (probeOrderId != null) {
+                                VertexDataKey dataKey = new VertexDataKey(probeOrderId);
+                                DataValue value = details.get(dataKey);
+                                if (value != null) {
+                                    vertexDetails.put(dataKey, value);
+                                }
                             }
                         }
                     });

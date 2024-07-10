@@ -5,12 +5,12 @@
         {
             "type_id": 3,
             "type_name": "post",
-            "count": 1003605
+            "count": 21651343
         },
         {
             "type_id": 2,
             "type_name": "comment",
-            "count": 502169
+            "count": 54737516
         },
         {
             "type_id": 7,
@@ -35,7 +35,7 @@
         {
             "type_id": 4,
             "type_name": "forum",
-            "count": 90492
+            "count": 1659633
         },
         {
             "type_id": 5,
@@ -55,7 +55,7 @@
         {
             "type_id": 1,
             "type_name": "person",
-            "count": 9892
+            "count": 170655
         },
         {
             "type_id": 11,
@@ -131,7 +131,7 @@
                 {
                     "source_vertex": "forum",
                     "destination_vertex": "person",
-                    "count": 1611869
+                    "count": 90198119
                 }
             ]
         },
@@ -142,7 +142,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "comment",
-                    "count": 1040749
+                    "count": 25130259
                 }
             ]
         },
@@ -153,7 +153,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "post",
-                    "count": 1011420
+                    "count": 29607258
                 }
             ]
         },
@@ -164,7 +164,7 @@
                 {
                     "source_vertex": "person",
                     "destination_vertex": "comment",
-                    "count": 1438418
+                    "count": 48651550
                 }
             ]
         },
@@ -175,7 +175,7 @@
                 {
                     "source_vertex": "person",
                     "destination_vertex": "post",
-                    "count": 751677
+                    "count": 26908835
                 }
             ]
         },
@@ -208,7 +208,7 @@
                 {
                     "source_vertex": "person",
                     "destination_vertex": "person",
-                    "count": 180623
+                    "count": 5524303
                 }
             ]
         },
@@ -219,7 +219,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "person",
-                    "count": 2052169
+                    "count": 54737516
                 }
             ]
         },
@@ -230,7 +230,7 @@
                 {
                     "source_vertex": "post",
                     "destination_vertex": "person",
-                    "count": 1003605
+                    "count": 21651343
                 }
             ]
         },
@@ -241,7 +241,7 @@
                 {
                     "source_vertex": "forum",
                     "destination_vertex": "post",
-                    "count": 1003605
+                    "count": 21651343
                 }
             ]
         },
@@ -263,7 +263,7 @@
                 {
                     "source_vertex": "person",
                     "destination_vertex": "city",
-                    "count": 9892
+                    "count": 170655
                 }
             ]
         },
@@ -318,7 +318,7 @@
                 {
                     "source_vertex": "forum",
                     "destination_vertex": "tag",
-                    "count": 309766
+                    "count": 5467943
                 }
             ]
         },
@@ -329,7 +329,7 @@
                 {
                     "source_vertex": "post",
                     "destination_vertex": "tag",
-                    "count": 713258
+                    "count": 23426339
                 }
             ]
         },
@@ -340,7 +340,7 @@
                 {
                     "source_vertex": "comment",
                     "destination_vertex": "tag",
-                    "count": 2698393
+                    "count": 70035651
                 }
             ]
         }

@@ -16,9 +16,7 @@
 
 package com.alibaba.graphscope.common.ir.meta.glogue;
 
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternEdge;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.*;
 import com.google.common.collect.Lists;
 
 import java.util.Collections;
@@ -76,7 +74,51 @@ public class ExtendWeightEstimator {
             }
             totalWeight += weight;
         }
+        if (edges.size() == 1 && target.getElementDetails() != null) {
+            double selectivity = target.getElementDetails().getSelectivity();
+            if (Double.compare(selectivity, 1.0d) != 0) {
+                double deltaWeight = estimate(getEdgeNoSelectivity(edges.get(0), target), target);
+                totalWeight += deltaWeight * 2;
+            }
+        }
         return totalWeight;
+    }
+
+    private PatternEdge getEdgeNoSelectivity(PatternEdge edge, PatternVertex target) {
+        if (target.getElementDetails() != null) {
+            ElementDetails details = target.getElementDetails();
+            if (Double.compare(details.getSelectivity(), 1.0d) != 0) {
+                ElementDetails newDetails = new ElementDetails(1.0d, details.isOptional());
+                PatternVertex newTarget =
+                        target instanceof SinglePatternVertex
+                                ? new SinglePatternVertex(
+                                        target.getVertexTypeIds().get(0),
+                                        target.getId(),
+                                        newDetails)
+                                : new FuzzyPatternVertex(
+                                        target.getVertexTypeIds(), target.getId(), newDetails);
+                PatternVertex edgeSrc =
+                        edge.getSrcVertex() == target ? newTarget : edge.getSrcVertex();
+                PatternVertex edgeDst =
+                        edge.getDstVertex() == target ? newTarget : edge.getDstVertex();
+                return edge instanceof SinglePatternEdge
+                        ? new SinglePatternEdge(
+                                edgeSrc,
+                                edgeDst,
+                                edge.getEdgeTypeIds().get(0),
+                                edge.getId(),
+                                edge.isBoth(),
+                                edge.getElementDetails())
+                        : new FuzzyPatternEdge(
+                                edgeSrc,
+                                edgeDst,
+                                edge.getEdgeTypeIds(),
+                                edge.getId(),
+                                edge.isBoth(),
+                                edge.getElementDetails());
+            }
+        }
+        return edge;
     }
 
     public interface CountHandler {

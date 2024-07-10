@@ -304,6 +304,10 @@ public class Pattern {
         return this.connectivityInspector.connectedSets().size() == 1;
     }
 
+    public List<Set<PatternVertex>> getConnectedComponents() {
+        return this.connectivityInspector.connectedSets();
+    }
+
     public int getDegree(PatternVertex vertex) {
         return this.patternGraph.degreeOf(vertex);
     }
