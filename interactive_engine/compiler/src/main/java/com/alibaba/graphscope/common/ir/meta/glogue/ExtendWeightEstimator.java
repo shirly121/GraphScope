@@ -78,7 +78,7 @@ public class ExtendWeightEstimator {
             double selectivity = target.getElementDetails().getSelectivity();
             if (Double.compare(selectivity, 1.0d) != 0) {
                 double deltaWeight = estimate(getEdgeNoSelectivity(edges.get(0), target), target);
-                totalWeight += deltaWeight * 2;
+                totalWeight += deltaWeight * 1;
             }
         }
         return totalWeight;
