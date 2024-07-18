@@ -16,14 +16,11 @@
 
 package com.alibaba.graphscope.common.ir.meta.schema;
 
-import static java.util.Objects.requireNonNull;
-
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.type.GraphLabelType;
 import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
 import com.alibaba.graphscope.groot.common.schema.api.*;
 import com.google.common.collect.Lists;
-
 import org.apache.calcite.linq4j.tree.Expression;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
@@ -45,6 +42,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Maintain {@link RelDataType} and {@link Statistic} per entity or per relation
@@ -137,31 +136,42 @@ public class GraphOptTable implements RelOptTable {
     private RelDataType deriveType(GraphProperty property) {
         RelDataTypeFactory typeFactory = this.schema.getTypeFactory();
         requireNonNull(typeFactory, "typeFactory");
+        RelDataType propertyType;
         switch (property.getDataType()) {
             case BOOL:
-                return typeFactory.createSqlType(SqlTypeName.BOOLEAN);
+                propertyType = typeFactory.createSqlType(SqlTypeName.BOOLEAN);
+                break;
             case CHAR:
             case STRING:
-                return typeFactory.createSqlType(SqlTypeName.CHAR);
+                propertyType = typeFactory.createSqlType(SqlTypeName.CHAR);
+                break;
             case SHORT:
             case INT:
-                return typeFactory.createSqlType(SqlTypeName.INTEGER);
+                propertyType = typeFactory.createSqlType(SqlTypeName.INTEGER);
+                break;
             case LONG:
-                return typeFactory.createSqlType(SqlTypeName.BIGINT);
+                propertyType = typeFactory.createSqlType(SqlTypeName.BIGINT);
+                break;
             case FLOAT:
-                return typeFactory.createSqlType(SqlTypeName.FLOAT);
+                propertyType = typeFactory.createSqlType(SqlTypeName.FLOAT);
+                break;
             case DOUBLE:
-                return typeFactory.createSqlType(SqlTypeName.DOUBLE);
+                propertyType = typeFactory.createSqlType(SqlTypeName.DOUBLE);
+                break;
             case DATE:
-                return typeFactory.createSqlType(SqlTypeName.DATE);
+                propertyType = typeFactory.createSqlType(SqlTypeName.DATE);
+                break;
             case TIME32:
-                return typeFactory.createSqlType(SqlTypeName.TIME);
+                propertyType = typeFactory.createSqlType(SqlTypeName.TIME);
+                break;
             case TIMESTAMP:
-                return typeFactory.createSqlType(SqlTypeName.TIMESTAMP);
+                propertyType = typeFactory.createSqlType(SqlTypeName.TIMESTAMP);
+                break;
             default:
                 throw new UnsupportedOperationException(
                         "type " + property.getDataType().name() + " not supported");
         }
+        return typeFactory.createTypeWithNullability(propertyType, true);
     }
 
     @Override

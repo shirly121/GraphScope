@@ -32,6 +32,9 @@ import org.junit.Test;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 public class CompileTimeTest {
     private static Configs configs;
@@ -56,7 +59,9 @@ public class CompileTimeTest {
     @Test
     public void testCompileTime() throws Exception {
         File file = new File("queries");
-        for (File f : file.listFiles()) {
+        List<File> files = Arrays.asList(file.listFiles());
+        Collections.sort(files);
+        for (File f : files) {
             String queryName = f.getName();
             String query = FileUtils.readFileToString(f, StandardCharsets.UTF_8);
             GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
