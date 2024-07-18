@@ -108,19 +108,18 @@ public class GraphRowCountHandler implements BuiltInMetadata.RowCount.Handler {
                                 mq);
                     }
                 }
-            } else {
-                double totalRowCount = 1.0d;
-                for (PatternEdge edge : pattern.getEdgeSet()) {
-                    totalRowCount *= countEstimator.estimate(edge);
-                }
-                for (PatternVertex vertex : pattern.getVertexSet()) {
-                    int degree = pattern.getEdgesOf(vertex).size();
-                    if (degree > 0) {
-                        totalRowCount /= Math.pow(countEstimator.estimate(vertex), degree - 1);
-                    }
-                }
-                return totalRowCount;
             }
+            double totalRowCount = 1.0d;
+            for (PatternEdge edge : pattern.getEdgeSet()) {
+                totalRowCount *= countEstimator.estimate(edge);
+            }
+            for (PatternVertex vertex : pattern.getVertexSet()) {
+                int degree = pattern.getEdgesOf(vertex).size();
+                if (degree > 0) {
+                    totalRowCount /= Math.pow(countEstimator.estimate(vertex), degree - 1);
+                }
+            }
+            return totalRowCount;
         } else if (node instanceof TableScan) {
             return getRowCount((TableScan) node, mq);
         } else if (node instanceof Filter) {

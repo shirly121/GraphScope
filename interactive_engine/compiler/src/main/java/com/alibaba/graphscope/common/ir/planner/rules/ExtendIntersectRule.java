@@ -30,6 +30,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
+import com.google.common.util.concurrent.AtomicDouble;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.tools.RelBuilderFactory;
@@ -47,9 +48,12 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
 
     @Override
     public void onMatch(RelOptRuleCall call) {
-        List<GraphExtendIntersect> edges =
-                getExtendIntersectEdges(
-                        call.rel(0), (GraphRelMetadataQuery) call.getMetadataQuery());
+        GraphPattern pattern = call.rel(0);
+        GraphRelMetadataQuery mq = (GraphRelMetadataQuery) call.getMetadataQuery();
+        double rowCount = mq.getRowCount(pattern);
+        pattern.setRowCount(rowCount);
+        List<GraphExtendIntersect> edges = getExtendIntersectEdges(pattern, mq);
+        Preconditions.checkArgument(edges.size() <= 1);
         for (GraphExtendIntersect edge : edges) {
             call.transformTo(edge);
         }
@@ -75,7 +79,7 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
                                     PatternEdge edge, PatternVertex target) {
                                 return config.labelConstraintsEnabled()
                                         ? mq.getGlogueQuery()
-                                                .getLabelConstraintsDeltaCost(edge, target)
+                                        .getLabelConstraintsDeltaCost(edge, target)
                                         : 0.0d;
                             }
                         });
@@ -86,24 +90,55 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
             return edges;
         }
         PruningStrategy pruningStrategy = new PruningStrategy(pattern);
+        AtomicDouble minCost = new AtomicDouble(Double.MAX_VALUE);
         for (PatternVertex vertex : pattern.getVertexSet()) {
             if (pruningStrategy.toPrune(vertex)) {
                 continue;
             }
-            edges.add(createExtendIntersect(graphPattern, vertex, estimator));
+            GraphExtendIntersect intersect = createExtendIntersect(graphPattern, vertex, estimator, minCost, mq);
+            if (intersect != null) {
+                if (edges.isEmpty()) {
+                    edges.add(intersect);
+                } else {
+                    edges.set(0, intersect);
+                }
+            }
         }
-        Collections.sort(edges, comparator.getEdgeComparator());
+//        Collections.sort(edges, comparator.getEdgeComparator());
         return edges;
     }
 
+    private double estimate(GraphPattern pattern, PatternVertex vertex, GraphRelMetadataQuery mq) {
+        return mq.getRowCount(new GraphPattern(pattern.getCluster(), pattern.getTraitSet(), new Pattern(vertex)));
+    }
+
+    private double estimate(GraphPattern pattern, PatternEdge edge, GraphRelMetadataQuery mq) {
+        Pattern edgePattern = new Pattern();
+        edgePattern.addVertex(edge.getSrcVertex());
+        edgePattern.addVertex(edge.getDstVertex());
+        edgePattern.addEdge(edge.getSrcVertex(), edge.getDstVertex(), edge);
+        return mq.getRowCount(new GraphPattern(pattern.getCluster(), pattern.getTraitSet(), edgePattern));
+    }
+
     private GraphExtendIntersect createExtendIntersect(
-            GraphPattern graphPattern, PatternVertex target, ExtendWeightEstimator estimator) {
+            GraphPattern graphPattern, PatternVertex target, ExtendWeightEstimator estimator, AtomicDouble upperBound, GraphRelMetadataQuery mq) {
         Pattern dst = graphPattern.getPattern();
+        double patternCount = graphPattern.getRowCount();
         Pattern src = new Pattern(dst);
         src.setPatternId(UUID.randomUUID().hashCode());
         src.removeVertex(target);
         List<PatternEdge> adjacentEdges = Lists.newArrayList(dst.getEdgesOf(target));
+        double srcCount = patternCount;
+        for (PatternEdge edge : adjacentEdges) {
+            PatternVertex srcVertex = Utils.getExtendFromVertex(edge, target);
+            srcCount = srcCount * estimate(graphPattern, srcVertex, mq) / estimate(graphPattern, edge, mq);
+        }
         double totalWeight = estimator.estimate(adjacentEdges, target);
+        double curCost = srcCount + srcCount * totalWeight;
+        if (curCost >= upperBound.get()) {
+            return null;
+        }
+        upperBound.set(curCost);
         List<ExtendEdge> extendEdges =
                 adjacentEdges.stream()
                         .map(

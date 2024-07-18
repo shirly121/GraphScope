@@ -21,7 +21,6 @@ import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
 import com.alibaba.graphscope.common.ir.rel.GraphJoinDecomposition;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
-
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptCostFactory;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -50,12 +49,19 @@ public class GraphNonCumulativeCostHandler implements BuiltInMetadata.NonCumulat
     @Override
     public RelOptCost getNonCumulativeCost(RelNode node, RelMetadataQuery mq) {
         if (node instanceof GraphExtendIntersect) {
-            GlogueExtendIntersectEdge glogueEdge = ((GraphExtendIntersect) node).getGlogueEdge();
-            double weight = glogueEdge.getExtendStep().getWeight();
-            double srcPatternCount = mq.getRowCount(node.getInput(0));
-            double dRows = weight * srcPatternCount;
-            if (glogueEdge.getExtendStep().getExtendEdges().size() > 1) {
-                dRows *= plannerConfig.getIntersectCostFactor();
+            GraphExtendIntersect intersect = (GraphExtendIntersect) node;
+            double dRows;
+            if (Double.compare(intersect.getCost(), 0.0d) != 0) {
+                dRows = intersect.getCost();
+            } else {
+                GlogueExtendIntersectEdge glogueEdge = ((GraphExtendIntersect) node).getGlogueEdge();
+                double weight = glogueEdge.getExtendStep().getWeight();
+                double srcPatternCount = mq.getRowCount(node.getInput(0));
+                dRows = weight * srcPatternCount;
+                if (glogueEdge.getExtendStep().getExtendEdges().size() > 1) {
+                    dRows *= plannerConfig.getIntersectCostFactor();
+                }
+                intersect.setCost(dRows);
             }
             double dCpu = dRows + 1;
             double dIo = mq.getRowCount(node);

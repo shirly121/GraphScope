@@ -31,6 +31,7 @@ import java.util.List;
 
 public class GraphExtendIntersect extends SingleRel {
     private final GlogueExtendIntersectEdge glogueEdge;
+    private double cost = 0.0d;
 
     public GraphExtendIntersect(
             RelOptCluster cluster,
@@ -57,6 +58,14 @@ public class GraphExtendIntersect extends SingleRel {
             return ((GraphShuttle) shuttle).visit(this);
         }
         return super.accept(shuttle);
+    }
+
+    public void setCost(double cost) {
+        this.cost = cost;
+    }
+
+    public double getCost() {
+        return this.cost;
     }
 
     @Override
