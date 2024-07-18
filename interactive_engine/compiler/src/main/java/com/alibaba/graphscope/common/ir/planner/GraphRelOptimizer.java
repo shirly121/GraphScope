@@ -70,6 +70,8 @@ public class GraphRelOptimizer {
     private final RelBuilderFactory relBuilderFactory;
     private final GlogueHolder glogueHolder;
 
+    private long coreElapsed;
+
     public GraphRelOptimizer(Configs graphConfig) {
         this.graphConfig = graphConfig;
         this.config = new PlannerConfig(graphConfig);
@@ -125,6 +127,10 @@ public class GraphRelOptimizer {
         return before;
     }
 
+    public long getCoreElapsedTime() {
+        return coreElapsed;
+    }
+
     private class MatchOptimizer extends GraphShuttle {
         private final GraphIOProcessor ioProcessor;
 
@@ -135,13 +141,19 @@ public class GraphRelOptimizer {
         @Override
         public RelNode visit(GraphLogicalSingleMatch match) {
             matchPlanner.setRoot(ioProcessor.processInput(match));
-            return ioProcessor.processOutput(matchPlanner.findBestExp());
+            long start = System.currentTimeMillis();
+            RelNode after = matchPlanner.findBestExp();
+            coreElapsed = System.currentTimeMillis() - start;
+            return ioProcessor.processOutput(after);
         }
 
         @Override
         public RelNode visit(GraphLogicalMultiMatch match) {
             matchPlanner.setRoot(ioProcessor.processInput(match));
-            return ioProcessor.processOutput(matchPlanner.findBestExp());
+            long start = System.currentTimeMillis();
+            RelNode after = matchPlanner.findBestExp();
+            coreElapsed = System.currentTimeMillis() - start;
+            return ioProcessor.processOutput(after);
         }
 
         @Override

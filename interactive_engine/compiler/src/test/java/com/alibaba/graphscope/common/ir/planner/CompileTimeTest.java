@@ -66,7 +66,7 @@ public class CompileTimeTest {
             long startTime = System.currentTimeMillis();
             RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
             long elapsedTime = System.currentTimeMillis() - startTime;
-            FileUtils.writeStringToFile(output, "queryName: [" + queryName + "]; compile time: [" + elapsedTime + "] ms\n", StandardCharsets.UTF_8, true);
+            FileUtils.writeStringToFile(output, "queryName: [" + queryName + "]; compile time: [" + elapsedTime + "] ms;" + " core time: [" + optimizer.getCoreElapsedTime()+ "] ms \n", StandardCharsets.UTF_8, true);
             FileUtils.writeStringToFile(output, after.explain(), StandardCharsets.UTF_8, true);
             FileUtils.writeStringToFile(output, "\n\n\n", StandardCharsets.UTF_8, true);
         }
