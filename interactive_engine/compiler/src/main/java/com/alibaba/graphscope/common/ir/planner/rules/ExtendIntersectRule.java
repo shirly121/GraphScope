@@ -22,15 +22,15 @@ import com.alibaba.graphscope.common.ir.meta.glogue.Utils;
 import com.alibaba.graphscope.common.ir.meta.glogue.calcite.GraphRelMetadataQuery;
 import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.*;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendEdge;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendStep;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-
-import com.google.common.util.concurrent.AtomicDouble;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.tools.RelBuilderFactory;
@@ -53,7 +53,7 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
         double rowCount = mq.getRowCount(pattern);
         pattern.setRowCount(rowCount);
         List<GraphExtendIntersect> edges = getExtendIntersectEdges(pattern, mq);
-        Preconditions.checkArgument(edges.size() <= 1);
+//        Preconditions.checkArgument(edges.size() <= 1);
         for (GraphExtendIntersect edge : edges) {
             call.transformTo(edge);
         }
@@ -90,19 +90,16 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
             return edges;
         }
         PruningStrategy pruningStrategy = new PruningStrategy(pattern);
-        AtomicDouble minCost = new AtomicDouble(Double.MAX_VALUE);
+        int maxSize = 1;
+        PriorityQueue<GraphExtendIntersect> maxQueue = new PriorityQueue(maxSize, intersectComparator);
         for (PatternVertex vertex : pattern.getVertexSet()) {
             if (pruningStrategy.toPrune(vertex)) {
                 continue;
             }
-            GraphExtendIntersect intersect = createExtendIntersect(graphPattern, vertex, estimator, minCost, mq);
-            if (intersect != null) {
-                if (edges.isEmpty()) {
-                    edges.add(intersect);
-                } else {
-                    edges.set(0, intersect);
-                }
-            }
+            addExtendIntersect(graphPattern, vertex, estimator, maxQueue, maxSize, mq);
+        }
+        while(!maxQueue.isEmpty()) {
+            edges.add(0, maxQueue.poll());
         }
 //        Collections.sort(edges, comparator.getEdgeComparator());
         return edges;
@@ -120,8 +117,59 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
         return mq.getRowCount(new GraphPattern(pattern.getCluster(), pattern.getTraitSet(), edgePattern));
     }
 
-    private GraphExtendIntersect createExtendIntersect(
-            GraphPattern graphPattern, PatternVertex target, ExtendWeightEstimator estimator, AtomicDouble upperBound, GraphRelMetadataQuery mq) {
+//    private GraphExtendIntersect createExtendIntersect(
+//            GraphPattern graphPattern, PatternVertex target, ExtendWeightEstimator estimator, AtomicDouble upperBound, GraphRelMetadataQuery mq) {
+//        Pattern dst = graphPattern.getPattern();
+//        double patternCount = graphPattern.getRowCount();
+//        Pattern src = new Pattern(dst);
+//        src.setPatternId(UUID.randomUUID().hashCode());
+//        src.removeVertex(target);
+//        List<PatternEdge> adjacentEdges = Lists.newArrayList(dst.getEdgesOf(target));
+//        double srcCount = patternCount;
+//        for (PatternEdge edge : adjacentEdges) {
+//            PatternVertex srcVertex = Utils.getExtendFromVertex(edge, target);
+//            srcCount = srcCount * estimate(graphPattern, srcVertex, mq) / estimate(graphPattern, edge, mq);
+//        }
+//        double totalWeight = estimator.estimate(adjacentEdges, target);
+//        double curCost = srcCount + srcCount * totalWeight;
+//        if (curCost >= upperBound.get()) {
+//            return null;
+//        }
+//        upperBound.set(curCost);
+//        List<ExtendEdge> extendEdges =
+//                adjacentEdges.stream()
+//                        .map(
+//                                k -> {
+//                                    PatternVertex extendFrom = Utils.getExtendFromVertex(k, target);
+//                                    return new ExtendEdge(
+//                                            src.getVertexOrder(extendFrom),
+//                                            k.getEdgeTypeIds(),
+//                                            Utils.getExtendDirection(k, target),
+//                                            estimator.estimate(k, target),
+//                                            k.getElementDetails());
+//                                })
+//                        .collect(Collectors.toList());
+//        ExtendStep extendStep =
+//                new ExtendStep(
+//                        target.getVertexTypeIds(),
+//                        dst.getVertexOrder(target),
+//                        extendEdges,
+//                        totalWeight);
+//        GlogueExtendIntersectEdge glogueEdge =
+//                new GlogueExtendIntersectEdge(src, dst, extendStep, getOrderMapping(src, dst));
+//        return new GraphExtendIntersect(
+//                graphPattern.getCluster(),
+//                graphPattern.getTraitSet(),
+//                new GraphPattern(graphPattern.getCluster(), graphPattern.getTraitSet(), src),
+//                glogueEdge);
+//    }
+
+    private Comparator<GraphExtendIntersect> intersectComparator = (GraphExtendIntersect intersect1, GraphExtendIntersect intersect2) -> {
+        return Double.compare(intersect2.getCumulativeCost(), intersect1.getCumulativeCost());
+    };
+
+    private void addExtendIntersect(
+            GraphPattern graphPattern, PatternVertex target, ExtendWeightEstimator estimator, PriorityQueue<GraphExtendIntersect> maxQueue, int maxSize, GraphRelMetadataQuery mq) {
         Pattern dst = graphPattern.getPattern();
         double patternCount = graphPattern.getRowCount();
         Pattern src = new Pattern(dst);
@@ -134,11 +182,10 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
             srcCount = srcCount * estimate(graphPattern, srcVertex, mq) / estimate(graphPattern, edge, mq);
         }
         double totalWeight = estimator.estimate(adjacentEdges, target);
-        double curCost = srcCount + srcCount * totalWeight;
-        if (curCost >= upperBound.get()) {
-            return null;
+        double curCost = srcCount * totalWeight;
+        if (maxQueue.size() >= maxSize && maxQueue.peek().getCumulativeCost() <= curCost) {
+            return;
         }
-        upperBound.set(curCost);
         List<ExtendEdge> extendEdges =
                 adjacentEdges.stream()
                         .map(
@@ -160,11 +207,18 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
                         totalWeight);
         GlogueExtendIntersectEdge glogueEdge =
                 new GlogueExtendIntersectEdge(src, dst, extendStep, getOrderMapping(src, dst));
-        return new GraphExtendIntersect(
+        GraphExtendIntersect intersect = new GraphExtendIntersect(
                 graphPattern.getCluster(),
                 graphPattern.getTraitSet(),
                 new GraphPattern(graphPattern.getCluster(), graphPattern.getTraitSet(), src),
                 glogueEdge);
+        intersect.setCumulativeCost(curCost);
+        if (maxQueue.size() <  maxSize) {
+            maxQueue.offer(intersect);
+        } else {
+            maxQueue.poll();
+            maxQueue.offer(intersect);
+        }
     }
 
     private Map<Integer, Integer> getOrderMapping(Pattern src, Pattern dst) {
@@ -226,30 +280,30 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
                         List connectedSets = clone.removeVertex(v);
                         return connectedSets.size() != 1;
                     });
-            // constraint transformations if the pattern has optional vertices or edges
-            List<PatternVertex> optionalVertices =
-                    pattern.getVertexSet().stream()
-                            .filter(k -> k.getElementDetails().isOptional())
-                            .collect(Collectors.toList());
-            if (!optionalVertices.isEmpty()) {
-                // If there are optional vertices in the pattern, we should prioritize selecting
-                // these vertices to perform rule transformations.
-                // Vertices that do not belong to the optional set will be pruned.
-                predicates.add((PatternVertex v) -> !optionalVertices.contains(v));
-            } else {
-                // If there are no optional vertices in the pattern, in which case the pattern only
-                // consists of optional edges, we should first execute the part of the pattern that
-                // does not contain optional edges.
-                // After removing vertex v, if the subpattern contains optional edges, this case
-                // will be pruned.
-                predicates.add(
-                        (PatternVertex v) -> {
-                            Pattern clone = new Pattern(pattern);
-                            clone.removeVertex(v);
-                            return clone.getEdgeSet().stream()
-                                    .anyMatch(k -> k.getElementDetails().isOptional());
-                        });
-            }
+//            // constraint transformations if the pattern has optional vertices or edges
+//            List<PatternVertex> optionalVertices =
+//                    pattern.getVertexSet().stream()
+//                            .filter(k -> k.getElementDetails().isOptional())
+//                            .collect(Collectors.toList());
+//            if (!optionalVertices.isEmpty()) {
+//                // If there are optional vertices in the pattern, we should prioritize selecting
+//                // these vertices to perform rule transformations.
+//                // Vertices that do not belong to the optional set will be pruned.
+//                predicates.add((PatternVertex v) -> !optionalVertices.contains(v));
+//            } else {
+//                // If there are no optional vertices in the pattern, in which case the pattern only
+//                // consists of optional edges, we should first execute the part of the pattern that
+//                // does not contain optional edges.
+//                // After removing vertex v, if the subpattern contains optional edges, this case
+//                // will be pruned.
+//                predicates.add(
+//                        (PatternVertex v) -> {
+//                            Pattern clone = new Pattern(pattern);
+//                            clone.removeVertex(v);
+//                            return clone.getEdgeSet().stream()
+//                                    .anyMatch(k -> k.getElementDetails().isOptional());
+//                        });
+//            }
         }
 
         public boolean toPrune(PatternVertex target) {

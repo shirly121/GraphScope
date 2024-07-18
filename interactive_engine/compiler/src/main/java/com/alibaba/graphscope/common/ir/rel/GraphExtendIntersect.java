@@ -32,6 +32,7 @@ import java.util.List;
 public class GraphExtendIntersect extends SingleRel {
     private final GlogueExtendIntersectEdge glogueEdge;
     private double cost = 0.0d;
+    private double cumulativeCost = 0.0d;
 
     public GraphExtendIntersect(
             RelOptCluster cluster,
@@ -66,6 +67,14 @@ public class GraphExtendIntersect extends SingleRel {
 
     public double getCost() {
         return this.cost;
+    }
+
+    public void setCumulativeCost(double cumulativeCost) {
+        this.cumulativeCost = cumulativeCost;
+    }
+
+    public double getCumulativeCost() {
+        return this.cumulativeCost;
     }
 
     @Override

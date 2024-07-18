@@ -16,9 +16,10 @@
 
 package com.alibaba.graphscope.common.ir.planner.volcano;
 
+import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
+import com.alibaba.graphscope.common.ir.rel.GraphJoinDecomposition;
 import com.alibaba.graphscope.gremlin.Utils;
 import com.google.common.base.Preconditions;
-
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.ConventionTraitDef;
 import org.apache.calcite.plan.RelOptCost;
@@ -31,7 +32,26 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 public class VolcanoPlannerX extends VolcanoPlanner {
     @Override
     protected RelOptCost upperBoundForInputs(RelNode mExpr, RelOptCost upperBound) {
-        // todo: support pruning optimizations
+//        // todo: support pruning optimizations
+//        RelSubset subset = getSubset(mExpr);
+//        RelOptCost best = Utils.getFieldValue(RelSubset.class, subset, "bestCost");
+//        if (best != null && !best.isInfinite()) {
+//            upperBound = best;
+//        }
+//        if (!upperBound.isInfinite()) {
+//            RelOptCost rootCost = mExpr.getCluster().getMetadataQuery().getNonCumulativeCost(mExpr);
+//            if (rootCost != null && !rootCost.isInfinite()) {
+//                upperBound = upperBound.minus(rootCost);
+//            }
+//            if (upperBound.isLt(costFactory.makeZeroCost())) {
+//                return upperBound;
+//            }
+//            if (!mExpr.getInputs().isEmpty()) {
+//                double rowCount = mExpr.getCluster().getMetadataQuery().getRowCount(mExpr.getInput(0));
+//                RelOptCost rowCost = mExpr.getCluster().getPlanner().getCostFactory().makeCost(rowCount, 0, 0);
+//                upperBound = upperBound.minus(rowCost);
+//            }
+//        }
         return upperBound;
     }
 
@@ -58,5 +78,10 @@ public class VolcanoPlannerX extends VolcanoPlanner {
         RelOptCost relCost = mq.getNonCumulativeCost(rel);
         if (relCost == null) return null;
         return cost.plus(relCost);
+    }
+
+    @Override
+    public boolean isLogical(RelNode rel) {
+        return !(rel instanceof GraphExtendIntersect || rel instanceof GraphJoinDecomposition);
     }
 }
