@@ -25,6 +25,7 @@ import com.alibaba.graphscope.common.ir.meta.fetcher.IrMetaFetcher;
 import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
 import com.alibaba.graphscope.common.ir.meta.reader.LocalIrMetaReader;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+
 import org.apache.calcite.rel.RelNode;
 import org.apache.commons.io.FileUtils;
 import org.junit.Before;
@@ -45,10 +46,11 @@ public class CompileTimeTest {
     @Before
     public void beforeTest() throws Exception {
         String configFile = "conf/ir.compiler.properties";
-        configs =
-                new Configs(configFile);
+        configs = new Configs(configFile);
         optimizer = new GraphRelOptimizer(configs);
-        IrMetaFetcher metaFetcher = new StaticIrMetaFetcher(new LocalIrMetaReader(configs), optimizer.getGlogueHolder());
+        IrMetaFetcher metaFetcher =
+                new StaticIrMetaFetcher(
+                        new LocalIrMetaReader(configs), optimizer.getGlogueHolder());
         irMeta = metaFetcher.fetch().get();
         output = new File("compile.log");
         if (output.exists()) {
@@ -66,12 +68,22 @@ public class CompileTimeTest {
             String query = FileUtils.readFileToString(f, StandardCharsets.UTF_8);
             GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
             RelNode before =
-                    com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder)
-                            .build();
+                    com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
             long startTime = System.currentTimeMillis();
             RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
             long elapsedTime = System.currentTimeMillis() - startTime;
-            FileUtils.writeStringToFile(output, "queryName: [" + queryName + "]; compile time: [" + elapsedTime + "] ms;" + " core time: [" + optimizer.getCoreElapsedTime()+ "] ms \n", StandardCharsets.UTF_8, true);
+            FileUtils.writeStringToFile(
+                    output,
+                    "queryName: ["
+                            + queryName
+                            + "]; compile time: ["
+                            + elapsedTime
+                            + "] ms;"
+                            + " core time: ["
+                            + optimizer.getCoreElapsedTime()
+                            + "] ms \n",
+                    StandardCharsets.UTF_8,
+                    true);
             FileUtils.writeStringToFile(output, after.explain(), StandardCharsets.UTF_8, true);
             FileUtils.writeStringToFile(output, "\n\n\n", StandardCharsets.UTF_8, true);
         }
