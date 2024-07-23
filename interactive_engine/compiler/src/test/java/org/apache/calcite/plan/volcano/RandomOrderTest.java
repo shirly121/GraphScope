@@ -38,6 +38,7 @@ import com.alibaba.graphscope.common.ir.rel.GraphShuttle;
 import com.alibaba.graphscope.common.ir.rel.graph.match.AbstractLogicalMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalMultiMatch;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
@@ -53,6 +54,7 @@ import com.google.common.collect.Sets;
 
 import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
@@ -120,6 +122,16 @@ public class RandomOrderTest {
                             return pickOptimizer;
                         }
                     });
+            clear();
+        }
+    }
+
+    private void clear() {
+        VolcanoPlanner planner = (VolcanoPlanner) optimizer.getMatchPlanner();
+        List<RelOptRule> rules = planner.getRules();
+        planner.clear();
+        for (RelOptRule rule : rules) {
+            planner.addRule(rule);
         }
     }
 
@@ -247,7 +259,6 @@ public class RandomOrderTest {
                 int pickCount) {
             this.ioProcessor = ioProcessor;
             this.matchPlanner = matchPlanner;
-            this.matchPlanner.allSets.clear();
             this.random = random;
             this.pickCount = pickCount;
         }
@@ -284,15 +295,23 @@ public class RandomOrderTest {
             Set<RelDigest> randomDigests = Sets.newHashSet();
             int maxIter = Math.max(100, count);
             RelSet rootSet = allSets.get(0);
-            while (randomRels.size() < count && maxIter-- > 0) {
-                RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
-                SourceFilterVisitor visitor = new SourceFilterVisitor();
-                visitor.go(randomRel);
-                if (visitor.isSourceHasFilter()
-                        && !randomDigests.contains(randomRel.getRelDigest())
-                        && !best.getRelDigest().equals(randomRel.getRelDigest())) {
-                    randomRels.add(randomRel);
-                    randomDigests.add(randomRel.getRelDigest());
+            Set<Pattern> patternSet = Sets.newHashSet();
+            for (int i = 0; i < 2; ++i) {
+                int times = 0;
+                while (randomRels.size() < count && (times++ < maxIter)) {
+                    RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
+                    SourceFilterVisitor visitor = new SourceFilterVisitor();
+                    visitor.go(randomRel);
+                    DedupSourceVisitor dedupVisitor = new DedupSourceVisitor(patternSet);
+                    dedupVisitor.go(randomRel);
+                    boolean contains = (i == 0) ? dedupVisitor.contains() : false;
+                    if (visitor.isSourceHasFilter()
+                            && !contains
+                            && !randomDigests.contains(randomRel.getRelDigest())
+                            && !best.getRelDigest().equals(randomRel.getRelDigest())) {
+                        randomRels.add(randomRel);
+                        randomDigests.add(randomRel.getRelDigest());
+                    }
                 }
             }
             return randomRels;
@@ -385,6 +404,33 @@ public class RandomOrderTest {
 
         public boolean isSourceHasFilter() {
             return sourceHasFilter;
+        }
+    }
+
+    private class DedupSourceVisitor extends RelVisitor {
+        private boolean contains = true;
+        private Set<Pattern> sourcePatternSet;
+
+        public DedupSourceVisitor(Set<Pattern> sourcePatternSet) {
+            this.sourcePatternSet = sourcePatternSet;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    if (!sourcePatternSet.contains(pattern.getPattern())) {
+                        sourcePatternSet.add(pattern.getPattern());
+                        contains = false;
+                    }
+                }
+            }
+        }
+
+        public boolean contains() {
+            return contains;
         }
     }
 }

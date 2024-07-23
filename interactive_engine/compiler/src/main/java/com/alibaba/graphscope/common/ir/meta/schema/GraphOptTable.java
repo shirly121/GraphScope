@@ -137,31 +137,42 @@ public class GraphOptTable implements RelOptTable {
     private RelDataType deriveType(GraphProperty property) {
         RelDataTypeFactory typeFactory = this.schema.getTypeFactory();
         requireNonNull(typeFactory, "typeFactory");
+        RelDataType propertyType;
         switch (property.getDataType()) {
             case BOOL:
-                return typeFactory.createSqlType(SqlTypeName.BOOLEAN);
+                propertyType = typeFactory.createSqlType(SqlTypeName.BOOLEAN);
+                break;
             case CHAR:
             case STRING:
-                return typeFactory.createSqlType(SqlTypeName.CHAR);
+                propertyType = typeFactory.createSqlType(SqlTypeName.CHAR);
+                break;
             case SHORT:
             case INT:
-                return typeFactory.createSqlType(SqlTypeName.INTEGER);
+                propertyType = typeFactory.createSqlType(SqlTypeName.INTEGER);
+                break;
             case LONG:
-                return typeFactory.createSqlType(SqlTypeName.BIGINT);
+                propertyType = typeFactory.createSqlType(SqlTypeName.BIGINT);
+                break;
             case FLOAT:
-                return typeFactory.createSqlType(SqlTypeName.FLOAT);
+                propertyType = typeFactory.createSqlType(SqlTypeName.FLOAT);
+                break;
             case DOUBLE:
-                return typeFactory.createSqlType(SqlTypeName.DOUBLE);
+                propertyType = typeFactory.createSqlType(SqlTypeName.DOUBLE);
+                break;
             case DATE:
-                return typeFactory.createSqlType(SqlTypeName.DATE);
+                propertyType = typeFactory.createSqlType(SqlTypeName.DATE);
+                break;
             case TIME32:
-                return typeFactory.createSqlType(SqlTypeName.TIME);
+                propertyType = typeFactory.createSqlType(SqlTypeName.TIME);
+                break;
             case TIMESTAMP:
-                return typeFactory.createSqlType(SqlTypeName.TIMESTAMP);
+                propertyType = typeFactory.createSqlType(SqlTypeName.TIMESTAMP);
+                break;
             default:
                 throw new UnsupportedOperationException(
                         "type " + property.getDataType().name() + " not supported");
         }
+        return typeFactory.createTypeWithNullability(propertyType, true);
     }
 
     @Override
