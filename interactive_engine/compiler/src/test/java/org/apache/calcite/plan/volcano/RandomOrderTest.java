@@ -134,6 +134,7 @@ public class RandomOrderTest {
                         queryName, query),
                 StandardCharsets.UTF_8,
                 true);
+        int timeout = FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs);
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         // apply filter push down optimize
@@ -195,8 +196,7 @@ public class RandomOrderTest {
                                     resultIterator.fail(t);
                                 }
                             },
-                            new QueryTimeoutConfig(
-                                    FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+                            new QueryTimeoutConfig(timeout));
                     StringBuilder resultBuilder = new StringBuilder();
                     while (resultIterator.hasNext()) {
                         resultBuilder.append(resultIterator.next());
@@ -212,6 +212,7 @@ public class RandomOrderTest {
                                             0, Math.min(10, resultBuilder.length()))),
                             StandardCharsets.UTF_8,
                             true);
+                    timeout = Math.min(timeout, (int) (elapsedTime * 2));
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
                             logFile,
