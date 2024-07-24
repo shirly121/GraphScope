@@ -101,7 +101,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
             if (this.currentState != null) {
                 GraphStatistics stats = this.reader.readStats(this.currentState.getGraphId());
                 if (stats != null) {
-                    logger.info("statistics from remote: {}", stats);
+                    logger.info("statistics from remote: {}, vertex count is {}", stats, stats.getVertexCount());
                 }
                 if (stats != null && stats.getVertexCount() != 0) {
                     this.currentState =
