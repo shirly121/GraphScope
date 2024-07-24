@@ -44,6 +44,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
     private volatile IrMetaStats currentState;
     // To manage the state changes of statistics resulting from different update operations.
     private volatile StatsState statsState;
+    private boolean printSchema = false;
 
     public DynamicIrMetaFetcher(Configs configs, IrMetaReader dataReader, IrMetaTracker tracker) {
         super(dataReader, tracker);
@@ -87,6 +88,10 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
             if (this.statsState != StatsState.SYNCED) {
                 syncStats();
             }
+            if (!printSchema) {
+                logger.info("schema from remote: {}", meta.getSchema().schemaJson());
+                printSchema = true;
+            }
         } catch (Exception e) {
             logger.warn("failed to read meta data, error is {}", e);
         }
@@ -96,7 +101,11 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
         try {
             if (this.currentState != null) {
                 GraphStatistics stats = this.reader.readStats(this.currentState.getGraphId());
-                if (stats != null) {
+                if (stats != null && this.statsState == StatsState.INITIALIZED) {
+                    logger.info("statistics from remote: {}", stats);
+                }
+                if (stats != null && stats.getVertexCount() != 0) {
+                    logger.info("statistics from remote: {}", stats);
                     this.currentState =
                             new IrMetaStats(
                                     this.currentState.getSnapshotId(),
