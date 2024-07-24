@@ -59,6 +59,7 @@ public class Glogue {
             this.addRoot(new_pattern);
             patternQueue.add(new_pattern);
         }
+        logger.info("Start to construct Glogue graph");
         while (patternQueue.size() > 0) {
             Pattern pattern = patternQueue.pop();
             if (pattern.getVertexNumber() >= maxPatternSize) {
@@ -88,9 +89,10 @@ public class Glogue {
                 }
             }
         }
+        logger.info("Glogue graph constructed");
         // compute pattern cardinality
         this.glogueCardinalityEstimation = new GlogueBasicCardinalityEstimationImpl(this, schema);
-        logger.debug("GlogueGraph\n" + this.toString());
+        logger.info("GlogueGraph\n" + this.toString());
 
         return this;
     }
