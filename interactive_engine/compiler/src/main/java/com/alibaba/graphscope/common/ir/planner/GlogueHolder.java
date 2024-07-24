@@ -28,12 +28,15 @@ import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueQuery;
 import com.alibaba.graphscope.common.ir.rel.metadata.schema.GlogueSchema;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicReference;
 
 // When IrMeta is updated, Glogue will also be triggered to update. This class defines the specific
 // operations for updating Glogue.
 public class GlogueHolder implements IrMetaTracker {
+    private static final Logger logger = LoggerFactory.getLogger(GlogueHolder.class);
     private final PlannerConfig config;
     private final AtomicReference<GlogueQuery> glogueRef;
 
@@ -48,6 +51,7 @@ public class GlogueHolder implements IrMetaTracker {
             GlogueSchema g = GlogueSchema.fromMeta((IrMetaStats) meta);
             Glogue gl = new Glogue(g, config.getGlogueSize());
             GlogueQuery gq = new GlogueQuery(gl);
+            logger.info("glogue query has been created, set the ref");
             this.glogueRef.compareAndSet(glogueRef.get(), gq);
         }
     }
