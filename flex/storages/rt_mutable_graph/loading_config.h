@@ -36,6 +36,8 @@ namespace gs {
 
 namespace reader_options {
 static const int32_t DEFAULT_BLOCK_SIZE = (1 << 20);  // 1MB
+static const bool DEFAULT_BATCH_READER =
+    false;  // By default, we read the whole table at once.
 
 // KEY_WORDS for configurations
 static const char* DELIMITER = "delimiter";
@@ -124,9 +126,9 @@ class LoadingConfig {
   const BulkLoadMethod& GetMethod() const;
   const std::string& GetFormat() const;
   bool GetHasHeaderRow() const;
-  const std::string& GetEscapeChar() const;
+  char GetEscapeChar() const;
   bool GetIsEscaping() const;
-  const std::string& GetQuotingChar() const;
+  char GetQuotingChar() const;
   bool GetIsQuoting() const;
   bool GetIsDoubleQuoting() const;
   int32_t GetBatchSize() const;
