@@ -72,7 +72,7 @@ public class GlogueSchema {
                 edgeTypeCardinality.put(edgeType, 1.0);
             }
         }
-        logger.debug("GlogueSchema created with default cardinality 1.0: {}", this);
+        logger.info("GlogueSchema created with default cardinality 1.0: {}", this);
     }
 
     public GlogueSchema(GraphSchema graphSchema, GraphStatistics statistics) {
@@ -112,7 +112,7 @@ public class GlogueSchema {
                 }
             }
         }
-        logger.debug("GlogueSchema created with statistics: {}", this);
+        logger.info("GlogueSchema created with statistics: {}", this);
     }
 
     public static GlogueSchema fromMeta(IrMetaStats irMeta) {
@@ -144,7 +144,7 @@ public class GlogueSchema {
     public Double getVertexTypeCardinality(Integer vertexType) {
         Double cardinality = this.vertexTypeCardinality.get(vertexType);
         if (cardinality == null) {
-            logger.debug(
+            logger.warn(
                     "Vertex type {} not found in schema, assuming cardinality 1.0", vertexType);
             return 1.0;
         } else {
@@ -155,7 +155,7 @@ public class GlogueSchema {
     public Double getEdgeTypeCardinality(EdgeTypeId edgeType) {
         Double cardinality = this.edgeTypeCardinality.get(edgeType);
         if (cardinality == null) {
-            logger.debug("Edge type {} not found in schema, assuming cardinality 1.0", edgeType);
+            logger.warn("Edge type {} not found in schema, assuming cardinality 1.0", edgeType);
             return 1.0;
         } else {
             return cardinality;
