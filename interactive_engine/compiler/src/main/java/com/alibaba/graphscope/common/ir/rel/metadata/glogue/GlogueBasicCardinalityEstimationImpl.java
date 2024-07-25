@@ -49,6 +49,10 @@ public class GlogueBasicCardinalityEstimationImpl implements GlogueCardinalityEs
             // single vertex pattern
             PatternVertex singleVertexPattern = pattern.getVertexSet().iterator().next();
             if (singleVertexPattern.getVertexTypeIds().size() != 1) {
+                logger.error(
+                        "In GlogueBasicCardinalityEstimationImpl creation, singleVertexPattern "
+                                + singleVertexPattern
+                                + " is not of basic type.");
                 throw new UnsupportedOperationException(
                         "In GlogueBasicCardinalityEstimationImpl creation, singleVertexPattern "
                                 + singleVertexPattern

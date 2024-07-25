@@ -144,8 +144,7 @@ public class GlogueSchema {
     public Double getVertexTypeCardinality(Integer vertexType) {
         Double cardinality = this.vertexTypeCardinality.get(vertexType);
         if (cardinality == null) {
-            logger.warn(
-                    "Vertex type {} not found in schema, assuming cardinality 1.0", vertexType);
+            logger.warn("Vertex type {} not found in schema, assuming cardinality 1.0", vertexType);
             return 1.0;
         } else {
             return cardinality;

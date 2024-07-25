@@ -145,6 +145,10 @@ public class Pattern {
                     consideredGroup.add(srcVertexOrder);
                 }
                 if (srcPatternVertex.getVertexTypeIds().size() != 1) {
+                    logger.error(
+                            "In ExtendStep, srcPatternVertex "
+                                    + srcPatternVertex
+                                    + " is of multiple types");
                     throw new UnsupportedOperationException(
                             "In ExtendStep, srcPatternVertex "
                                     + srcPatternVertex
@@ -165,6 +169,11 @@ public class Pattern {
                                     new ArrayList<ExtendEdge>(Arrays.asList(extendEdge)));
                         }
                     } else {
+                        logger.error(
+                                "In ExtendStep, srcVertexType "
+                                        + srcVertexType
+                                        + " is not equal to outEdge srcLabelId "
+                                        + outEdge.getSrcLabelId());
                         throw new UnsupportedOperationException(
                                 "In ExtendStep, srcVertexType "
                                         + srcVertexType
@@ -186,6 +195,11 @@ public class Pattern {
                                     new ArrayList<ExtendEdge>(Arrays.asList(extendEdge)));
                         }
                     } else {
+                        logger.error(
+                                "In ExtendStep, srcVertexType "
+                                        + srcVertexType
+                                        + " is not equal to inEdge dstLabelId "
+                                        + inEdge.getDstLabelId());
                         throw new UnsupportedOperationException(
                                 "In ExtendStep, srcVertexType "
                                         + srcVertexType
