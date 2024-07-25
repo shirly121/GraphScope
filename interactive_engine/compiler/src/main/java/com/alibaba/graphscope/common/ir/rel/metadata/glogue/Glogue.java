@@ -59,11 +59,19 @@ public class Glogue {
             this.addRoot(new_pattern);
             patternQueue.add(new_pattern);
         }
-        logger.info("Start to construct Glogue graph");
+        logger.info("Start to construct Glogue graph, pattern queue size:  " + patternQueue.size() + ", pattern size " + maxPatternSize);
+        int processedPatternCount = 0;
+        long startTime = System.currentTimeMillis();
         while (patternQueue.size() > 0) {
             Pattern pattern = patternQueue.pop();
             if (pattern.getVertexNumber() >= maxPatternSize) {
                 continue;
+            }
+            processedPatternCount++;
+            if (processedPatternCount % 100 == 0) {
+                long endTime = System.currentTimeMillis();
+                logger.info("Processed " + processedPatternCount + " elements in " + (endTime - startTime) + " ms");
+                startTime = System.currentTimeMillis(); 
             }
             List<ExtendStep> extendSteps = pattern.getExtendSteps(schema);
             for (ExtendStep extendStep : extendSteps) {
@@ -89,9 +97,10 @@ public class Glogue {
                 }
             }
         }
+        logger.info("Glogue graph constructed");
         // compute pattern cardinality
         this.glogueCardinalityEstimation = new GlogueBasicCardinalityEstimationImpl(this, schema);
-        logger.debug("Glogue graph constructed");
+        logger.info("Glogue cardinality estimation constructed");
         return this;
     }
 
