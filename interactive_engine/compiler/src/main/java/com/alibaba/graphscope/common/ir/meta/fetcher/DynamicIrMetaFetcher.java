@@ -68,7 +68,9 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
     private synchronized void syncMeta() {
         try {
             IrMeta meta = this.reader.readMeta();
-            logger.info("schema from remote: {}", (meta == null) ? null : meta.getSchema().schemaJson());
+            logger.info(
+                    "schema from remote: {}",
+                    (meta == null) ? null : meta.getSchema().schemaJson());
             GraphStatistics curStats;
             // if the graph id is changed, we need to update the statistics
             if (this.currentState == null
