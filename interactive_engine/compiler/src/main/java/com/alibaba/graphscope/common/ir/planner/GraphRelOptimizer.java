@@ -110,6 +110,7 @@ public class GraphRelOptimizer {
             RelNode relOptimized = relPlanner.findBestExp();
             if (config.getOpt() == PlannerConfig.Opt.CBO) {
                 relOptimized = relOptimized.accept(new MatchOptimizer(ioProcessor));
+                matchPlanner.clear();
             }
             // apply rules of 'FieldTrim' after the match optimization
             if (config.getRules().contains(FieldTrimRule.class.getSimpleName())) {
