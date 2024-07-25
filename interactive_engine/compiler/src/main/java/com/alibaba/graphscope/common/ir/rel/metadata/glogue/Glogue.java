@@ -89,11 +89,9 @@ public class Glogue {
                 }
             }
         }
-        logger.info("Glogue graph constructed");
         // compute pattern cardinality
         this.glogueCardinalityEstimation = new GlogueBasicCardinalityEstimationImpl(this, schema);
-        logger.info("GlogueGraph\n" + this.toString());
-
+        logger.debug("Glogue graph constructed");
         return this;
     }
 

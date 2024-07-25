@@ -165,7 +165,8 @@ public class GlogueBasicCardinalityEstimationImpl implements GlogueCardinalityEs
                 return this.patternCardinality.get(pattern);
             }
         }
-        return 0.0;
+        logger.warn("Pattern not found in GlogueBasicCardinalityEstimationImpl: " + queryPattern);
+        return 1.0;
     }
 
     @Override

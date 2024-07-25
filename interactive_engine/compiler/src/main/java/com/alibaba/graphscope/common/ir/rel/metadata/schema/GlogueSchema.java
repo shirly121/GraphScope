@@ -72,7 +72,7 @@ public class GlogueSchema {
                 edgeTypeCardinality.put(edgeType, 1.0);
             }
         }
-        logger.info("GlogueSchema created with default cardinality 1.0: {}", this);
+        logger.debug("GlogueSchema created with default cardinality 1.0");
     }
 
     public GlogueSchema(GraphSchema graphSchema, GraphStatistics statistics) {
@@ -112,7 +112,7 @@ public class GlogueSchema {
                 }
             }
         }
-        logger.info("GlogueSchema created with statistics: {}", this);
+        logger.debug("GlogueSchema created with statistics");
     }
 
     public static GlogueSchema fromMeta(IrMetaStats irMeta) {
