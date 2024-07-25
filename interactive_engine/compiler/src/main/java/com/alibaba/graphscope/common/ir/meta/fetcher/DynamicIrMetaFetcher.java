@@ -68,7 +68,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
     private synchronized void syncMeta() {
         try {
             IrMeta meta = this.reader.readMeta();
-            logger.info(
+            logger.debug(
                     "schema from remote: {}",
                     (meta == null) ? null : meta.getSchema().schemaJson());
             GraphStatistics curStats;
@@ -89,7 +89,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                             meta.getStoredProcedures(),
                             curStats);
             if (this.statsState != StatsState.SYNCED) {
-                logger.info("start to sync stats");
+                logger.debug("start to sync stats");
                 syncStats();
             }
         } catch (Throwable e) {
@@ -101,7 +101,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
         try {
             if (this.currentState != null) {
                 GraphStatistics stats = this.reader.readStats(this.currentState.getGraphId());
-                logger.info("statistics from remote: {}", stats);
+                logger.debug("statistics from remote: {}", stats);
                 if (stats != null && stats.getVertexCount() != 0) {
                     this.currentState =
                             new IrMetaStats(
@@ -110,7 +110,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                                     this.currentState.getStoredProcedures(),
                                     stats);
                     if (tracker != null) {
-                        logger.info("start to update the glogue");
+                        logger.debug("start to update the glogue");
                         tracker.onChanged(this.currentState);
                     }
                     this.statsState = StatsState.SYNCED;
@@ -123,7 +123,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                 if (this.currentState != null
                         && tracker != null
                         && this.statsState == StatsState.INITIALIZED) {
-                    logger.info("start to mock the glogue");
+                    logger.debug("start to mock the glogue");
                     tracker.onChanged(this.currentState);
                     this.statsState = StatsState.MOCKED;
                 }

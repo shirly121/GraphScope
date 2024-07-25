@@ -51,7 +51,7 @@ public class GlogueHolder implements IrMetaTracker {
             GlogueSchema g = GlogueSchema.fromMeta((IrMetaStats) meta);
             Glogue gl = new Glogue(g, config.getGlogueSize());
             GlogueQuery gq = new GlogueQuery(gl);
-            logger.info("glogue query has been created, set the ref");
+            logger.debug("glogue query has been created, set the ref");
             this.glogueRef.compareAndSet(glogueRef.get(), gq);
         }
     }
