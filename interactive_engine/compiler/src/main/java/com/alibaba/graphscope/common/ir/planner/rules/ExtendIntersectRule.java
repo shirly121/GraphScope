@@ -31,7 +31,6 @@ import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVerte
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.tools.RelBuilderFactory;

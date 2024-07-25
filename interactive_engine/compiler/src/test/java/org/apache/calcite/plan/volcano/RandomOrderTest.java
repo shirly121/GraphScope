@@ -51,8 +51,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
-
-import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelTraitSet;
@@ -292,11 +290,11 @@ public class RandomOrderTest {
             Ordering<RelSet> ordering = Ordering.from(Comparator.comparingInt(o -> o.id));
             ImmutableList<RelSet> allSets = ordering.immutableSortedCopy(matchPlanner.allSets);
             List<RelNode> randomRels = Lists.newArrayList();
-            Set<RelDigest> randomDigests = Sets.newHashSet();
-            int maxIter = Math.max(100, count);
+            Set<String> randomDigests = Sets.newHashSet(best.explain());
+            int maxIter = Math.max(500, count);
             RelSet rootSet = allSets.get(0);
             Set<Pattern> patternSet = Sets.newHashSet();
-            for (int i = 0; i < 2; ++i) {
+            for (int i = 0; i < 1; ++i) {
                 int times = 0;
                 while (randomRels.size() < count && (times++ < maxIter)) {
                     RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
@@ -305,12 +303,12 @@ public class RandomOrderTest {
                     DedupSourceVisitor dedupVisitor = new DedupSourceVisitor(patternSet);
                     dedupVisitor.go(randomRel);
                     boolean contains = (i == 0) ? dedupVisitor.contains() : false;
+                    String randomDigest = randomRel.explain();
                     if (visitor.isSourceHasFilter()
                             && !contains
-                            && !randomDigests.contains(randomRel.getRelDigest())
-                            && !best.getRelDigest().equals(randomRel.getRelDigest())) {
+                            && !randomDigests.contains(randomDigest)) {
                         randomRels.add(randomRel);
-                        randomDigests.add(randomRel.getRelDigest());
+                        randomDigests.add(randomDigest);
                     }
                 }
             }
@@ -421,10 +419,15 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    if (!sourcePatternSet.contains(pattern.getPattern())) {
-                        sourcePatternSet.add(pattern.getPattern());
+                    List<Integer> typeIds = pattern.getPattern().getVertexSet().iterator().next().getVertexTypeIds();
+                    if (typeIds.size() == 1 && typeIds.get(0) == 4) {
                         contains = false;
                     }
+//                    else
+//                        if (!sourcePatternSet.contains(pattern.getPattern())) {
+//                        sourcePatternSet.add(pattern.getPattern());
+//                        contains = false;
+//                    }
                 }
             }
         }
