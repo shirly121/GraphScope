@@ -19,7 +19,6 @@ package com.alibaba.graphscope.groot.servers.ir;
 import com.alibaba.graphscope.GraphServer;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
 import com.alibaba.graphscope.common.config.*;
-import com.alibaba.graphscope.common.ir.meta.fetcher.DynamicIrMetaFetcher;
 import com.alibaba.graphscope.common.ir.meta.fetcher.IrMetaFetcher;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.gremlin.integration.result.TestGraphFactory;
@@ -58,8 +57,7 @@ public class IrServiceProducer {
         logger.info("IR configs: {}", irConfigs);
         GraphRelOptimizer optimizer = new GraphRelOptimizer(irConfigs);
         IrMetaFetcher irMetaFetcher =
-                new DynamicIrMetaFetcher(
-                        irConfigs,
+                new GrootMetaFetcher(
                         new GrootIrMetaReader(schemaFetcher),
                         optimizer.getGlogueHolder());
         RoleClients<SnapshotUpdateClient> updateCommitter =
