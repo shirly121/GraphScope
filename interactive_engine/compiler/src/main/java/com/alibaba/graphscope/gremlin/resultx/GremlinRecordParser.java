@@ -16,10 +16,7 @@
 
 package com.alibaba.graphscope.gremlin.resultx;
 
-import com.alibaba.graphscope.common.ir.type.ArbitraryArrayType;
-import com.alibaba.graphscope.common.ir.type.ArbitraryMapType;
-import com.alibaba.graphscope.common.ir.type.GraphLabelType;
-import com.alibaba.graphscope.common.ir.type.GraphPathType;
+import com.alibaba.graphscope.common.ir.type.*;
 import com.alibaba.graphscope.common.result.RecordParser;
 import com.alibaba.graphscope.common.result.Utils;
 import com.alibaba.graphscope.gaia.proto.Common;
@@ -45,6 +42,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class GremlinRecordParser implements RecordParser<Object> {
@@ -108,7 +106,7 @@ public class GremlinRecordParser implements RecordParser<Object> {
 
     private Object parseEntry(IrResult.Entry entry, RelDataType type) {
         if (type instanceof GraphPathType) {
-            return parseElement(entry.getElement(), type);
+            return parseElement(entry.getElement(), type, 0);
         }
         switch (type.getSqlTypeName()) {
             case MULTISET:
@@ -127,14 +125,15 @@ public class GremlinRecordParser implements RecordParser<Object> {
                     return parseKeyValues(entry.getMap(), type.getKeyType(), type.getValueType());
                 }
             default:
-                return parseElement(entry.getElement(), type);
+                return parseElement(entry.getElement(), type, 0);
         }
     }
 
     private List<Object> parseCollection(
             IrResult.Collection collection, RelDataType componentType) {
+        AtomicInteger index = new AtomicInteger(0);
         return collection.getCollectionList().stream()
-                .map(k -> parseElement(k, componentType))
+                .map(k -> parseElement(k, componentType, index.getAndIncrement()))
                 .collect(Collectors.toList());
     }
 
@@ -149,7 +148,7 @@ public class GremlinRecordParser implements RecordParser<Object> {
                         + componentTypes.size());
         List<Object> values = Lists.newArrayList();
         for (int i = 0; i < elements.size(); ++i) {
-            values.add(parseElement(elements.get(i), componentTypes.get(i)));
+            values.add(parseElement(elements.get(i), componentTypes.get(i), i));
         }
         return values;
     }
@@ -201,7 +200,7 @@ public class GremlinRecordParser implements RecordParser<Object> {
         }
     }
 
-    private Object parseElement(IrResult.Element element, RelDataType type) {
+    private Object parseElement(IrResult.Element element, RelDataType type, int index) {
         switch (element.getInnerCase()) {
             case VERTEX:
                 return parseVertex(element.getVertex(), type);
@@ -211,7 +210,7 @@ public class GremlinRecordParser implements RecordParser<Object> {
                 return parseGraphPath(element.getGraphPath(), type);
             case OBJECT:
             default:
-                return parseValue(element.getObject(), type);
+                return parseValue(element.getObject(), type, index);
         }
     }
 
@@ -260,8 +259,12 @@ public class GremlinRecordParser implements RecordParser<Object> {
                 .collect(Collectors.toList());
     }
 
-    protected @Nullable Object parseValue(Common.Value value, @Nullable RelDataType dataType) {
-        if (dataType instanceof GraphLabelType) {
+    protected @Nullable Object parseValue(
+            Common.Value value, @Nullable RelDataType dataType, int index) {
+        if (dataType instanceof UnionVELabelTypes) {
+            return parseValue(
+                    value, ((UnionVELabelTypes) dataType).getLabelType((index & 0x1) ^ 0x1), index);
+        } else if (dataType instanceof GraphLabelType) {
             return Utils.parseLabelValue(value, (GraphLabelType) dataType);
         }
         switch (value.getItemCase()) {
@@ -288,8 +291,16 @@ public class GremlinRecordParser implements RecordParser<Object> {
                     return value.getPairArray().getItemList().stream()
                             .collect(
                                     Collectors.toMap(
-                                            k -> parseValue(k.getKey(), dataType.getKeyType()),
-                                            v -> parseValue(v.getVal(), dataType.getValueType())));
+                                            k ->
+                                                    parseValue(
+                                                            k.getKey(),
+                                                            dataType.getKeyType(),
+                                                            index),
+                                            v ->
+                                                    parseValue(
+                                                            v.getVal(),
+                                                            dataType.getValueType(),
+                                                            index)));
                 } else if (dataType instanceof ArbitraryMapType) {
                     Map map = Maps.newLinkedHashMap();
                     Map<RexNode, ArbitraryMapType.KeyValueType> keyValueTypeMap =
@@ -306,12 +317,14 @@ public class GremlinRecordParser implements RecordParser<Object> {
                                                         pair.getKey(),
                                                         keyValueType == null
                                                                 ? null
-                                                                : keyValueType.getKey()),
+                                                                : keyValueType.getKey(),
+                                                        index),
                                                 parseValue(
                                                         pair.getVal(),
                                                         keyValueType == null
                                                                 ? null
-                                                                : keyValueType.getValue()));
+                                                                : keyValueType.getValue(),
+                                                        index));
                                     });
                     return map;
                 }

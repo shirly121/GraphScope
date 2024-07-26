@@ -28,7 +28,9 @@ import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphStdOperatorTable;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
+import com.alibaba.graphscope.common.ir.type.GraphLabelType;
 import com.alibaba.graphscope.common.ir.type.GraphPathType;
+import com.alibaba.graphscope.common.ir.type.UnionVELabelTypes;
 import com.alibaba.graphscope.grammar.GremlinGSBaseVisitor;
 import com.alibaba.graphscope.grammar.GremlinGSParser;
 import com.google.common.base.Preconditions;
@@ -42,10 +44,12 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.util.Pair;
 
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * visit the antlr tree and generate the corresponding {@code RexNode} for path function
@@ -290,18 +294,79 @@ public class PathFunctionVisitor extends GremlinGSBaseVisitor<RexNode> {
                         + getVProjection
                         + "]");
         if (expandProjection instanceof RexCall) {
-            RexCall expandCall = (RexCall) expandProjection;
-            RexCall getVCall = (RexCall) getVProjection;
-            List<RexNode> newOperands = Lists.newArrayList(expandCall.getOperands());
-            newOperands.addAll(getVCall.getOperands());
-            Preconditions.checkArgument(
-                    !newOperands.isEmpty(),
-                    "invalid query given properties, not found in path expand");
-            return builder.call(
-                    expandCall.getOperator(),
-                    newOperands.stream().distinct().collect(Collectors.toList()));
+            switch (expandProjection.getKind()) {
+                case MAP_VALUE_CONSTRUCTOR:
+                    List<KeyValuePair> expandKeyValues =
+                            convert(((RexCall) expandProjection).getOperands());
+                    List<KeyValuePair> getVKeyValues =
+                            convert(((RexCall) getVProjection).getOperands());
+                    Collections.sort(
+                            expandKeyValues, Comparator.comparing(pair -> pair.left.toString()));
+                    Collections.sort(
+                            getVKeyValues, Comparator.comparing(pair -> pair.left.toString()));
+                    List<RexNode> unionOperands = Lists.newArrayList();
+                    for (int i = 0, j = 0;
+                            i < expandKeyValues.size() || j < getVKeyValues.size(); ) {
+                        int compareTo;
+                        if (j == getVKeyValues.size()) {
+                            compareTo = -1;
+                        } else if (i == expandKeyValues.size()) {
+                            compareTo = 1;
+                        } else {
+                            String expandKey = expandKeyValues.get(i).getKey().toString();
+                            String getVKey = getVKeyValues.get(j).getKey().toString();
+                            compareTo = expandKey.compareTo(getVKey);
+                        }
+                        if (compareTo == 0) {
+                            addKeyValuePair(
+                                    unionOperands,
+                                    new KeyValuePair(
+                                            expandKeyValues.get(i).getKey(),
+                                            unionProjection(
+                                                    expandKeyValues.get(i).getValue(),
+                                                    getVKeyValues.get(j).getValue(),
+                                                    builder)));
+                            ++i;
+                            ++j;
+                        } else if (compareTo < 0) {
+                            addKeyValuePair(unionOperands, expandKeyValues.get(i++));
+                        } else {
+                            addKeyValuePair(unionOperands, getVKeyValues.get(j++));
+                        }
+                    }
+                    Preconditions.checkArgument(
+                            !unionOperands.isEmpty(),
+                            "invalid query given properties, not found in path expand");
+                    return builder.call(((RexCall) expandProjection).getOperator(), unionOperands);
+                default:
+            }
         }
-        return expandProjection;
+        return unionTypes(expandProjection, getVProjection);
+    }
+
+    private RexNode unionTypes(RexNode rex1, RexNode rex2) {
+        if (rex1.getType() instanceof GraphLabelType && rex2.getType() instanceof GraphLabelType) {
+            GraphLabelType unionType =
+                    new UnionVELabelTypes(
+                            (GraphLabelType) rex1.getType(), (GraphLabelType) rex2.getType());
+            return resetType(rex1, unionType);
+        }
+        return rex1;
+    }
+
+    private RexNode resetType(RexNode rex, RelDataType type) {
+        if (rex instanceof RexGraphVariable) {
+            RexGraphVariable var = (RexGraphVariable) rex;
+            return var.getProperty() == null
+                    ? RexGraphVariable.of(var.getAliasId(), var.getIndex(), var.getName(), type)
+                    : RexGraphVariable.of(
+                            var.getAliasId(),
+                            var.getProperty(),
+                            var.getIndex(),
+                            var.getName(),
+                            type);
+        }
+        return rex;
     }
 
     private GraphOpt.PathExpandFunction getFuncOpt() {
@@ -313,5 +378,24 @@ public class PathFunctionVisitor extends GremlinGSBaseVisitor<RexNode> {
             default:
                 return GraphOpt.PathExpandFunction.VERTEX_EDGE;
         }
+    }
+
+    private static class KeyValuePair extends Pair<RexNode, RexNode> {
+        public KeyValuePair(RexNode left, RexNode right) {
+            super(left, right);
+        }
+    }
+
+    public List<KeyValuePair> convert(List<RexNode> operands) {
+        List<KeyValuePair> keyValuePairs = Lists.newArrayList();
+        for (int i = 0; i < operands.size(); i += 2) {
+            keyValuePairs.add(new KeyValuePair(operands.get(i), operands.get(i + 1)));
+        }
+        return keyValuePairs;
+    }
+
+    public void addKeyValuePair(List<RexNode> operands, KeyValuePair keyValuePair) {
+        operands.add(keyValuePair.left);
+        operands.add(keyValuePair.right);
     }
 }
