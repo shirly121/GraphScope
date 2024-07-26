@@ -106,6 +106,7 @@ public abstract class AbstractResultProcessor extends StandardOpProcessor
                 responseProcessor.process(responseStreamIterator.next());
             }
             responseProcessor.finish();
+            statusCallback.getQueryLogger().info("[compile]: process results success");
         } catch (Throwable t) {
             Status status;
             // if the exception is caused by InterruptedException, it means a timeout exception has

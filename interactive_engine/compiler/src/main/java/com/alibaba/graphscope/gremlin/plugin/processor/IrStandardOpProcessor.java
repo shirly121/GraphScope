@@ -368,6 +368,7 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                             if (o != null && o instanceof Traversal) {
                                 applyStrategies((Traversal) o);
                             }
+                            statusCallback.getQueryLogger().info("[compile]: traversal compiled");
                             return o;
                         })
                 .withResult(
@@ -411,8 +412,13 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
         // add sink operator
         InterOpCollection.process(opCollection);
 
+        queryLogger.info("[compile]: logical IR compiled");
+
         BigInteger jobId = queryLogger.getQueryId();
         IrPlan irPlan = new IrPlan(irMeta, opCollection);
+
+        queryLogger.info("[compile]: physical IR compiled");
+
         // print script and jobName with ir plan
         queryLogger.info("Submitted query");
         // Too verbose, since all identical queries produce identical plans, it's no need to print

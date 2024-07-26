@@ -20,6 +20,7 @@ package com.alibaba.graphscope.common.ir.meta.fetcher;
 
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.GraphConfig;
+import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.meta.IrMetaStats;
 import com.alibaba.graphscope.common.ir.meta.IrMetaTracker;
@@ -44,20 +45,27 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
     private volatile IrMetaStats currentState;
     // To manage the state changes of statistics resulting from different update operations.
     private volatile StatsState statsState;
+    private final boolean fetchStats;
 
     public DynamicIrMetaFetcher(Configs configs, IrMetaReader dataReader, IrMetaTracker tracker) {
         super(dataReader, tracker);
-        this.scheduler = new ScheduledThreadPoolExecutor(2);
+        this.scheduler = new ScheduledThreadPoolExecutor(1);
         this.scheduler.scheduleAtFixedRate(
                 () -> syncMeta(),
                 0,
                 GraphConfig.GRAPH_META_SCHEMA_FETCH_INTERVAL_MS.get(configs),
                 TimeUnit.MILLISECONDS);
-        this.scheduler.scheduleAtFixedRate(
-                () -> syncStats(),
-                0,
-                GraphConfig.GRAPH_META_STATISTICS_FETCH_INTERVAL_MS.get(configs),
-                TimeUnit.MILLISECONDS);
+        this.fetchStats =
+                PlannerConfig.GRAPH_PLANNER_IS_ON.get(configs)
+                        && PlannerConfig.GRAPH_PLANNER_OPT.get(configs).equals("CBO");
+        if (this.fetchStats) {
+            logger.info("start to schedule statistics fetch task");
+            this.scheduler.scheduleAtFixedRate(
+                    () -> syncStats(),
+                    0,
+                    GraphConfig.GRAPH_META_STATISTICS_FETCH_INTERVAL_MS.get(configs),
+                    TimeUnit.MILLISECONDS);
+        }
     }
 
     @Override
@@ -84,7 +92,8 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                             meta.getSchema(),
                             meta.getStoredProcedures(),
                             curStats);
-            if (this.statsState != StatsState.SYNCED) {
+            if (this.fetchStats && this.statsState != StatsState.SYNCED) {
+                logger.info("start to schedule statistics fetch task");
                 syncStats();
             }
         } catch (Exception e) {
