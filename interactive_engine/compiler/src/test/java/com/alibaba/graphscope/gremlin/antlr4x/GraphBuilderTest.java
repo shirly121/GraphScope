@@ -1776,4 +1776,21 @@ public class GraphBuilderTest {
                     + " person]}], alias=[_], opt=[VERTEX])",
                 rel.explain().trim());
     }
+
+    @Test
+    public void g_V_match_a_out_b_elementMap() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode rel =
+                eval(
+                        "g.V().match(as('a').out('3..4', 'knows').with('RESULT_OPT',"
+                                + " 'ALL_V_E').as('b').endV().as('c')).select('b').elementMap()",
+                        builder);
+        RelNode after = optimizer.optimize(rel, new GraphIOProcessor(builder, irMeta));
+        Assert.assertEquals(
+                "RecordType(({_UTF-8'name'=<CHAR(4), CHAR(1)>, _UTF-8'id'=<CHAR(2), BIGINT>,"
+                    + " _UTF-8'age'=<CHAR(3), INTEGER>, _UTF-8'~label'=<CHAR(6),"
+                    + " UNION_V_E([[EdgeLabel(knows, person, person)], [VertexLabel(person)]])>,"
+                    + " _UTF-8'~id'=<CHAR(3), BIGINT>}) MAP ARRAY $f0)",
+                after.getRowType().toString());
+    }
 }
