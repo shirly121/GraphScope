@@ -298,7 +298,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                 List<GraphJoinDecomposition> nextCompositions = getDecompositions(queues.remove(0));
                 queues.addAll(nextCompositions);
             }
-            addPxdInnerVDecompositions();
+            // addPxdInnerVDecompositions();
         }
 
         private List<GraphJoinDecomposition> initDecompositions() {
