@@ -294,12 +294,16 @@ public class RandomOrderTest {
                 case "BI_6":
                     allRels.addAll(randomPickN(1, null, new Neo4j_BI_6()));
                     break;
-                case "BI_16":
-                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_16()));
+                case "BI_9":
+                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_9()));
+                    allRels.addAll(randomPickN(10, null, new Neo4j_BI_9_Join()));
                     break;
+//                case "BI_16":
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_16()));
+//                    break;
             }
-            // add random k
-            allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+// add random k
+//            allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
             allRels =
                     allRels.stream()
                             .map(k -> ioProcessor.processOutput(k))
@@ -598,8 +602,10 @@ public class RandomOrderTest {
         }
     }
 
-    private class Neo4j_BI_16 extends OrderRule {
-        private boolean messageAsSource = false;
+    private class Neo4j_BI_9_Join extends OrderRule {
+        private int joinCount = 0;
+        private boolean postAsSource = false;
+        private boolean msgAsSource = false;
 
         @Override
         public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
@@ -611,20 +617,56 @@ public class RandomOrderTest {
                             pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
                     if (ids.size() == 2 && ids.contains(2) && ids.contains(3)) {
-                        messageAsSource = true;
+                        msgAsSource = true;
+                    } else if (ids.size() == 1 && ids.get(0) == 3) {
+                        postAsSource = true;
                     }
                 }
+            } else if (node instanceof GraphExtendIntersect) {
+                ++joinCount;
             }
         }
 
         @Override
         public boolean matched() {
-            return messageAsSource;
+            return joinCount == 1 && postAsSource && msgAsSource;
         }
 
         @Override
         public void reset() {
-            messageAsSource = false;
+            joinCount = 0;
+            postAsSource = false;
+            msgAsSource = false;
         }
     }
+
+//    private class Neo4j_BI_16 extends OrderRule {
+//        private boolean messageAsSource = false;
+//
+//        @Override
+//        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+//            super.visit(node, ordinal, parent);
+//            if (node instanceof GraphPattern) {
+//                GraphPattern pattern = (GraphPattern) node;
+//                if (pattern.getPattern().getVertexNumber() == 1) {
+//                    PatternVertex vertex =
+//                            pattern.getPattern().getVertexSet().iterator().next();
+//                    List<Integer> ids = vertex.getVertexTypeIds();
+//                    if (ids.size() == 2 && ids.contains(2) && ids.contains(3)) {
+//                        messageAsSource = true;
+//                    }
+//                }
+//            }
+//        }
+//
+//        @Override
+//        public boolean matched() {
+//            return messageAsSource;
+//        }
+//
+//        @Override
+//        public void reset() {
+//            messageAsSource = false;
+//        }
+//    }
 }

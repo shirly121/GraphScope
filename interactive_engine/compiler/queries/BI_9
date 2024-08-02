@@ -1,0 +1,6 @@
+MATCH
+	(person:PERSON)<-[:HASCREATOR]-(post:POST)<-[:REPLYOF*0..6]-(msg)
+WHERE 
+	post.creationDate >= 20120828000000000 AND post.creationDate <= 20121123000000000 AND
+	msg.creationDate >= 20120828000000000 AND msg.creationDate <= 20121123000000000
+RETURN count(person); 
