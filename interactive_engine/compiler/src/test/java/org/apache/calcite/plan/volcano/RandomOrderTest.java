@@ -344,8 +344,7 @@ public class RandomOrderTest {
                         case "BI_3":
                             allRels.addAll(randomPickN(1, null, new Best_BI_3()));
                             allRels.addAll(randomPickN(1, null, new Neo4j_BI_3()));
-                            allRels.addAll(randomPickN(1, null, new Random_1_BI_3()));
-                            allRels.addAll(randomPickN(1, null, new Random_2_BI_3()));
+                            allRels.addAll(randomPickN(2, null, new Random_1_BI_3()));
                             break;
                         case "BI_5":
                             allRels.add(best);
@@ -758,7 +757,7 @@ public class RandomOrderTest {
                                             join.getProbePattern()
                                                     .getVertexByOrder(k.getLeftOrderId());
                                     List<Integer> typeIds = jointVertex.getVertexTypeIds();
-                                    return typeIds.size() == 1 && typeIds.contains(4);
+                                    return typeIds.contains(3);
                                 })) {
                     joinAtPost = true;
                 }
@@ -779,58 +778,58 @@ public class RandomOrderTest {
         }
     }
 
-    private class Random_2_BI_3 extends OrderRule {
-        private boolean countryAsSource = false;
-        private boolean tagClassAsSource = false;
-        private int joinCount = 0;
-        private boolean joinAtMsg = false;
-
-        @Override
-        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-            super.visit(node, ordinal, parent);
-            if (node instanceof GraphPattern) {
-                GraphPattern pattern = (GraphPattern) node;
-                if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
-                    List<Integer> ids = vertex.getVertexTypeIds();
-                    if (ids.size() == 1 && ids.get(0) == 6) {
-                        tagClassAsSource = true;
-                    } else if (ids.size() == 1 && ids.get(0) == 8) {
-                        countryAsSource = true;
-                    }
-                }
-            } else if (node instanceof GraphJoinDecomposition) {
-                ++joinCount;
-                GraphJoinDecomposition join = (GraphJoinDecomposition) node;
-                if (join.getJoinVertexPairs().stream()
-                        .allMatch(
-                                k -> {
-                                    PatternVertex jointVertex =
-                                            join.getProbePattern()
-                                                    .getVertexByOrder(k.getLeftOrderId());
-                                    List<Integer> typeIds = jointVertex.getVertexTypeIds();
-                                    return typeIds.size() == 2
-                                            && typeIds.contains(2)
-                                            && typeIds.contains(3);
-                                })) {
-                    joinAtMsg = true;
-                }
-            }
-        }
-
-        @Override
-        public boolean matched() {
-            return countryAsSource && tagClassAsSource && joinCount == 1 && joinAtMsg;
-        }
-
-        @Override
-        public void reset() {
-            countryAsSource = false;
-            tagClassAsSource = false;
-            joinCount = 0;
-            joinAtMsg = false;
-        }
-    }
+//    private class Random_2_BI_3 extends OrderRule {
+//        private boolean countryAsSource = false;
+//        private boolean tagClassAsSource = false;
+//        private int joinCount = 0;
+//        private boolean joinAtMsg = false;
+//
+//        @Override
+//        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+//            super.visit(node, ordinal, parent);
+//            if (node instanceof GraphPattern) {
+//                GraphPattern pattern = (GraphPattern) node;
+//                if (pattern.getPattern().getVertexNumber() == 1) {
+//                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+//                    List<Integer> ids = vertex.getVertexTypeIds();
+//                    if (ids.size() == 1 && ids.get(0) == 6) {
+//                        tagClassAsSource = true;
+//                    } else if (ids.size() == 1 && ids.get(0) == 8) {
+//                        countryAsSource = true;
+//                    }
+//                }
+//            } else if (node instanceof GraphJoinDecomposition) {
+//                ++joinCount;
+//                GraphJoinDecomposition join = (GraphJoinDecomposition) node;
+//                if (join.getJoinVertexPairs().stream()
+//                        .allMatch(
+//                                k -> {
+//                                    PatternVertex jointVertex =
+//                                            join.getProbePattern()
+//                                                    .getVertexByOrder(k.getLeftOrderId());
+//                                    List<Integer> typeIds = jointVertex.getVertexTypeIds();
+//                                    return typeIds.size() == 2
+//                                            && typeIds.contains(2)
+//                                            && typeIds.contains(3);
+//                                })) {
+//                    joinAtMsg = true;
+//                }
+//            }
+//        }
+//
+//        @Override
+//        public boolean matched() {
+//            return countryAsSource && tagClassAsSource && joinCount == 1 && joinAtMsg;
+//        }
+//
+//        @Override
+//        public void reset() {
+//            countryAsSource = false;
+//            tagClassAsSource = false;
+//            joinCount = 0;
+//            joinAtMsg = false;
+//        }
+//    }
 
     // order is Message -> HasTag -> hasCreator -> replyof -> likes
     private class Random_1_BI_5 extends OrderRule {
