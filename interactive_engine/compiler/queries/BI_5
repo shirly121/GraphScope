@@ -1,0 +1,4 @@
+MATCH (tag:TAG {name: $tag})<-[:HASTAG]-(message:POST)-[:HASCREATOR]->(person:PERSON), 
+      (message)<-[likes:LIKES]-(:PERSON), 
+      (message)<-[:REPLYOF]-(reply:COMMENT)
+Return count(tag);

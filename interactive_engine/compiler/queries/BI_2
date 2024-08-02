@@ -1,0 +1,4 @@
+MATCH (tag:TAG)-[:HASTYPE]->(:TAGCLASS {name: $tagClass}), 
+      (tag)<-[:HASTAG]-(message:POST|COMMENT)
+WHERE message.creationDate < $date3
+Return count(tag);

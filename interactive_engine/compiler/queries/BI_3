@@ -1,0 +1,5 @@
+MATCH
+  (country:COUNTRY {name: "China"})<-[:ISPARTOF]-()<-[:ISLOCATEDIN]-
+  (person:PERSON)<-[:HASMODERATOR]-(forum:FORUM)-[:CONTAINEROF]->
+  (post:POST)<-[:REPLYOF*0..6]-(message)-[:HASTAG]->(:TAG)-[:HASTYPE]->(:TAGCLASS {name: "Song"})
+RETURN count(country);

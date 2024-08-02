@@ -308,7 +308,7 @@
             "name": "name"
           },
           "data_type": 4,
-          "is_primary_key": false
+          "is_primary_key": true
         },
         {
           "key": {
@@ -508,7 +508,7 @@
             "name": "name"
           },
           "data_type": 4,
-          "is_primary_key": false
+          "is_primary_key": true
         },
         {
           "key": {
