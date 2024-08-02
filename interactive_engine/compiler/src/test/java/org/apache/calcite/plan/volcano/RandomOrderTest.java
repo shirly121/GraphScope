@@ -307,8 +307,23 @@ public class RandomOrderTest {
                     // add best
                     allRels.add(best);
                 case "random":
-                    // add random k
-                    allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+                    String filter = System.getProperty("filter", "default");
+                    if (filter.equals("random")) {
+                        // add random k
+                        allRels.addAll(randomPickN(pickCount, best, new OrderRule() {
+                            @Override
+                            public boolean matched() {
+                                return true;
+                            }
+
+                            @Override
+                            public void reset() {
+                            }
+                        }));
+                    } else {
+                        // add random k
+                        allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+                    }
                     break;
             }
             allRels =
