@@ -141,11 +141,10 @@ public class RandomOrderTest {
                 logFile,
                 String.format(
                         "********************************************************************************************\n"
-                            + "%s: %s\n",
+                                + "%s: %s\n",
                         queryName, query),
                 StandardCharsets.UTF_8,
                 true);
-        int timeout = FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs);
         GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
         RelNode node = com.alibaba.graphscope.cypher.antlr4.Utils.eval(query, builder).build();
         // apply filter push down optimize
@@ -157,11 +156,12 @@ public class RandomOrderTest {
         int workers = Integer.valueOf(System.getProperty("workers", "2"));
         if (results instanceof RelNodeList) {
             List<RelNode> rels = ((RelNodeList) results).rels;
-            int i = 0;
-            for (RelNode rel : rels) {
-                try {
-                    for (int num = 2; num <= workers; num *= 2) {
-                        configs.set(PegasusConfig.PEGASUS_WORKER_NUM.getKey(), String.valueOf(num));
+            for (int num = 2; num <= workers; num *= 2) {
+                configs.set(PegasusConfig.PEGASUS_WORKER_NUM.getKey(), String.valueOf(num));
+                int timeout = FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs);
+                int i = 0;
+                for (RelNode rel : rels) {
+                    try {
                         optimizer.getPhysicalPlanner().setRoot(rel);
                         LogicalPlan logicalPlan =
                                 new LogicalPlan(optimizer.getPhysicalPlanner().findBestExp());
@@ -220,7 +220,7 @@ public class RandomOrderTest {
                         FileUtils.writeStringToFile(
                                 logFile,
                                 String.format(
-                                        "workers [%d], execution time %d ms, results: %s\n",
+                                        "workers [%d], execution time %d ms, results: %s\n\n",
                                         num,
                                         elapsedTime,
                                         resultBuilder),
@@ -230,13 +230,13 @@ public class RandomOrderTest {
                         if (mode.equals("best")) {
                             timeout = Math.min(timeout, (int) (elapsedTime * 2));
                         }
+                    } catch (Exception e) {
+                        FileUtils.writeStringToFile(
+                                logFile,
+                                String.format("workers [%d], error: %s\n\n", num, e.getMessage()),
+                                StandardCharsets.UTF_8,
+                                true);
                     }
-                } catch (Exception e) {
-                    FileUtils.writeStringToFile(
-                            logFile,
-                            String.format("execution exception %s\n", e.getMessage()),
-                            StandardCharsets.UTF_8,
-                            true);
                 }
             }
         }
@@ -327,7 +327,8 @@ public class RandomOrderTest {
                                             }
 
                                             @Override
-                                            public void reset() {}
+                                            public void reset() {
+                                            }
                                         }));
                     } else {
                         // add random k
@@ -372,7 +373,7 @@ public class RandomOrderTest {
             for (OrderRule r : rule) {
                 for (RelNode rel : plans) {
                     r.go(rel);
-                    if (r.matched())  {
+                    if (r.matched()) {
                         expected.add(rel);
                         break;
                     }
@@ -446,19 +447,19 @@ public class RandomOrderTest {
                 List<RelNode> newRels =
                         ((RelNodeList) child2)
                                 .rels.stream()
-                                        .map(
-                                                k -> {
-                                                    if (k == child) {
-                                                        return parent;
-                                                    } else {
-                                                        List<RelNode> newInputs =
-                                                                new ArrayList(parent.getInputs());
-                                                        newInputs.set(i, k);
-                                                        return parent.copy(
-                                                                parent.getTraitSet(), newInputs);
-                                                    }
-                                                })
-                                        .collect(Collectors.toList());
+                                .map(
+                                        k -> {
+                                            if (k == child) {
+                                                return parent;
+                                            } else {
+                                                List<RelNode> newInputs =
+                                                        new ArrayList(parent.getInputs());
+                                                newInputs.set(i, k);
+                                                return parent.copy(
+                                                        parent.getTraitSet(), newInputs);
+                                            }
+                                        })
+                                .collect(Collectors.toList());
                 var6 = new RelNodeList(parent.getCluster(), parent.getTraitSet(), newRels);
             } else {
                 if (child2 == child) {
@@ -591,7 +592,7 @@ public class RandomOrderTest {
                     if (ids.size() == 1
                             && ids.get(0) == 8
                             && Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d)
-                                    < 0) {
+                            < 0) {
                         countryAsSource = true;
                     }
                 }
