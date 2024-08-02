@@ -221,7 +221,10 @@ public class RandomOrderTest {
                                             0, Math.min(10, resultBuilder.length()))),
                             StandardCharsets.UTF_8,
                             true);
-                    timeout = Math.min(timeout, (int) (elapsedTime * 2));
+                    String mode = System.getProperty("mode", "best");
+                    if (mode.equals("best")) {
+                        timeout = Math.min(timeout, (int) (elapsedTime * 2));
+                    }
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
                             logFile,
@@ -278,31 +281,36 @@ public class RandomOrderTest {
             matchPlanner.setRoot(ioProcessor.processInput(match));
             RelNode best = matchPlanner.findBestExp();
             List<RelNode> allRels = Lists.newArrayList();
-            // add best
-            allRels.add(best);
-//            // add neo4j BI rules
-//            switch (queryName) {
-//                case "BI_2":
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
-//                    break;
-//                case "BI_3":
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_3()));
-//                    allRels.addAll(randomPickN(2, null, new BI_3_SourceTagClass()));
-//                    break;
-//                case "BI_5":
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_5()));
-//                    break;
-//                case "BI_6":
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_6()));
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
-//                    break;
-//                case "BI_9":
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_9()));
-//                    allRels.addAll(randomPickN(10, null, new BI_9_Join()));
-//                    break;
-//            }
-            // add random k
-            allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+            String mode = System.getProperty("mode", "best");
+            switch (mode) {
+                case "neo4j":
+                    // add neo4j BI rules
+                    switch (queryName) {
+                        case "BI_2":
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
+                            break;
+                        case "BI_3":
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_3()));
+                            break;
+                        case "BI_5":
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_5()));
+                            break;
+                        case "BI_6":
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_6()));
+                            break;
+                        case "BI_9":
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_9()));
+                            break;
+                    }
+                    break;
+                case "best":
+                    // add best
+                    allRels.add(best);
+                case "random":
+                    // add random k
+                    allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+                    break;
+            }
             allRels =
                     allRels.stream()
                             .map(k -> ioProcessor.processOutput(k))
@@ -610,7 +618,7 @@ public class RandomOrderTest {
     }
 
     private class Neo4j_BI_9 extends OrderRule {
-        private boolean postAsSource = false;
+        private boolean msgAsSource = false;
 
         @Override
         public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
@@ -621,8 +629,8 @@ public class RandomOrderTest {
                     PatternVertex vertex =
                             pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
-                    if (ids.size() == 1 && ids.get(0) == 3) {
-                        postAsSource = true;
+                    if (ids.size() == 2 && ids.contains(3) && ids.contains(2)) {
+                        msgAsSource = true;
                     }
                 }
             }
@@ -630,45 +638,12 @@ public class RandomOrderTest {
 
         @Override
         public boolean matched() {
-            return postAsSource;
+            return msgAsSource;
         }
 
         @Override
         public void reset() {
-            postAsSource = false;
-        }
-    }
-
-    private class BI_9_Join extends OrderRule {
-        private int joinCount = 0;
-        private boolean sourceHasFilter = true;
-
-        @Override
-        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-            super.visit(node, ordinal, parent);
-            if (node instanceof GraphPattern) {
-                GraphPattern pattern = (GraphPattern) node;
-                if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
-                    if (Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d) == 0) {
-                        sourceHasFilter = false;
-                    }
-                }
-            } else if (node instanceof GraphJoinDecomposition) {
-                ++joinCount;
-            }
-        }
-
-        @Override
-        public boolean matched() {
-            return joinCount == 1 && sourceHasFilter;
-        }
-
-        @Override
-        public void reset() {
-            joinCount = 0;
-            sourceHasFilter = true;
+            msgAsSource = false;
         }
     }
 }
