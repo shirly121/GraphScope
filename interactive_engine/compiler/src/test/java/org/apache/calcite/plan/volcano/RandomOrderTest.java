@@ -24,6 +24,7 @@ import com.alibaba.graphscope.common.client.type.ExecutionRequest;
 import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.FrontendConfig;
+import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.ir.Utils;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
@@ -50,6 +51,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
+
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelTraitSet;
@@ -115,7 +117,8 @@ public class RandomOrderTest {
                                             ioProcessor,
                                             (VolcanoPlanner) optimizer.getMatchPlanner(),
                                             random,
-                                            limit, file.getName());
+                                            limit,
+                                            file.getName());
                             return pickOptimizer;
                         }
                     });
@@ -152,78 +155,82 @@ public class RandomOrderTest {
         // apply CBO optimize
         GraphIOProcessor ioProcessor = new GraphIOProcessor(builder, irMeta);
         RelNode results = node.accept(visitorFactory.apply(ioProcessor));
+        int workers = Integer.valueOf(System.getProperty("workers", "2"));
         if (results instanceof RelNodeList) {
             List<RelNode> rels = ((RelNodeList) results).rels;
             int i = 0;
             for (RelNode rel : rels) {
                 try {
-                    optimizer.getPhysicalPlanner().setRoot(rel);
-                    LogicalPlan logicalPlan =
-                            new LogicalPlan(optimizer.getPhysicalPlanner().findBestExp());
-                    String logicalExplain =
-                            com.alibaba.graphscope.common.ir.tools.Utils.toString(
-                                    logicalPlan.getRegularQuery());
-                    FileUtils.writeStringToFile(
-                            logFile,
-                            String.format("logical plan %d: %s\n", i++, logicalExplain),
-                            StandardCharsets.UTF_8,
-                            true);
-                    PhysicalPlan physicalPlan =
-                            new GraphRelProtoPhysicalBuilder(configs, irMeta, logicalPlan).build();
-                    int queryId = UUID.randomUUID().hashCode();
-                    ExecutionRequest request =
-                            new ExecutionRequest(
-                                    BigInteger.valueOf(queryId),
-                                    "ir_plan_" + queryId,
-                                    logicalPlan,
-                                    physicalPlan);
-                    long startTime = System.currentTimeMillis();
-                    StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
-                    client.submit(
-                            request,
-                            new ExecutionResponseListener() {
-                                @Override
-                                public void onNext(IrResult.Record record) {
-                                    try {
-                                        resultIterator.putData(record);
-                                    } catch (Exception e) {
-                                        throw new RuntimeException(e);
+                    for (int num = 2; num <= workers; num *= 2) {
+                        configs.set(PegasusConfig.PEGASUS_WORKER_NUM.getKey(), String.valueOf(num));
+                        optimizer.getPhysicalPlanner().setRoot(rel);
+                        LogicalPlan logicalPlan =
+                                new LogicalPlan(optimizer.getPhysicalPlanner().findBestExp());
+                        String logicalExplain =
+                                com.alibaba.graphscope.common.ir.tools.Utils.toString(
+                                        logicalPlan.getRegularQuery());
+                        FileUtils.writeStringToFile(
+                                logFile,
+                                String.format("logical plan %d: %s\n", i++, logicalExplain),
+                                StandardCharsets.UTF_8,
+                                true);
+                        PhysicalPlan physicalPlan =
+                                new GraphRelProtoPhysicalBuilder(configs, irMeta, logicalPlan).build();
+                        int queryId = UUID.randomUUID().hashCode();
+                        ExecutionRequest request =
+                                new ExecutionRequest(
+                                        BigInteger.valueOf(queryId),
+                                        "ir_plan_" + queryId,
+                                        logicalPlan,
+                                        physicalPlan);
+                        long startTime = System.currentTimeMillis();
+                        StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+                        client.submit(
+                                request,
+                                new ExecutionResponseListener() {
+                                    @Override
+                                    public void onNext(IrResult.Record record) {
+                                        try {
+                                            resultIterator.putData(record);
+                                        } catch (Exception e) {
+                                            throw new RuntimeException(e);
+                                        }
                                     }
-                                }
 
-                                @Override
-                                public void onCompleted() {
-                                    try {
-                                        resultIterator.finish();
-                                    } catch (Exception e) {
-                                        throw new RuntimeException(e);
+                                    @Override
+                                    public void onCompleted() {
+                                        try {
+                                            resultIterator.finish();
+                                        } catch (Exception e) {
+                                            throw new RuntimeException(e);
+                                        }
                                     }
-                                }
 
-                                @Override
-                                public void onError(Throwable t) {
-                                    resultIterator.fail(t);
-                                }
-                            },
-                            new QueryTimeoutConfig(timeout));
-                    StringBuilder resultBuilder = new StringBuilder();
-                    while (resultIterator.hasNext()) {
-                        resultBuilder.append(resultIterator.next());
-                        // resultIterator.next();
-                    }
-                    long elapsedTime = System.currentTimeMillis() - startTime;
-                    FileUtils.writeStringToFile(
-                            logFile,
-                            String.format(
-                                    "execution time %d ms, results: %s\n",
-                                    elapsedTime,
-                                    resultBuilder.substring(
-                                            0, Math.min(10, resultBuilder.length()))),
-                            StandardCharsets.UTF_8,
-                            true);
-                    String mode = System.getProperty("mode", "best");
-                    if (mode.equals("best")) {
-                        timeout = Math.min(timeout, (int) (elapsedTime * 2));
+                                    @Override
+                                    public void onError(Throwable t) {
+                                        resultIterator.fail(t);
+                                    }
+                                },
+                                new QueryTimeoutConfig(timeout));
+                        StringBuilder resultBuilder = new StringBuilder();
+                        while (resultIterator.hasNext()) {
+                            resultBuilder.append(resultIterator.next());
+                            // resultIterator.next();
+                        }
+                        long elapsedTime = System.currentTimeMillis() - startTime;
+                        FileUtils.writeStringToFile(
+                                logFile,
+                                String.format(
+                                        "workers [%d], execution time %d ms, results: %s\n",
+                                        num,
+                                        elapsedTime,
+                                        resultBuilder),
+                                StandardCharsets.UTF_8,
+                                true);
+                        String mode = System.getProperty("mode", "best");
+                        if (mode.equals("best")) {
+                            timeout = Math.min(timeout, (int) (elapsedTime * 2));
+                        }
                     }
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
@@ -310,21 +317,51 @@ public class RandomOrderTest {
                     String filter = System.getProperty("filter", "default");
                     if (filter.equals("random")) {
                         // add random k
-                        allRels.addAll(randomPickN(pickCount, best, new OrderRule() {
-                            @Override
-                            public boolean matched() {
-                                return true;
-                            }
+                        allRels.addAll(
+                                randomPickN(
+                                        pickCount,
+                                        best,
+                                        new OrderRule() {
+                                            @Override
+                                            public boolean matched() {
+                                                return true;
+                                            }
 
-                            @Override
-                            public void reset() {
-                            }
-                        }));
+                                            @Override
+                                            public void reset() {}
+                                        }));
                     } else {
                         // add random k
                         allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
                     }
                     break;
+                case "scale":
+                    switch (queryName) {
+                        case "BI_2":
+                            allRels.add(best);
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
+                            break;
+                        case "BI_3":
+                            allRels.addAll(randomPickN(1, null, new Best_BI_3()));
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_3()));
+                            allRels.addAll(randomPickN(1, null, new Random_1_BI_3()));
+                            allRels.addAll(randomPickN(1, null, new Random_2_BI_3()));
+                            break;
+                        case "BI_5":
+                            allRels.add(best);
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_5()));
+                            allRels.addAll(randomPickN(1, null, new Random_1_BI_5()));
+                            allRels.addAll(randomPickN(1, null, new Random_2_BI_5()));
+                            break;
+                        case "BI_6":
+                            allRels.addAll(randomPickN(1, null, new Best_BI_6()));
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_6()));
+                            break;
+                        case "BI_9":
+                            allRels.add(best);
+                            allRels.addAll(randomPickN(1, null, new Neo4j_BI_9()));
+                            break;
+                    }
             }
             allRels =
                     allRels.stream()
@@ -349,8 +386,7 @@ public class RandomOrderTest {
                     RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);
                     rule.go(randomRel);
                     String randomDigest = randomRel.explain();
-                    if (rule.matched()
-                            && !randomDigests.contains(randomDigest)) {
+                    if (rule.matched() && !randomDigests.contains(randomDigest)) {
                         randomRels.add(randomRel);
                         randomDigests.add(randomDigest);
                     }
@@ -472,8 +508,7 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
                     if (ids.size() == 1 && ids.get(0) == 6) {
                         tagClassAsSource = true;
@@ -506,8 +541,7 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
                     if (ids.size() == 1 && ids.get(0) == 7) {
                         tagAsSource = true;
@@ -540,10 +574,12 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
-                    if (ids.size() == 1 && ids.get(0) == 8 && Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d) < 0) {
+                    if (ids.size() == 1
+                            && ids.get(0) == 8
+                            && Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d)
+                                    < 0) {
                         countryAsSource = true;
                     }
                 }
@@ -573,8 +609,7 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
                     if (ids.size() == 1 && ids.get(0) == 3) {
                         postAsSource = true;
@@ -605,8 +640,7 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
                     if (ids.size() == 1 && ids.get(0) == 1) {
                         personAsSource = true;
@@ -641,8 +675,7 @@ public class RandomOrderTest {
             if (node instanceof GraphPattern) {
                 GraphPattern pattern = (GraphPattern) node;
                 if (pattern.getPattern().getVertexNumber() == 1) {
-                    PatternVertex vertex =
-                            pattern.getPattern().getVertexSet().iterator().next();
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
                     List<Integer> ids = vertex.getVertexTypeIds();
                     if (ids.size() == 2 && ids.contains(3) && ids.contains(2)) {
                         msgAsSource = true;
@@ -659,6 +692,278 @@ public class RandomOrderTest {
         @Override
         public void reset() {
             msgAsSource = false;
+        }
+    }
+
+    private class Best_BI_3 extends OrderRule {
+        private boolean tagClassAsSource = false;
+        private boolean hasJoin = false;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 6) {
+                        tagClassAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
+            }
+        }
+
+        @Override
+        public boolean matched() {
+            return tagClassAsSource && !hasJoin;
+        }
+
+        @Override
+        public void reset() {
+            tagClassAsSource = false;
+            hasJoin = false;
+        }
+    }
+
+    private class Random_1_BI_3 extends OrderRule {
+        private boolean countryAsSource = false;
+        private boolean tagClassAsSource = false;
+        private int joinCount = 0;
+        private boolean joinAtPost = false;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 6) {
+                        tagClassAsSource = true;
+                    } else if (ids.size() == 1 && ids.get(0) == 8) {
+                        countryAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                ++joinCount;
+                GraphJoinDecomposition join = (GraphJoinDecomposition) node;
+                if (join.getJoinVertexPairs().stream()
+                        .allMatch(
+                                k -> {
+                                    PatternVertex jointVertex =
+                                            join.getProbePattern()
+                                                    .getVertexByOrder(k.getLeftOrderId());
+                                    List<Integer> typeIds = jointVertex.getVertexTypeIds();
+                                    return typeIds.size() == 1 && typeIds.contains(4);
+                                })) {
+                    joinAtPost = true;
+                }
+            }
+        }
+
+        @Override
+        public boolean matched() {
+            return countryAsSource && tagClassAsSource && joinCount == 1 && joinAtPost;
+        }
+
+        @Override
+        public void reset() {
+            countryAsSource = false;
+            tagClassAsSource = false;
+            joinCount = 0;
+            joinAtPost = false;
+        }
+    }
+
+    private class Random_2_BI_3 extends OrderRule {
+        private boolean countryAsSource = false;
+        private boolean tagClassAsSource = false;
+        private int joinCount = 0;
+        private boolean joinAtMsg = false;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 6) {
+                        tagClassAsSource = true;
+                    } else if (ids.size() == 1 && ids.get(0) == 8) {
+                        countryAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                ++joinCount;
+                GraphJoinDecomposition join = (GraphJoinDecomposition) node;
+                if (join.getJoinVertexPairs().stream()
+                        .allMatch(
+                                k -> {
+                                    PatternVertex jointVertex =
+                                            join.getProbePattern()
+                                                    .getVertexByOrder(k.getLeftOrderId());
+                                    List<Integer> typeIds = jointVertex.getVertexTypeIds();
+                                    return typeIds.size() == 2
+                                            && typeIds.contains(2)
+                                            && typeIds.contains(3);
+                                })) {
+                    joinAtMsg = true;
+                }
+            }
+        }
+
+        @Override
+        public boolean matched() {
+            return countryAsSource && tagClassAsSource && joinCount == 1 && joinAtMsg;
+        }
+
+        @Override
+        public void reset() {
+            countryAsSource = false;
+            tagClassAsSource = false;
+            joinCount = 0;
+            joinAtMsg = false;
+        }
+    }
+
+    // order is Message -> HasTag -> hasCreator -> replyof -> likes
+    private class Random_1_BI_5 extends OrderRule {
+        private int order = 0;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 3) { // post
+                        ++order;
+                    }
+                }
+            } else if (node instanceof GraphExtendIntersect) {
+                GraphExtendIntersect intersect = (GraphExtendIntersect) node;
+                if (intersect.getGlogueEdge().getExtendStep().getExtendEdges().size() == 1) {
+                    int edgeId =
+                            intersect
+                                    .getGlogueEdge()
+                                    .getExtendStep()
+                                    .getExtendEdges()
+                                    .get(0)
+                                    .getEdgeTypeId()
+                                    .getEdgeLabelId();
+                    if (order == 1 && edgeId == 1) { // has tag
+                        ++order;
+                    } else if (order == 2 && edgeId == 0) { // has creator
+                        ++order;
+                    } else if (order == 3 && edgeId == 3) { // reply of
+                        ++order;
+                    } else if (order == 4 && edgeId == 13) { // likes
+                        ++order;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean matched() {
+            return order == 5;
+        }
+
+        @Override
+        public void reset() {
+            order = 0;
+        }
+    }
+
+    // order is Message<-hascreator, hastag, like, replyof
+    private class Random_2_BI_5 extends OrderRule {
+        private int order = 0;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 3) { // post
+                        ++order;
+                    }
+                }
+            } else if (node instanceof GraphExtendIntersect) {
+                GraphExtendIntersect intersect = (GraphExtendIntersect) node;
+                if (intersect.getGlogueEdge().getExtendStep().getExtendEdges().size() == 1) {
+                    int edgeId =
+                            intersect
+                                    .getGlogueEdge()
+                                    .getExtendStep()
+                                    .getExtendEdges()
+                                    .get(0)
+                                    .getEdgeTypeId()
+                                    .getEdgeLabelId();
+                    if (order == 1 && edgeId == 1) { // has creator
+                        ++order;
+                    } else if (order == 2 && edgeId == 13) { // has tag
+                        ++order;
+                    } else if (order == 3 && edgeId == 3) { // likes
+                        ++order;
+                    } else if (order == 4 && edgeId == 0) { // reply of
+                        ++order;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean matched() {
+            return order == 5;
+        }
+
+        @Override
+        public void reset() {
+            order = 0;
+        }
+    }
+
+    private class Best_BI_6 extends OrderRule {
+        private boolean tagAsSource = false;
+        private boolean hasJoin = false;
+
+        @Override
+        public boolean matched() {
+            return tagAsSource && !hasJoin;
+        }
+
+        @Override
+        public void reset() {
+            tagAsSource = false;
+            hasJoin = false;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 7) { // tag
+                        tagAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
+            }
         }
     }
 }

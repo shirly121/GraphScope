@@ -18,6 +18,7 @@ package com.alibaba.graphscope.common.config;
 
 import com.alibaba.graphscope.common.utils.FileUtils;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.calcite.plan.Context;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.StringUtils;
@@ -77,6 +78,11 @@ public class Configs implements Context {
         } else {
             return this.properties.getProperty(name, defaultValue);
         }
+    }
+
+    @VisibleForTesting
+    public void set(String name, String value) {
+        this.properties.setProperty(name, value);
     }
 
     public Iterator<Object> getKeys() {
