@@ -110,18 +110,13 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Scan.Builder scanBuilder = GraphAlgebraPhysical.Scan.newBuilder();
-        RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
-        if (uniqueKeyFilters != null) {
-            GraphAlgebra.IndexPredicate indexPredicate = buildIndexPredicates(uniqueKeyFilters);
-            scanBuilder.setIdxPredicate(indexPredicate);
-        }
-        GraphAlgebra.QueryParams.Builder queryParamsBuilder = buildQueryParams(source);
+        GraphAlgebra.QueryParams.Builder queryParamsBuilder = buildScanQueryParams(source);
         if (preCacheEdgeProps && GraphOpt.Source.EDGE.equals(source.getOpt())) {
             addQueryColumns(
                     queryParamsBuilder,
                     Utils.extractColumnsFromRelDataType(source.getRowType(), isColumnId));
         }
-        scanBuilder.setParams(buildQueryParams(source));
+        scanBuilder.setParams(queryParamsBuilder);
         if (source.getAliasId() != AliasInference.DEFAULT_ID) {
             scanBuilder.setAlias(Utils.asAliasId(source.getAliasId()));
         }
@@ -1092,6 +1087,21 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         for (GraphNameOrId column : columns) {
             paramsBuilder.addColumns(Utils.protoNameOrId(column));
         }
+    }
+
+    private GraphAlgebra.QueryParams.Builder buildScanQueryParams(GraphLogicalSource source) {
+        GraphAlgebra.QueryParams.Builder paramsBuilder = defaultQueryParams();
+        addQueryTables(
+                paramsBuilder,
+                com.alibaba.graphscope.common.ir.tools.Utils.getGraphLabels(source.getRowType())
+                        .getLabelsEntry());
+        RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
+        if (uniqueKeyFilters != null) {
+            addQueryFilters(paramsBuilder, ImmutableList.of(uniqueKeyFilters));
+        } else {
+            addQueryFilters(paramsBuilder, source.getFilters());
+        }
+        return paramsBuilder;
     }
 
     private GraphAlgebra.QueryParams.Builder buildQueryParams(AbstractBindableTableScan tableScan) {
