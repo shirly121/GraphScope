@@ -158,6 +158,14 @@ public class RandomOrderTest {
         if (results instanceof RelNodeList) {
             List<RelNode> rels = ((RelNodeList) results).rels;
             for (int num = 2; num <= workers; num *= 2) {
+                FileUtils.writeStringToFile(
+                        logFile,
+                        String.format(
+                                "************************************ worker num is [%d]"
+                                        + " *********************************************\n\n",
+                                num),
+                        StandardCharsets.UTF_8,
+                        true);
                 configs.set(PegasusConfig.PEGASUS_WORKER_NUM.getKey(), String.valueOf(num));
                 int timeout = FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs);
                 int i = 0;
@@ -238,6 +246,8 @@ public class RandomOrderTest {
                                 true);
                     }
                 }
+                FileUtils.writeStringToFile(
+                        logFile, String.format("\n\n\n"), StandardCharsets.UTF_8, true);
             }
         }
         FileUtils.writeStringToFile(logFile, String.format("\n\n\n"), StandardCharsets.UTF_8, true);
