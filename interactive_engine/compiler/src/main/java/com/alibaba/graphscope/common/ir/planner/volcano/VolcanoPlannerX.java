@@ -36,34 +36,37 @@ public class VolcanoPlannerX extends VolcanoPlanner {
 
     @Override
     protected RelOptCost upperBoundForInputs(RelNode mExpr, RelOptCost upperBound) {
-//        ++totalCount;
-//        //        // todo: support pruning optimizations
-//        RelSubset subset = getSubset(mExpr);
-//        RelOptCost best = Utils.getFieldValue(RelSubset.class, subset, "bestCost");
-//        if (best != null && !best.isInfinite()) {
-//            upperBound = best;
-//        }
-//        if (!upperBound.isInfinite()) {
-//            RelOptCost rootCost = mExpr.getCluster().getMetadataQuery().getNonCumulativeCost(mExpr);
-//            if (rootCost != null && !rootCost.isInfinite()) {
-//                upperBound = upperBound.minus(rootCost);
-//            }
-//            if (upperBound.isLt(costFactory.makeZeroCost())) {
-//                ++pruneCount;
-//                return upperBound;
-//            }
-//            if (!mExpr.getInputs().isEmpty()) {
-//                double rowCount =
-//                        mExpr.getCluster().getMetadataQuery().getRowCount(mExpr.getInput(0));
-//                RelOptCost rowCost =
-//                        mExpr.getCluster().getPlanner().getCostFactory().makeCost(rowCount, 0, 0);
-//                RelOptCost copy = upperBound.minus(rowCost);
-//                if (copy.isLt(costFactory.makeZeroCost())) {
-//                    ++pruneCount;
-//                    return copy;
-//                }
-//            }
-//        }
+        //        ++totalCount;
+        //        //        // todo: support pruning optimizations
+        //        RelSubset subset = getSubset(mExpr);
+        //        RelOptCost best = Utils.getFieldValue(RelSubset.class, subset, "bestCost");
+        //        if (best != null && !best.isInfinite()) {
+        //            upperBound = best;
+        //        }
+        //        if (!upperBound.isInfinite()) {
+        //            RelOptCost rootCost =
+        // mExpr.getCluster().getMetadataQuery().getNonCumulativeCost(mExpr);
+        //            if (rootCost != null && !rootCost.isInfinite()) {
+        //                upperBound = upperBound.minus(rootCost);
+        //            }
+        //            if (upperBound.isLt(costFactory.makeZeroCost())) {
+        //                ++pruneCount;
+        //                return upperBound;
+        //            }
+        //            if (!mExpr.getInputs().isEmpty()) {
+        //                double rowCount =
+        //
+        // mExpr.getCluster().getMetadataQuery().getRowCount(mExpr.getInput(0));
+        //                RelOptCost rowCost =
+        //
+        // mExpr.getCluster().getPlanner().getCostFactory().makeCost(rowCount, 0, 0);
+        //                RelOptCost copy = upperBound.minus(rowCost);
+        //                if (copy.isLt(costFactory.makeZeroCost())) {
+        //                    ++pruneCount;
+        //                    return copy;
+        //                }
+        //            }
+        //        }
         return upperBound;
     }
 

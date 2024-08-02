@@ -51,6 +51,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
+
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelTraitSet;
@@ -141,7 +142,7 @@ public class RandomOrderTest {
                 logFile,
                 String.format(
                         "********************************************************************************************\n"
-                                + "%s: %s\n",
+                            + "%s: %s\n",
                         queryName, query),
                 StandardCharsets.UTF_8,
                 true);
@@ -174,7 +175,8 @@ public class RandomOrderTest {
                                 StandardCharsets.UTF_8,
                                 true);
                         PhysicalPlan physicalPlan =
-                                new GraphRelProtoPhysicalBuilder(configs, irMeta, logicalPlan).build();
+                                new GraphRelProtoPhysicalBuilder(configs, irMeta, logicalPlan)
+                                        .build();
                         int queryId = UUID.randomUUID().hashCode();
                         ExecutionRequest request =
                                 new ExecutionRequest(
@@ -221,9 +223,7 @@ public class RandomOrderTest {
                                 logFile,
                                 String.format(
                                         "workers [%d], execution time %d ms, results: %s\n\n",
-                                        num,
-                                        elapsedTime,
-                                        resultBuilder),
+                                        num, elapsedTime, resultBuilder),
                                 StandardCharsets.UTF_8,
                                 true);
                         String mode = System.getProperty("mode", "best");
@@ -327,8 +327,7 @@ public class RandomOrderTest {
                                             }
 
                                             @Override
-                                            public void reset() {
-                                            }
+                                            public void reset() {}
                                         }));
                     } else {
                         // add random k
@@ -342,14 +341,27 @@ public class RandomOrderTest {
                             allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_2())));
                             break;
                         case "BI_3":
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_3(), new Neo4j_BI_3(), new Random_1_BI_3(), new Random_2_BI_3())));
+                            allRels.addAll(
+                                    findTargetPlan(
+                                            ImmutableList.of(
+                                                    new Best_BI_3(),
+                                                    new Neo4j_BI_3(),
+                                                    new Random_1_BI_3(),
+                                                    new Random_2_BI_3())));
                             break;
                         case "BI_5":
                             allRels.add(best);
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_5(), new Random_1_BI_5(), new Random_2_BI_5())));
+                            allRels.addAll(
+                                    findTargetPlan(
+                                            ImmutableList.of(
+                                                    new Neo4j_BI_5(),
+                                                    new Random_1_BI_5(),
+                                                    new Random_2_BI_5())));
                             break;
                         case "BI_6":
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
+                            allRels.addAll(
+                                    findTargetPlan(
+                                            ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
                             break;
                         case "BI_9":
                             allRels.add(best);
@@ -447,19 +459,19 @@ public class RandomOrderTest {
                 List<RelNode> newRels =
                         ((RelNodeList) child2)
                                 .rels.stream()
-                                .map(
-                                        k -> {
-                                            if (k == child) {
-                                                return parent;
-                                            } else {
-                                                List<RelNode> newInputs =
-                                                        new ArrayList(parent.getInputs());
-                                                newInputs.set(i, k);
-                                                return parent.copy(
-                                                        parent.getTraitSet(), newInputs);
-                                            }
-                                        })
-                                .collect(Collectors.toList());
+                                        .map(
+                                                k -> {
+                                                    if (k == child) {
+                                                        return parent;
+                                                    } else {
+                                                        List<RelNode> newInputs =
+                                                                new ArrayList(parent.getInputs());
+                                                        newInputs.set(i, k);
+                                                        return parent.copy(
+                                                                parent.getTraitSet(), newInputs);
+                                                    }
+                                                })
+                                        .collect(Collectors.toList());
                 var6 = new RelNodeList(parent.getCluster(), parent.getTraitSet(), newRels);
             } else {
                 if (child2 == child) {
@@ -592,7 +604,7 @@ public class RandomOrderTest {
                     if (ids.size() == 1
                             && ids.get(0) == 8
                             && Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d)
-                            < 0) {
+                                    < 0) {
                         countryAsSource = true;
                     }
                 }
@@ -793,7 +805,9 @@ public class RandomOrderTest {
                                             join.getProbePattern()
                                                     .getVertexByOrder(k.getLeftOrderId());
                                     List<Integer> typeIds = jointVertex.getVertexTypeIds();
-                                    return typeIds.size() == 2 && typeIds.contains(2) && typeIds.contains(3);
+                                    return typeIds.size() == 2
+                                            && typeIds.contains(2)
+                                            && typeIds.contains(3);
                                 })) {
                     joinAtMsg = true;
                 }
