@@ -1,5 +1,0 @@
-MATCH (person1:PERSON)<-[:HASCREATOR]-(msg)-[:HASTAG]->(tag:TAG),
-      (person1)-[:KNOWS]-(person2:PERSON)<-[:HASCREATOR]-(msg)
-WHERE msg.creationDate = $date1 AND tag.name = $name1
-    	OR msg.creationDate = $date2 AND tag.name = $name2
-Return count(person1);

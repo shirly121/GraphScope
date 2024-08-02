@@ -221,7 +221,7 @@ public class RandomOrderTest {
                                             0, Math.min(10, resultBuilder.length()))),
                             StandardCharsets.UTF_8,
                             true);
-//                    timeout = Math.min(timeout, (int) (elapsedTime * 2));
+                    timeout = Math.min(timeout, (int) (elapsedTime * 2));
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
                             logFile,
@@ -280,30 +280,29 @@ public class RandomOrderTest {
             List<RelNode> allRels = Lists.newArrayList();
             // add best
             allRels.add(best);
-            // add neo4j BI rules
-            switch (queryName) {
-                case "BI_2":
-                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
-                    break;
-                case "BI_3":
-                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_3()));
-                    break;
-                case "BI_5":
-                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_5()));
-                    break;
-                case "BI_6":
-                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_6()));
-                    break;
-                case "BI_9":
-                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_9()));
-                    allRels.addAll(randomPickN(10, null, new Neo4j_BI_9_Join()));
-                    break;
-//                case "BI_16":
-//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_16()));
+//            // add neo4j BI rules
+//            switch (queryName) {
+//                case "BI_2":
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
 //                    break;
-            }
-// add random k
-//            allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+//                case "BI_3":
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_3()));
+//                    allRels.addAll(randomPickN(2, null, new BI_3_SourceTagClass()));
+//                    break;
+//                case "BI_5":
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_5()));
+//                    break;
+//                case "BI_6":
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_6()));
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_2()));
+//                    break;
+//                case "BI_9":
+//                    allRels.addAll(randomPickN(1, null, new Neo4j_BI_9()));
+//                    allRels.addAll(randomPickN(10, null, new BI_9_Join()));
+//                    break;
+//            }
+            // add random k
+            allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
             allRels =
                     allRels.stream()
                             .map(k -> ioProcessor.processOutput(k))
@@ -319,7 +318,7 @@ public class RandomOrderTest {
             if (best != null) {
                 randomDigests.add(best.explain());
             }
-            int maxIter = Math.max(100, count);
+            int maxIter = Math.max(500, count);
             RelSet rootSet = allSets.get(0);
             for (int i = 0; i < 1; ++i) {
                 int times = 0;
@@ -440,8 +439,43 @@ public class RandomOrderTest {
         }
     }
 
+    private class BI_3_SourceTagClass extends OrderRule {
+        private boolean tagClassAsSource = false;
+        private boolean hasJoin = false;
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex =
+                            pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 6) {
+                        tagClassAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
+            }
+        }
+
+        @Override
+        public boolean matched() {
+            return tagClassAsSource;
+        }
+
+        @Override
+        public void reset() {
+            tagClassAsSource = false;
+            hasJoin = false;
+        }
+    }
+
     private class Neo4j_BI_2 extends OrderRule {
         private boolean tagAsSource = false;
+        private boolean hasJoin = false;
 
         @Override
         public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
@@ -456,17 +490,20 @@ public class RandomOrderTest {
                         tagAsSource = true;
                     }
                 }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
             }
         }
 
         @Override
         public boolean matched() {
-            return tagAsSource;
+            return tagAsSource && !hasJoin;
         }
 
         @Override
         public void reset() {
             tagAsSource = false;
+            hasJoin = false;
         }
     }
 
@@ -602,10 +639,9 @@ public class RandomOrderTest {
         }
     }
 
-    private class Neo4j_BI_9_Join extends OrderRule {
+    private class BI_9_Join extends OrderRule {
         private int joinCount = 0;
-        private boolean postAsSource = false;
-        private boolean msgAsSource = false;
+        private boolean sourceHasFilter = true;
 
         @Override
         public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
@@ -615,58 +651,24 @@ public class RandomOrderTest {
                 if (pattern.getPattern().getVertexNumber() == 1) {
                     PatternVertex vertex =
                             pattern.getPattern().getVertexSet().iterator().next();
-                    List<Integer> ids = vertex.getVertexTypeIds();
-                    if (ids.size() == 2 && ids.contains(2) && ids.contains(3)) {
-                        msgAsSource = true;
-                    } else if (ids.size() == 1 && ids.get(0) == 3) {
-                        postAsSource = true;
+                    if (Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d) == 0) {
+                        sourceHasFilter = false;
                     }
                 }
-            } else if (node instanceof GraphExtendIntersect) {
+            } else if (node instanceof GraphJoinDecomposition) {
                 ++joinCount;
             }
         }
 
         @Override
         public boolean matched() {
-            return joinCount == 1 && postAsSource && msgAsSource;
+            return joinCount == 1 && sourceHasFilter;
         }
 
         @Override
         public void reset() {
             joinCount = 0;
-            postAsSource = false;
-            msgAsSource = false;
+            sourceHasFilter = true;
         }
     }
-
-//    private class Neo4j_BI_16 extends OrderRule {
-//        private boolean messageAsSource = false;
-//
-//        @Override
-//        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
-//            super.visit(node, ordinal, parent);
-//            if (node instanceof GraphPattern) {
-//                GraphPattern pattern = (GraphPattern) node;
-//                if (pattern.getPattern().getVertexNumber() == 1) {
-//                    PatternVertex vertex =
-//                            pattern.getPattern().getVertexSet().iterator().next();
-//                    List<Integer> ids = vertex.getVertexTypeIds();
-//                    if (ids.size() == 2 && ids.contains(2) && ids.contains(3)) {
-//                        messageAsSource = true;
-//                    }
-//                }
-//            }
-//        }
-//
-//        @Override
-//        public boolean matched() {
-//            return messageAsSource;
-//        }
-//
-//        @Override
-//        public void reset() {
-//            messageAsSource = false;
-//        }
-//    }
 }
