@@ -362,37 +362,66 @@ public class RandomOrderTool {
                     switch (queryName) {
                         case "BI_2":
                             allRels.add(best);
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_2())));
+//                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_2())));
                             break;
                         case "BI_3":
-                            List<RelNode> targetPlans = findTargetPlan(
+//                            List<RelNode> targetPlans = findTargetPlan(
+//                                    ImmutableList.of(
+//                                            new Best_BI_3(),
+//                                            new Neo4j_BI_3(),
+//                                            new Random_1_BI_3(),
+//                                            new Random_2_BI_3()));
+//                            allRels.add(targetPlans.get(0));
+//                            allRels.add(targetPlans.get(1));
+//                            allRels.add(targetPlans.get(2).accept(new ReOrgJoinDecomposition()));
+//                            allRels.add(targetPlans.get(3).accept(new ReOrgJoinDecomposition()));
+//                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_3())));
+                           List<RelNode> targetPlans = findTargetPlan(
                                     ImmutableList.of(
-                                            new Best_BI_3(),
                                             new Neo4j_BI_3(),
                                             new Random_1_BI_3(),
                                             new Random_2_BI_3()));
-                            allRels.add(targetPlans.get(0));
-                            allRels.add(targetPlans.get(1));
-                            allRels.add(targetPlans.get(2).accept(new ReOrgJoinDecomposition()));
-                            allRels.add(targetPlans.get(3).accept(new ReOrgJoinDecomposition()));
+                           allRels.addAll(targetPlans);
                             break;
                         case "BI_5":
                             allRels.add(best);
-                            allRels.addAll(
-                                    findTargetPlan(
-                                            ImmutableList.of(
-                                                    new Neo4j_BI_5(),
-                                                    new Random_1_BI_5(),
-                                                    new Random_2_BI_5())));
+//                            allRels.addAll(
+//                                    findTargetPlan(
+//                                            ImmutableList.of(
+//                                                    new Neo4j_BI_5(),
+//                                                    new Random_1_BI_5(),
+//                                                    new Random_2_BI_5())));
                             break;
                         case "BI_6":
-                            allRels.addAll(
-                                    findTargetPlan(
-                                            ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
+//                            List<RelNode> bi6Plans = findTargetPlan(ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6(), new Random_1_BI_6(), new Random_2_BI_6()));
+//                            allRels.add(bi6Plans.get(0));
+//                            allRels.add(bi6Plans.get(1));
+//                            allRels.add(bi6Plans.get(2));
+//                            allRels.add(bi6Plans.get(3).accept(new ReOrgJoinDecomposition()));
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6())));
                             break;
                         case "BI_9":
-                            allRels.add(best);
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_9())));
+//                            allRels.add(best);
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_9(), new Random_1_BI_9(), new Random_2_BI_9(), new Random_3_BI_9())));
+                            break;
+                    }
+
+                case "mix":
+                    switch (queryName) {
+                        case "BI_6":
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
+                            allRels.addAll(randomPickN(
+                                    pickCount,
+                                    best,
+                                    new OrderRule() {
+                                        @Override
+                                        public boolean matched() {
+                                            return true;
+                                        }
+
+                                        @Override
+                                        public void reset() {}
+                                    }));
                             break;
                     }
             }
@@ -1044,6 +1073,114 @@ public class RandomOrderTool {
         }
     }
 
+    private class Random_1_BI_6 extends OrderRule {
+        private RelNode topNode = null;
+        private int leftOrder = 0;
+        private int rightOrder = 0;
+        private int joinCount = 0;
+
+        @Override
+        public boolean matched() {
+            return leftOrder == 4 && rightOrder == 3 && joinCount == 1 && topNode instanceof GraphJoinDecomposition;
+        }
+
+        @Override
+        public void reset() {
+            leftOrder = 0;
+            rightOrder = 0;
+            joinCount = 0;
+            topNode = null;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 7) { // tag
+                        ++leftOrder;
+                    } else if (ids.size() == 1 && ids.get(0) == 1) { // person
+                        ++rightOrder;
+                    }
+                }
+            } else if (node instanceof GraphExtendIntersect) {
+                GraphExtendIntersect intersect = (GraphExtendIntersect) node;
+                if (intersect.getGlogueEdge().getExtendStep().getExtendEdges().size() == 1) {
+                    int edgeId =
+                            intersect
+                                    .getGlogueEdge()
+                                    .getExtendStep()
+                                    .getExtendEdges()
+                                    .get(0)
+                                    .getEdgeTypeId()
+                                    .getEdgeLabelId();
+                    if (leftOrder == 1 && edgeId == 1) { // has tag
+                        ++leftOrder;
+                    } else if (leftOrder == 2 && edgeId == 0) { // has creator
+                        ++leftOrder;
+                    } else if (leftOrder == 3 && edgeId == 13) { // has creator
+                        ++leftOrder;
+                    } else if (rightOrder == 1 && edgeId == 13) { // likes
+                        ++rightOrder;
+                    } else if (rightOrder == 2 && edgeId == 0) { // reply of
+                        ++rightOrder;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                ++joinCount;
+            }
+            topNode = node;
+        }
+    }
+
+    private class Random_2_BI_6 extends OrderRule {
+        private int joinCount = 0;
+        private int leftCount = 0;
+        private int rightCount = 0;
+        private boolean tagAsSource = false;
+        private boolean personAsSource = false;
+
+        @Override
+        public boolean matched() {
+            return leftCount == 4 && rightCount == 1 && joinCount == 1 && tagAsSource && personAsSource;
+        }
+
+        @Override
+        public void reset() {
+            joinCount = 0;
+            leftCount = 0;
+            rightCount = 0;
+            tagAsSource = false;
+            personAsSource = false;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 7) { // tag
+                        tagAsSource = true;
+                    } else if (ids.size() == 1 && ids.get(0) == 1) { // person
+                        personAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                ++joinCount;
+                if (joinCount == 1) {
+                    leftCount = ((GraphJoinDecomposition) node).getProbePattern().getEdgeNumber();
+                    rightCount = ((GraphJoinDecomposition) node).getBuildPattern().getEdgeNumber();
+                }
+            }
+        }
+    }
+
     public List<RelNode> enumeratePlans(VolcanoPlanner planner, RelSet root) {
         List<RelNode> plans = Lists.newArrayList();
         for (RelSubset subset : root.subsets) {
@@ -1079,6 +1216,113 @@ public class RandomOrderTool {
             }
         }
         return plans;
+    }
+
+    private class Random_1_BI_9 extends OrderRule {
+        private boolean startAtPerson;
+        private boolean hasJoin;
+
+        @Override
+        public boolean matched() {
+            return startAtPerson && !hasJoin;
+        }
+
+        @Override
+        public void reset() {
+            startAtPerson = false;
+            hasJoin = false;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 1) {
+                        startAtPerson = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
+            }
+        }
+    }
+
+    private class Random_2_BI_9 extends OrderRule {
+        private boolean hasJoin = false;
+        private boolean postAsSource = false;
+        private boolean personAsSource = false;
+
+        @Override
+        public boolean matched() {
+            return hasJoin && postAsSource && personAsSource;
+        }
+
+        @Override
+        public void reset() {
+            hasJoin = false;
+            postAsSource = false;
+            personAsSource = false;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 1) {
+                        personAsSource = true;
+                    } else if (ids.size() == 1 && ids.get(0) == 3) {
+                        postAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
+            }
+        }
+    }
+
+    private class Random_3_BI_9 extends OrderRule {
+        private boolean hasJoin = false;
+        private boolean postAsSource = false;
+        private boolean personAsSource = false;
+
+        @Override
+        public boolean matched() {
+            return hasJoin && postAsSource && personAsSource;
+        }
+
+        @Override
+        public void reset() {
+            hasJoin = false;
+            postAsSource = false;
+            personAsSource = false;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+            super.visit(node, ordinal, parent);
+            if (node instanceof GraphPattern) {
+                GraphPattern pattern = (GraphPattern) node;
+                if (pattern.getPattern().getVertexNumber() == 1) {
+                    PatternVertex vertex = pattern.getPattern().getVertexSet().iterator().next();
+                    List<Integer> ids = vertex.getVertexTypeIds();
+                    if (ids.size() == 1 && ids.get(0) == 1) {
+                        personAsSource = true;
+                    } else if (ids.size() == 2 && ids.contains(2) && ids.contains(3)) {
+                        postAsSource = true;
+                    }
+                }
+            } else if (node instanceof GraphJoinDecomposition) {
+                hasJoin = true;
+            }
+        }
     }
 
     private class ReOrgJoinDecomposition extends GraphShuttle {

@@ -21,7 +21,6 @@ package org.apache.calcite.plan.volcano;
 import org.junit.Test;
 
 public class RandomOrderTest {
-
     @Test
     public void run_test() throws Exception {
         RandomOrderTool tool = new RandomOrderTool();
