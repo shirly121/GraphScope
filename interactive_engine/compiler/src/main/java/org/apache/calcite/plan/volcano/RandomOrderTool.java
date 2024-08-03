@@ -370,12 +370,13 @@ public class RandomOrderTool {
                             allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_5())));
                         default:
                             String filter = System.getProperty("filter", "random");
+                            RelNode bestPlan = allRels.get(0);
                             if (filter.equals("random")) {
                                 // add random k
                                 allRels.addAll(
                                         randomPickN(
                                                 pickCount,
-                                                best,
+                                                bestPlan,
                                                 new OrderRule() {
                                                     @Override
                                                     public boolean matched() {
@@ -387,7 +388,7 @@ public class RandomOrderTool {
                                                 }));
                             } else {
                                 // add random k
-                                allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+                                allRels.addAll(randomPickN(pickCount, bestPlan, new SourceHasFilter()));
                             }
                     }
             }
