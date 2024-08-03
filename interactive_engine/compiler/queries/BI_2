@@ -1,4 +1,4 @@
-MATCH (tag:TAG)-[:HASTYPE]->(:TAGCLASS {name: $tagClass}), 
+MATCH (tag:TAG)-[:HASTYPE]->(:TAGCLASS {name: 'Company'}), 
       (tag)<-[:HASTAG]-(message:POST|COMMENT)
-WHERE message.creationDate < $date3
+WHERE message.creationDate < 20121019153054563  
 Return count(tag);
