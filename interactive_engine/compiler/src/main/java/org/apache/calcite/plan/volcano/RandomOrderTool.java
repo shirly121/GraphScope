@@ -334,95 +334,61 @@ public class RandomOrderTool {
                     }
                     break;
                 case "best":
-                    // add best
-                    allRels.add(best);
-                case "random":
-                    String filter = System.getProperty("filter", "default");
-                    if (filter.equals("random")) {
-                        // add random k
-                        allRels.addAll(
-                                randomPickN(
-                                        pickCount,
-                                        best,
-                                        new OrderRule() {
-                                            @Override
-                                            public boolean matched() {
-                                                return true;
-                                            }
-
-                                            @Override
-                                            public void reset() {}
-                                        }));
-                    } else {
-                        // add random k
-                        allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+                    switch (queryName) {
+                        case "BI_2":
+                            allRels.add(best);
+                            break;
+                        case "BI_3":
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_3())));
+                            break;
+                        case "BI_5":
+                            allRels.add(best);
+                            break;
+                        case "BI_6":
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6())));
+                            break;
+                        case "BI_9":
+                            allRels.add(best);
+                            break;
                     }
                     break;
                 case "scale":
                     switch (queryName) {
-                        case "BI_2":
-                            allRels.add(best);
-//                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_2())));
-                            break;
-                        case "BI_3":
-//                            List<RelNode> targetPlans = findTargetPlan(
-//                                    ImmutableList.of(
-//                                            new Best_BI_3(),
-//                                            new Neo4j_BI_3(),
-//                                            new Random_1_BI_3(),
-//                                            new Random_2_BI_3()));
-//                            allRels.add(targetPlans.get(0));
-//                            allRels.add(targetPlans.get(1));
-//                            allRels.add(targetPlans.get(2).accept(new ReOrgJoinDecomposition()));
-//                            allRels.add(targetPlans.get(3).accept(new ReOrgJoinDecomposition()));
-//                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_3())));
-                           List<RelNode> targetPlans = findTargetPlan(
-                                    ImmutableList.of(
-                                            new Neo4j_BI_3(),
-                                            new Random_1_BI_3(),
-                                            new Random_2_BI_3()));
-                           allRels.addAll(targetPlans);
-                            break;
-                        case "BI_5":
-                            allRels.add(best);
-//                            allRels.addAll(
-//                                    findTargetPlan(
-//                                            ImmutableList.of(
-//                                                    new Neo4j_BI_5(),
-//                                                    new Random_1_BI_5(),
-//                                                    new Random_2_BI_5())));
-                            break;
-                        case "BI_6":
-//                            List<RelNode> bi6Plans = findTargetPlan(ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6(), new Random_1_BI_6(), new Random_2_BI_6()));
-//                            allRels.add(bi6Plans.get(0));
-//                            allRels.add(bi6Plans.get(1));
-//                            allRels.add(bi6Plans.get(2));
-//                            allRels.add(bi6Plans.get(3).accept(new ReOrgJoinDecomposition()));
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6())));
-                            break;
                         case "BI_9":
-//                            allRels.add(best);
                             allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_9(), new Random_1_BI_9(), new Random_2_BI_9(), new Random_3_BI_9())));
                             break;
                     }
-
+                    break;
                 case "mix":
                     switch (queryName) {
                         case "BI_6":
                             allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
-                            allRels.addAll(randomPickN(
-                                    pickCount,
-                                    best,
-                                    new OrderRule() {
-                                        @Override
-                                        public boolean matched() {
-                                            return true;
-                                        }
+                        case "BI_3":
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_3(), new Neo4j_BI_3())));
+                        case "BI_5":
+                            allRels.add(best);
+                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_5())));
+                        default:
+                            String filter = System.getProperty("filter", "random");
+                            if (filter.equals("random")) {
+                                // add random k
+                                allRels.addAll(
+                                        randomPickN(
+                                                pickCount,
+                                                best,
+                                                new OrderRule() {
+                                                    @Override
+                                                    public boolean matched() {
+                                                        return true;
+                                                    }
 
-                                        @Override
-                                        public void reset() {}
-                                    }));
-                            break;
+                                                    @Override
+                                                    public void reset() {}
+                                                }));
+                            } else {
+                                // add random k
+                                allRels.addAll(randomPickN(pickCount, best, new SourceHasFilter()));
+                            }
                     }
             }
             allRels =
