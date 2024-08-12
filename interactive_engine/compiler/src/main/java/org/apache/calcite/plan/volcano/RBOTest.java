@@ -26,9 +26,9 @@ import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.FrontendConfig;
 import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
 import com.alibaba.graphscope.common.ir.meta.reader.LocalIrMetaReader;
-import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
@@ -42,8 +42,8 @@ import com.google.protobuf.util.JsonFormat;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 
 public class RBOTest {
     public static void main(String[] args) throws Exception {
@@ -67,10 +67,7 @@ public class RBOTest {
         public Test() throws Exception {
             configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
             opt = System.getProperty("opt", "without");
-              irMeta =
-                new StaticIrMetaFetcher(new LocalIrMetaReader(configs), optimizer.getGlogueHolder())
-                        .fetch()
-                        .get();
+            irMeta = new StaticIrMetaFetcher(new LocalIrMetaReader(configs), null).fetch().get();
             executionClient = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
             log = new File("rbo_result.txt");
             if (log.exists()) {
@@ -97,7 +94,8 @@ public class RBOTest {
             JsonFormat.parser().merge(physicalJson, builder);
             PhysicalPlan physicalPlan =
                     new PhysicalPlan(builder.build().toByteArray(), physicalJson);
-            ExecutionRequest request = new ExecutionRequest(1, "Q_R_1", null, physicalPlan);
+            ExecutionRequest request =
+                    new ExecutionRequest(BigInteger.valueOf(1), "Q_R_1", null, physicalPlan);
             StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
             executionClient.submit(
                     request,
@@ -156,7 +154,8 @@ public class RBOTest {
             JsonFormat.parser().merge(physicalJson, builder);
             PhysicalPlan physicalPlan =
                     new PhysicalPlan(builder.build().toByteArray(), physicalJson);
-            ExecutionRequest request = new ExecutionRequest(1, "Q_R_2", null, physicalPlan);
+            ExecutionRequest request =
+                    new ExecutionRequest(BigInteger.valueOf(2), "Q_R_2", null, physicalPlan);
             StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
             executionClient.submit(
                     request,
@@ -220,11 +219,10 @@ public class RBOTest {
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_3"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
-            GraphPlanner.Summary summary =
-                    planner.instance(query, irMeta.fetch().get()).plan();
+            GraphPlanner.Summary summary = planner.instance(query, irMeta).plan();
             ExecutionRequest request =
                     new ExecutionRequest(
-                            UUID.randomUUID().hashCode(),
+                            BigInteger.valueOf(3),
                             "Q_R_3",
                             summary.getLogicalPlan(),
                             summary.getPhysicalPlan());
@@ -291,11 +289,10 @@ public class RBOTest {
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_4"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
-            GraphPlanner.Summary summary =
-                    planner.instance(query, irMeta.fetch().get()).plan();
+            GraphPlanner.Summary summary = planner.instance(query, irMeta).plan();
             ExecutionRequest request =
                     new ExecutionRequest(
-                            UUID.randomUUID().hashCode(),
+                            BigInteger.valueOf(4),
                             "Q_R_4",
                             summary.getLogicalPlan(),
                             summary.getPhysicalPlan());
@@ -361,11 +358,10 @@ public class RBOTest {
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_5"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
-            GraphPlanner.Summary summary =
-                    planner.instance(query, irMeta.fetch().get()).plan();
+            GraphPlanner.Summary summary = planner.instance(query, irMeta).plan();
             ExecutionRequest request =
                     new ExecutionRequest(
-                            UUID.randomUUID().hashCode(),
+                            BigInteger.valueOf(5),
                             "Q_R_5",
                             summary.getLogicalPlan(),
                             summary.getPhysicalPlan());
@@ -431,11 +427,10 @@ public class RBOTest {
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_6"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
-            GraphPlanner.Summary summary =
-                    planner.instance(query, irMeta.fetch().get()).plan();
+            GraphPlanner.Summary summary = planner.instance(query, irMeta).plan();
             ExecutionRequest request =
                     new ExecutionRequest(
-                            UUID.randomUUID().hashCode(),
+                            BigInteger.valueOf(6),
                             "Q_R_6",
                             summary.getLogicalPlan(),
                             summary.getPhysicalPlan());
@@ -476,6 +471,126 @@ public class RBOTest {
             FileUtils.writeStringToFile(
                     log,
                     String.format("query: [%s], latency: [%d] ms\n", "Q_R_6", elapsedTime),
+                    "UTF-8",
+                    true);
+        }
+
+        public void Q_R_7() throws Exception {
+            String physicalJson;
+            if (opt.equals("with")) {
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_7_with_opt"), StandardCharsets.UTF_8);
+            } else {
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_7_without_opt"), StandardCharsets.UTF_8);
+            }
+            long startTime = System.currentTimeMillis();
+            GraphAlgebraPhysical.PhysicalPlan.Builder builder =
+                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            JsonFormat.parser().merge(physicalJson, builder);
+            PhysicalPlan physicalPlan =
+                    new PhysicalPlan(builder.build().toByteArray(), physicalJson);
+            ExecutionRequest request =
+                    new ExecutionRequest(BigInteger.valueOf(7), "Q_R_7", null, physicalPlan);
+            StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+            executionClient.submit(
+                    request,
+                    new ExecutionResponseListener() {
+                        @Override
+                        public void onNext(IrResult.Record record) {
+                            try {
+                                resultIterator.putData(record);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+
+                        @Override
+                        public void onCompleted() {
+                            try {
+                                resultIterator.finish();
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+
+                        @Override
+                        public void onError(Throwable t) {
+                            resultIterator.fail(t);
+                        }
+                    },
+                    new QueryTimeoutConfig(FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+            StringBuilder resultBuilder = new StringBuilder();
+            while (resultIterator.hasNext()) {
+                resultBuilder.append(resultIterator.next());
+                // resultIterator.next();
+            }
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            FileUtils.writeStringToFile(
+                    log,
+                    String.format("query: [%s], latency: [%d] ms\n", "Q_R_1", elapsedTime),
+                    "UTF-8",
+                    true);
+        }
+
+        public void Q_R_8() throws Exception {
+            String physicalJson;
+            if (opt.equals("with")) {
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_8_with_opt"), StandardCharsets.UTF_8);
+            } else {
+                physicalJson =
+                        FileUtils.readFileToString(
+                                new File(queryDir + "/Q_R_8_without_opt"), StandardCharsets.UTF_8);
+            }
+            long startTime = System.currentTimeMillis();
+            GraphAlgebraPhysical.PhysicalPlan.Builder builder =
+                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            JsonFormat.parser().merge(physicalJson, builder);
+            PhysicalPlan physicalPlan =
+                    new PhysicalPlan(builder.build().toByteArray(), physicalJson);
+            ExecutionRequest request =
+                    new ExecutionRequest(BigInteger.valueOf(8), "Q_R_8", null, physicalPlan);
+            StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+            executionClient.submit(
+                    request,
+                    new ExecutionResponseListener() {
+                        @Override
+                        public void onNext(IrResult.Record record) {
+                            try {
+                                resultIterator.putData(record);
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+
+                        @Override
+                        public void onCompleted() {
+                            try {
+                                resultIterator.finish();
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+
+                        @Override
+                        public void onError(Throwable t) {
+                            resultIterator.fail(t);
+                        }
+                    },
+                    new QueryTimeoutConfig(FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)));
+            StringBuilder resultBuilder = new StringBuilder();
+            while (resultIterator.hasNext()) {
+                resultBuilder.append(resultIterator.next());
+                // resultIterator.next();
+            }
+            long elapsedTime = System.currentTimeMillis() - startTime;
+            FileUtils.writeStringToFile(
+                    log,
+                    String.format("query: [%s], latency: [%d] ms\n", "Q_R_1", elapsedTime),
                     "UTF-8",
                     true);
         }

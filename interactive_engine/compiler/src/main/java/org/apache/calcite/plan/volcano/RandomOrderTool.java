@@ -54,6 +54,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
+
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptRule;
@@ -149,12 +150,15 @@ public class RandomOrderTool {
                 logFile,
                 String.format(
                         "********************************************************************************************\n"
-                                + "%s: %s\n",
+                            + "%s: %s\n",
                         queryName, query),
                 StandardCharsets.UTF_8,
                 true);
         GraphBuilder builder = createGraphBuilder(optimizer, irMeta);
-        RelNode node = new GraphBuilderVisitor(builder).visit(new CypherAntlr4Parser().parse(query)).build();
+        RelNode node =
+                new GraphBuilderVisitor(builder)
+                        .visit(new CypherAntlr4Parser().parse(query))
+                        .build();
         // apply filter push down optimize
         optimizer.getRelPlanner().setRoot(node);
         node = optimizer.getRelPlanner().findBestExp();
@@ -264,7 +268,8 @@ public class RandomOrderTool {
         GraphOptCluster optCluster =
                 GraphOptCluster.create(optimizer.getMatchPlanner(), rexBuilder);
         optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery(irMeta));
-        return GraphBuilder.create(configs, optCluster, new GraphOptSchema(optCluster, irMeta.getSchema()));
+        return GraphBuilder.create(
+                configs, optCluster, new GraphOptSchema(optCluster, irMeta.getSchema()));
     }
 
     private class RelNodeList extends AbstractRelNode {
@@ -355,16 +360,26 @@ public class RandomOrderTool {
                 case "scale":
                     switch (queryName) {
                         case "BI_9":
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_9(), new Random_1_BI_9(), new Random_2_BI_9(), new Random_3_BI_9())));
+                            allRels.addAll(
+                                    findTargetPlan(
+                                            ImmutableList.of(
+                                                    new Neo4j_BI_9(),
+                                                    new Random_1_BI_9(),
+                                                    new Random_2_BI_9(),
+                                                    new Random_3_BI_9())));
                             break;
                     }
                     break;
                 case "mix":
                     switch (queryName) {
                         case "BI_6":
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
+                            allRels.addAll(
+                                    findTargetPlan(
+                                            ImmutableList.of(new Best_BI_6(), new Neo4j_BI_6())));
                         case "BI_3":
-                            allRels.addAll(findTargetPlan(ImmutableList.of(new Best_BI_3(), new Neo4j_BI_3())));
+                            allRels.addAll(
+                                    findTargetPlan(
+                                            ImmutableList.of(new Best_BI_3(), new Neo4j_BI_3())));
                         case "BI_5":
                             allRels.add(best);
                             allRels.addAll(findTargetPlan(ImmutableList.of(new Neo4j_BI_5())));
@@ -388,7 +403,8 @@ public class RandomOrderTool {
                                                 }));
                             } else {
                                 // add random k
-                                allRels.addAll(randomPickN(pickCount, bestPlan, new SourceHasFilter()));
+                                allRels.addAll(
+                                        randomPickN(pickCount, bestPlan, new SourceHasFilter()));
                             }
                     }
             }
@@ -482,19 +498,19 @@ public class RandomOrderTool {
                 List<RelNode> newRels =
                         ((RelNodeList) child2)
                                 .rels.stream()
-                                .map(
-                                        k -> {
-                                            if (k == child) {
-                                                return parent;
-                                            } else {
-                                                List<RelNode> newInputs =
-                                                        new ArrayList(parent.getInputs());
-                                                newInputs.set(i, k);
-                                                return parent.copy(
-                                                        parent.getTraitSet(), newInputs);
-                                            }
-                                        })
-                                .collect(Collectors.toList());
+                                        .map(
+                                                k -> {
+                                                    if (k == child) {
+                                                        return parent;
+                                                    } else {
+                                                        List<RelNode> newInputs =
+                                                                new ArrayList(parent.getInputs());
+                                                        newInputs.set(i, k);
+                                                        return parent.copy(
+                                                                parent.getTraitSet(), newInputs);
+                                                    }
+                                                })
+                                        .collect(Collectors.toList());
                 var6 = new RelNodeList(parent.getCluster(), parent.getTraitSet(), newRels);
             } else {
                 if (child2 == child) {
@@ -627,7 +643,7 @@ public class RandomOrderTool {
                     if (ids.size() == 1
                             && ids.get(0) == 8
                             && Double.compare(vertex.getElementDetails().getSelectivity(), 1.0d)
-                            < 0) {
+                                    < 0) {
                         countryAsSource = true;
                     }
                 }
@@ -1048,7 +1064,10 @@ public class RandomOrderTool {
 
         @Override
         public boolean matched() {
-            return leftOrder == 4 && rightOrder == 3 && joinCount == 1 && topNode instanceof GraphJoinDecomposition;
+            return leftOrder == 4
+                    && rightOrder == 3
+                    && joinCount == 1
+                    && topNode instanceof GraphJoinDecomposition;
         }
 
         @Override
@@ -1112,7 +1131,11 @@ public class RandomOrderTool {
 
         @Override
         public boolean matched() {
-            return leftCount == 4 && rightCount == 1 && joinCount == 1 && tagAsSource && personAsSource;
+            return leftCount == 4
+                    && rightCount == 1
+                    && joinCount == 1
+                    && tagAsSource
+                    && personAsSource;
         }
 
         @Override
@@ -1308,12 +1331,20 @@ public class RandomOrderTool {
                     join.getJoinType());
         }
 
-        private GraphJoinDecomposition.OrderMappings reverse(GraphJoinDecomposition.OrderMappings source) {
-            return new GraphJoinDecomposition.OrderMappings(source.getRightToTargetOrderMap(), source.getLeftToTargetOrderMap());
+        private GraphJoinDecomposition.OrderMappings reverse(
+                GraphJoinDecomposition.OrderMappings source) {
+            return new GraphJoinDecomposition.OrderMappings(
+                    source.getRightToTargetOrderMap(), source.getLeftToTargetOrderMap());
         }
 
-        private List<GraphJoinDecomposition.JoinVertexPair> reverse(List<GraphJoinDecomposition.JoinVertexPair> source) {
-            return source.stream().map(k -> new GraphJoinDecomposition.JoinVertexPair(k.getValue(), k.getKey(), k.isForeignKey())).collect(Collectors.toList());
+        private List<GraphJoinDecomposition.JoinVertexPair> reverse(
+                List<GraphJoinDecomposition.JoinVertexPair> source) {
+            return source.stream()
+                    .map(
+                            k ->
+                                    new GraphJoinDecomposition.JoinVertexPair(
+                                            k.getValue(), k.getKey(), k.isForeignKey()))
+                    .collect(Collectors.toList());
         }
     }
 }
