@@ -1,0 +1,8 @@
+MATCH (p: PERSON{id: 1939})-[k:KNOWS*1..4]-(f: PERSON)-[:ISLOCATEDIN]->(city),
+      (f)-[:WORKAT]->(:COMPANY)-[:ISLOCATEDIN]->(:COUNTRY),
+      (f)-[:STUDYAT]->(:UNIVERSITY)-[:ISLOCATEDIN]->(:CITY)
+WHERE f.firstName = "Mikhail" AND f.id <> 1939
+WITH f, length(k) as len
+RETURN f, min(len) as distance
+ORDER BY distance ASC, f.lastName ASC, f.id ASC
+LIMIT 20;

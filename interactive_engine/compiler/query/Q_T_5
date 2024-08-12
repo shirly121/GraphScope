@@ -1,0 +1,1 @@
+Match (p:POST)-[]->(p1), (p1)-[]->(:PLACE) Return count(p1);

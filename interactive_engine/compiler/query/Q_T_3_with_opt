@@ -1,0 +1,1 @@
+g.V().hasLabel('PLACE').in('ISLOCATEDIN').hasLabel('POST', 'COMMENT', 'PERSON').out('HASINTEREST', 'HASTAG').hasLabel('TAG').count()

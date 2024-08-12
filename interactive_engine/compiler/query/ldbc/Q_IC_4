@@ -1,0 +1,4 @@
+MATCH (person:PERSON {id: 168944})-[:KNOWS]-(friend:PERSON),
+      (friend)<-[:HASCREATOR]-(post:POST)-[:HASTAG]->(tag)
+Where post.creationDate >= 20100111014617581 AND post.creationDate <= 20130604130807720
+Return count(person);

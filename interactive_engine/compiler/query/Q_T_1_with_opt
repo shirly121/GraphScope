@@ -1,0 +1,1 @@
+g.V().hasLabel('PERSON').in('HASCREATOR').hasLabel('POST').in('CONTAINEROF').hasLabel('FORUM').count()

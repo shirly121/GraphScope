@@ -1,0 +1,519 @@
+{
+"plan": [{
+    "opr": {
+      "scan": {
+        "params": {
+          "tables": [{
+            "id": 0
+          }, {
+            "id": 1
+          }, {
+            "id": 2
+          }, {
+            "id": 3
+          }, {
+            "id": 4
+          }, {
+            "id": 5
+          }, {
+            "id": 6
+          }, {
+            "id": 7
+          }, {
+            "id": 8
+          }, {
+            "id": 9
+          }, {
+            "id": 10
+          }, {
+            "id": 11
+          }, {
+            "id": 12
+          }],
+          "sampleRatio": 1.0
+        },
+        "idxPredicate": {
+          "orPredicates": [{
+            "predicates": [{
+              "key": {
+                "id": {
+                }
+              },
+              "const": {
+                "i64": "72057594037929179"
+              }
+            }]
+          }]
+        }
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 1
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "firstName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "lastName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "gender"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "birthday"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 3
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "imageFile"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "language"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "content"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "length"
+              },
+              "type": "INT32"
+            }]
+          }, {
+            "label": {
+              "label": 5
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 6
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 2
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "content"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "length"
+              },
+              "type": "INT32"
+            }]
+          }, {
+            "label": {
+              "label": 11
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 9
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 8
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 10
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 7
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 12
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "name"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "url"
+              },
+              "type": "STRING"
+            }]
+          }, {
+            "label": {
+              "label": 4
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "title"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }]
+          }]
+        }
+      },
+      "alias": -1
+    }]
+  }, {
+    "opr": {
+      "union": {
+        "subPlans": [{
+          "plan": [{
+            "opr": {
+              "repartition": {
+                "toAnother": {
+                }
+              }
+            }
+          }, {
+            "opr": {
+              "path": {
+                "base": {
+                  "edgeExpand": {
+                    "direction": "BOTH",
+                    "params": {
+                      "tables": [{
+                        "id": 12
+                      }],
+                      "sampleRatio": 1.0
+                    }
+                  }
+                },
+                "hopRange": {
+                  "lower": 4,
+                  "upper": 5
+                }
+              }
+            },
+            "metaData": [{
+              "type": {
+                "graphType": {
+                  "elementOpt": "EDGE",
+                  "graphDataType": [{
+                    "label": {
+                      "label": 12,
+                      "srcLabel": 1,
+                      "dstLabel": 1
+                    },
+                    "props": [{
+                      "propId": {
+                        "name": "creationDate"
+                      },
+                      "type": "INT64"
+                    }]
+                  }]
+                }
+              },
+              "alias": -1
+            }]
+          }]
+        }, {
+          "plan": [{
+            "opr": {
+              "repartition": {
+                "toAnother": {
+                }
+              }
+            }
+          }, {
+            "opr": {
+              "path": {
+                "base": {
+                  "edgeExpand": {
+                    "direction": "BOTH",
+                    "params": {
+                      "tables": [{
+                        "id": 12
+                      }],
+                      "sampleRatio": 1.0
+                    }
+                  }
+                },
+                "hopRange": {
+                  "lower": 5,
+                  "upper": 6
+                }
+              }
+            },
+            "metaData": [{
+              "type": {
+                "graphType": {
+                  "elementOpt": "EDGE",
+                  "graphDataType": [{
+                    "label": {
+                      "label": 12,
+                      "srcLabel": 1,
+                      "dstLabel": 1
+                    },
+                    "props": [{
+                      "propId": {
+                        "name": "creationDate"
+                      },
+                      "type": "INT64"
+                    }]
+                  }]
+                }
+              },
+              "alias": -1
+            }]
+          }]
+        }]
+      }
+    }
+  }, {
+    "opr": {
+      "groupBy": {
+        "functions": [{
+          "vars": [{
+            "nodeType": {
+            }
+          }],
+          "aggregate": "COUNT",
+          "alias": 0
+        }]
+      }
+    },
+    "metaData": [{
+      "type": {
+        "dataType": "INT64"
+      }
+    }]
+  }, {
+    "opr": {
+      "sink": {
+        "tags": [{
+          "tag": 0
+        }],
+        "sinkTarget": {
+          "sinkDefault": {
+          }
+        }
+      }
+    }
+  }]
+}

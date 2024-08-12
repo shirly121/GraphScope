@@ -1,0 +1,394 @@
+{
+  "plan": [{
+    "opr": {
+      "scan": {
+        "alias": 3,
+        "params": {
+          "tables": [{
+            "id": 4
+          }],
+          "columns": [{
+            "name": "id"
+          }, {
+            "name": "title"
+          }, {
+            "name": "creationDate"
+          }],
+          "isAllColumns": true,
+          "sampleRatio": 1.0
+        }
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 4
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "title"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }]
+          }]
+        }
+      },
+      "alias": 3
+    }]
+  }, {
+    "opr": {
+      "repartition": {
+        "toAnother": {
+          "shuffleKey": 3
+        }
+      }
+    }
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 3,
+        "params": {
+          "tables": [{
+            "id": 5
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 2
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 3
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "imageFile"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "language"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "content"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "length"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      },
+      "alias": 2
+    }]
+  }, {
+    "opr": {
+      "repartition": {
+        "toAnother": {
+          "shuffleKey": 2
+        }
+      }
+    }
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 2,
+        "direction": "IN",
+        "params": {
+          "tables": [{
+            "id": 3
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 1
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 2
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "content"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "length"
+              },
+              "type": "INT32"
+            }]
+          }]
+        }
+      },
+      "alias": 1
+    }]
+  }, {
+    "opr": {
+      "repartition": {
+        "toAnother": {
+          "shuffleKey": 1
+        }
+      }
+    }
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 1,
+        "params": {
+          "tables": [{
+            "id": 0
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 0
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 1
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "firstName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "lastName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "gender"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "birthday"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }]
+          }]
+        }
+      }
+    }]
+  }, {
+    "opr": {
+      "repartition": {
+        "toAnother": {
+          "shuffleKey": 3
+        }
+      }
+    }
+  }, {
+    "opr": {
+      "edge": {
+        "vTag": 3,
+        "params": {
+          "tables": [{
+            "id": 6
+          }],
+          "columns": [{
+            "name": "joinDate"
+          }],
+          "sampleRatio": 1.0
+        },
+        "alias": 4
+      }
+    },
+    "metaData": [{
+      "type": {
+        "graphType": {
+          "graphDataType": [{
+            "label": {
+              "label": 1
+            },
+            "props": [{
+              "propId": {
+                "name": "id"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "firstName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "lastName"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "gender"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "birthday"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "creationDate"
+              },
+              "type": "INT64"
+            }, {
+              "propId": {
+                "name": "locationIP"
+              },
+              "type": "STRING"
+            }, {
+              "propId": {
+                "name": "browserUsed"
+              },
+              "type": "STRING"
+            }]
+          }]
+        }
+      },
+      "alias": 4
+    }]
+  }, {
+    "opr": {
+      "groupBy": {
+        "functions": [{
+          "vars": [{
+            "tag": {
+              "id": 3
+            },
+            "nodeType": {
+              "graphType": {
+                "graphDataType": [{
+                  "label": {
+                    "label": 4
+                  },
+                  "props": [{
+                    "propId": {
+                      "name": "id"
+                    },
+                    "type": "INT64"
+                  }, {
+                    "propId": {
+                      "name": "title"
+                    },
+                    "type": "STRING"
+                  }, {
+                    "propId": {
+                      "name": "creationDate"
+                    },
+                    "type": "INT64"
+                  }]
+                }]
+              }
+            }
+          }],
+          "aggregate": "COUNT",
+          "alias": 5
+        }]
+      }
+    },
+    "metaData": [{
+      "type": {
+        "dataType": "INT64"
+      },
+      "alias": 5
+    }]
+  }, {
+    "opr": {
+      "sink": {
+        "sinkTarget": {
+          "sinkDefault": {
+          }
+        }
+      }
+    }
+  }]
+}
