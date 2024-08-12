@@ -23,7 +23,7 @@ sleep 2m
 
 graph_schema=${GIE_HOME}/config/compiler/ldbc_schema_hierarchy.json
 physical_opt_config=proto
-graph_planner_cbo_glogue_schema=${GIE_HOME}/config/compiler/ldbc30_hierarchy_statistics.txt
+graph_planner_cbo_glogue_schema=${GIE_HOME}/config/compiler/ldbc30_hierarchy_statistics.json
 graph_planner_opt=CBO
 
 # Determine the CBO test to run based on orderValue

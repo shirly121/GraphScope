@@ -23,7 +23,7 @@ sleep 2m
 
 graph_schema=${GIE_HOME}/config/compiler/ldbc_schema.json
 physical_opt_config=proto
-graph_planner_cbo_glogue_schema=${GIE_HOME}/config/compiler/ldbc30_statistics.txt
+graph_planner_cbo_glogue_schema=${GIE_HOME}/config/compiler/ldbc30_statistics.json
 graph_planner_opt=CBO
 
 # run rbo test
