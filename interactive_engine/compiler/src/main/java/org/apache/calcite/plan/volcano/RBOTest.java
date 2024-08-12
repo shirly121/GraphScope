@@ -29,6 +29,7 @@ import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
 import com.alibaba.graphscope.common.ir.meta.reader.LocalIrMetaReader;
+import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
@@ -54,6 +55,8 @@ public class RBOTest {
         test.Q_R_4();
         test.Q_R_5();
         test.Q_R_6();
+        test.Q_R_7();
+        test.Q_R_8();
     }
 
     private static class Test {
@@ -63,11 +66,17 @@ public class RBOTest {
         private final RpcExecutionClient executionClient;
         private final File log;
         private final String queryDir;
+        private final GraphRelOptimizer optimizer;
 
         public Test() throws Exception {
             configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
             opt = System.getProperty("opt", "without");
-            irMeta = new StaticIrMetaFetcher(new LocalIrMetaReader(configs), null).fetch().get();
+            optimizer = new GraphRelOptimizer(configs);
+            irMeta =
+                    new StaticIrMetaFetcher(
+                                    new LocalIrMetaReader(configs), optimizer.getGlogueHolder())
+                            .fetch()
+                            .get();
             executionClient = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
             log = new File("rbo_result.txt");
             if (log.exists()) {
@@ -214,7 +223,8 @@ public class RBOTest {
                             configs,
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
-                                            .visit(new CypherAntlr4Parser().parse(q)));
+                                            .visit(new CypherAntlr4Parser().parse(q)),
+                            optimizer);
             String query =
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_3"), StandardCharsets.UTF_8);
@@ -284,7 +294,8 @@ public class RBOTest {
                             configs,
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
-                                            .visit(new CypherAntlr4Parser().parse(q)));
+                                            .visit(new CypherAntlr4Parser().parse(q)),
+                            optimizer);
             String query =
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_4"), StandardCharsets.UTF_8);
@@ -353,7 +364,8 @@ public class RBOTest {
                             configs,
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
-                                            .visit(new CypherAntlr4Parser().parse(q)));
+                                            .visit(new CypherAntlr4Parser().parse(q)),
+                            optimizer);
             String query =
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_5"), StandardCharsets.UTF_8);
@@ -422,7 +434,8 @@ public class RBOTest {
                             configs,
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
-                                            .visit(new CypherAntlr4Parser().parse(q)));
+                                            .visit(new CypherAntlr4Parser().parse(q)),
+                            optimizer);
             String query =
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_R_6"), StandardCharsets.UTF_8);

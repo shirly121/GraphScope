@@ -26,12 +26,12 @@ import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.FrontendConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
-import com.alibaba.graphscope.common.ir.meta.reader.LocalMetaDataReader;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
+import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
+import com.alibaba.graphscope.common.ir.meta.reader.LocalIrMetaReader;
+import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
-import com.alibaba.graphscope.common.store.ExperimentalMetaFetcher;
-import com.alibaba.graphscope.common.store.IrMeta;
-import com.alibaba.graphscope.common.store.IrMetaFetcher;
 import com.alibaba.graphscope.cypher.antlr4.parser.CypherAntlr4Parser;
 import com.alibaba.graphscope.cypher.antlr4.visitor.LogicalPlanVisitor;
 import com.alibaba.graphscope.gaia.proto.IrResult;
@@ -42,8 +42,8 @@ import org.apache.tinkerpop.gremlin.driver.Client;
 import org.apache.tinkerpop.gremlin.driver.Cluster;
 
 import java.io.File;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 
 public class TypeInferenceTest {
@@ -65,9 +65,10 @@ public class TypeInferenceTest {
         private final Client client;
         private final File log;
         private final GraphPlanner planner;
-        private final IrMetaFetcher metaFetcher;
+        private final IrMeta irMeta;
         private final ExecutionClient executionClient;
         private final String queryDir;
+        private final GraphRelOptimizer optimizer;
 
         public Test() throws Exception {
             configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
@@ -79,13 +80,15 @@ public class TypeInferenceTest {
                 log.delete();
             }
             log.createNewFile();
+            optimizer = new GraphRelOptimizer(configs);
             planner =
                     new GraphPlanner(
                             configs,
                             (GraphBuilder builder, IrMeta irMeta, String q) ->
                                     new LogicalPlanVisitor(builder, irMeta)
-                                            .visit(new CypherAntlr4Parser().parse(q)));
-            metaFetcher = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs));
+                                            .visit(new CypherAntlr4Parser().parse(q)),
+                            optimizer);
+            irMeta = new StaticIrMetaFetcher(new LocalIrMetaReader(configs), null).fetch().get();
             executionClient = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
             queryDir = System.getProperty("query", "gopt");
         }
@@ -155,11 +158,10 @@ public class TypeInferenceTest {
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_T_4"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
-            GraphPlanner.Summary summary =
-                    planner.instance(query, metaFetcher.fetch().get()).plan();
+            GraphPlanner.Summary summary = planner.instance(query, irMeta).plan();
             ExecutionRequest request =
                     new ExecutionRequest(
-                            UUID.randomUUID().hashCode(),
+                            BigInteger.valueOf(4),
                             "Q_T_4",
                             summary.getLogicalPlan(),
                             summary.getPhysicalPlan());
@@ -209,11 +211,10 @@ public class TypeInferenceTest {
                     FileUtils.readFileToString(
                             new File(queryDir + "/Q_T_5"), StandardCharsets.UTF_8);
             long startTime = System.currentTimeMillis();
-            GraphPlanner.Summary summary =
-                    planner.instance(query, metaFetcher.fetch().get()).plan();
+            GraphPlanner.Summary summary = planner.instance(query, irMeta).plan();
             ExecutionRequest request =
                     new ExecutionRequest(
-                            UUID.randomUUID().hashCode(),
+                            BigInteger.valueOf(5),
                             "Q_T_5",
                             summary.getLogicalPlan(),
                             summary.getPhysicalPlan());

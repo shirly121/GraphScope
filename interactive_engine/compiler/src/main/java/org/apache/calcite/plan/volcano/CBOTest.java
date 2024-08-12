@@ -25,7 +25,9 @@ import com.alibaba.graphscope.common.client.type.ExecutionResponseListener;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.FrontendConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
-import com.alibaba.graphscope.common.ir.meta.reader.LocalMetaDataReader;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
+import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
+import com.alibaba.graphscope.common.ir.meta.reader.LocalIrMetaReader;
 import com.alibaba.graphscope.common.ir.meta.schema.GraphOptSchema;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
@@ -43,8 +45,6 @@ import com.alibaba.graphscope.common.ir.tools.GraphBuilderFactory;
 import com.alibaba.graphscope.common.ir.tools.GraphRexBuilder;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.common.ir.type.GraphTypeFactoryImpl;
-import com.alibaba.graphscope.common.store.ExperimentalMetaFetcher;
-import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.cypher.antlr4.parser.CypherAntlr4Parser;
 import com.alibaba.graphscope.cypher.antlr4.visitor.GraphBuilderVisitor;
 import com.alibaba.graphscope.gaia.proto.IrResult;
@@ -66,6 +66,7 @@ import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.*;
@@ -93,7 +94,7 @@ public class CBOTest {
         private final Configs configs;
         private final ExecutionClient client;
         private final GraphRelOptimizer optimizer;
-        private final IrMeta ldbcMeta;
+        private final IrMeta irMeta;
         private final File logFile;
         private final File queryDir;
         private final RexBuilder rexBuilder;
@@ -111,7 +112,11 @@ public class CBOTest {
             }
             logFile.createNewFile();
             optimizer = new GraphRelOptimizer(configs);
-            ldbcMeta = new ExperimentalMetaFetcher(new LocalMetaDataReader(configs)).fetch().get();
+            irMeta =
+                    new StaticIrMetaFetcher(
+                                    new LocalIrMetaReader(configs), optimizer.getGlogueHolder())
+                            .fetch()
+                            .get();
             client = ExecutionClient.Factory.create(configs, new HostsRpcChannelFetcher(configs));
             rexBuilder = new GraphRexBuilder(new GraphTypeFactoryImpl(configs));
             relBuilderFactory = new GraphBuilderFactory(configs);
@@ -173,13 +178,13 @@ public class CBOTest {
                             + "]*******************************************\n",
                     StandardCharsets.UTF_8,
                     true);
-            GraphBuilder builder = mockGraphBuilder(optimizer, ldbcMeta);
+            GraphBuilder builder = mockGraphBuilder(optimizer, irMeta);
             RelNode node = eval(query, builder).build();
             // apply filter push down optimize
             optimizer.getRelPlanner().setRoot(node);
             node = optimizer.getRelPlanner().findBestExp();
             // apply CBO optimize
-            GraphIOProcessor ioProcessor = new GraphIOProcessor(builder, ldbcMeta);
+            GraphIOProcessor ioProcessor = new GraphIOProcessor(builder, irMeta);
             RelNode results = node.accept(visitorFactory.apply(ioProcessor));
             if (results instanceof RelNodeList) {
                 List<RelNode> rels = ((RelNodeList) results).rels;
@@ -190,11 +195,11 @@ public class CBOTest {
                         LogicalPlan logicalPlan =
                                 new LogicalPlan(optimizer.getPhysicalPlanner().findBestExp());
                         PhysicalPlan physicalPlan =
-                                new GraphRelProtoPhysicalBuilder(configs, ldbcMeta, logicalPlan)
+                                new GraphRelProtoPhysicalBuilder(configs, irMeta, logicalPlan)
                                         .build();
                         ExecutionRequest request =
                                 new ExecutionRequest(
-                                        UUID.randomUUID().hashCode(),
+                                        BigInteger.valueOf(UUID.randomUUID().hashCode()),
                                         queryName,
                                         logicalPlan,
                                         physicalPlan);
@@ -400,7 +405,7 @@ public class CBOTest {
         private GraphBuilder mockGraphBuilder(GraphRelOptimizer optimizer, IrMeta irMeta) {
             RelOptCluster optCluster =
                     GraphOptCluster.create(optimizer.getMatchPlanner(), rexBuilder);
-            optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery());
+            optCluster.setMetadataQuerySupplier(() -> optimizer.createMetaDataQuery(irMeta));
             return (GraphBuilder)
                     relBuilderFactory.create(
                             optCluster, new GraphOptSchema(optCluster, irMeta.getSchema()));
