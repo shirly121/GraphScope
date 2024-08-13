@@ -29,7 +29,7 @@ java \
   -cp ".:${GIE_HOME}/libs/*" \
   -Djna.library.path=${GIE_HOME}/libs \
   -Dgraph.schema=${graph_schema} \
-  -Dphysical.opt.config=${physical_opt_config} \
+  -Dgraph.physical.opt=${physical_opt_config} \
   -Dgraph.planner.opt=${graph_planner_opt} \
   com.alibaba.graphscope.GraphServer ${CONFIG}/compiler/compiler.properties &
 
@@ -46,7 +46,7 @@ java \
   -cp ".:${GIE_HOME}/libs/*" \
   -Djna.library.path=${GIE_HOME}/libs \
   -Dgraph.schema=${graph_schema} \
-  -Dphysical.opt.config=${physical_opt_config} \
+  -Dgraph.physical.opt=${physical_opt_config} \
   -Dgraph.planner.opt=${graph_planner_opt} \
   -Dgraph.type.inference.enabled=${type_inference_enabled} \
   -Dconfig=${CONFIG}/compiler/compiler.properties \

@@ -30,9 +30,9 @@ graph_planner_opt=CBO
 java \
   -cp ".:${GIE_HOME}/libs/*" \
   -Dgraph.schema=${graph_schema} \
-  -Dphysical.opt.config=${physical_opt_config} \
+  -Dgraph.physical.opt=${physical_opt_config} \
   -Dgraph.planner.opt=${graph_planner_opt} \
-  -Dgraph.planner.cbo.glogue.schema=${graph_planner_cbo_glogue_schema} \
+  -Dgraph.statistics=${graph_planner_cbo_glogue_schema} \
   -Dconfig=${CONFIG}/compiler/compiler.properties \
   -Dquery=${QUERY}/cbo \
   -Dorder=${orderValue} \
