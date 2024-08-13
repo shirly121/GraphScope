@@ -110,7 +110,17 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Scan.Builder scanBuilder = GraphAlgebraPhysical.Scan.newBuilder();
+        RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
+        if (uniqueKeyFilters != null) {
+            // only filter on "id" can be transformed to index predicate
+            // this is for experiment.
+            if (uniqueKeyFilters.toString().contains("id")) {
+                GraphAlgebra.IndexPredicate indexPredicate = buildIndexPredicates(uniqueKeyFilters);
+                scanBuilder.setIdxPredicate(indexPredicate);
+            }
+        }
         GraphAlgebra.QueryParams.Builder queryParamsBuilder = buildScanQueryParams(source);
+
         if (preCacheEdgeProps && GraphOpt.Source.EDGE.equals(source.getOpt())) {
             addQueryColumns(
                     queryParamsBuilder,
@@ -1096,8 +1106,14 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 com.alibaba.graphscope.common.ir.tools.Utils.getGraphLabels(source.getRowType())
                         .getLabelsEntry());
         RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
+        // For uniqueKeyFilters,
+        // if it is filter on unique key id, we translate it as pk scan (since currently the storage
+        // engine can only support a id pk)
+        // otherwise, we translate it as normal filter
         if (uniqueKeyFilters != null) {
-            addQueryFilters(paramsBuilder, ImmutableList.of(uniqueKeyFilters));
+            if (!uniqueKeyFilters.toString().contains("id")) {
+                addQueryFilters(paramsBuilder, ImmutableList.of(uniqueKeyFilters));
+            }
         } else {
             addQueryFilters(paramsBuilder, source.getFilters());
         }
