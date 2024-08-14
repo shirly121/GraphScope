@@ -29,7 +29,15 @@ config.path:=conf/ir.compiler.properties
 build:
 	cd $(CUR_DIR)/.. && \
 		mvn clean install -DskipTests -Drevision=${target.revision} -Pexperimental ${QUIET_OPT} && \
-		cd $(CUR_DIR)/../executor/ir/integrated && cargo build --release --bin $(rpc.target)
+		cp $(CUR_DIR)/../executor/store/exp_store/src/graph_db/graph_db_impl.rs.single $(CUR_DIR)/../executor/store/exp_store/src/graph_db/graph_db_impl.rs && \
+		cd $(CUR_DIR)/../executor/ir/integrated && cargo build --release --bin $(rpc.target) && \
+		cp $(CUR_DIR)/../executor/ir/target/release/libir_core.so $(CUR_DIR)/../executor/ir/ && \
+		cp $(CUR_DIR)/../executor/ir/target/release/$(rpc.target) $(CUR_DIR)/../executor/ir/
+
+# build imdb with specific exp graph implmentation for test
+build_imdb:
+	cp $(CUR_DIR)/../executor/store/exp_store/src/graph_db/graph_db_impl.rs.tmp $(CUR_DIR)/../executor/store/exp_store/src/graph_db/graph_db_impl.rs && \
+	cd $(CUR_DIR)/../executor/ir/integrated && cargo clean && cargo build --release --bin start_rpc_server_on_imdb
 
 clean:
 	cd $(CUR_DIR)/../executor/engine/pegasus/clients/java/client && mvn clean && \

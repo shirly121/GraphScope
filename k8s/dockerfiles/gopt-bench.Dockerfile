@@ -5,7 +5,8 @@ COPY --chown=graphscope:graphscope . /home/graphscope/GraphScope
 
 RUN cd /home/graphscope/GraphScope/interactive_engine/compiler \
     && . /home/graphscope/.graphscope_env \
-    && make build
+    && make build \
+    && make build_imdb
 
 ############### RUNTIME: frontend && executor #######################
 FROM ubuntu:22.04 AS experimental
@@ -14,7 +15,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/target/libs /home/graphscope/GIE/libs
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/target/compiler-0.0.1-SNAPSHOT.jar /home/graphscope/GIE/libs
-COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/target/release/libir_core.so /home/graphscope/GIE/libs
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/conf/ir.compiler.properties /home/graphscope/GIE/config/compiler/compiler.properties
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/core/resource/ldbc_schema.json /home/graphscope/GIE/config/compiler/ldbc_schema.json
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/core/resource/ldbc_schema_exp_hierarchy.json /home/graphscope/GIE/config/compiler/ldbc_schema_hierarchy.json
@@ -22,11 +22,12 @@ COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/c
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/src/test/resources/statistics/ldbc30_statistics.json /home/graphscope/GIE/config/compiler/ldbc30_statistics.json
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/src/test/resources/statistics/ldbc30_hierarchy_statistics.json /home/graphscope/GIE/config/compiler/ldbc30_hierarchy_statistics.json
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/src/test/resources/statistics/imdb_statistics.json /home/graphscope/GIE/config/compiler/imdb_statistics.json
-COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/target/release/start_rpc_server /home/graphscope/GIE/bin/start_rpc_server
-#COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/target/release/start_rpc_server_on_imdb /home/graphscope/GIE/bin/start_rpc_server_on_imdb
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/integrated/config /home/graphscope/GIE/config/engine
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/scripts /home/graphscope/GIE/scripts
 COPY --from=builder /home/graphscope/GraphScope/interactive_engine/compiler/query /home/graphscope/GIE/query
+COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/libir_core.so /home/graphscope/GIE/libs
+COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/start_rpc_server /home/graphscope/GIE/bin/start_rpc_server
+COPY --from=builder /home/graphscope/GraphScope/interactive_engine/executor/ir/target/release/start_rpc_server_on_imdb /home/graphscope/GIE/bin/start_rpc_server_on_imdb
 
 RUN apt-get update -y && \
     apt-get install -y default-jdk tzdata && \
