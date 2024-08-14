@@ -184,12 +184,12 @@ graphscope-store:
 
 
 # build gopt benchmark docker image
-gopt-bench-exp:
+gopt-bench:
 	cd $(WORKING_DIR)/.. && \
 	docker build \
 	    --target experimental \
 		--progress=$(BUILD_PROGRESS) \
 		--build-arg REGISTRY=$(REGISTRY) \
 		--build-arg BUILDER_VERSION=$(BUILDER_VERSION) \
-		-t graphscope/gopt-bench-exp:${VERSION} \
-		-f $(DOCKERFILES_DIR)/gopt-bench-exp.Dockerfile .
+		-t graphscope/gopt-bench:${VERSION} \
+		-f $(DOCKERFILES_DIR)/gopt-bench.Dockerfile .
