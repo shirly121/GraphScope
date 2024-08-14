@@ -108,7 +108,11 @@ public class LDBCTest {
             Preconditions.checkArgument(
                     queryDir.exists() && queryDir.isDirectory(),
                     queryDir + " is not a valid directory");
-            logFile = new File("ldbc_result.txt");
+            if (queryDir.getPath().contains("job")) {
+                logFile = new File("job_result.txt");
+            } else {
+                logFile = new File("ldbc_result.txt");
+            }
             if (logFile.exists()) {
                 logFile.delete();
             }
@@ -166,7 +170,9 @@ public class LDBCTest {
             }
         }
 
-        public void run_neo4j() {}
+        public void run_neo4j() {
+            // TODO: add neo4j's query order
+        }
 
         private void execute_one_query(
                 String queryName,
@@ -322,6 +328,9 @@ public class LDBCTest {
                 List<RelNode> randomRels = Lists.newArrayList();
                 Set<RelDigest> randomDigests = Sets.newHashSet();
                 int maxIter = 100;
+                if (allSets.size() == 0) {
+                    return randomRels;
+                }
                 RelSet rootSet = allSets.get(0);
                 while (randomRels.size() < count && maxIter-- > 0) {
                     RelNode randomRel = randomPickOne(matchPlanner, random, rootSet);

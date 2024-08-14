@@ -34,6 +34,6 @@ java \
   -Dgraph.planner.opt=${graph_planner_opt} \
   -Dgraph.statistics=${graph_planner_cbo_glogue_schema} \
   -Dconfig=${CONFIG}/compiler/compiler.properties \
-  -Dquery=${QUERY}/ldbc \
+  -Dquery=${QUERY}/job \
   -Dorder=${orderValue} \
-  org.apache.calcite.plan.volcano.JOBTest
+  org.apache.calcite.plan.volcano.LDBCTest

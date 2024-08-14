@@ -24,6 +24,7 @@ sleep 2m
 graph_schema=${GIE_HOME}/config/compiler/ldbc_schema.json
 physical_opt_config=ffi
 graph_planner_opt=RBO
+graph_planner_cbo_glogue_schema=${GIE_HOME}/config/compiler/ldbc30_statistics.json
 
 java \
   -cp ".:${GIE_HOME}/libs/*" \
@@ -31,6 +32,7 @@ java \
   -Dgraph.schema=${graph_schema} \
   -Dgraph.physical.opt=${physical_opt_config} \
   -Dgraph.planner.opt=${graph_planner_opt} \
+  -Dgraph.statistics=${graph_planner_cbo_glogue_schema} \
   com.alibaba.graphscope.GraphServer ${CONFIG}/compiler/compiler.properties &
 
 sleep 10s
@@ -49,6 +51,7 @@ java \
   -Dgraph.physical.opt=${physical_opt_config} \
   -Dgraph.planner.opt=${graph_planner_opt} \
   -Dgraph.type.inference.enabled=${type_inference_enabled} \
+  -Dgraph.statistics=${graph_planner_cbo_glogue_schema} \
   -Dconfig=${CONFIG}/compiler/compiler.properties \
   -Dquery=${QUERY} \
   org.apache.calcite.plan.volcano.TypeInferenceTest
