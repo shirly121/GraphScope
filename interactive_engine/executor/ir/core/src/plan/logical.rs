@@ -509,11 +509,8 @@ impl LogicalPlan {
                         .get_opr(parent_ids[0])
                         .map(|pattern_source| is_whole_graph(&pattern_source))
                         .ok_or_else(|| IrError::ParentNodeNotExist(parent_ids[0]))?;
-                    let extend_strategy = if is_pattern_source_whole_graph {
-                        ExtendStrategy::init(&pattern, &self.meta)
-                    } else {
-                        Err(IrPatternError::Unsupported("pattern source is not whole graph".to_string()))
-                    };
+                    let extend_strategy: Result<ExtendStrategy, IrPatternError> =
+                        Err(IrPatternError::Unsupported("Use naive match for test".to_string()));
 
                     let match_plan = match extend_strategy {
                         Ok(extend_strategy) => {
