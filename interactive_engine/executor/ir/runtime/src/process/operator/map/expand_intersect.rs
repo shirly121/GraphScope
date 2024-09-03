@@ -209,7 +209,7 @@ impl<E: Entry + 'static> FilterMapFunction<Record, Record> for ExpandOrIntersect
 
 /// An OptionalExpandOrIntersect operator to expand neighbor
 /// e.g., based on a->b, we intersect optional edges of a-(opt)->c and b-(opt)->c,
-/// then the results could be either matches of a->b->c + a->c if there exits matches of c, or just a->b, where the match for c is a Object::None.
+/// then the results could be either matches of a->b->c + a->c if there exits matches of c, or just a->b, where the match for c is an empty IntersectionEntry.
 struct OptionalExpandOrIntersect<E: Entry> {
     start_v_tag: Option<KeyId>,
     edge_or_end_v_tag: KeyId,
@@ -280,6 +280,13 @@ impl<E: Entry + 'static> FilterMapFunction<Record, Record> for OptionalExpandOrI
     }
 }
 
+pub struct FusedExpandGetV {
+    start_v_tag: Option<KeyId>,
+    edge_tag: KeyId,
+    end_v_tag: KeyId,
+    stmt: Box<dyn Statement<ID, GraphElement>>,
+}
+
 impl FilterMapFuncGen for pb::EdgeExpand {
     fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record, Record>>> {
         let graph = graph_proxy::apis::get_graph().ok_or_else(|| FnGenError::NullGraphError)?;
@@ -322,6 +329,56 @@ impl FilterMapFuncGen for pb::EdgeExpand {
                     let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
                     Ok(Box::new(edge_expand_operator))
                 }
+            }
+        }
+    }
+}
+
+impl FilterMapFuncGen for (pb::EdgeExpand, pb::GetV) {
+    fn gen_filter_map(self) -> FnGenResult<Box<dyn FilterMapFunction<Record, Record>>> {
+        let graph = graph_proxy::apis::get_graph().ok_or_else(|| FnGenError::NullGraphError)?;
+        let start_v_tag = self.0.v_tag;
+        let edge_tag = self.0.alias.ok_or_else(|| {
+            ParsePbError::from(
+                "`EdgeExpand::alias` in intersection will not be empty since it should be fused",
+            )
+        })?;
+        let end_v_tag = self
+            .1
+            .alias
+            .ok_or_else(|| ParsePbError::from("`GetV::alias` cannot be empty for intersection"))?;
+        let direction_pb: pb::edge_expand::Direction = unsafe { ::std::mem::transmute(self.0.direction) };
+        let direction = Direction::from(direction_pb);
+        let query_params: QueryParams = self.0.params.try_into()?;
+        if log_enabled!(log::Level::Debug) && pegasus::get_current_worker().index == 0 {
+            debug!(
+                "Runtime expand collection operator of edge with start_v_tag {:?}, edge_tag {:?}, end_v_tag {:?}, direction {:?}, query_params {:?}",
+                start_v_tag, edge_tag, end_v_tag, direction, query_params
+            );
+        }
+
+        if query_params.filter.is_some() {
+            // Expand vertices with filters on edges.
+            // This can be regarded as a combination of EdgeExpand (with expand_opt as Edge) + GetV
+            let stmt = graph.prepare_explore_edge(direction, &query_params)?;
+            if self.0.is_optional {
+                let edge_expand_operator =
+                    OptionalExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                Ok(Box::new(edge_expand_operator))
+            } else {
+                let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                Ok(Box::new(edge_expand_operator))
+            }
+        } else {
+            // Expand vertices without any filters
+            let stmt = graph.prepare_explore_vertex(direction, &query_params)?;
+            if self.0.is_optional {
+                let edge_expand_operator =
+                    OptionalExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                Ok(Box::new(edge_expand_operator))
+            } else {
+                let edge_expand_operator = ExpandOrIntersect { start_v_tag, edge_or_end_v_tag, stmt };
+                Ok(Box::new(edge_expand_operator))
             }
         }
     }
