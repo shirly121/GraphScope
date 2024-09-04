@@ -20,6 +20,10 @@ public class PlannerConfig {
             Config.intConfig("graph.planner.join.cost.factor.1", 1);
     public static final Config<Integer> JOIN_COST_FACTOR_2 =
             Config.intConfig("graph.planner.join.cost.factor.2", 1);
+    public static final Config<Integer> GRAPH_PLANNER_GROUP_SIZE =
+            Config.intConfig("graph.planner.group.size", 8);
+    public static final Config<Integer> GRAPH_PLANNER_GROUP_CLEAR_INTERVAL_MINUTES =
+            Config.intConfig("graph.planner.group.clear.interval.minutes", 30);
 
     private final Configs configs;
     private final List<String> rules;
@@ -60,6 +64,14 @@ public class PlannerConfig {
 
     public int getJoinCostFactor2() {
         return JOIN_COST_FACTOR_2.get(configs);
+    }
+
+    public int getPlannerGroupSize() {
+        return GRAPH_PLANNER_GROUP_SIZE.get(configs);
+    }
+
+    public int getPlannerGroupClearIntervalMinutes() {
+        return GRAPH_PLANNER_GROUP_CLEAR_INTERVAL_MINUTES.get(configs);
     }
 
     @Override
