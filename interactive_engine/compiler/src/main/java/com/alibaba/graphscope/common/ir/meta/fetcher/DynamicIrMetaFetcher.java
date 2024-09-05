@@ -96,7 +96,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                 syncStats();
             }
         } catch (Throwable e) {
-            logger.warn("failed to read meta data, error is {}", e);
+            logger.info("failed to read meta data, error is {}", e);
         }
     }
 
@@ -120,7 +120,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                 }
             }
         } catch (Throwable e) {
-            logger.warn("failed to read graph statistics, error is {}", e);
+            logger.info("failed to read graph statistics, error is {}", e);
         } finally {
             try {
                 if (this.currentState != null
@@ -131,7 +131,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                     this.statsState = StatsState.MOCKED;
                 }
             } catch (Throwable t) {
-                logger.warn("failed to mock the glogue, error is {}", t);
+                logger.info("failed to mock the glogue, error is {}", t);
             }
         }
     }

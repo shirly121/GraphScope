@@ -91,7 +91,7 @@ public class Glogue {
         }
         // compute pattern cardinality
         this.glogueCardinalityEstimation = new GlogueBasicCardinalityEstimationImpl(this, schema);
-        logger.debug("Glogue graph constructed");
+        logger.info("Glogue graph constructed");
         return this;
     }
 
@@ -100,7 +100,7 @@ public class Glogue {
         if (vertex.isPresent()) {
             return getGlogueOutEdges(vertex.get());
         } else {
-            logger.warn("pattern not found in glogue graph, queried pattern " + pattern);
+            logger.info("pattern not found in glogue graph, queried pattern " + pattern);
             return new HashSet<>();
         }
     }
@@ -110,7 +110,7 @@ public class Glogue {
         if (vertex.isPresent()) {
             return getGlogueInEdges(vertex.get());
         } else {
-            logger.warn("pattern not found in glogue graph, queried pattern " + pattern);
+            logger.info("pattern not found in glogue graph, queried pattern " + pattern);
             return new HashSet<>();
         }
     }
