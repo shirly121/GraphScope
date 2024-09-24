@@ -23,6 +23,7 @@ import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.gaia.proto.IrResult;
+import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
 import com.alibaba.pegasus.RpcChannel;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
@@ -50,7 +51,8 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
     public void submit(
             ExecutionRequest request,
             ExecutionResponseListener listener,
-            QueryTimeoutConfig timeoutConfig)
+            QueryTimeoutConfig timeoutConfig,
+            QueryLogger queryLogger)
             throws Exception {
         if (rpcClientRef.get() == null) {
             rpcClientRef.compareAndSet(null, new RpcClient(channelFetcher.fetch()));
@@ -93,11 +95,13 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                     @Override
                     public void finish() {
                         listener.onCompleted();
+                        queryLogger.info("[compile]: success to receive results from engine");
                     }
 
                     @Override
                     public void error(Status status) {
                         listener.onError(status.asException());
+                        queryLogger.error("[compile]: fail to receive results from engine");
                     }
                 },
                 timeoutConfig.getChannelTimeoutMS());

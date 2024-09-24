@@ -82,6 +82,15 @@ public class YamlConfigs extends Configs {
                             }
                         })
                 .put(
+                        "graph.physical.opt",
+                        (Configs configs) -> {
+                            if (configs.get("compiler.physical.opt.config") != null) {
+                                return configs.get("compiler.physical.opt.config");
+                            } else {
+                                return "ffi"; // default proto
+                            }
+                        })
+                .put(
                         "pegasus.worker.num",
                         (Configs configs) -> {
                             String type = configs.get("compute_engine.type");
@@ -140,6 +149,30 @@ public class YamlConfigs extends Configs {
                                 }
                                 return null;
                             }
+                        })
+                .put(
+                        "interactive.admin.endpoint",
+                        (Configs configs) -> {
+                            String host = configs.get("http_service.default_listen_address");
+                            String port = configs.get("http_service.admin_port");
+                            if (host != null) {
+                                if (port != null) {
+                                    return "http://" + host + ":" + port;
+                                }
+                            }
+                            return null;
+                        })
+                .put(
+                        "interactive.query.endpoint",
+                        (Configs configs) -> {
+                            String host = configs.get("http_service.default_listen_address");
+                            String port = configs.get("http_service.query_port");
+                            if (host != null) {
+                                if (port != null) {
+                                    return "http://" + host + ":" + port;
+                                }
+                            }
+                            return null;
                         })
                 .put(
                         "neo4j.bolt.server.disabled",

@@ -25,6 +25,7 @@ import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.meta.IrMetaStats;
 import com.alibaba.graphscope.common.ir.meta.IrMetaTracker;
 import com.alibaba.graphscope.common.ir.meta.reader.IrMetaReader;
+import com.alibaba.graphscope.common.ir.meta.schema.SchemaSpec.Type;
 import com.alibaba.graphscope.groot.common.schema.api.GraphStatistics;
 
 import org.slf4j.Logger;
@@ -76,10 +77,17 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
     private synchronized void syncMeta() {
         try {
             IrMeta meta = this.reader.readMeta();
+            logger.debug(
+                    "schema from remote: {}",
+                    (meta == null) ? null : meta.getSchema().getSchemaSpec(Type.IR_CORE_IN_JSON));
             GraphStatistics curStats;
-            // if the graph id is changed, we need to update the statistics
+            // if the graph id or schema version is changed, we need to update the statistics
             if (this.currentState == null
-                    || !this.currentState.getGraphId().equals(meta.getGraphId())) {
+                    || !this.currentState.getGraphId().equals(meta.getGraphId())
+                    || !this.currentState
+                            .getSchema()
+                            .getVersion()
+                            .equals(meta.getSchema().getVersion())) {
                 this.statsState = StatsState.INITIALIZED;
                 curStats = null;
             } else {
@@ -96,7 +104,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                 logger.info("start to schedule statistics fetch task");
                 syncStats();
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.warn("failed to read meta data, error is {}", e);
         }
     }
@@ -105,7 +113,8 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
         try {
             if (this.currentState != null) {
                 GraphStatistics stats = this.reader.readStats(this.currentState.getGraphId());
-                if (stats != null) {
+                logger.debug("statistics from remote: {}", stats);
+                if (stats != null && stats.getVertexCount() != 0) {
                     this.currentState =
                             new IrMetaStats(
                                     this.currentState.getSnapshotId(),
@@ -113,19 +122,25 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                                     this.currentState.getStoredProcedures(),
                                     stats);
                     if (tracker != null) {
+                        logger.debug("start to update the glogue");
                         tracker.onChanged(this.currentState);
                     }
                     this.statsState = StatsState.SYNCED;
                 }
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.warn("failed to read graph statistics, error is {}", e);
         } finally {
-            if (this.currentState != null
-                    && tracker != null
-                    && this.statsState == StatsState.INITIALIZED) {
-                tracker.onChanged(this.currentState);
-                this.statsState = StatsState.MOCKED;
+            try {
+                if (this.currentState != null
+                        && tracker != null
+                        && this.statsState == StatsState.INITIALIZED) {
+                    logger.debug("start to mock the glogue");
+                    tracker.onChanged(this.currentState);
+                    this.statsState = StatsState.MOCKED;
+                }
+            } catch (Throwable t) {
+                logger.warn("failed to mock the glogue, error is {}", t);
             }
         }
     }

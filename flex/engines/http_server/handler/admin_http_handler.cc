@@ -26,40 +26,32 @@
 #include "flex/third_party/httplib.h"
 
 #include <glog/logging.h>
+#include <rapidjson/document.h>
 
 namespace server {
-
-std::string trim_slash(const std::string& origin) {
-  std::string res = origin;
-  if (res.front() == '/') {
-    res.erase(res.begin());
-  }
-  if (res.back() == '/') {
-    res.pop_back();
-  }
-  return res;
-}
 
 // Only returns success if all results are success
 // But currently, only one file uploading is supported.
 admin_query_result generate_final_result(
     server::payload<std::vector<gs::Result<seastar::sstring>>>& result) {
   auto result_val = result.content;
-  nlohmann::json json_res;
+  rapidjson::Document json_res(rapidjson::kObjectType);
   if (result_val.size() != 1) {
     LOG(INFO) << "Only one file uploading is supported";
     return admin_query_result{gs::Result<seastar::sstring>(
-        gs::Status(gs::StatusCode::InternalError,
+        gs::Status(gs::StatusCode::INTERNAL_ERROR,
                    "Only one file uploading is supported"))};
   }
   for (auto& res : result_val) {
     if (res.ok()) {
-      json_res["file_path"] = res.value();
+      json_res.AddMember("file_path", std::string(res.value().c_str()),
+                         json_res.GetAllocator());
     } else {
       return admin_query_result{std::move(res)};
     }
   }
-  return admin_query_result{gs::Result<seastar::sstring>(json_res.dump())};
+  return admin_query_result{
+      gs::Result<seastar::sstring>(gs::rapidjson_stringify(json_res))};
 }
 
 inline bool parse_multipart_boundary(const seastar::sstring& content_type,
@@ -189,9 +181,8 @@ class admin_file_upload_handler_impl : public seastar::httpd::handler_base {
       seastar::sstring boundary;
       if (!parse_multipart_boundary(req->_headers["Content-Type"], boundary)) {
         LOG(ERROR) << "Failed to parse boundary";
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("Failed to parse boundary"));
+        return new_bad_request_reply(std::move(rep),
+                                     "Failed to parse boundary");
       }
       std::vector<std::pair<seastar::sstring, seastar::sstring>>
           file_name_and_contents =
@@ -203,9 +194,8 @@ class admin_file_upload_handler_impl : public seastar::httpd::handler_base {
             return return_reply_with_result(std::move(rep), std::move(fut));
           });
     } else {
-      return seastar::make_exception_future<
-          std::unique_ptr<seastar::httpd::reply>>(
-          std::runtime_error("Unsupported method" + method));
+      return new_bad_request_reply(std::move(rep),
+                                   "Unsupported method: " + method);
     }
   }
 
@@ -245,9 +235,7 @@ class admin_http_graph_handler_impl : public seastar::httpd::handler_base {
       if (path.find("dataloading") != seastar::sstring::npos) {
         LOG(INFO) << "Route to loading graph";
         if (!req->param.exists("graph_id")) {
-          return seastar::make_exception_future<
-              std::unique_ptr<seastar::httpd::reply>>(
-              std::runtime_error("graph_id not exists"));
+          return new_bad_request_reply(std::move(rep), "graph_id not given");
         } else {
           auto graph_id = trim_slash(req->param.at("graph_id"));
           LOG(INFO) << "Graph id: " << graph_id;
@@ -317,9 +305,7 @@ class admin_http_graph_handler_impl : public seastar::httpd::handler_base {
       }
     } else if (method == "DELETE") {
       if (!req->param.exists("graph_id")) {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("graph_id not given"));
+        return new_bad_request_reply(std::move(rep), "graph_id not given");
       }
       auto graph_id = trim_slash(req->param.at("graph_id"));
       return admin_actor_refs_[dst_executor]
@@ -329,9 +315,8 @@ class admin_http_graph_handler_impl : public seastar::httpd::handler_base {
             return return_reply_with_result(std::move(rep), std::move(fut));
           });
     } else {
-      return seastar::make_exception_future<
-          std::unique_ptr<seastar::httpd::reply>>(
-          std::runtime_error("Unsupported method" + method));
+      return new_bad_request_reply(std::move(rep),
+                                   "Unsupported method: " + method);
     }
   }
 
@@ -368,9 +353,7 @@ class admin_http_procedure_handler_impl : public seastar::httpd::handler_base {
     if (req->_method == "GET") {
       // get graph_id param
       if (!req->param.exists("graph_id")) {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("graph_id not exists"));
+        return new_bad_request_reply(std::move(rep), "graph_id not given");
       }
       auto graph_id = trim_slash(req->param.at("graph_id"));
       if (req->param.exists("procedure_id")) {
@@ -402,9 +385,7 @@ class admin_http_procedure_handler_impl : public seastar::httpd::handler_base {
       }
     } else if (req->_method == "POST") {
       if (!req->param.exists("graph_id")) {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("graph_id not given"));
+        return new_bad_request_reply(std::move(rep), "graph_id not given");
       }
       auto graph_id = trim_slash(req->param.at("graph_id"));
       LOG(INFO) << "Creating procedure for: " << graph_id;
@@ -419,9 +400,8 @@ class admin_http_procedure_handler_impl : public seastar::httpd::handler_base {
       // delete must give graph_id and procedure_id
       if (!req->param.exists("graph_id") ||
           !req->param.exists("procedure_id")) {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("graph_id or procedure_id not given: "));
+        return new_bad_request_reply(std::move(rep),
+                                     "graph_id or procedure_id not given");
       }
       auto graph_id = trim_slash(req->param.at("graph_id"));
       auto procedure_id = trim_slash(req->param.at("procedure_id"));
@@ -437,9 +417,8 @@ class admin_http_procedure_handler_impl : public seastar::httpd::handler_base {
     } else if (req->_method == "PUT") {
       if (!req->param.exists("graph_id") ||
           !req->param.exists("procedure_id")) {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("graph_id or procedure_id not given: "));
+        return new_bad_request_reply(std::move(rep),
+                                     "graph_id or procedure_id not given");
       }
       auto graph_id = trim_slash(req->param.at("graph_id"));
       auto procedure_id = trim_slash(req->param.at("procedure_id"));
@@ -452,9 +431,8 @@ class admin_http_procedure_handler_impl : public seastar::httpd::handler_base {
             return return_reply_with_result(std::move(rep), std::move(fut));
           });
     } else {
-      return seastar::make_exception_future<
-          std::unique_ptr<seastar::httpd::reply>>(
-          std::runtime_error("Unsupported method" + req->_method));
+      return new_bad_request_reply(std::move(rep),
+                                   "Unsupported method: " + req->_method);
     }
   }
 
@@ -491,9 +469,7 @@ class admin_http_service_handler_impl : public seastar::httpd::handler_base {
     if (method == "POST") {
       // Then param[action] should exists
       if (!req->param.exists("action")) {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("action is expected for /v1/service/"));
+        return new_bad_request_reply(std::move(rep), "action not given");
       }
       auto action = trim_slash(req->param.at("action"));
       LOG(INFO) << "POST with action: " << action;
@@ -517,9 +493,8 @@ class admin_http_service_handler_impl : public seastar::httpd::handler_base {
                                                   std::move(fut));
                 });
       } else {
-        return seastar::make_exception_future<
-            std::unique_ptr<seastar::httpd::reply>>(
-            std::runtime_error("Unsupported action: " + action));
+        return new_bad_request_reply(
+            std::move(rep), std::string("Unsupported action: ") + action);
       }
     } else {
       return admin_actor_refs_[dst_executor]
@@ -570,9 +545,8 @@ class admin_http_node_handler_impl : public seastar::httpd::handler_base {
             return return_reply_with_result(std::move(rep), std::move(fut));
           });
     } else {
-      return seastar::make_exception_future<
-          std::unique_ptr<seastar::httpd::reply>>(
-          std::runtime_error("Unsupported method" + method));
+      return new_bad_request_reply(std::move(rep),
+                                   "Unsupported method: " + method);
     }
   }
 
@@ -628,13 +602,7 @@ class admin_http_job_handler_impl : public seastar::httpd::handler_base {
       }
     } else if (method == "DELETE") {
       if (!req->param.exists("job_id")) {
-        rep->set_status(seastar::httpd::reply::status_type::bad_request);
-        rep->set_content_type("application/json");
-        rep->write_body("json",
-                        seastar::sstring("expect field 'job_id' in request"));
-        rep->done();
-        return seastar::make_ready_future<
-            std::unique_ptr<seastar::httpd::reply>>(std::move(rep));
+        return new_bad_request_reply(std::move(rep), "job_id not given");
       }
       auto job_id = trim_slash(req->param.at("job_id"));
       return admin_actor_refs_[dst_executor]
@@ -644,13 +612,8 @@ class admin_http_job_handler_impl : public seastar::httpd::handler_base {
             return return_reply_with_result(std::move(rep), std::move(fut));
           });
     } else {
-      rep->set_status(seastar::httpd::reply::status_type::bad_request);
-      rep->set_content_type("application/json");
-      rep->write_body("json",
-                      seastar::sstring("Unsupported method: ") + method);
-      rep->done();
-      return seastar::make_ready_future<std::unique_ptr<seastar::httpd::reply>>(
-          std::move(rep));
+      return new_bad_request_reply(std::move(rep),
+                                   "Unsupported method: " + method);
     }
   }
 
@@ -691,7 +654,7 @@ seastar::future<> admin_http_handler::set_routes() {
     {
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_procedure_handler_impl(
-              interactive_admin_group_id, shard_admin_procedure_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/procedure");
@@ -701,7 +664,7 @@ seastar::future<> admin_http_handler::set_routes() {
     {
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_procedure_handler_impl(
-              interactive_admin_group_id, shard_admin_procedure_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/procedure");
@@ -712,7 +675,7 @@ seastar::future<> admin_http_handler::set_routes() {
       // Each procedure's handling
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_procedure_handler_impl(
-              interactive_admin_group_id, shard_admin_procedure_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/procedure")
@@ -725,7 +688,7 @@ seastar::future<> admin_http_handler::set_routes() {
       // Each procedure's handling
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_procedure_handler_impl(
-              interactive_admin_group_id, shard_admin_procedure_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/procedure")
@@ -737,7 +700,7 @@ seastar::future<> admin_http_handler::set_routes() {
       // Each procedure's handling
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_procedure_handler_impl(
-              interactive_admin_group_id, shard_admin_procedure_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/procedure")
@@ -750,24 +713,24 @@ seastar::future<> admin_http_handler::set_routes() {
     // List all graphs.
     r.add(seastar::httpd::operation_type::GET, seastar::httpd::url("/v1/graph"),
           new admin_http_graph_handler_impl(interactive_admin_group_id,
-                                            shard_admin_graph_concurrency));
+                                            shard_admin_concurrency));
     // Create a new Graph
     r.add(seastar::httpd::operation_type::POST,
           seastar::httpd::url("/v1/graph"),
           new admin_http_graph_handler_impl(interactive_admin_group_id,
-                                            shard_admin_graph_concurrency));
+                                            shard_admin_concurrency));
 
     // Delete a graph
     r.add(SEASTAR_DELETE,
           seastar::httpd::url("/v1/graph").remainder("graph_id"),
           new admin_http_graph_handler_impl(interactive_admin_group_id,
-                                            shard_admin_graph_concurrency));
+                                            shard_admin_concurrency));
     {
       // uploading file to server
       r.add(seastar::httpd::operation_type::POST,
             seastar::httpd::url("/v1/file/upload"),
             new admin_file_upload_handler_impl(interactive_admin_group_id,
-                                               shard_admin_graph_concurrency));
+                                               shard_admin_concurrency));
     }
 
     // Get graph metadata
@@ -776,7 +739,7 @@ seastar::future<> admin_http_handler::set_routes() {
       // /v1/graph/{graph_id}/schema
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_graph_handler_impl(
-              interactive_admin_group_id, shard_admin_graph_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph").add_param("graph_id", false);
       // Get graph schema
       r.add(match_rule, seastar::httpd::operation_type::GET);
@@ -785,7 +748,7 @@ seastar::future<> admin_http_handler::set_routes() {
     {  // load data to graph
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_graph_handler_impl(
-              interactive_admin_group_id, shard_admin_graph_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/dataloading");
@@ -794,7 +757,7 @@ seastar::future<> admin_http_handler::set_routes() {
     {  // Get Graph Schema
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_graph_handler_impl(
-              interactive_admin_group_id, shard_admin_graph_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph").add_param("graph_id").add_str("/schema");
       r.add(match_rule, seastar::httpd::operation_type::GET);
     }
@@ -802,7 +765,7 @@ seastar::future<> admin_http_handler::set_routes() {
       // Get running graph statistics
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_graph_handler_impl(
-              interactive_admin_group_id, shard_admin_graph_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/graph")
           .add_param("graph_id")
           .add_str("/statistics");
@@ -814,18 +777,18 @@ seastar::future<> admin_http_handler::set_routes() {
       r.add(seastar::httpd::operation_type::GET,
             seastar::httpd::url("/v1/node/status"),
             new admin_http_node_handler_impl(interactive_admin_group_id,
-                                             shard_admin_node_concurrency));
+                                             shard_admin_concurrency));
 
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_service_handler_impl(
-              interactive_admin_group_id, shard_admin_service_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
       match_rule->add_str("/v1/service").add_param("action");
       r.add(match_rule, seastar::httpd::operation_type::POST);
 
       r.add(seastar::httpd::operation_type::GET,
             seastar::httpd::url("/v1/service/status"),
-            new admin_http_service_handler_impl(
-                interactive_admin_group_id, shard_admin_service_concurrency));
+            new admin_http_service_handler_impl(interactive_admin_group_id,
+                                                shard_admin_concurrency));
     }
 
     {
@@ -897,17 +860,17 @@ seastar::future<> admin_http_handler::set_routes() {
       // job request handling.
       r.add(seastar::httpd::operation_type::GET, seastar::httpd::url("/v1/job"),
             new admin_http_job_handler_impl(interactive_admin_group_id,
-                                            shard_admin_job_concurrency));
+                                            shard_admin_concurrency));
       auto match_rule =
           new seastar::httpd::match_rule(new admin_http_job_handler_impl(
-              interactive_admin_group_id, shard_admin_job_concurrency));
+              interactive_admin_group_id, shard_admin_concurrency));
 
       match_rule->add_str("/v1/job").add_param("job_id");
       r.add(match_rule, seastar::httpd::operation_type::GET);
 
       r.add(SEASTAR_DELETE, seastar::httpd::url("/v1/job").remainder("job_id"),
             new admin_http_job_handler_impl(interactive_admin_group_id,
-                                            shard_admin_job_concurrency));
+                                            shard_admin_concurrency));
     }
 
     return seastar::make_ready_future<>();

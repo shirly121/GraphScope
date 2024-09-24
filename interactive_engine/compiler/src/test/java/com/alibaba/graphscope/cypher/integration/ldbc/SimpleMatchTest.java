@@ -133,8 +133,6 @@ public class SimpleMatchTest {
 
     @Test
     public void run_simple_match_14_test() {
-        // TODO: fix this in hiactor.
-        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
         QueryContext testQuery = SimpleMatchQueries.get_simple_match_query_14_test();
         Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
@@ -152,6 +150,14 @@ public class SimpleMatchTest {
     @Test
     public void run_simple_match_16_test() {
         QueryContext testQuery = SimpleMatchQueries.get_simple_match_query_16_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_simple_match_17_test() {
+        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
+        QueryContext testQuery = SimpleMatchQueries.get_simple_match_query_17_test();
         Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
     }
