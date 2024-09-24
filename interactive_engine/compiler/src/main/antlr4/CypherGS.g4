@@ -106,7 +106,7 @@ oC_RegularQuery
      ;
 
 oC_ReadQueryPart
-    : oC_Match ( SP? ( oC_Match | oC_With ) )*
+    :  oC_Match ( SP? ( oC_Match | oC_With | oC_Unwind ) )*
     ;
 
 oC_Match
@@ -115,6 +115,11 @@ oC_Match
 MATCH : ( 'M' | 'm' ) ( 'A' | 'a' ) ( 'T' | 't' ) ( 'C' | 'c' ) ( 'H' | 'h' ) ;
 
 OPTIONAL : ( 'O' | 'o' ) ( 'P' | 'p' ) ( 'T' | 't' ) ( 'I' | 'i' ) ( 'O' | 'o' ) ( 'N' | 'n' ) ( 'A' | 'a' ) ( 'L' | 'l' ) ;
+
+oC_Unwind
+      :  UNWIND SP? oC_Expression SP AS SP oC_Variable ;
+
+UNWIND : ( 'U' | 'u' ) ( 'N' | 'n' ) ( 'W' | 'w' ) ( 'I' | 'i' ) ( 'N' | 'n' ) ( 'D' | 'd' ) ;
 
 // multiple sentences
 oC_Pattern

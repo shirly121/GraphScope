@@ -20,6 +20,9 @@ import static java.util.Objects.requireNonNull;
 
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.FrontendConfig;
+import com.alibaba.graphscope.common.exception.FrontendException;
+import com.alibaba.graphscope.common.ir.meta.function.GraphFunctions;
+import com.alibaba.graphscope.common.ir.meta.procedure.StoredProcedureMeta;
 import com.alibaba.graphscope.common.ir.meta.schema.GraphOptSchema;
 import com.alibaba.graphscope.common.ir.meta.schema.IrGraphSchema;
 import com.alibaba.graphscope.common.ir.rel.*;
@@ -38,6 +41,7 @@ import com.alibaba.graphscope.common.ir.rex.RexCallBinding;
 import com.alibaba.graphscope.common.ir.tools.config.*;
 import com.alibaba.graphscope.common.ir.type.*;
 import com.alibaba.graphscope.gremlin.Utils;
+import com.alibaba.graphscope.proto.frontend.Code;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -508,7 +512,8 @@ public class GraphBuilder extends RelBuilder {
         String varName = AliasInference.SIMPLE_NAME(alias) + AliasInference.DELIMITER + property;
         List<ColumnField> columnFields = getAliasField(alias);
         if (columnFields.size() != 1) {
-            throw new IllegalArgumentException(
+            throw new FrontendException(
+                    Code.PROPERTY_NOT_FOUND,
                     "cannot get property="
                             + property
                             + " from alias="
@@ -520,7 +525,8 @@ public class GraphBuilder extends RelBuilder {
         RelDataTypeField aliasField = columnField.right;
         if (property.equals(GraphProperty.LEN_KEY)) {
             if (!(aliasField.getType() instanceof GraphPathType)) {
-                throw new ClassCastException(
+                throw new FrontendException(
+                        Code.PROPERTY_NOT_FOUND,
                         "cannot get property='len' from type class ["
                                 + aliasField.getType().getClass()
                                 + "], should be ["
@@ -536,7 +542,8 @@ public class GraphBuilder extends RelBuilder {
             }
         } else if (property.equals(GraphProperty.LABEL_KEY)) {
             if (!(aliasField.getType() instanceof GraphSchemaType)) {
-                throw new ClassCastException(
+                throw new FrontendException(
+                        Code.PROPERTY_NOT_FOUND,
                         "cannot get property=['label'] from type class ["
                                 + aliasField.getType().getClass()
                                 + "], should be ["
@@ -552,7 +559,8 @@ public class GraphBuilder extends RelBuilder {
                     schemaType.getLabelType());
         } else if (property.equals(GraphProperty.ID_KEY)) {
             if (!(aliasField.getType() instanceof GraphSchemaType)) {
-                throw new ClassCastException(
+                throw new FrontendException(
+                        Code.PROPERTY_NOT_FOUND,
                         "cannot get property=['id'] from type class ["
                                 + aliasField.getType().getClass()
                                 + "], should be ["
@@ -567,7 +575,8 @@ public class GraphBuilder extends RelBuilder {
                     getTypeFactory().createSqlType(SqlTypeName.BIGINT));
         } else if (property.equals(GraphProperty.ALL_KEY)) {
             if (!(aliasField.getType() instanceof GraphSchemaType)) {
-                throw new ClassCastException(
+                throw new FrontendException(
+                        Code.PROPERTY_NOT_FOUND,
                         "cannot get property=['all'] from type class ["
                                 + aliasField.getType().getClass()
                                 + "], should be ["
@@ -598,7 +607,8 @@ public class GraphBuilder extends RelBuilder {
 
     private RelDataTypeField getField(RelDataType type, GraphNameOrId property) {
         if (type.getFieldList() == null) {
-            throw new IllegalArgumentException(
+            throw new FrontendException(
+                    Code.PROPERTY_NOT_FOUND,
                     "cannot get property=["
                             + property
                             + "] from type ["
@@ -633,7 +643,8 @@ public class GraphBuilder extends RelBuilder {
                     properties.add(pField.getName());
             }
         }
-        throw new IllegalArgumentException(
+        throw new FrontendException(
+                Code.PROPERTY_NOT_FOUND,
                 "{property="
                         + property
                         + "} "
@@ -711,7 +722,8 @@ public class GraphBuilder extends RelBuilder {
                 inputQueue.addAll(cur.getInputs());
             }
         }
-        throw new IllegalArgumentException(
+        throw new FrontendException(
+                Code.TAG_NOT_FOUND,
                 "{alias="
                         + AliasInference.SIMPLE_NAME(alias)
                         + "} "
@@ -769,6 +781,15 @@ public class GraphBuilder extends RelBuilder {
     @Override
     public RexNode call(SqlOperator operator, RexNode... operands) {
         return call_(operator, ImmutableList.copyOf(operands));
+    }
+
+    public RexNode procedureCall(
+            SqlOperator operator,
+            Iterable<? extends RexNode> operands,
+            StoredProcedureMeta procedureMeta) {
+        RexCall call = (RexCall) call(operator, operands);
+        return new RexProcedureCall(
+                call.getType(), call.getOperator(), call.getOperands(), procedureMeta);
     }
 
     @Override
@@ -881,10 +902,11 @@ public class GraphBuilder extends RelBuilder {
                 || sqlKind == SqlKind.BIT_OR
                 || sqlKind == SqlKind.BIT_XOR
                 || (sqlKind == SqlKind.OTHER
-                        && (operator.getName().equals("IN")
-                                || operator.getName().equals("DATETIME_MINUS")
-                                || operator.getName().equals("PATH_CONCAT")
-                                || operator.getName().equals("PATH_FUNCTION")))
+                                && (operator.getName().equals("IN")
+                                        || operator.getName().equals("DATETIME_MINUS")
+                                        || operator.getName().equals("PATH_CONCAT")
+                                        || operator.getName().equals("PATH_FUNCTION"))
+                        || operator.getName().startsWith(GraphFunctions.FUNCTION_PREFIX))
                 || sqlKind == SqlKind.ARRAY_CONCAT;
     }
 
@@ -1661,6 +1683,20 @@ public class GraphBuilder extends RelBuilder {
             }
             project(originalExprs, originalAliases, false);
         }
+        return this;
+    }
+
+    public GraphBuilder unfold(RexNode unfoldKey, @Nullable String aliasName) {
+        RelNode input = requireNonNull(peek(), "frame stack is empty");
+        RelDataType keyType = unfoldKey.getType();
+        Preconditions.checkArgument(
+                keyType.getComponentType() != null,
+                "input type of 'unfold' should be set or array with single component type, but is"
+                        + " [%s]",
+                keyType);
+        GraphLogicalUnfold unfold =
+                new GraphLogicalUnfold((GraphOptCluster) getCluster(), input, unfoldKey, aliasName);
+        replaceTop(unfold);
         return this;
     }
 

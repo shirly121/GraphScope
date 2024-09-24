@@ -23,6 +23,7 @@ import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
 
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.rules.MultiJoin;
 
 /**
@@ -115,6 +116,14 @@ public abstract class GraphShuttle extends RelShuttleImpl {
 
     public RelNode visit(MultiJoin join) {
         return visitChildren(join);
+    }
+
+    public RelNode visit(LogicalJoin join) {
+        return visitChildren(join);
+    }
+
+    public RelNode visit(GraphLogicalUnfold unfold) {
+        return visitChildren(unfold);
     }
 
     @Override

@@ -45,7 +45,9 @@ ServiceConfig::ServiceConfig()
       start_compiler(false),
       enable_gremlin(false),
       enable_bolt(false),
-      metadata_store_type_(gs::MetadataStoreType::kLocalFile) {}
+      metadata_store_type_(gs::MetadataStoreType::kLocalFile),
+      log_level(DEFAULT_LOG_LEVEL),
+      verbose_level(DEFAULT_VERBOSE_LEVEL) {}
 
 const std::string GraphDBService::DEFAULT_GRAPH_NAME = "modern_graph";
 const std::string GraphDBService::DEFAULT_INTERACTIVE_HOME = "/opt/flex/";
@@ -407,7 +409,13 @@ gs::GraphId GraphDBService::insert_default_graph_meta() {
     LOG(FATAL) << "Failed to get graph schema string: "
                << schema_str_res.status().error_message();
   }
-  auto request = gs::CreateGraphMetaRequest::FromJson(schema_str_res.value());
+  auto request_res =
+      gs::CreateGraphMetaRequest::FromJson(schema_str_res.value());
+  if (!request_res.ok()) {
+    LOG(FATAL) << "Failed to parse graph schema string: "
+               << request_res.status().error_message();
+  }
+  auto request = request_res.value();
   request.data_update_time = gs::GetCurrentTimeStamp();
 
   auto res = metadata_store_->CreateGraphMeta(request);
