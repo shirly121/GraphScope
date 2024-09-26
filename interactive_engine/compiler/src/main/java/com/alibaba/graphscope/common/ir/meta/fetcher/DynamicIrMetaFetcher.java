@@ -92,7 +92,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                             meta.getStoredProcedures(),
                             curStats);
             if (this.statsState != StatsState.SYNCED) {
-                logger.debug("start to sync stats");
+                logger.info("start to sync stats");
                 syncStats();
             }
         } catch (Throwable e) {
@@ -113,7 +113,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                                     this.currentState.getStoredProcedures(),
                                     stats);
                     if (tracker != null) {
-                        logger.debug("start to update the glogue");
+                        logger.info("start to update the glogue");
                         tracker.onChanged(this.currentState);
                     }
                     this.statsState = StatsState.SYNCED;
@@ -126,7 +126,7 @@ public class DynamicIrMetaFetcher extends IrMetaFetcher implements AutoCloseable
                 if (this.currentState != null
                         && tracker != null
                         && this.statsState == StatsState.INITIALIZED) {
-                    logger.debug("start to mock the glogue");
+                    logger.info("start to mock the glogue");
                     tracker.onChanged(this.currentState);
                     this.statsState = StatsState.MOCKED;
                 }
