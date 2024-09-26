@@ -72,10 +72,15 @@ public class GlogueSchema {
                 edgeTypeCardinality.put(edgeType, 1.0);
             }
         }
-        logger.info("GlogueSchema created with default cardinality 1.0");
+        logger.info("GlogueSchema created with default cardinality 1.0: {}", this);
     }
 
     public GlogueSchema(GraphSchema graphSchema, GraphStatistics statistics) {
+        logger.info(
+                "Creating GlogueSchema with statistics, vertex count: {}, edge count: {}",
+                statistics.getVertexCount(),
+                statistics.getEdgeCount());
+
         schemaGraph = new DirectedPseudograph<Integer, EdgeTypeId>(EdgeTypeId.class);
         vertexTypeCardinality = new HashMap<Integer, Double>();
         edgeTypeCardinality = new HashMap<EdgeTypeId, Double>();
@@ -112,7 +117,7 @@ public class GlogueSchema {
                 }
             }
         }
-        logger.info("GlogueSchema created with statistics");
+        logger.info("GlogueSchema created with statistics: {}", this);
     }
 
     public static GlogueSchema fromMeta(IrMetaStats irMeta) {

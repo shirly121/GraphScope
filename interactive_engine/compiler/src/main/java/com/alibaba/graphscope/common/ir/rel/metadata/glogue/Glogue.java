@@ -91,7 +91,11 @@ public class Glogue {
         }
         // compute pattern cardinality
         this.glogueCardinalityEstimation = new GlogueBasicCardinalityEstimationImpl(this, schema);
-        logger.info("Glogue graph constructed");
+        logger.info(
+                "GlogueGraph is created, with {} vertices and {} edges",
+                this.glogueGraph.vertexSet().size(),
+                this.glogueGraph.edgeSet().size());
+
         return this;
     }
 
