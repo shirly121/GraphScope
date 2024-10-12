@@ -25,6 +25,7 @@ import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.graphscope.gaia.proto.StoredProcedure;
+import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
 import com.alibaba.graphscope.interactive.client.Session;
 import com.alibaba.graphscope.interactive.client.common.Result;
 import com.alibaba.graphscope.interactive.client.impl.DefaultSession;
@@ -56,7 +57,8 @@ public class HttpExecutionClient extends ExecutionClient<URI> {
     public void submit(
             ExecutionRequest request,
             ExecutionResponseListener listener,
-            QueryTimeoutConfig timeoutConfig)
+            QueryTimeoutConfig timeoutConfig,
+            QueryLogger queryLogger)
             throws Exception {
         List<CompletableFuture> responseFutures = Lists.newArrayList();
         for (URI httpURI : channelFetcher.fetch()) {
@@ -85,7 +87,7 @@ public class HttpExecutionClient extends ExecutionClient<URI> {
                                 // if response is not 200
                                 if (!response.isOk()) {
                                     // parse String from response.body()
-                                    String errorMessage = new String(response.getStatusMessage());
+                                    String errorMessage = response.getStatusMessage();
                                     RuntimeException ex =
                                             new RuntimeException(
                                                     "Query execution failed:"

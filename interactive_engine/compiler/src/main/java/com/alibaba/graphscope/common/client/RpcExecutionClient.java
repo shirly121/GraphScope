@@ -23,6 +23,7 @@ import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.PegasusConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
 import com.alibaba.graphscope.gaia.proto.IrResult;
+import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
 import com.alibaba.pegasus.RpcChannel;
 import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.intf.ResultProcessor;
@@ -31,16 +32,12 @@ import com.google.protobuf.ByteString;
 
 import io.grpc.Status;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * rpc client to send request to pegasus engine service
  */
 public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
-    Logger logger = LoggerFactory.getLogger(RpcExecutionClient.class);
     private final Configs graphConfig;
     private final AtomicReference<RpcClient> rpcClientRef;
 
@@ -54,7 +51,8 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
     public void submit(
             ExecutionRequest request,
             ExecutionResponseListener listener,
-            QueryTimeoutConfig timeoutConfig)
+            QueryTimeoutConfig timeoutConfig,
+            QueryLogger queryLogger)
             throws Exception {
         if (rpcClientRef.get() == null) {
             rpcClientRef.compareAndSet(null, new RpcClient(channelFetcher.fetch()));
@@ -97,7 +95,7 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                     @Override
                     public void finish() {
                         listener.onCompleted();
-                        logger.info("[compile]: received results from engine");
+                        queryLogger.info("[compile]: received results from engine");
                     }
 
                     @Override
