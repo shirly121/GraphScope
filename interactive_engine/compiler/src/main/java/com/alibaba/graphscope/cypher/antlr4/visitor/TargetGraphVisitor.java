@@ -19,12 +19,13 @@
 package com.alibaba.graphscope.cypher.antlr4.visitor;
 
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalExpand;
-import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalGetV;
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalSource;
 import com.alibaba.graphscope.common.ir.rel.type.FieldMappings;
 import com.alibaba.graphscope.common.ir.rel.type.TargetGraph;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.config.ExpandConfig;
+import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
+import com.alibaba.graphscope.common.ir.tools.config.LabelConfig;
 import com.alibaba.graphscope.common.ir.tools.config.SourceConfig;
 import com.alibaba.graphscope.grammar.CypherGSBaseVisitor;
 import com.alibaba.graphscope.grammar.CypherGSParser;
@@ -34,18 +35,18 @@ import com.google.common.collect.Lists;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.rex.RexNode;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Visit AST of {@code Pattern} to generate {@code TargetGraph}
  */
-public class TargetGraphVisitor extends CypherGSBaseVisitor<TargetGraph> {
+public class TargetGraphVisitor extends CypherGSBaseVisitor<List<TargetGraph>> {
     private final GraphBuilder parentBuilder;
     private final ExpressionVisitor expressionVisitor;
     private final GraphBuilder builder;
-
-    private TargetGraph targetCache = null;
 
     public TargetGraphVisitor(GraphBuilderVisitor parentVisitor) {
         this.parentBuilder = parentVisitor.getGraphBuilder();
@@ -58,51 +59,88 @@ public class TargetGraphVisitor extends CypherGSBaseVisitor<TargetGraph> {
     }
 
     @Override
-    public TargetGraph visitOC_NodePattern(CypherGSParser.OC_NodePatternContext ctx) {
-        // source
-        if (!(ctx.parent instanceof CypherGSParser.OC_PatternElementChainContext)) {
-            Preconditions.checkArgument(
-                    targetCache == null, "optTable graph should be null before visiting source");
-            SourceConfig config = Utils.sourceConfig(ctx);
-            builder.source(config);
-            GraphLogicalSource source = (GraphLogicalSource) builder.peek();
-            targetCache =
-                    new TargetGraph.Vertex(
-                            source.getTable(),
-                            new FieldMappings(visitProperties(ctx.oC_Properties())),
-                            config.getAlias());
-        } else { // getV
-            Preconditions.checkArgument(
-                    targetCache != null && targetCache instanceof TargetGraph.Edge,
-                    "edge optTable graph should have existed before visiting getV");
-            builder.getV(Utils.getVConfig(ctx));
-            GraphLogicalGetV getV = (GraphLogicalGetV) builder.peek();
-            ((TargetGraph.Edge) targetCache)
-                    .withDstVertex(
-                            new TargetGraph.Vertex(
-                                    getV.getTable(),
-                                    new FieldMappings(visitProperties(ctx.oC_Properties())),
-                                    getV.getAliasName()));
+    public List<TargetGraph> visitOC_PatternElement(CypherGSParser.OC_PatternElementContext ctx) {
+        List<CypherGSParser.OC_PatternElementChainContext> elementChain =
+                ctx.oC_PatternElementChain();
+        // create vertex
+        if (ObjectUtils.isEmpty(elementChain)) {
+            return visitOC_NodePattern(ctx.oC_NodePattern());
         }
-        return targetCache;
+        if (elementChain.size() > 1) {
+            throw new UnsupportedOperationException("cannot create multiple edges in one pattern");
+        }
+        // create edge
+        return visitOC_RelationshipPattern(
+                ctx.oC_NodePattern(),
+                elementChain.get(0).oC_NodePattern(),
+                elementChain.get(0).oC_RelationshipPattern());
     }
 
     @Override
-    public TargetGraph visitOC_RelationshipPattern(
-            CypherGSParser.OC_RelationshipPatternContext ctx) {
+    public List<TargetGraph> visitOC_NodePattern(CypherGSParser.OC_NodePatternContext ctx) {
+        SourceConfig config = Utils.sourceConfig(ctx);
         Preconditions.checkArgument(
-                targetCache != null && targetCache instanceof TargetGraph.Vertex,
-                "vertex optTable cache should have existed before visiting edge");
-        ExpandConfig config = Utils.expandConfig(ctx);
-        builder.expand(config);
-        GraphLogicalExpand expand = (GraphLogicalExpand) builder.peek();
-        targetCache =
-                new TargetGraph.Edge(
-                                expand.getTable(),
-                                new FieldMappings(visitProperties(ctx.oC_RelationshipDetail())),
-                                config.getAlias())
-                        .withSrcVertex(targetCache);
-        return this.targetCache;
+                !config.getLabels().isAll(), "cannot create vertex with unknown label");
+        return config.getLabels().getLabels().stream()
+                .map(
+                        label -> {
+                            GraphLogicalSource source =
+                                    (GraphLogicalSource)
+                                            builder.source(
+                                                            new SourceConfig(
+                                                                    config.getOpt(),
+                                                                    new LabelConfig(false)
+                                                                            .addLabel(label),
+                                                                    config.getAlias()))
+                                                    .peek();
+                            TargetGraph target =
+                                    new TargetGraph.Vertex(
+                                            source.getTable(),
+                                            new FieldMappings(visitProperties(ctx.oC_Properties())),
+                                            config.getAlias());
+                            builder.build();
+                            return target;
+                        })
+                .collect(Collectors.toList());
+    }
+
+    public List<TargetGraph> visitOC_RelationshipPattern(
+            CypherGSParser.OC_NodePatternContext srcCtx,
+            CypherGSParser.OC_NodePatternContext dstCtx,
+            CypherGSParser.OC_RelationshipPatternContext edgeCtx) {
+        List<TargetGraph> srcGraph = visitOC_NodePattern(srcCtx);
+        List<TargetGraph> dstGraph = visitOC_NodePattern(dstCtx);
+        ExpandConfig config = Utils.expandConfig(edgeCtx);
+        GraphLogicalExpand expand =
+                (GraphLogicalExpand)
+                        builder.source(Utils.sourceConfig(srcCtx)).expand(config).peek();
+        Preconditions.checkArgument(
+                expand.getOpt() != GraphOpt.Expand.BOTH, "cannot create edge with BOTH direction");
+        List<TargetGraph> targetGraphs = Lists.newArrayList();
+        srcGraph.forEach(
+                src -> {
+                    dstGraph.forEach(
+                            dst -> {
+                                TargetGraph.Edge target =
+                                        new TargetGraph.Edge(
+                                                expand.getTable(),
+                                                new FieldMappings(
+                                                        visitProperties(
+                                                                edgeCtx.oC_RelationshipDetail())),
+                                                config.getAlias());
+                                switch (expand.getOpt()) {
+                                    case OUT:
+                                        target.withSrcVertex(src).withDstVertex(dst);
+                                        break;
+                                    case IN:
+                                    default:
+                                        target.withSrcVertex(dst).withDstVertex(src);
+                                }
+                                targetGraphs.add(target);
+                            });
+                });
+        builder.build();
+        return targetGraphs;
     }
 
     private List<FieldMappings.Entry> visitProperties(CypherGSParser.OC_PropertiesContext ctx) {

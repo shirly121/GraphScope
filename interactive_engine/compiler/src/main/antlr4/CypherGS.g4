@@ -101,12 +101,14 @@ CALL : ( 'C' | 'c' ) ( 'A' | 'a' ) ( 'L' | 'l' ) ( 'L' | 'l' ) ;
 YIELD : ( 'Y' | 'y' ) ( 'I' | 'i' ) ( 'E' | 'e' ) ( 'L' | 'l' ) ( 'D' | 'd' ) ;
 
 oC_RegularQuery
-     : ( ( oC_ReadQueryPart | oC_UpdatingClause ) SP? )* SP? oC_ReadQueryPart ( SP oC_Return )
-     | ( ( oC_ReadQueryPart | oC_UpdatingClause ) SP? )* SP? oC_UpdatingClause ( SP oC_Return )?
+     : ( ( oC_ReadingClause | oC_UpdatingClause ) SP? )* SP? oC_ReadingClause ( SP oC_Return )
+     | ( ( oC_ReadingClause | oC_UpdatingClause ) SP? )* SP? oC_UpdatingClause ( SP oC_Return )?
      ;
 
-oC_ReadQueryPart
-    :  oC_Match ( SP? ( oC_Match | oC_With | oC_Unwind ) )*
+oC_ReadingClause
+    :  oC_Match
+    |  oC_Unwind
+    |  oC_With
     ;
 
 oC_Match

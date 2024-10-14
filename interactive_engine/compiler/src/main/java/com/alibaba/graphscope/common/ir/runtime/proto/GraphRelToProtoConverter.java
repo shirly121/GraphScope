@@ -111,7 +111,9 @@ public class GraphRelToProtoConverter extends GraphShuttle {
 
     @Override
     public RelNode visit(GraphTableModify.Insert insert) {
-        physicalBuilder.addPlan(
+        List<DataSourceOperation> inserts = batchDataSource(insert);
+        visitChildren((GraphTableModify.Insert) inserts.get(inserts.size() - 1));
+        GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder()
                         .setOpr(
                                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
@@ -120,11 +122,29 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                                                         .setKind(
                                                                 GraphAlgebraCypherWrite.Load.Kind
                                                                         .CREATE)
-                                                        .setMappings(protoColumnMappings(insert)))
-                                        .build())
-                        .addAllMetaData(
-                                Utils.physicalProtoRowType(insert.getRowType(), isColumnId)));
+                                                        .setMappings(protoColumnMappings(inserts)))
+                                        .build());
+        inserts.forEach(
+                k -> {
+                    oprBuilder.addAllMetaData(
+                            Utils.physicalProtoRowType(
+                                    ((GraphTableModify.Insert) k).getRowType(), isColumnId));
+                });
+        physicalBuilder.addPlan(oprBuilder);
         return insert;
+    }
+
+    // batch continuous data source operations
+    private List<DataSourceOperation> batchDataSource(RelNode dataSource) {
+        List<DataSourceOperation> batch = Lists.newArrayList();
+        if (!(dataSource instanceof DataSourceOperation)) return batch;
+        Class<?> targetClass = dataSource.getClass();
+        while (dataSource.getClass().equals(targetClass)) {
+            batch.add((DataSourceOperation) dataSource);
+            if (dataSource.getInputs().isEmpty()) break;
+            dataSource = dataSource.getInput(0);
+        }
+        return batch;
     }
 
     @Override
@@ -192,7 +212,9 @@ public class GraphRelToProtoConverter extends GraphShuttle {
 
     @Override
     public RelNode visit(DataSourceTableScan scan) {
-        physicalBuilder.addPlan(
+        List<DataSourceOperation> scans = batchDataSource(scan);
+        visitChildren((DataSourceTableScan) scans.get(scans.size() - 1));
+        GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder()
                         .setOpr(
                                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
@@ -201,9 +223,15 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                                                         .setKind(
                                                                 GraphAlgebraCypherWrite.Load.Kind
                                                                         .MATCH)
-                                                        .setMappings(protoColumnMappings(scan)))
-                                        .build())
-                        .addAllMetaData(Utils.physicalProtoRowType(scan.getRowType(), isColumnId)));
+                                                        .setMappings(protoColumnMappings(scans)))
+                                        .build());
+        scans.forEach(
+                k -> {
+                    oprBuilder.addAllMetaData(
+                            Utils.physicalProtoRowType(
+                                    ((DataSourceTableScan) k).getRowType(), isColumnId));
+                });
+        physicalBuilder.addPlan(oprBuilder);
         return scan;
     }
 
@@ -1313,28 +1341,94 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     }
 
     private GraphAlgebraCypherWrite.Load.ColumnMappings protoColumnMappings(
-            DataSourceOperation operation) {
-        TargetGraph targetGraph = operation.getTargetGraph();
-        FieldMappings mappings = targetGraph.getMappings();
-        RelNode source = operation.getExternalSource();
+            List<DataSourceOperation> operations) {
         Preconditions.checkArgument(
-                source instanceof LoadCSVTableScan,
-                "[LOAD CSV]: cannot convert external source [" + source + "] to ir physical");
-        LoadCSVTable csvTable = ((LoadCSVTableScan) source).getCSVTable();
-        GraphLabelType.Entry labelEntry =
-                targetGraph.getSingleSchemaType().getLabelType().getSingleLabelEntry();
-        // current we only support loading from a single csv
-        GraphAlgebraCypherWrite.Load.ColumnMappings.Input singleInput =
-                protoLoadInput(csvTable.getSource());
+                !operations.isEmpty(), "cannot convert empty operations to column mappings");
+        // check whether the operations all have the same DataSource
+        for (int i = 0; i < operations.size() - 1; ++i) {
+            DataSourceOperation cur = operations.get(i);
+            DataSourceOperation next = operations.get(i + 1);
+            Preconditions.checkArgument(
+                    cur.getExternalSource() == next.getExternalSource(),
+                    "operations should have the same data source");
+        }
+        RelNode source = operations.get(0).getExternalSource();
         GraphAlgebraCypherWrite.Load.ColumnMappings.Builder mappingsBuilder =
                 GraphAlgebraCypherWrite.Load.ColumnMappings.newBuilder();
-        mappingsBuilder.setLoadConfig(protoLoadConfig(csvTable));
+        GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig loadingConfig =
+                protoLoadConfig(source);
+        if (loadingConfig != null) {
+            mappingsBuilder.setLoadConfig(loadingConfig);
+        }
+        operations.forEach(
+                operation -> {
+                    addProtoColumnMappings(operation, mappingsBuilder);
+                });
+        return mappingsBuilder.build();
+    }
+
+    private GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig protoLoadConfig(
+            RelNode source) {
+        if (source instanceof LoadCSVTableScan) {
+            LoadCSVTable csvTable = ((LoadCSVTableScan) source).getCSVTable();
+            DataSource external = csvTable.getSource();
+            return GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig.newBuilder()
+                    .setDataSource(protoLoadSource(external))
+                    .setFormat(protoLoadFormat(external.getFormat()))
+                    .build();
+        }
+        return null;
+    }
+
+    private GraphAlgebraCypherWrite.Load.ColumnMappings.Input protoLoadInput(RelNode source) {
+        if (source instanceof LoadCSVTableScan) {
+            LoadCSVTable csvTable = ((LoadCSVTableScan) source).getCSVTable();
+            DataSource external = csvTable.getSource();
+            Preconditions.checkArgument(
+                    external instanceof DataSource.External,
+                    "[LOAD CSV]: data source " + external + " is invalid in load csv operation");
+            RexNode input = ((DataSource.External) external).getInput();
+            OuterExpression.ExprOpr protoExpr =
+                    input.accept(new RexToProtoConverter(true, isColumnId, this.rexBuilder))
+                            .getOperators(0);
+            GraphAlgebraCypherWrite.Load.ColumnMappings.Input.Builder inputBuilder =
+                    GraphAlgebraCypherWrite.Load.ColumnMappings.Input.newBuilder();
+            switch (protoExpr.getItemCase()) {
+                case CONST:
+                    inputBuilder.setPath(protoExpr.getConst().getStr());
+                    break;
+                case PARAM:
+                    inputBuilder.setDynPath(protoExpr.getParam());
+                    break;
+                default:
+                    throw new IllegalArgumentException(
+                            "[LOAD CSV]: cannot convert rex ["
+                                    + input
+                                    + "] to load input ir physical");
+            }
+            return inputBuilder.build();
+        }
+        return null;
+    }
+
+    private void addProtoColumnMappings(
+            DataSourceOperation operation,
+            GraphAlgebraCypherWrite.Load.ColumnMappings.Builder mappingsBuilder) {
+        TargetGraph targetGraph = operation.getTargetGraph();
+        FieldMappings mappings = targetGraph.getMappings();
+        GraphLabelType.Entry labelEntry =
+                targetGraph.getSingleSchemaType().getLabelType().getSingleLabelEntry();
+        GraphAlgebraCypherWrite.Load.ColumnMappings.Input singleInput =
+                protoLoadInput(operation.getExternalSource());
         if (targetGraph instanceof TargetGraph.Vertex) {
-            mappingsBuilder.addVertexMappings(
+            GraphAlgebraCypherWrite.Load.ColumnMappings.VertexMapping.Builder builder =
                     GraphAlgebraCypherWrite.Load.ColumnMappings.VertexMapping.newBuilder()
                             .setTypeName(labelEntry.getLabel())
-                            .addInputs(singleInput)
-                            .addAllColumnMappings(protoColumnMappings(mappings)));
+                            .addAllColumnMappings(protoColumnMappings(mappings));
+            if (singleInput != null) {
+                builder.addInputs(singleInput);
+            }
+            mappingsBuilder.addVertexMappings(builder);
         } else {
             TargetGraph.Edge edgeMappings = (TargetGraph.Edge) targetGraph;
             Preconditions.checkArgument(
@@ -1346,26 +1440,19 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                             .setSourceVertex(labelEntry.getSrcLabel())
                             .setDestinationVertex(labelEntry.getDstLabel())
                             .build();
-            mappingsBuilder.addEdgeMappings(
+            GraphAlgebraCypherWrite.Load.ColumnMappings.EdgeMapping.Builder builder =
                     GraphAlgebraCypherWrite.Load.ColumnMappings.EdgeMapping.newBuilder()
                             .setTypeTriplet(typeTriplet)
-                            .addInputs(singleInput)
                             .addAllColumnMappings(protoColumnMappings(mappings))
                             .addAllSourceVertexMappings(
                                     protoColumnMappings(edgeMappings.getSrcVertex().getMappings()))
                             .addAllDestinationVertexMappings(
-                                    protoColumnMappings(
-                                            edgeMappings.getDstVertex().getMappings())));
+                                    protoColumnMappings(edgeMappings.getDstVertex().getMappings()));
+            if (singleInput != null) {
+                builder.addInputs(singleInput);
+            }
+            mappingsBuilder.addEdgeMappings(builder);
         }
-        return mappingsBuilder.build();
-    }
-
-    private GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig protoLoadConfig(
-            LoadCSVTable csvTable) {
-        return GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig.newBuilder()
-                .setFormat(protoLoadFormat(csvTable.getFormat()))
-                .setDataSource(protoLoadSource(csvTable.getSource()))
-                .build();
     }
 
     private GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig.Format protoLoadFormat(
@@ -1382,37 +1469,12 @@ public class GraphRelToProtoConverter extends GraphShuttle {
 
     private GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig.DataSource protoLoadSource(
             DataSource source) {
-        return GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig.DataSource.newBuilder()
-                .setLocation(source.getName().get(0))
-                .build();
-    }
-
-    private GraphAlgebraCypherWrite.Load.ColumnMappings.Input protoLoadInput(DataSource source) {
-        GraphAlgebraCypherWrite.Load.ColumnMappings.Input.Builder inputBuilder =
-                GraphAlgebraCypherWrite.Load.ColumnMappings.Input.newBuilder();
-        Preconditions.checkArgument(
-                source instanceof DataSource.Location,
-                "[LOAD CSV]: cannot convert data source ["
-                        + source
-                        + "] to load input in ir physical");
-        RexNode location = ((DataSource.Location) source).getLocation();
-        OuterExpression.ExprOpr protoExpr =
-                location.accept(new RexToProtoConverter(true, isColumnId, this.rexBuilder))
-                        .getOperators(0);
-        switch (protoExpr.getItemCase()) {
-            case CONST:
-                inputBuilder.setPath(protoExpr.getConst().getStr());
-                break;
-            case PARAM:
-                inputBuilder.setDynPath(protoExpr.getParam());
-                break;
-            default:
-                throw new IllegalArgumentException(
-                        "[LOAD CSV]: cannot convert location ["
-                                + location
-                                + "] to load input ir physical");
+        if (source instanceof DataSource.External) {
+            return GraphAlgebraCypherWrite.Load.ColumnMappings.LoadingConfig.DataSource.newBuilder()
+                    .setLocation(((DataSource.External) source).getLocation())
+                    .build();
         }
-        return inputBuilder.build();
+        return null;
     }
 
     private List<GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping> protoColumnMappings(
@@ -1431,25 +1493,33 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     private GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping.Column protoSourceColumn(
             RexNode source) {
         Preconditions.checkArgument(
-                source instanceof RexGraphVariable
-                        && ((RexGraphVariable) source).getProperty() != null,
+                source instanceof RexGraphVariable,
                 "[LOAD CSV]: cannot convert source column ["
                         + source
                         + "] to column in ir physical");
         GraphProperty property = ((RexGraphVariable) source).getProperty();
-        Preconditions.checkArgument(
-                property.getOpt() == GraphProperty.Opt.KEY,
-                "[LOAD CSV]: invalid source column index [" + property + "]");
-        switch (property.getKey().getOpt()) {
-            case NAME:
-                return GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping.Column.newBuilder()
-                        .setName(property.getKey().getName())
-                        .build();
-            case ID:
-            default:
-                return GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping.Column.newBuilder()
-                        .setIndex(property.getKey().getId())
-                        .build();
+        if (property != null) {
+            Preconditions.checkArgument(
+                    property.getOpt() == GraphProperty.Opt.KEY,
+                    "[LOAD CSV]: invalid source column index [" + property + "]");
+            switch (property.getKey().getOpt()) {
+                case NAME:
+                    return GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping.Column
+                            .newBuilder()
+                            .setName(property.getKey().getName())
+                            .build();
+                case ID:
+                default:
+                    return GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping.Column
+                            .newBuilder()
+                            .setIndex(property.getKey().getId())
+                            .build();
+            }
+        } else {
+            return GraphAlgebraCypherWrite.Load.ColumnMappings.ColumnMapping.Column.newBuilder()
+                    .setIndex(((RexGraphVariable) source).getAliasId())
+                    .setName(((RexGraphVariable) source).getAliasName())
+                    .build();
         }
     }
 

@@ -19,7 +19,6 @@
 package com.alibaba.graphscope.common.ir.meta.schema;
 
 import com.alibaba.graphscope.common.ir.rel.LoadCSVTableScan;
-import com.alibaba.graphscope.common.ir.rel.type.DataFormat;
 import com.alibaba.graphscope.common.ir.rel.type.DataSource;
 import com.alibaba.graphscope.common.ir.type.ExplicitRecordType;
 import com.google.common.collect.ImmutableList;
@@ -42,13 +41,11 @@ import java.util.Objects;
 public class LoadCSVTable extends AbstractTable implements TranslatableTable {
     private final ImmutableList<String> name;
     private final DataSource source;
-    private final DataFormat format;
     // allow a nullable table type if the csv header is not provided
     private final @Nullable RelDataType rowType;
 
-    public LoadCSVTable(DataSource source, DataFormat format, @Nullable RelDataType rowType) {
+    public LoadCSVTable(DataSource source, @Nullable RelDataType rowType) {
         this.source = Objects.requireNonNull(source);
-        this.format = Objects.requireNonNull(format);
         this.name = source.getName();
         this.rowType = rowType;
     }
@@ -67,10 +64,6 @@ public class LoadCSVTable extends AbstractTable implements TranslatableTable {
 
     public DataSource getSource() {
         return source;
-    }
-
-    public DataFormat getFormat() {
-        return format;
     }
 
     public ImmutableList<String> getName() {

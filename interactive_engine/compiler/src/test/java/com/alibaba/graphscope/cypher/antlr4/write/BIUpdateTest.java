@@ -30,7 +30,7 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-public class WriteOpTest {
+public class BIUpdateTest {
     private static Configs configs;
     private static IrMeta irMeta;
     private static GraphRelOptimizer optimizer;

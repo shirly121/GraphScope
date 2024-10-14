@@ -126,6 +126,12 @@ public abstract class TargetGraph {
                                                             .equals(singleDst.getLabel())))
                             .collect(Collectors.toList());
             Preconditions.checkArgument(
+                    !srcDstFiltering.isEmpty(),
+                    "there is no valid edge with type = [%s] between src = [%s] and dst = [%s]",
+                    targetType.getLabelType().getLabelsEntry(),
+                    singleSrc,
+                    singleDst);
+            Preconditions.checkArgument(
                     srcDstFiltering.size() == 1,
                     "invalid target edge type, should have only one single label, but is ["
                             + srcDstFiltering

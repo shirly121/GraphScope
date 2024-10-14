@@ -20,6 +20,7 @@ import com.alibaba.graphscope.common.antlr4.ExprUniqueAliasInfer;
 import com.alibaba.graphscope.common.antlr4.ExprVisitorResult;
 import com.alibaba.graphscope.common.ir.meta.schema.LoadCSVTable;
 import com.alibaba.graphscope.common.ir.rel.DataSourceTableScan;
+import com.alibaba.graphscope.common.ir.rel.DummyTableScan;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalAggregate;
 import com.alibaba.graphscope.common.ir.rel.LoadCSVTableScan;
 import com.alibaba.graphscope.common.ir.rel.ddl.GraphTableModify;
@@ -45,6 +46,7 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSubQuery;
@@ -81,6 +83,15 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
     @Override
     public GraphBuilder visitOC_Unwind(CypherGSParser.OC_UnwindContext ctx) {
         RexNode expr = expressionVisitor.visitOC_Expression(ctx.oC_Expression()).getExpr();
+        if (expr.getType().getSqlTypeName() == SqlTypeName.UNKNOWN) {
+            RelDataTypeFactory typeFactory = builder.getTypeFactory();
+            expr =
+                    builder.getRexBuilder()
+                            .makeCast(
+                                    typeFactory.createArrayType(
+                                            typeFactory.createSqlType(SqlTypeName.ANY), -1),
+                                    expr);
+        }
         String alias = ctx.oC_Variable() == null ? null : ctx.oC_Variable().getText();
         return builder.unfold(expr, alias);
     }
@@ -140,12 +151,11 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
 
     @Override
     public GraphBuilder visitOC_LoadCSV(CypherGSParser.OC_LoadCSVContext ctx) {
-        RexNode location = expressionVisitor.visitOC_Expression(ctx.oC_Expression()).getExpr();
-        if (location instanceof RexGraphDynamicParam
-                && location.getType().getSqlTypeName() == SqlTypeName.UNKNOWN) {
-            RexGraphDynamicParam param = (RexGraphDynamicParam) location;
-            ;
-            location =
+        RexNode input = expressionVisitor.visitOC_Expression(ctx.oC_Expression()).getExpr();
+        if (input instanceof RexGraphDynamicParam
+                && input.getType().getSqlTypeName() == SqlTypeName.UNKNOWN) {
+            RexGraphDynamicParam param = (RexGraphDynamicParam) input;
+            input =
                     ((GraphRexBuilder) builder.getRexBuilder())
                             .makeGraphDynamicParam(
                                     builder.getCluster()
@@ -154,13 +164,13 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
                                     param.getName(),
                                     param.getIndex());
         }
-        DataSource source = new DataSource.Location(location);
+        DataSource source = new DataSource.External(input, createFormat(ctx));
         String aliasName = ctx.oC_Variable() != null ? ctx.oC_Variable().getText() : null;
         TableScan tableScan =
                 new LoadCSVTableScan(
                         (GraphOptCluster) builder.getCluster(),
                         ImmutableList.of(),
-                        new LoadCSVTable(source, createFormat(ctx), null),
+                        new LoadCSVTable(source, null),
                         aliasName);
         return builder.push(tableScan);
     }
@@ -181,24 +191,33 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
 
     @Override
     public GraphBuilder visitOC_Create(CypherGSParser.OC_CreateContext ctx) {
-        TargetGraph target = new TargetGraphVisitor(this).visit(ctx.oC_Pattern());
-        TableModify insert =
-                new GraphTableModify.Insert(builder.getCluster(), builder.build(), target);
-        return builder.push(insert);
+        List<TargetGraph> targets = new TargetGraphVisitor(this).visit(ctx.oC_Pattern());
+        targets.forEach(
+                target -> {
+                    TableModify insert =
+                            new GraphTableModify.Insert(
+                                    builder.getCluster(), builder.build(), target);
+                    builder.push(insert);
+                });
+        return builder;
     }
 
     @Override
     public GraphBuilder visitOC_Match(CypherGSParser.OC_MatchContext ctx) {
         // convert the match to DataSourceTableScan if its input is a LoadCSVTableScan
         if (builder.size() > 0 && builder.peek() instanceof LoadCSVTableScan) {
-            TargetGraph target = new TargetGraphVisitor(this).visit(ctx.oC_Pattern());
-            TableScan scan =
-                    new DataSourceTableScan(
-                            (GraphOptCluster) builder.getCluster(),
-                            ImmutableList.of(),
-                            builder.build(),
-                            target);
-            return builder.push(scan);
+            List<TargetGraph> targets = new TargetGraphVisitor(this).visit(ctx.oC_Pattern());
+            targets.forEach(
+                    target -> {
+                        TableScan scan =
+                                new DataSourceTableScan(
+                                        (GraphOptCluster) builder.getCluster(),
+                                        ImmutableList.of(),
+                                        builder.build(),
+                                        target);
+                        builder.push(scan);
+                    });
+            return builder;
         }
         int childCnt = ctx.oC_Pattern().getChildCount();
         List<RelNode> sentences = new ArrayList<>();
@@ -316,6 +335,10 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
 
     @Override
     public GraphBuilder visitOC_With(CypherGSParser.OC_WithContext ctx) {
+        if (builder.size() == 0) {
+            builder.push(
+                    new DummyTableScan((GraphOptCluster) builder.getCluster(), ImmutableList.of()));
+        }
         visitOC_ProjectionBody(ctx.oC_ProjectionBody());
         return (ctx.oC_Where() != null) ? visitOC_Where(ctx.oC_Where()) : builder;
     }
