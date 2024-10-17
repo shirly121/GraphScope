@@ -214,6 +214,15 @@ double GraphDBSession::eval_duration() const {
 
 int64_t GraphDBSession::query_num() const { return query_num_.load(); }
 
+AppBase* GraphDBSession::GetApp(const std::string& app_name) {
+  auto& app_name_to_path_index = db_.schema().GetPlugins();
+  if (app_name_to_path_index.count(app_name) <= 0) {
+    LOG(ERROR) << "Query name is not registered: " << app_name;
+    return nullptr;
+  }
+  return GetApp(app_name_to_path_index.at(app_name).second);
+}
+
 #define likely(x) __builtin_expect(!!(x), 1)
 
 AppBase* GraphDBSession::GetApp(int type) {
@@ -247,7 +256,8 @@ GraphDBSession::parse_query_type_from_cypher_json(
     const std::string_view& str_view) {
   VLOG(10) << "string view: " << str_view;
   rapidjson::Document j;
-  if (j.Parse(std::string(str_view.data(), str_view.size())).HasParseError()) {
+  if (j.Parse(std::string(str_view.data(), str_view.size() - 1))
+          .HasParseError()) {
     LOG(ERROR) << "Fail to parse json from input content";
     return Result<std::pair<uint8_t, std::string_view>>(gs::Status(
         StatusCode::INTERNAL_ERROR, "Fail to parse json from input content"));
@@ -272,7 +282,7 @@ Result<std::pair<uint8_t, std::string_view>>
 GraphDBSession::parse_query_type_from_cypher_internal(
     const std::string_view& str_view) {
   procedure::Query cur_query;
-  if (!cur_query.ParseFromArray(str_view.data(), str_view.size())) {
+  if (!cur_query.ParseFromArray(str_view.data(), str_view.size() - 1)) {
     LOG(ERROR) << "Fail to parse query from input content";
     return Result<std::pair<uint8_t, std::string_view>>(gs::Status(
         StatusCode::INTERNAL_ERROR, "Fail to parse query from input content"));
