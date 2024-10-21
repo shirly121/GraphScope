@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.cypher.integration.movie;
 
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 
 import com.alibaba.graphscope.cypher.integration.suite.QueryContext;
@@ -126,7 +127,6 @@ public class MovieTest {
 
     @Test
     public void run_movie_query16_test() {
-        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
         QueryContext testQuery = MovieQueries.get_movie_query16_test();
         Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
@@ -134,7 +134,6 @@ public class MovieTest {
 
     @Test
     public void run_movie_query17_test() {
-        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
         QueryContext testQuery = MovieQueries.get_movie_query17_test();
         Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
@@ -142,7 +141,6 @@ public class MovieTest {
 
     @Test
     public void run_movie_query18_test() {
-        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
         QueryContext testQuery = MovieQueries.get_movie_query18_test();
         Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
@@ -150,7 +148,6 @@ public class MovieTest {
 
     @Test
     public void run_movie_query19_test() {
-        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
         QueryContext testQuery = MovieQueries.get_movie_query19_test();
         Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
@@ -158,11 +155,66 @@ public class MovieTest {
 
     @Test
     public void run_movie_query20_test() {
-        assumeTrue("pegasus".equals(System.getenv("ENGINE_TYPE")));
+        assumeFalse("hiactor".equals(System.getenv("ENGINE_TYPE")));
         QueryContext testQuery = MovieQueries.get_movie_query20_test();
-        Result result =
-                session.run(
-                        "Match (n:Movie {id: 0}) Return {id: n.id, tagline: n.tagline} as value;");
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query21_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query21_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query22_test() {
+        assumeTrue("hiactor".equals(System.getenv("ENGINE_TYPE")));
+        QueryContext testQuery = MovieQueries.get_movie_query22_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query23_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query23_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query24_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query24_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query25_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query25_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query26_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query26_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query27_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query27_test();
+        Result result = session.run(testQuery.getQuery());
+        Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
+    }
+
+    @Test
+    public void run_movie_query28_test() {
+        QueryContext testQuery = MovieQueries.get_movie_query28_test();
+        Result result = session.run(testQuery.getQuery());
         Assert.assertEquals(testQuery.getExpectedResult().toString(), result.list().toString());
     }
 

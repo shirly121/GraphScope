@@ -24,21 +24,29 @@ pub trait MultiVersionGraph {
     type V: RocksVertex;
     type E: RocksEdge;
 
+    /// Get vertex of given `vertex_id` at `si`, with given properties.
+    /// In the following interfaces, for properties,
+    /// * `None`: no properties
+    /// * `Some(vec![])`: all properties
+    /// * `Some(property_ids)`: given properties
     fn get_vertex(
         &self, snapshot_id: SnapshotId, vertex_id: VertexId, label_id: Option<LabelId>,
         property_ids: Option<&Vec<PropertyId>>,
     ) -> GraphResult<Option<Self::V>>;
 
+    /// Get edge of given `edge_id` at `si`, with given properties.
     fn get_edge(
         &self, snapshot_id: SnapshotId, edge_id: EdgeId, edge_relation: Option<&EdgeKind>,
         property_ids: Option<&Vec<PropertyId>>,
     ) -> GraphResult<Option<Self::E>>;
 
+    /// Scan vertices of given `label_id` at `si`, with given properties.
     fn scan_vertex(
         &self, snapshot_id: SnapshotId, label_id: Option<LabelId>, condition: Option<&Condition>,
         property_ids: Option<&Vec<PropertyId>>,
     ) -> GraphResult<Records<Self::V>>;
 
+    /// Scan edges of given `label_id` at `si`, with given properties.
     fn scan_edge(
         &self, snapshot_id: SnapshotId, label_id: Option<LabelId>, condition: Option<&Condition>,
         property_ids: Option<&Vec<PropertyId>>,
@@ -81,12 +89,30 @@ pub trait MultiVersionGraph {
         &self, si: SnapshotId, schema_version: i64, label: LabelId, type_def: &TypeDef, table_id: i64,
     ) -> GraphResult<bool>;
 
+    /// Add exist vertex type properties with `label` and `type_def` at `si` and `schema_version`. This interface is thread safe.
+    ///
+    /// If vertex type not found, `si` is smaller than last operation, get lock error, storage error
+    /// or other errors, `GraphError` will be returned.
+    /// Returns true if schema_version changed, false otherwise.
+    fn add_vertex_type_properties(
+        &self, si: SnapshotId, schema_version: i64, label: LabelId, type_def: &TypeDef, table_id: i64,
+    ) -> GraphResult<bool>;
+
     /// Create a new edge type with `label` and `type_def` at `si` and `schema_version`. This interface is thread safe.
     ///
     /// If edge type already exists, `si` is smaller than last operation, get lock error, storage error
     /// or other errors, `GraphError` will be returned.
     /// Returns true if schema_version changed, false otherwise.
     fn create_edge_type(
+        &self, si: SnapshotId, schema_version: i64, label: LabelId, type_def: &TypeDef,
+    ) -> GraphResult<bool>;
+
+    /// Add exist edge type properties with `label` and `type_def` at `si` and `schema_version`. This interface is thread safe.
+    ///
+    /// If edge type not found, `si` is smaller than last operation, get lock error, storage error
+    /// or other errors, `GraphError` will be returned.
+    /// Returns true if schema_version changed, false otherwise.
+    fn add_edge_type_properties(
         &self, si: SnapshotId, schema_version: i64, label: LabelId, type_def: &TypeDef,
     ) -> GraphResult<bool>;
 

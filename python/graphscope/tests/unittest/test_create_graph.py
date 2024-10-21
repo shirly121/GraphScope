@@ -415,7 +415,7 @@ def test_error_on_src_dst_refer_to_same_col(graphscope_session, student_group_e)
         graph = graph.add_edges(student_group_e, "group", src_field=0, dst_field=0)
 
 
-def test_error_on_ambigious_default_label(
+def test_error_on_ambiguous_default_label(
     graphscope_session, student_group_e, student_v, teacher_v
 ):
     graph = graphscope_session.g()
@@ -423,16 +423,6 @@ def test_error_on_ambigious_default_label(
     graph = graph.add_vertices(teacher_v, "teacher")
 
     with pytest.raises(AssertionError, match="Ambiguous vertex label"):
-        graph = graph.add_edges(student_group_e, "group")
-
-
-def test_error_on_duplicate_labels(graphscope_session, student_group_e, student_v):
-    graph = graphscope_session.g()
-    graph = graph.add_vertices(student_v, "student")
-    with pytest.raises(ValueError, match="Label student already existed in graph"):
-        graph = graph.add_vertices(student_v, "student")
-    graph = graph.add_edges(student_group_e, "group")
-    with pytest.raises(ValueError, match="already existed in graph"):
         graph = graph.add_edges(student_group_e, "group")
 
 
@@ -553,7 +543,7 @@ def test_Load_complex_graph_variants(
         ["score", "score_id"],
         src_label="student",
         dst_label="lesson",
-        src_field="studnet_id",
+        src_field="student_id",
         dst_field="subject",
     )
     graph = graph.add_edges(
@@ -562,7 +552,7 @@ def test_Load_complex_graph_variants(
         ["member_size"],
         src_label="student",
         dst_label="student",
-        src_field="leader_studnet_id",
+        src_field="leader_student_id",
         dst_field="member_student_id",
     )
     assert graph.schema is not None

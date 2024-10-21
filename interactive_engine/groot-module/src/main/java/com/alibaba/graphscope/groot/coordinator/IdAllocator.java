@@ -1,18 +1,18 @@
 package com.alibaba.graphscope.groot.coordinator;
 
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.exception.InternalException;
+import com.alibaba.graphscope.groot.common.exception.NotFoundException;
 import com.alibaba.graphscope.groot.meta.MetaStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 
 public class IdAllocator {
 
     public static final String ID_ALLOCATE_INFO_PATH = "id_allocate_info";
 
-    private MetaStore metaStore;
-    private ObjectMapper objectMapper;
+    private final MetaStore metaStore;
+    private final ObjectMapper objectMapper;
     private volatile long tailId;
 
     public IdAllocator(MetaStore metaStore) {
@@ -24,7 +24,7 @@ public class IdAllocator {
         try {
             recover();
         } catch (IOException e) {
-            throw new GrootException(e);
+            throw new InternalException(e);
         }
     }
 
@@ -34,11 +34,10 @@ public class IdAllocator {
 
     private void recover() throws IOException {
         if (!this.metaStore.exists(ID_ALLOCATE_INFO_PATH)) {
-            throw new FileNotFoundException(ID_ALLOCATE_INFO_PATH);
+            throw new NotFoundException("File not found: " + ID_ALLOCATE_INFO_PATH);
         }
         byte[] b = this.metaStore.read(ID_ALLOCATE_INFO_PATH);
-        long tailId = this.objectMapper.readValue(b, Long.class);
-        this.tailId = tailId;
+        this.tailId = this.objectMapper.readValue(b, Long.class);
     }
 
     public synchronized long allocate(int allocateSize) throws IOException {

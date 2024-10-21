@@ -143,7 +143,7 @@ public interface ArrowFragment<OID_T> extends FFIPointer {
      *
      * @param labelId label for oid.
      * @param oid querying oid.
-     * @param vertex vertex hanlder
+     * @param vertex vertex handler
      * @return true if vertex with original id oid exists in this fragment.
      */
     @FFINameAlias("GetVertex")
@@ -205,12 +205,12 @@ public interface ArrowFragment<OID_T> extends FFIPointer {
             int propertyId);
 
     @FFINameAlias("GetData<uint32_t>")
-    long getIntData(
+    int getIntData(
             @FFITypeAlias(GRAPE_VERTEX + "<uint64_t>") @CXXReference Vertex<Long> vertex,
             int propertyId);
 
     @FFINameAlias("GetData<double>")
-    long getDoubleData(
+    double getDoubleData(
             @FFITypeAlias(GRAPE_VERTEX + "<uint64_t>") @CXXReference Vertex<Long> vertex,
             int propertyId);
 
@@ -272,7 +272,7 @@ public interface ArrowFragment<OID_T> extends FFIPointer {
     @FFINameAlias("Gid2Oid")
     OID_T gid2Oid(Long gid);
 
-    // Oid2Gid can not be made in java, since java pass primitives, even long in
+    // Oid2Gid cannot be made in java, since java pass primitives, even long in
     // value.
     // @FFINameAlias("Oid2Gid")
     // boolean oid2Gid(int vertexLabelId, OID_T oid, Long gid);

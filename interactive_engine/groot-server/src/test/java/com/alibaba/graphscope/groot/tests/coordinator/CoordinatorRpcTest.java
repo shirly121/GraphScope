@@ -17,16 +17,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.alibaba.graphscope.groot.CompletionCallback;
+import com.alibaba.graphscope.groot.common.exception.DdlException;
 import com.alibaba.graphscope.groot.common.schema.wrapper.GraphDef;
 import com.alibaba.graphscope.groot.common.util.BackupInfo;
 import com.alibaba.graphscope.groot.coordinator.*;
-import com.alibaba.graphscope.groot.coordinator.BackupService;
 import com.alibaba.graphscope.groot.coordinator.SchemaService;
 import com.alibaba.graphscope.groot.coordinator.SnapshotCommitService;
-import com.alibaba.graphscope.groot.frontend.IngestorWriteClient;
+import com.alibaba.graphscope.groot.coordinator.backup.BackupManager;
+import com.alibaba.graphscope.groot.coordinator.backup.BackupService;
+import com.alibaba.graphscope.groot.coordinator.backup.StoreBackupClient;
 import com.alibaba.graphscope.groot.rpc.RoleClients;
-import com.alibaba.graphscope.groot.schema.request.DdlException;
-import com.alibaba.graphscope.groot.store.StoreBackupId;
+import com.alibaba.graphscope.groot.store.backup.StoreBackupId;
 import com.alibaba.graphscope.proto.groot.*;
 
 import io.grpc.stub.StreamObserver;
@@ -37,25 +38,13 @@ import java.io.IOException;
 import java.util.*;
 
 public class CoordinatorRpcTest {
-
-    @Test
-    void testDdlWriter() {
-        RoleClients<IngestorWriteClient> clients = mock(RoleClients.class);
-        IngestorWriteClient ingestorWriteClient = mock(IngestorWriteClient.class);
-        when(clients.getClient(0)).thenReturn(ingestorWriteClient);
-
-        DdlWriter ddlWriter = new DdlWriter(clients);
-        ddlWriter.writeOperations("test_req", null);
-        verify(ingestorWriteClient).writeIngestor(eq("test_req"), eq(0), any());
-    }
-
     @Test
     void testGraphDefFetcher() {
         RoleClients<StoreSchemaClient> clients = mock(RoleClients.class);
         StoreSchemaClient client = mock(StoreSchemaClient.class);
         when(clients.getClient(0)).thenReturn(client);
 
-        GraphDefFetcher graphDefFetcher = new GraphDefFetcher(clients);
+        GraphDefFetcher graphDefFetcher = new GraphDefFetcher(clients, 1);
         graphDefFetcher.fetchGraphDef();
         verify(client).fetchSchema();
     }

@@ -478,7 +478,7 @@ def decode_dataframe(value):
     return pd.DataFrame(arrays)
 
 
-def _unify_str_type(t):
+def _unify_str_type(t):  # noqa: C901
     t = t.lower()
     if t in ("b", "bool"):
         return graph_def_pb2.DataTypePb.BOOL
@@ -502,6 +502,34 @@ def _unify_str_type(t):
         return graph_def_pb2.DataTypePb.STRING
     elif t == "bytes":
         return graph_def_pb2.DataTypePb.BYTES
+    elif t == "date32[day]" or t == "date[32][day]" or t == "date32" or t == "date[32]":
+        return graph_def_pb2.DataTypePb.DATE32
+    elif t == "date64[ms]" or t == "date[64][ms]" or t == "date64" or t == "date[64]":
+        return graph_def_pb2.DataTypePb.DATE64
+    elif t == "time32[s]" or t == "time[32][s]":
+        return graph_def_pb2.DataTypePb.TIME32_S
+    elif t == "time32[ms]" or t == "time[32][ms]":
+        return graph_def_pb2.DataTypePb.TIME32_MS
+    elif t == "time32[us]" or t == "time[32][us]":
+        return graph_def_pb2.DataTypePb.TIME32_US
+    elif t == "time32[ns]" or t == "time[32][ns]":
+        return graph_def_pb2.DataTypePb.TIME32_NS
+    elif t == "time64[s]" or t == "time[64][s]":
+        return graph_def_pb2.DataTypePb.TIME64_S
+    elif t == "time64[ms]" or t == "time[64][ms]":
+        return graph_def_pb2.DataTypePb.TIME64_MS
+    elif t == "time64[us]" or t == "time[64][us]":
+        return graph_def_pb2.DataTypePb.TIME64_US
+    elif t == "time64[ns]" or t == "time[64][ns]":
+        return graph_def_pb2.DataTypePb.TIME64_NS
+    elif t.startswith("timestamp[s]"):
+        return graph_def_pb2.DataTypePb.TIMESTAMP_S
+    elif t.startswith("timestamp[ms]"):
+        return graph_def_pb2.DataTypePb.TIMESTAMP_MS
+    elif t.startswith("timestamp[us]"):
+        return graph_def_pb2.DataTypePb.TIMESTAMP_US
+    elif t.startswith("timestamp[ns]"):
+        return graph_def_pb2.DataTypePb.TIMESTAMP_NS
     elif t == "int_list" or t.startswith("fixedlistint"):
         return graph_def_pb2.DataTypePb.INT_LIST
     elif t == "long_list" or t.startswith("fixedlistlong"):
@@ -584,6 +612,53 @@ def data_type_to_python(t):
     elif t in (None, graph_def_pb2.NULLVALUE):
         return None
     raise ValueError("Not support type {}".format(t))
+
+
+def data_type_to_unified_type(data_type: int):
+    if data_type == graph_def_pb2.DataTypePb.BOOL:
+        return {"primitive_type": "DT_BOOL"}
+    if data_type == graph_def_pb2.DataTypePb.CHAR:
+        return {"string": {"char": {"fixed_length": 1}}}
+    if data_type == graph_def_pb2.DataTypePb.INT:
+        return {"primitive_type": "DT_SIGNED_INT32"}
+    if data_type == graph_def_pb2.DataTypePb.LONG:
+        return {"primitive_type": "DT_SIGNED_INT64"}
+    if data_type == graph_def_pb2.DataTypePb.FLOAT:
+        return {"primitive_type": "DT_FLOAT"}
+    if data_type == graph_def_pb2.DataTypePb.DOUBLE:
+        return {"primitive_type": "DT_DOUBLE"}
+    if data_type == graph_def_pb2.DataTypePb.STRING:
+        return {"string": {"long_text": None}}
+    if data_type == graph_def_pb2.DataTypePb.UINT:
+        return {"primitive_type": "DT_UNSIGNED_INT32"}
+    if data_type == graph_def_pb2.DataTypePb.ULONG:
+        return {"primitive_type": "DT_UNSIGNED_INT64"}
+    if data_type == graph_def_pb2.DataTypePb.UNKNOWN:
+        return "UNKNOWN"
+
+
+def unified_type_to_data_type(unified_type):
+    if unified_type == {"primitive_type": "DT_BOOL"}:
+        return graph_def_pb2.DataTypePb.BOOL
+    if unified_type == {"string": {"char": {"fixed_length": 1}}}:
+        return graph_def_pb2.DataTypePb.CHAR
+    if unified_type == {"primitive_type": "DT_SIGNED_INT32"}:
+        return graph_def_pb2.DataTypePb.INT
+    if unified_type == {"primitive_type": "DT_SIGNED_INT64"}:
+        return graph_def_pb2.DataTypePb.LONG
+    if unified_type == {"primitive_type": "DT_FLOAT"}:
+        return graph_def_pb2.DataTypePb.FLOAT
+    if unified_type == {"primitive_type": "DT_DOUBLE"}:
+        return graph_def_pb2.DataTypePb.DOUBLE
+    if unified_type == {"string": {"long_text": None}}:
+        return graph_def_pb2.DataTypePb.STRING
+    if unified_type == {"primitive_type": "DT_UNSIGNED_INT32"}:
+        return graph_def_pb2.DataTypePb.UINT
+    if unified_type == {"primitive_type": "DT_UNSIGNED_INT64"}:
+        return graph_def_pb2.DataTypePb.ULONG
+    if unified_type == "UNKNOWN":
+        return graph_def_pb2.DataTypePb.UNKNOWN
+    raise ValueError("Not support unified type {}".format(unified_type))
 
 
 def normalize_data_type_str(data_type):

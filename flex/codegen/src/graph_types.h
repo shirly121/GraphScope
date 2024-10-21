@@ -37,26 +37,28 @@ enum class DataType {
   kInt64Array = 5,
   kInt32Array = 6,
   kBoolean = 7,
-  kVertexId = 8,
+  kGlobalVertexId = 8,
   kEdgeId = 9,
   kLength = 10,
   kDate = 11,
   kTime = 12,
   kTimeStamp = 13,
-  kLabelId = 14
+  kLabelId = 14,
+  kEmpty = 15,
 };
 
 // a parameter const, the real data will be feed at runtime.
 struct ParamConst {
   DataType type;
   std::string var_name;
+  std::string expr_var_name;
   int32_t id;  // unique id for each param const
 };
 
 // implement operator == for ParamConst
 inline bool operator==(const ParamConst& lhs, const ParamConst& rhs) {
   return lhs.type == rhs.type && lhs.var_name == rhs.var_name &&
-         lhs.id == rhs.id;
+         lhs.expr_var_name == rhs.expr_var_name && lhs.id == rhs.id;
 }
 
 }  // namespace codegen
@@ -127,7 +129,7 @@ static std::string common_data_type_pb_2_str(
     return single_common_data_type_pb_2_str(data_types[0]);
   }
   ss << "std::tuple<";
-  for (auto i = 0; i < data_types.size(); ++i) {
+  for (size_t i = 0; i < data_types.size(); ++i) {
     ss << single_common_data_type_pb_2_str(data_types[i]);
     if (i + 1 < data_types.size()) {
       ss << ", ";
@@ -158,7 +160,7 @@ static codegen::ParamConst param_const_pb_to_param_const(
   CHECK(data_type_pb.type_case() == common::IrDataType::kDataType);
   return codegen::ParamConst{
       common_data_type_pb_2_data_type(data_type_pb.data_type()),
-      param_const_pb.name(), param_const_pb.index()};
+      param_const_pb.name(), param_const_pb.name(), param_const_pb.index()};
 }
 
 static codegen::ParamConst param_const_pb_to_param_const(
@@ -167,13 +169,18 @@ static codegen::ParamConst param_const_pb_to_param_const(
   if (ir_data_type.type_case() == common::IrDataType::kDataType) {
     auto primitive_type = ir_data_type.data_type();
     return codegen::ParamConst{common_data_type_pb_2_data_type(primitive_type),
-                               param_const_pb.name(), param_const_pb.index()};
+                               param_const_pb.name(), param_const_pb.name(),
+                               param_const_pb.index()};
   } else {
     throw std::runtime_error("Expect node type in ir_data_type");
   }
 }
 
-static std::string data_type_2_string(const codegen::DataType& data_type) {
+// The second params only control the ret value when type is string.In some
+// cases, we need to use std::string_view, but in some cases, we need to use
+// std::string.
+static std::string data_type_2_string(const codegen::DataType& data_type,
+                                      bool string_view = true) {
   switch (data_type) {
   case codegen::DataType::kInt32:
     return "int32_t";
@@ -182,23 +189,30 @@ static std::string data_type_2_string(const codegen::DataType& data_type) {
   case codegen::DataType::kDouble:
     return "double";
   case codegen::DataType::kString:
-    return "std::string_view";
+    if (string_view) {
+      return "std::string_view";
+    } else {
+      return "std::string";
+    }
   case codegen::DataType::kInt64Array:
     return "std::vector<int64_t>";
   case codegen::DataType::kInt32Array:
     return "std::vector<int32_t>";
   case codegen::DataType::kBoolean:
     return "bool";
-  case codegen::DataType::kVertexId:
-    return VERTEX_ID_T;
+  case codegen::DataType::kGlobalVertexId:
+    return GLOBAL_VERTEX_ID_T;
   case codegen::DataType::kLength:
     return LENGTH_KEY_T;
   case codegen::DataType::kEdgeId:
     return EDGE_ID_T;
   case codegen::DataType::kDate:
+  case codegen::DataType::kTimeStamp:
     return "Date";
   case codegen::DataType::kLabelId:
     return "LabelKey";
+  case codegen::DataType::kEmpty:
+    return GRAPE_EMPTY_TYPE;
   default:
     // LOG(FATAL) << "unknown data type" << static_cast<int>(data_type);
     throw std::runtime_error(
@@ -243,10 +257,11 @@ static std::string data_type_2_rust_string(const codegen::DataType& data_type) {
     return "Vector<i32>";
   case codegen::DataType::kBoolean:
     return "bool";
-  case codegen::DataType::kVertexId:
+  case codegen::DataType::kGlobalVertexId:
     return "ID";
   default:
     LOG(FATAL) << "unknown data type" << static_cast<int>(data_type);
+    return "";
   }
 }
 
@@ -265,6 +280,7 @@ static common::DataType common_value_2_data_type(const common::Value& value) {
   default:
     LOG(FATAL) << "unknown value" << value.DebugString();
   }
+  return common::DataType::NONE;
 }
 
 static void parse_param_const_from_pb(
@@ -274,11 +290,13 @@ static void parse_param_const_from_pb(
   if (data_type.type_case() == common::IrDataType::kDataType) {
     param_cost.type = common_data_type_pb_2_data_type(data_type.data_type());
     param_cost.var_name = param_const_pb.name();
+    param_cost.expr_var_name = param_const_pb.name();
     param_cost.id = param_const_pb.index();
     return;
   } else if (node_type.type_case() == common::IrDataType::kDataType) {
     param_cost.type = common_data_type_pb_2_data_type(node_type.data_type());
     param_cost.var_name = param_const_pb.name();
+    param_cost.expr_var_name = param_const_pb.name();
     param_cost.id = param_const_pb.index();
     return;
   } else {

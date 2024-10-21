@@ -1,4 +1,4 @@
-graph: modern
+graph: modern_graph
 loading_config:
   data_source:
     scheme: file  # file, oss, s3, hdfs; only file is supported now
@@ -16,6 +16,7 @@ loading_config:
       escaping: false
       block_size: 4MB
       batch_reader: true
+      null_values: [""]
 
 vertex_mappings:
   - type_name: person  # must align with the schema

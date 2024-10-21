@@ -169,6 +169,10 @@ class LocalLauncher(AbstractLauncher):
 
         start_time = time.time()
         while is_free_port(rpc_port):
+            if process.poll() is not None:
+                msg = "Launch analytical engine failed: "
+                msg += "\n".join([line for line in stderr_watcher.poll_all()])
+                raise RuntimeError(msg)
             if self._timeout_seconds + start_time < time.time():
                 self._analytical_engine_process.kill()
                 raise RuntimeError("Launch analytical engine failed due to timeout.")
@@ -313,7 +317,7 @@ class LocalLauncher(AbstractLauncher):
 
         server_client_master_port = get_free_port("localhost")
         handle["server_client_master_port"] = server_client_master_port
-
+        handle["master_addr"] = "localhost"
         server_list = [f"localhost:{server_client_master_port}"]
         # for train, val and test
         for _ in range(3):
@@ -343,7 +347,7 @@ class LocalLauncher(AbstractLauncher):
                 config,
                 str(index),
             ]
-            logger.debug("launching graphlearn_torch server: %s", " ".join(str(cmd)))
+            # logger.debug("launching graphlearn_torch server: %s", " ".join(cmd))
 
             proc = subprocess.Popen(
                 cmd,
@@ -355,11 +359,16 @@ class LocalLauncher(AbstractLauncher):
                 universal_newlines=True,
                 bufsize=1,
             )
+            logger.debug("suppressed: %s", (not logger.isEnabledFor(logging.DEBUG)))
             stdout_watcher = PipeWatcher(
                 proc.stdout,
                 sys.stdout,
                 suppressed=(not logger.isEnabledFor(logging.DEBUG)),
             )
+
+            time.sleep(5)
+            logger.debug("process status: %s", proc.poll())
+
             setattr(proc, "stdout_watcher", stdout_watcher)
             self._learning_instance_processes[object_id].append(proc)
         return server_list
@@ -383,7 +392,7 @@ class LocalLauncher(AbstractLauncher):
         process.wait(timeout=self._timeout_seconds)
         return process
 
-    def close_learning_instance(self, object_id):
+    def close_learning_instance(self, object_id, learning_backend=0):
         if object_id not in self._learning_instance_processes:
             return
 

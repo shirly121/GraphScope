@@ -16,6 +16,7 @@
 #define ENGINES_HQPS_DS_COLLECTION_H_
 
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
 #include "flex/engines/hqps_db/core/null_record.h"
@@ -36,7 +37,7 @@ class EmptyCol {
 
 // After operator like group, we need to extract the property or the count to
 // separate column.
-// We use collection to implemention this abstraction.
+// We use collection to implement this abstraction.
 // Currently we may not use it like vertex_set/edge_set, i.e., no dedup, no
 // flat, not subset on collection.
 
@@ -51,6 +52,13 @@ class TwoLabelVertexSetImpl;
 
 template <typename VID_T, typename LabelT, typename... T>
 class TwoLabelVertexSetImplBuilder;
+
+template <typename VID_T, typename LabelT, typename... T>
+class GeneralVertexSetBuilder;
+
+// untypedEdgeSet
+template <typename VID_T, typename LabelT, typename SUB_GRAPH_T>
+class UnTypedEdgeSet;
 
 template <typename T>
 class Collection;
@@ -71,6 +79,9 @@ class CollectionBuilder {
   void Insert(T&& t) { vec_.emplace_back(std::move(t)); }
 
   void Insert(const T& t) { vec_.push_back(t); }
+
+  // ele& data
+  void Insert(const T& t, const T& t2) { vec_.push_back(t); }
 
   // insert index ele tuple
   void Insert(const std::tuple<size_t, T>& t) {
@@ -107,7 +118,10 @@ class KeyedCollectionBuilder {
   }
 
   // insert returning a unique index for the inserted element
-  size_t insert(const T& t) {
+  int32_t insert(const T& t) {
+    if (IsNull(t)) {
+      return -1;
+    }
     if (map_.find(t) == map_.end()) {
       map_[t] = vec_.size();
       vec_.push_back(t);
@@ -117,17 +131,13 @@ class KeyedCollectionBuilder {
     }
   }
 
-  size_t insert(T&& t) {
-    if (map_.find(t) == map_.end()) {
-      map_[t] = vec_.size();
-      vec_.emplace_back(std::move(t));
-      return vec_.size() - 1;
-    } else {
-      return map_[t];
-    }
+  int32_t insert(const std::tuple<size_t, T>& t, const T& data) {
+    return insert(std::get<1>(t));
   }
 
-  size_t Insert(const std::tuple<size_t, T>& t) {
+  int32_t insert(T&& t) { return insert(t); }
+
+  int32_t Insert(const std::tuple<size_t, T>& t) {
     return insert(std::get<1>(t));
   }
 
@@ -176,8 +186,8 @@ class CollectionIter {
   inline const self_type_t* operator->() const { return this; }
 
  private:
-  size_t ind_;
   const std::vector<T>& vec_;
+  size_t ind_;
 };
 
 // specialization for T is tuple, and only contains one element.
@@ -275,7 +285,7 @@ class Collection {
     new_offset.reserve(new_size + 1);
     new_vec.reserve(new_size);
     new_offset.emplace_back(0);
-    for (auto i = 0; i < new_size; ++i) {
+    for (size_t i = 0; i < new_size; ++i) {
       if (offset[i] >= offset[i + 1]) {
         new_vec.emplace_back(T());
       } else {
@@ -296,9 +306,9 @@ class Collection {
     CHECK(repeat_vec.size() == cur_offset.size())
         << "repeat vec:" << gs::to_string(repeat_vec)
         << ", cur offset: " << gs::to_string(cur_offset);
-    for (auto i = 0; i + 1 < cur_offset.size(); ++i) {
+    for (size_t i = 0; i + 1 < cur_offset.size(); ++i) {
       auto times_to_repeat = repeat_vec[i + 1] - repeat_vec[i];
-      for (auto j = 0; j < times_to_repeat; ++j) {
+      for (size_t j = 0; j < times_to_repeat; ++j) {
         for (auto k = cur_offset[i]; k < cur_offset[i + 1]; ++k) {
           res.push_back(vec_[k]);
         }
@@ -328,8 +338,8 @@ class Collection {
   self_type_t ProjectWithRepeatArray(const std::vector<size_t>& repeat_array,
                                      KeyAlias<tag_id, Fs>& key_alias) const {
     std::vector<T> res;
-    for (auto i = 0; i < repeat_array.size(); ++i) {
-      for (auto j = 0; j < repeat_array[i]; ++j) {
+    for (size_t i = 0; i < repeat_array.size(); ++i) {
+      for (size_t j = 0; j < repeat_array[i]; ++j) {
         // VLOG(10) << "Project: " << vids_[i];
         res.push_back(vec_[i]);
       }
@@ -352,7 +362,9 @@ class Collection {
     LOG(WARNING) << " Not implemented";
   }
 
-  std::vector<offset_t> Dedup() {
+  template <typename PropT, typename std::enable_if_t<std::is_same_v<
+                                PropT, grape::EmptyType>>::type* = nullptr>
+  std::vector<offset_t> Dedup(const PropertySelector<PropT>& prop_selector) {
     std::vector<offset_t> offsets;
     std::vector<T> new_vec;
     std::unordered_map<T, size_t, boost::hash<T>> map;
@@ -392,14 +404,14 @@ class CountBuilder {
   // insert tuple at index ind.
   // if the ele_value equal to invalid_value, then do not insert.
   template <typename ELE_TUPLE, typename DATA_TUPLE>
-  void insert(size_t ind, const ELE_TUPLE& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const ELE_TUPLE& tuple, const DATA_TUPLE& data) {
     // just count times.
     while (vec_.size() <= ind) {
       vec_.emplace_back(0);
     }
     using cur_ele_tuple = typename gs::tuple_element<tag, ELE_TUPLE>::type;
     auto& cur_ele = gs::get_from_tuple<tag>(tuple);
-    // currenly we support vertex ele tupe and edge tuple.
+    // currently we support vertex ele tuple and edge tuple.
     if constexpr (std::tuple_size<cur_ele_tuple>::value == 2) {
       auto& ele = std::get<1>(cur_ele);
       using vid_t = typename std::tuple_element<1, cur_ele_tuple>::type;
@@ -409,28 +421,162 @@ class CountBuilder {
         VLOG(10) << "ele is null";
       }
     } else {
-      VLOG(10) << "inc:" << ind << ", " << gs::to_string(tuple);
       ++vec_[ind];
     }
+    return true;
   }
 
-  Collection<size_t> Build() {
-    // VLOG(10) << "Finish building counter" << gs::to_string(vec_);
-    return Collection<size_t>(std::move(vec_));
+  bool inc_count(size_t ind, int32_t v) {
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(0);
+    }
+    vec_[ind] += v;
+    return true;
+  }
+
+  Collection<int64_t> Build() { return Collection<int64_t>(std::move(vec_)); }
+
+ private:
+  std::vector<int64_t> vec_;
+};
+
+// Prop Count Builder.
+template <int tag, typename PropGetterT>
+class PropCountBuilder {
+ public:
+  PropCountBuilder(PropGetterT&& prop_getter)
+      : prop_getter_(std::move(prop_getter)) {}
+
+  // insert tuple at index ind.
+  // if the ele_value equal to invalid_value, then do not insert.
+  template <typename ELE_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE& tuple, const DATA_TUPLE& data) {
+    // just count times.
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(0);
+    }
+
+    auto& cur_ele = gs::get_from_tuple<tag>(tuple);
+    if (IsNull(cur_ele)) {
+      return false;
+    }
+    // get prop from prop getter
+    auto props = prop_getter_.get_view(cur_ele);
+    if (IsNull(props)) {
+      return false;
+    }
+    // get the type of props
+    using props_t = decltype(props);
+
+    if (props != NullRecordCreator<props_t>::GetNull()) {
+      ++vec_[ind];
+    } else {
+      VLOG(10) << "ele is null, ind: " << ind
+               << "ele:" << gs::to_string(cur_ele);
+    }
+    return true;
+  }
+
+  Collection<int64_t> Build() { return Collection<int64_t>(std::move(vec_)); }
+
+ private:
+  std::vector<int64_t> vec_;
+  PropGetterT prop_getter_;
+};
+
+template <int... tag>
+class MultiColCountBuilder {
+ public:
+  MultiColCountBuilder() {}
+
+  // insert tuple at index ind.
+  // if the ele_value equal to invalid_value, then do not insert.
+  template <typename ELE_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE& tuple, const DATA_TUPLE& data) {
+    auto cur_ele_tuple =
+        std::tuple_cat(tuple_slice<1>(gs::get_from_tuple<tag>(tuple))...);
+    if (IsNull(cur_ele_tuple)) {
+      return false;
+    }
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(0);
+    }
+    using cur_ele_tuple_t =
+        std::remove_const_t<std::remove_reference_t<decltype(cur_ele_tuple)>>;
+    // remove the const and reference for each type in cur_ele_tuple_t
+    using cur_ele_tuple_rm_const_ref_t =
+        typename ConstRefRemoveHelper<cur_ele_tuple_t>::type;
+    if (cur_ele_tuple !=
+        NullRecordCreator<cur_ele_tuple_rm_const_ref_t>::GetNull()) {
+      ++vec_[ind];
+    } else {
+      VLOG(10) << "ele is null";
+    }
+    return true;
+  }
+
+  Collection<int64_t> Build() { return Collection<int64_t>(std::move(vec_)); }
+
+ private:
+  std::vector<int64_t> vec_;
+};
+
+template <int tag_id, typename T, typename Enable = void>
+class DistinctCountBuilder;
+
+// Count the distinct edges of UntypedEdgeSet.
+// We assume each edge  in UnTypeEdgeSet  is unique, so just count the index of
+// index_ele_tuple_t.
+template <int tag_id, typename EDGE_SET_T>
+class DistinctCountBuilder<
+    tag_id, EDGE_SET_T,
+    typename std::enable_if<(EDGE_SET_T::is_edge_set)>::type> {
+ public:
+  using edge_set_t = EDGE_SET_T;
+  using index_ele_t = typename edge_set_t::index_ele_tuple_t;
+  DistinctCountBuilder(const edge_set_t& edge_set) {
+    edges_num_ = edge_set.Size();
+  }
+
+  template <typename ELE_TUPLE_T, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+    auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(grape::Bitset(edges_num_));
+    }
+    auto& cur_bitset = vec_[ind];
+    auto cur_ind = std::get<0>(cur_ind_ele);
+    if (cur_ind < edges_num_) {
+      cur_bitset.set_bit(cur_ind);
+    } else {
+      LOG(FATAL) << "Invalid edge index: " << cur_ind
+                 << ", edges num: " << edges_num_;
+    }
+    return true;
+  }
+
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
+    res.reserve(vec_.size());
+    for (auto& bitset : vec_) {
+      res.emplace_back(bitset.count());
+    }
+    return Collection<int64_t>(std::move(res));
   }
 
  private:
-  std::vector<size_t> vec_;
+  std::vector<grape::Bitset> vec_;
+  size_t edges_num_;
 };
 
-template <size_t num_labels, int tag_id, typename T>
-class DistinctCountBuilder;
-
-// count the distinct number of recieved elements.
-template <int tag_id, typename T>
-class DistinctCountBuilder<1, tag_id, T> {
+// count the distinct number of received elements.
+template <int tag_id, typename LabelT, typename VID_T, typename... T>
+class DistinctCountBuilder<tag_id, RowVertexSetImpl<LabelT, VID_T, T...>> {
  public:
-  DistinctCountBuilder(const std::vector<T>& vertices) {
+  DistinctCountBuilder(const std::vector<VID_T>& vertices) {
     // find out the range of vertices inside vector, and use a bitset to count
     for (auto v : vertices) {
       min_v = std::min(min_v, v);
@@ -440,13 +586,16 @@ class DistinctCountBuilder<1, tag_id, T> {
   }
 
   template <typename ELE_TUPLE_T, typename DATA_TUPLE>
-  void insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
     auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
     static_assert(
         std::is_same_v<
             std::tuple_element_t<1, std::remove_const_t<std::remove_reference_t<
                                         decltype(cur_ind_ele)>>>,
-            T>,
+            VID_T>,
         "Type not match");
     while (vec_.size() <= ind) {
       vec_.emplace_back(grape::Bitset(range_size));
@@ -456,30 +605,31 @@ class DistinctCountBuilder<1, tag_id, T> {
     cur_bitset.set_bit(cur_v - min_v);
     // VLOG(10) << "tag id: " << tag_id << "insert at ind: " << ind
     //          << ",value : " << cur_v << ", res: " << cur_bitset.count();
+    return true;
   }
 
-  Collection<size_t> Build() {
-    std::vector<size_t> res;
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
     res.reserve(vec_.size());
     for (auto& bitset : vec_) {
       res.emplace_back(bitset.count());
     }
-    return Collection<size_t>(std::move(res));
+    return Collection<int64_t>(std::move(res));
   }
 
  private:
   std::vector<grape::Bitset> vec_;
-  T min_v, max_v, range_size;
+  VID_T min_v, max_v, range_size;
 };
 
 // specialization for DistinctCountBuilder for num_labels=2
-template <int tag_id, typename T>
-class DistinctCountBuilder<2, tag_id, T> {
+template <int tag_id, typename VID_T, typename LabelT, typename... T>
+class DistinctCountBuilder<tag_id, TwoLabelVertexSetImpl<VID_T, LabelT, T...>> {
  public:
   DistinctCountBuilder(const grape::Bitset& bitset,
-                       const std::vector<T>& vids) {
+                       const std::vector<VID_T>& vids) {
     // find out the range of vertices inside vector, and use a bitset to count
-    for (auto i = 0; i < vids.size(); ++i) {
+    for (size_t i = 0; i < vids.size(); ++i) {
       auto v = vids[i];
       if (bitset.get_bit(i)) {
         min_v[0] = std::min(min_v[0], v);
@@ -496,13 +646,16 @@ class DistinctCountBuilder<2, tag_id, T> {
   }
 
   template <typename ELE_TUPLE_T, typename DATA_TUPLE>
-  void insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
     auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
     static_assert(
         std::is_same_v<
             std::tuple_element_t<2, std::remove_const_t<std::remove_reference_t<
                                         decltype(cur_ind_ele)>>>,
-            T>,
+            VID_T>,
         "Type not match");
     auto label_ind = std::get<1>(cur_ind_ele);
     while (vec_[label_ind].size() <= ind) {
@@ -514,65 +667,267 @@ class DistinctCountBuilder<2, tag_id, T> {
     cur_bitset.set_bit(cur_v - min_v[label_ind]);
     VLOG(10) << "tag id: " << tag_id << "insert at ind: " << ind
              << ",value : " << cur_v << ", res: " << cur_bitset.count();
+    return true;
   }
 
-  Collection<size_t> Build() {
-    std::vector<size_t> res;
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
     auto max_ind = std::max(vec_[0].size(), vec_[1].size());
     res.resize(max_ind, 0);
     for (auto label_ind = 0; label_ind < 2; ++label_ind) {
-      for (auto i = 0; i < vec_[label_ind].size(); ++i) {
+      for (size_t i = 0; i < vec_[label_ind].size(); ++i) {
         res[i] += vec_[label_ind][i].count();
       }
     }
-    return Collection<size_t>(std::move(res));
+    return Collection<int64_t>(std::move(res));
   }
 
  private:
   std::array<std::vector<grape::Bitset>, 2> vec_;
-  std::array<T, 2> min_v, max_v, range_size;
+  std::array<VID_T, 2> min_v, max_v, range_size;
 };
 
-template <typename T, int tag_id>
+// specialization for DistinctCountBuilder for num_labels=2
+template <int tag_id, typename VID_T, typename LabelT, typename... T>
+class DistinctCountBuilder<tag_id, GeneralVertexSet<VID_T, LabelT, T...>> {
+ public:
+  DistinctCountBuilder(const std::vector<grape::Bitset>& bitsets,
+                       const std::vector<LabelT>& labels)
+      : bitset_vec_(bitsets), labels_(labels) {
+    CHECK(bitset_vec_.size() == labels_.size());
+  }
+
+  template <typename ELE_TUPLE_T, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+    auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(std::unordered_set<GlobalId>());
+    }
+    auto ele_index = std::get<0>(cur_ind_ele);
+    int32_t label_ind = -1;
+    for (size_t i = 0; i < bitset_vec_.size(); ++i) {
+      if (bitset_vec_[i].get_bit(ele_index)) {
+        label_ind = i;
+        break;
+      }
+    }
+    CHECK(label_ind != -1);
+    auto global_id = GlobalId(labels_[label_ind], std::get<1>(cur_ind_ele));
+    vec_[ind].insert(global_id);
+    return true;
+  }
+
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
+    res.reserve(vec_.size());
+    for (auto& set : vec_) {
+      res.emplace_back(set.size());
+    }
+    return Collection<int64_t>(std::move(res));
+  }
+
+ private:
+  std::vector<std::unordered_set<GlobalId>> vec_;
+  const std::vector<grape::Bitset>& bitset_vec_;
+  const std::vector<LabelT>& labels_;
+};
+
+// DistinctCountBuilder for PathSet
+template <int tag_id, typename PATH_SET_T>
+class DistinctCountBuilder<
+    tag_id, PATH_SET_T,
+    typename std::enable_if<PATH_SET_T::is_path_set>::type> {
+ public:
+  using path_set_t = PATH_SET_T;
+  using index_ele_t = typename path_set_t::index_ele_tuple_t;
+  DistinctCountBuilder(const path_set_t& path_set) {
+    paths_num_ = path_set.Size();
+    LOG(INFO) << "path num: " << paths_num_;
+  }
+
+  template <typename ELE_TUPLE_T, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+    auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(std::get<1>(cur_ind_ele))) {
+      return false;
+    }
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(grape::Bitset(paths_num_));
+    }
+    auto& cur_bitset = vec_[ind];
+    auto cur_ind = std::get<0>(cur_ind_ele);
+    if (cur_ind < paths_num_) {
+      cur_bitset.set_bit(cur_ind);
+    } else {
+      LOG(FATAL) << "Invalid path set index: " << cur_ind
+                 << ", path set num: " << paths_num_;
+    }
+    return true;
+  }
+
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
+    res.reserve(vec_.size());
+    for (auto& bitset : vec_) {
+      res.emplace_back(bitset.count());
+    }
+    return Collection<int64_t>(std::move(res));
+  }
+
+ private:
+  std::vector<grape::Bitset> vec_;
+  size_t paths_num_;
+};
+
+// DistinctCountBuilder for Collection
+template <int tag_id, typename T>
+class DistinctCountBuilder<tag_id, Collection<T>> {
+ public:
+  using set_t = Collection<T>;
+  using index_ele_t = typename set_t::index_ele_tuple_t;
+  DistinctCountBuilder(const set_t& set) { record_num_ = set.Size(); }
+
+  template <typename ELE_TUPLE_T, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+    auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(grape::Bitset(record_num_));
+    }
+    auto& cur_bitset = vec_[ind];
+    auto cur_ind = std::get<0>(cur_ind_ele);
+    if (cur_ind < record_num_) {
+      cur_bitset.set_bit(cur_ind);
+    } else {
+      LOG(FATAL) << "Invalid path set index: " << cur_ind
+                 << ", set num: " << record_num_;
+    }
+    return true;
+  }
+
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
+    res.reserve(vec_.size());
+    for (auto& bitset : vec_) {
+      res.emplace_back(bitset.count());
+    }
+    return Collection<int64_t>(std::move(res));
+  }
+
+ private:
+  std::vector<grape::Bitset> vec_;
+  size_t record_num_;
+};
+
+// DistinctCountBuilder for multiple sets together
+template <typename SET_TUPLE_T, int... TAG_IDs>
+class MultiColDistinctCountBuilder;
+
+template <typename... SET_Ts, int... TAG_IDs>
+class MultiColDistinctCountBuilder<std::tuple<SET_Ts...>, TAG_IDs...> {
+ public:
+  using set_ele_t = std::tuple<typename SET_Ts::element_t...>;
+  MultiColDistinctCountBuilder() {}
+
+  template <typename ELE_TUPLE_T, typename DATA_TUPLE>
+  bool insert(size_t ind, const ELE_TUPLE_T& tuple, const DATA_TUPLE& data) {
+    // construct the ref tuple from tuple,with TAG_IDS,
+    // get element tuple from index_ele_tuple_t
+    auto cur_ele_tuple =
+        std::tuple_cat(tuple_slice<1>(gs::get_from_tuple<TAG_IDs>(tuple))...);
+    if (IsNull(cur_ele_tuple)) {
+      return false;
+    }
+
+    while (vec_of_set_.size() <= ind) {
+      vec_of_set_.emplace_back(
+          std::unordered_set<set_ele_t, boost::hash<set_ele_t>>());
+    }
+    auto& cur_set = vec_of_set_[ind];
+    cur_set.insert(cur_ele_tuple);
+    VLOG(10) << "tuple: " << gs::to_string(cur_ele_tuple)
+             << ",all ele: " << gs::to_string(tuple) << "insert at ind: " << ind
+             << ", res: " << cur_set.size();
+    return true;
+  }
+
+  Collection<int64_t> Build() {
+    std::vector<int64_t> res;
+    res.reserve(vec_of_set_.size());
+    for (auto& set : vec_of_set_) {
+      res.emplace_back(set.size());
+    }
+    return Collection<int64_t>(std::move(res));
+  }
+
+ private:
+  std::vector<std::unordered_set<set_ele_t, boost::hash<set_ele_t>>>
+      vec_of_set_;
+};
+
+template <typename PropGetterT, int tag_id>
 class SumBuilder {
  public:
-  SumBuilder() {}
-  SumBuilder(size_t cap) { vec_.resize(cap, (T) 0); }
+  using T = typename PropGetterT::prop_element_t;
+  SumBuilder(PropGetterT&& prop_getter)
+      : prop_getter_(std::move(prop_getter)) {}
 
   // insert tuple at index ind.
   template <typename IND_ELE_TUPLE, typename DATA_TUPLE>
-  void insert(size_t ind, const IND_ELE_TUPLE& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const IND_ELE_TUPLE& tuple, const DATA_TUPLE& data) {
     const auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
     // just count times.
     while (vec_.size() <= ind) {
       vec_.emplace_back((T) 0);
+      is_null_.emplace_back(true);
     }
-    vec_[ind] += std::get<1>(cur_ind_ele);
+    // vec_[ind] += std::get<1>(cur_ind_ele);
+    auto view = prop_getter_.get_view(cur_ind_ele);
+    if (IsNull(view)) {
+      return false;
+    }
+    vec_[ind] += view;
+    is_null_[ind] = false;
+    return true;
   }
 
   Collection<T> Build() {
-    // VLOG(10) << "Finish building counter" << gs::to_string(vec_);
+    for (size_t i = 0; i < vec_.size(); ++i) {
+      if (is_null_[i]) {
+        vec_[i] = NullRecordCreator<T>::GetNull();
+      }
+    }
     return Collection<T>(std::move(vec_));
   }
 
  private:
+  PropGetterT prop_getter_;
   std::vector<T> vec_;
+  std::vector<bool> is_null_;
 };
 
-template <typename GI, typename T, int tag_id>
+template <typename GI, typename PropGetterT, int tag_id>
 class MinBuilder {
  public:
-  MinBuilder(const Collection<T>& set, const GI& graph,
-             PropNameArray<T> prop_names) {
-    // vec_.resize(set.Size(), std::numeric_limits<T>::max());
-  }
-  MinBuilder() {}
-  MinBuilder(size_t cap) { vec_.resize(cap, (T) 0); }
+  using T = typename PropGetterT::prop_element_t;
+  MinBuilder(PropGetterT&& prop_getter)
+      : prop_getter_(std::move(prop_getter)) {}
 
   // insert tuple at index ind.
   template <typename IND_ELE_TUPLE, typename DATA_TUPLE>
-  void insert(size_t ind, const IND_ELE_TUPLE& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const IND_ELE_TUPLE& tuple, const DATA_TUPLE& data) {
     const auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
     VLOG(10) << "Insert min with ind: " << ind
              << ", value: " << std::get<1>(cur_ind_ele)
              << ", vec size: " << vec_.size();
@@ -580,46 +935,60 @@ class MinBuilder {
     while (vec_.size() <= ind) {
       vec_.emplace_back(std::numeric_limits<T>::max());
     }
-    vec_[ind] = std::min(vec_[ind], std::get<1>(cur_ind_ele));
+    vec_[ind] = std::min(vec_[ind], prop_getter_.get_view(cur_ind_ele));
+    return true;
   }
 
   Collection<T> Build() {
-    // VLOG(10) << "Finish building counter" << gs::to_string(vec_);
+    // iterate over vec_, turn inf to null
+    for (auto& ele : vec_) {
+      if (ele == std::numeric_limits<T>::max()) {
+        ele = NullRecordCreator<T>::GetNull();
+      }
+    }
     return Collection<T>(std::move(vec_));
   }
 
  private:
+  PropGetterT prop_getter_;
   std::vector<T> vec_;
 };
 
-template <typename GI, typename T, int tag_id>
+template <typename GI, typename PropGetterT, int tag_id>
 class MaxBuilder {
  public:
-  MaxBuilder(const Collection<T>& set, const GI& graph,
-             PropNameArray<T> prop_names) {
-    vec_.resize(set.Size(), std::numeric_limits<T>::min());
-  }
-  MaxBuilder() {}
-  MaxBuilder(size_t cap) { vec_.resize(cap, (T) 0); }
+  using T = typename PropGetterT::prop_element_t;
+  MaxBuilder(PropGetterT&& prop_getter)
+      : prop_getter_(std::move(prop_getter)) {}
 
   // insert tuple at index ind.
   template <typename IND_ELE_TUPLE, typename DATA_TUPLE_T>
-  void insert(size_t ind, const IND_ELE_TUPLE& tuple,
+  bool insert(size_t ind, const IND_ELE_TUPLE& tuple,
               const DATA_TUPLE_T& data) {
     const auto& cur_ind_ele = gs::get_from_tuple<tag_id>(tuple);
+    if (IsNull(cur_ind_ele)) {
+      return false;
+    }
     // just count times.
     while (vec_.size() <= ind) {
-      vec_.emplace_back(std::numeric_limits<T>::max());
+      vec_.emplace_back(std::numeric_limits<T>::min());
     }
-    vec_[ind] = std::max(vec_[ind], std::get<1>(cur_ind_ele));
+    vec_[ind] = std::max(vec_[ind], prop_getter_.get_view(cur_ind_ele));
+    return true;
   }
 
   Collection<T> Build() {
-    // VLOG(10) << "Finish building counter" << gs::to_string(vec_);
+    // iterate over vec_, turn -inf to inf
+    for (auto& ele : vec_) {
+      if (ele == std::numeric_limits<T>::min()) {
+        ele = NullRecordCreator<T>::GetNull();
+      }
+    }
     return Collection<T>(std::move(vec_));
   }
 
  private:
+  PropGetterT prop_getter_;
   std::vector<T> vec_;
 };
 
@@ -638,16 +1007,17 @@ class FirstBuilder<GI, Collection<C_T>, grape::EmptyType, tag_id> {
   }
 
   template <typename IND_ELE_T, typename DATA_ELE_T>
-  void insert(size_t ind, const IND_ELE_T& tuple,
+  bool insert(size_t ind, const IND_ELE_T& tuple,
               const DATA_ELE_T& data_tuple) {
     if (ind < vec_.size()) {
-      return;
+      return false;
     } else if (ind == vec_.size()) {
       vec_.emplace_back(std::get<1>(gs::get_from_tuple<tag_id>(tuple)));
     } else {
       LOG(FATAL) << "Can not insert with ind: " << ind
                  << ", which cur size is : " << vec_.size();
     }
+    return true;
   }
 
   Collection<C_T> Build() { return Collection<C_T>(std::move(vec_)); }
@@ -669,16 +1039,17 @@ class FirstBuilder<GI, RowVertexSetImpl<LabelT, VID_T, OLD_T...>,
       : builder_(set.GetLabel(), set.GetPropNames()) {}
 
   template <typename IND_ELE_T, typename DATA_TUPLE_T>
-  void insert(size_t ind, const IND_ELE_T& tuple,
+  bool insert(size_t ind, const IND_ELE_T& tuple,
               const DATA_TUPLE_T& data_tuple) {
     if (ind < builder_.Size()) {
-      return;
+      return false;
     } else if (ind == builder_.Size()) {
       builder_.Insert(tuple, data_tuple);
     } else {
       LOG(FATAL) << "Can not insert with ind: " << ind
                  << ", which cur size is : " << builder_.size();
     }
+    return true;
   }
 
   set_t Build() { return builder_.Build(); }
@@ -698,16 +1069,17 @@ class FirstBuilder<GI, RowVertexSetImpl<LabelT, VID_T, grape::EmptyType>,
       : builder_(set.GetLabel(), set.GetPropNames()) {}
 
   template <typename IND_ELE_T, typename DATA_TUPLE_T>
-  void insert(size_t ind, const IND_ELE_T& tuple,
+  bool insert(size_t ind, const IND_ELE_T& tuple,
               const DATA_TUPLE_T& data_tuple) {
     if (ind < builder_.Size()) {
-      return;
+      return false;
     } else if (ind == builder_.Size()) {
       builder_.Insert(tuple);
     } else {
       LOG(FATAL) << "Can not insert with ind: " << ind
                  << ", which cur size is : " << builder_.Size();
     }
+    return true;
   }
 
   set_t Build() { return builder_.Build(); }
@@ -729,16 +1101,17 @@ class FirstBuilder<GI, TwoLabelVertexSetImpl<VID_T, LabelT, grape::EmptyType>,
       : builder_(set.Size(), set.GetLabels()) {}
 
   template <typename IND_ELE_T, typename DATA_TUPLE_T>
-  void insert(size_t ind, const IND_ELE_T& tuple,
+  bool insert(size_t ind, const IND_ELE_T& tuple,
               const DATA_TUPLE_T& data_tuple) {
     if (ind < builder_.Size()) {
-      return;
+      return false;
     } else if (ind == builder_.Size()) {
       builder_.Insert(gs::get_from_tuple<tag_id>(tuple));
     } else {
       LOG(FATAL) << "Can not insert with ind: " << ind
                  << ", which cur size is : " << builder_.Size();
     }
+    return true;
   }
 
   set_t Build() { return builder_.Build(); }
@@ -760,10 +1133,10 @@ class FirstBuilder<GI, TwoLabelVertexSetImpl<VID_T, LabelT, T...>,
       : builder_(set.Size(), set.GetLabels()) {}
 
   template <typename IND_ELE_T, typename DATA_TUPLE_T>
-  void insert(size_t ind, const IND_ELE_T& tuple,
+  bool insert(size_t ind, const IND_ELE_T& tuple,
               const DATA_TUPLE_T& data_tuple) {
     if (ind < builder_.Size()) {
-      return;
+      return false;
     } else if (ind == builder_.Size()) {
       builder_.Insert(gs::get_from_tuple<tag_id>(tuple),
                       gs::get_from_tuple<tag_id>(data_tuple));
@@ -771,6 +1144,40 @@ class FirstBuilder<GI, TwoLabelVertexSetImpl<VID_T, LabelT, T...>,
       LOG(FATAL) << "Can not insert with ind: " << ind
                  << ", which cur size is : " << builder_.Size();
     }
+    return true;
+  }
+
+  set_t Build() { return builder_.Build(); }
+
+ private:
+  builder_t builder_;
+};
+
+template <typename GI, typename VID_T, typename LabelT, typename... T,
+          int tag_id>
+class FirstBuilder<GI, GeneralVertexSet<VID_T, LabelT, T...>, grape::EmptyType,
+                   tag_id> {
+ public:
+  using set_t = GeneralVertexSet<VID_T, LabelT, T...>;
+  using builder_t = GeneralVertexSetBuilder<VID_T, LabelT, T...>;
+  FirstBuilder(const set_t& set, const GI& graph,
+               PropNameArray<grape::EmptyType> prop_names)
+      // we should use a size which indicate the context size
+      : builder_(set.Size(), set.GetLabels()) {}
+
+  template <typename IND_ELE_T, typename DATA_TUPLE_T>
+  bool insert(size_t ind, const IND_ELE_T& tuple,
+              const DATA_TUPLE_T& data_tuple) {
+    if (ind < builder_.Size()) {
+      return false;
+    } else if (ind == builder_.Size()) {
+      builder_.Insert(gs::get_from_tuple<tag_id>(tuple),
+                      gs::get_from_tuple<tag_id>(data_tuple));
+    } else {
+      LOG(FATAL) << "Can not insert with ind: " << ind
+                 << ", which cur size is : " << builder_.Size();
+    }
+    return true;
   }
 
   set_t Build() { return builder_.Build(); }
@@ -803,36 +1210,38 @@ class CollectionOfSetBuilder<
 
   // insert tuple at index ind.
   template <typename IND_TUPLE>
-  void insert(size_t ind, IND_TUPLE& tuple) {
+  bool insert(size_t ind, IND_TUPLE& tuple) {
     while (vec_.size() <= ind) {
       vec_.emplace_back(std::vector<T>());
     }
     auto cur = gs::get_from_tuple<tag_id>(tuple);
     using ele_t = typename set_t::index_ele_tuple_t;
     if (NullRecordCreator<ele_t>::GetNull() == cur) {
-      return;
+      return false;
     }
 
     vec_[ind].emplace_back(prop_getter_.get_view(cur));
+    return true;
   }
 
   template <typename IND_TUPLE, typename DATA_TUPLE>
-  void insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
     while (vec_.size() <= ind) {
       vec_.emplace_back(std::vector<T>());
     }
     auto cur = gs::get_from_tuple<tag_id>(tuple);
     using ele_t = typename set_t::index_ele_tuple_t;
     if (NullRecordCreator<ele_t>::GetNull() == cur) {
-      return;
+      return false;
     }
 
     vec_[ind].emplace_back(prop_getter_.get_view(cur));
+    return true;
   }
 
   CollectionOfVec<T> Build() {
     // Make it unique.
-    for (auto i = 0; i < vec_.size(); ++i) {
+    for (size_t i = 0; i < vec_.size(); ++i) {
       sort(vec_[i].begin(), vec_[i].end());
       vec_[i].erase(unique(vec_[i].begin(), vec_[i].end()), vec_[i].end());
     }
@@ -857,7 +1266,7 @@ class CollectionOfVecBuilder<T, GI, Collection<T>, tag_id> {
 
   // insert tuple at index ind.
   template <typename IND_TUPLE>
-  void insert(size_t ind, IND_TUPLE& tuple) {
+  bool insert(size_t ind, IND_TUPLE& tuple) {
     auto cur = std::get<1>(gs::get_from_tuple<tag_id>(tuple));
     // just count times.
     while (vec_.size() <= ind) {
@@ -865,14 +1274,15 @@ class CollectionOfVecBuilder<T, GI, Collection<T>, tag_id> {
     }
     using input_ele_t = typename std::remove_reference<decltype(cur)>::type;
     if (NullRecordCreator<input_ele_t>::GetNull() == cur) {
-      return;
+      return false;
     }
     // emplace the element to vector
     vec_[ind].emplace_back(cur);
+    return true;
   }
 
   template <typename IND_TUPLE, typename DATA_TUPLE>
-  void insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
     return insert(ind, tuple);
   }
 
@@ -902,7 +1312,7 @@ class CollectionOfVecBuilder<PropT, GRAPH_INTERFACE,
 
   // insert tuple at index ind.
   template <typename IND_TUPLE>
-  void insert(size_t ind, IND_TUPLE& tuple) {
+  bool insert(size_t ind, IND_TUPLE& tuple) {
     auto cur = gs::get_from_tuple<tag_id>(tuple);
     // just count times.
     while (vec_.size() <= ind) {
@@ -910,10 +1320,16 @@ class CollectionOfVecBuilder<PropT, GRAPH_INTERFACE,
     }
     using input_ele_t = typename std::remove_reference<decltype(cur)>::type;
     if (NullRecordCreator<input_ele_t>::GetNull() == cur) {
-      return;
+      return false;
     }
     // emplace the element to vector
     vec_[ind].emplace_back(prop_getter_.get_view(cur));
+    return true;
+  }
+
+  template <typename IND_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+    return insert(ind, tuple);
   }
 
   CollectionOfVec<PropT> Build() {
@@ -922,6 +1338,249 @@ class CollectionOfVecBuilder<PropT, GRAPH_INTERFACE,
 
  private:
   std::vector<std::vector<PropT>> vec_;
+  PROP_GETTER_T prop_getter_;
+};
+
+template <typename GRAPH_INTERFACE, typename LabelT, typename VID_T,
+          typename... VERTEX_SET_TT, int tag_id>
+class CollectionOfVecBuilder<grape::EmptyType, GRAPH_INTERFACE,
+                             RowVertexSetImpl<LabelT, VID_T, VERTEX_SET_TT...>,
+                             tag_id> {
+ public:
+  using set_t = RowVertexSetImpl<LabelT, VID_T, VERTEX_SET_TT...>;
+  CollectionOfVecBuilder(LabelT label) : label_(label) {}
+
+  // insert tuple at index ind.
+  template <typename IND_TUPLE>
+  bool insert(size_t ind, IND_TUPLE& tuple) {
+    auto cur = gs::get_from_tuple<tag_id>(tuple);
+    // just count times.
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(std::vector<GlobalId>());
+    }
+    using input_ele_t = typename std::remove_reference<decltype(cur)>::type;
+    if (NullRecordCreator<input_ele_t>::GetNull() == cur) {
+      return false;
+    }
+    // emplace the element to vector
+    vec_[ind].emplace_back(GlobalId(label_, cur));
+    return true;
+  }
+
+  template <typename IND_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+    return insert(ind, tuple);
+  }
+
+  CollectionOfVec<GlobalId> Build() {
+    return CollectionOfVec<GlobalId>(std::move(vec_));
+  }
+
+ private:
+  LabelT label_;
+  std::vector<std::vector<GlobalId>> vec_;
+};
+
+template <typename GRAPH_INTERFACE, typename LabelT, typename VID_T,
+          typename... VERTEX_SET_TT, int tag_id>
+class CollectionOfVecBuilder<
+    grape::EmptyType, GRAPH_INTERFACE,
+    TwoLabelVertexSetImpl<VID_T, LabelT, VERTEX_SET_TT...>, tag_id> {
+ public:
+  using set_t = TwoLabelVertexSetImpl<VID_T, LabelT, VERTEX_SET_TT...>;
+  CollectionOfVecBuilder(std::array<LabelT, 2> labels) : labels_(labels) {}
+
+  // insert tuple at index ind.
+  template <typename IND_TUPLE>
+  bool insert(size_t ind, IND_TUPLE& tuple) {
+    auto cur = gs::get_from_tuple<tag_id>(tuple);
+    // just count times.
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(std::vector<GlobalId>());
+    }
+    using input_ele_t = typename std::remove_reference<decltype(cur)>::type;
+    if (NullRecordCreator<input_ele_t>::GetNull() == cur) {
+      return false;
+    }
+    // emplace the element to vector
+    auto label_ind = std::get<1>(cur);
+    CHECK(label_ind < 2);
+    vec_[ind].emplace_back(GlobalId(labels_[label_ind], std::get<2>(cur)));
+    return true;
+  }
+
+  template <typename IND_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+    return insert(ind, tuple);
+  }
+
+  CollectionOfVec<GlobalId> Build() {
+    return CollectionOfVec<GlobalId>(std::move(vec_));
+  }
+
+ private:
+  std::array<LabelT, 2> labels_;
+  std::vector<std::vector<GlobalId>> vec_;
+};
+
+template <typename PropT, typename GRAPH_INTERFACE, typename LabelT,
+          typename VID_T, typename... VERTEX_SET_TT, int tag_id>
+class CollectionOfVecBuilder<
+    PropT, GRAPH_INTERFACE,
+    TwoLabelVertexSetImpl<VID_T, LabelT, VERTEX_SET_TT...>, tag_id> {
+ public:
+  using set_t = TwoLabelVertexSetImpl<VID_T, LabelT, VERTEX_SET_TT...>;
+  using graph_prop_getter_t =
+      typename GRAPH_INTERFACE::template single_prop_getter_t<PropT>;
+  using PROP_GETTER_T =
+      TwoLabelVertexSetImplPropGetter<tag_id, graph_prop_getter_t,
+                                      typename set_t::index_ele_tuple_t>;
+  CollectionOfVecBuilder(const set_t& set, const GRAPH_INTERFACE& graph,
+                         PropNameArray<PropT>& prop_names)
+      : prop_getter_(create_prop_getter_impl<tag_id, PropT>(set, graph,
+                                                            prop_names[0])) {}
+  // insert tuple at index ind.
+  template <typename IND_TUPLE>
+  bool insert(size_t ind, IND_TUPLE& tuple) {
+    auto cur = gs::get_from_tuple<tag_id>(tuple);
+    // just count times.
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(std::vector<PropT>());
+    }
+    using input_ele_t = typename std::remove_reference<decltype(cur)>::type;
+    if (NullRecordCreator<input_ele_t>::GetNull() == cur) {
+      return false;
+    }
+    // emplace the element to vector
+    vec_[ind].emplace_back(prop_getter_.get_view(cur));
+    return true;
+  }
+
+  template <typename IND_TUPLE, typename DATA_TUPLE>
+  void insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+    return insert(ind, tuple);
+  }
+
+  CollectionOfVec<PropT> Build() {
+    return CollectionOfVec<PropT>(std::move(vec_));
+  }
+
+ private:
+  PROP_GETTER_T prop_getter_;
+  std::vector<std::vector<PropT>> vec_;
+};
+
+// Aggregating for average.
+template <typename PropT, typename GRAPH_INTERFACE, typename SET_T, int tag_id>
+class AvgBuilder;
+template <typename PropT, typename GRAPH_INTERFACE, typename LabelT,
+          typename VID_T, typename... VERTEX_SET_TT, int tag_id>
+class AvgBuilder<PropT, GRAPH_INTERFACE,
+                 TwoLabelVertexSetImpl<VID_T, LabelT, VERTEX_SET_TT...>,
+                 tag_id> {
+ public:
+  using set_t = TwoLabelVertexSetImpl<VID_T, LabelT, VERTEX_SET_TT...>;
+  using index_ele_t = typename set_t::index_ele_tuple_t;
+  using graph_prop_getter_t =
+      typename GRAPH_INTERFACE::template single_prop_getter_t<PropT>;
+  using PROP_GETTER_T =
+      TwoLabelVertexSetImplPropGetter<tag_id, graph_prop_getter_t,
+                                      typename set_t::index_ele_tuple_t>;
+
+  AvgBuilder(const set_t& set, const GRAPH_INTERFACE& graph,
+             PropNameArray<PropT> prop_names)
+      : prop_getter_(create_prop_getter_impl<tag_id, PropT>(set, graph,
+                                                            prop_names[0])) {}
+
+  template <typename IND_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(std::pair<size_t, PropT>(0, (PropT) 0));
+    }
+    auto cur = gs::get_from_tuple<tag_id>(tuple);
+    using ele_t = typename set_t::index_ele_tuple_t;
+    if (NullRecordCreator<ele_t>::GetNull() == cur) {
+      return false;
+    }
+    auto prop = prop_getter_.get_view(cur);
+    if (IsNull(prop)) {
+      return false;
+    }
+    vec_[ind].first += 1;
+    vec_[ind].second += prop;
+    return true;
+  }
+
+  Collection<PropT> Build() {
+    std::vector<PropT> res;
+    res.reserve(vec_.size());
+    for (auto& pair : vec_) {
+      if (pair.first == 0) {
+        res.emplace_back(NullRecordCreator<PropT>::GetNull());
+      } else {
+        res.emplace_back(pair.second / pair.first);
+      }
+    }
+    return Collection<PropT>(std::move(res));
+  }
+
+ private:
+  std::vector<std::pair<size_t, PropT>> vec_;
+  PROP_GETTER_T prop_getter_;
+};
+
+template <typename PropT, typename GRAPH_INTERFACE, typename LabelT,
+          typename VID_T, typename... VERTEX_SET_TT, int tag_id>
+class AvgBuilder<PropT, GRAPH_INTERFACE,
+                 RowVertexSetImpl<LabelT, VID_T, VERTEX_SET_TT...>, tag_id> {
+ public:
+  using set_t = RowVertexSetImpl<LabelT, VID_T, VERTEX_SET_TT...>;
+  using index_ele_t = typename set_t::index_ele_tuple_t;
+  using graph_prop_getter_t =
+      typename GRAPH_INTERFACE::template single_prop_getter_t<PropT>;
+  using PROP_GETTER_T =
+      RowVertexSetPropGetter<tag_id, graph_prop_getter_t,
+                             typename set_t::index_ele_tuple_t>;
+
+  AvgBuilder(const set_t& set, const GRAPH_INTERFACE& graph,
+             PropNameArray<PropT> prop_names)
+      : prop_getter_(create_prop_getter_impl<tag_id, PropT>(set, graph,
+                                                            prop_names[0])) {}
+
+  template <typename IND_TUPLE, typename DATA_TUPLE>
+  bool insert(size_t ind, const IND_TUPLE& tuple, const DATA_TUPLE& data) {
+    while (vec_.size() <= ind) {
+      vec_.emplace_back(std::pair<size_t, PropT>(0, (PropT) 0));
+    }
+    auto cur = gs::get_from_tuple<tag_id>(tuple);
+    using ele_t = typename set_t::index_ele_tuple_t;
+    if (NullRecordCreator<ele_t>::GetNull() == cur) {
+      return false;
+    }
+    auto prop = prop_getter_.get_view(cur);
+    if (IsNull(prop)) {
+      return false;
+    }
+    vec_[ind].first += 1;
+    vec_[ind].second += prop;
+    return true;
+  }
+
+  Collection<PropT> Build() {
+    std::vector<PropT> res;
+    res.reserve(vec_.size());
+    for (auto& pair : vec_) {
+      if (pair.first == 0) {
+        res.emplace_back(NullRecordCreator<PropT>::GetNull());
+      } else {
+        res.emplace_back(pair.second / pair.first);
+      }
+    }
+    return Collection<PropT>(std::move(res));
+  }
+
+ private:
+  std::vector<std::pair<size_t, PropT>> vec_;
   PROP_GETTER_T prop_getter_;
 };
 

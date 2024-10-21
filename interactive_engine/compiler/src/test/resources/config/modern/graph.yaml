@@ -1,9 +1,24 @@
 name: modern # then must have a modern dir under ${data} directory
 store_type: mutable_csr  # v6d, groot, gart
 stored_procedures:
-  directory: plugins  # default plugins, relative to ${workspace}/${name}
-  enable_lists:
-    - ldbc_ic2
+  - name: ldbc_ic2
+    description: "A stored procedures for the ldbc complex interactive workload 2"
+    type: x_cypher
+    params:
+      - name: personId2
+        type:
+          primitive_type: DT_SIGNED_INT64
+      - name: maxDate
+        type:
+          primitive_type: DT_SIGNED_INT64
+    returns:
+      - name: name
+        type:
+          string:
+            long_text:
+    query: "MATCH(n: PERSON ${personId2}) WHERE n.creationDate < ${maxDate} RETURN n.firstName AS name LIMIT 10;"
+    library: libquery_ic2.so
+    encoding: string
 schema:
   vertex_types:
     - type_name: person
@@ -18,7 +33,8 @@ schema:
         - property_id: 1
           property_name: name
           property_type:
-            primitive_type: DT_STRING
+            string:
+              long_text:
         - property_id: 2
           property_name: age
           property_type:
@@ -38,23 +54,23 @@ schema:
         - property_id: 1
           property_name: name
           property_type:
-            primitive_type: DT_STRING
+            string:
+              long_text:
         - property_id: 2
           property_name: lang
           property_type:
-            primitive_type: DT_STRING
+            string:
+              long_text:
         - property_id: 3
           property_name: creationDate
           property_type:
-            primitive_type: DT_DATE32
+            temporal:
+              date32:
       primary_keys:
         - id
   edge_types:
     - type_name: knows
-      type_id: 2
-      x_csr_params:
-        incoming_edge_strategy: Multiple
-        outgoing_edge_strategy: Multiple
+      type_id: 0
       vertex_type_pair_relations:
         - source_vertex: person
           destination_vertex: person
@@ -65,14 +81,11 @@ schema:
           property_type:
             primitive_type: DT_DOUBLE
     - type_name: created
-      type_id: 3
-      x_csr_params:
-        incoming_edge_strategy: Multiple
-        outgoing_edge_strategy: Single
+      type_id: 1
       vertex_type_pair_relations:
         - source_vertex: person
           destination_vertex: software
-          relation: ONE_TO_MANY
+          relation: MANY_TO_MANY
       properties:
         - property_id: 0
           property_name: weight

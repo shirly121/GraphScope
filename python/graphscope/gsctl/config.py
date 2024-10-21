@@ -20,38 +20,82 @@
 
 import os
 import random
+import time
 from string import ascii_letters
 
-import yaml
+from graphscope.gsctl.utils import read_yaml_file
+from graphscope.gsctl.utils import write_yaml_file
 
-GS_CONFIG_DEFAULT_LOCATION = os.environ.get(
-    "GSCONFIG", os.path.expanduser("~/.graphscope/config")
-)
+GS_CONFIG_DEFAULT_LOCATION = os.environ.get("GSCONFIG", os.path.expanduser("~/.gsctl"))
+
+logo = """
+    ______                 __   _____
+   / ____/________ _____  / /_ / ___/_________  ____  ___
+  / / __/ ___/ __ `/ __ \/ __ \\\__ \/ ___/ __ \/ __ \/ _ \\
+ / /_/ / /  / /_/ / /_/ / / / /__/ / /__/ /_/ / /_/ /  __/
+ \____/_/   \__,_/ .___/_/ /_/____/\___/\____/ .___/\___/
+                /_/                         /_/
+"""  # noqa: W605
 
 
 class Context(object):
-    def __init__(self, solution, coordinator_endpoint, name=None):
-        self.supported_solutions = ["interactive"]
-        if solution not in self.supported_solutions:
-            raise RuntimeError(
-                "The solution {0} in context {1} is not supported yet.".format(
-                    solution, name
-                )
-            )
-
+    def __init__(
+        self,
+        coordinator_endpoint,
+        flex,
+        name=None,
+        timestamp=time.time(),
+        context="global",
+        graph_name=None,
+    ):
         if name is None:
-            name = "context_" + "".join(random.choices(ascii_letters, k=6))
+            name = "context_" + "".join(random.choices(ascii_letters, k=8))
 
         self.name = name
-        self.solution = solution
+        self.flex = flex
         self.coordinator_endpoint = coordinator_endpoint
+        # switch to specific graph after `using graph`
+        self.context = context
+        self.graph_name = graph_name
+        self.timestamp = timestamp
 
-    def to_dict(self):
+    def switch_context(self, context: str):
+        self.context = context
+        if self.context == "global":
+            self.graph_name = None
+
+    def set_graph_name(self, graph_name: str):
+        self.graph_name = graph_name
+
+    def to_dict(self) -> dict:
         return {
             "name": self.name,
-            "solution": self.solution,
+            "graph_name": str(self.graph_name),
+            "flex": self.flex,
             "coordinator_endpoint": self.coordinator_endpoint,
+            "context": self.context,
+            "timestamp": self.timestamp,
         }
+
+    @classmethod
+    def from_dict(cls, dikt):
+        return Context(
+            coordinator_endpoint=dikt.get("coordinator_endpoint"),
+            flex=dikt.get("flex"),
+            name=dikt.get("name"),
+            timestamp=dikt.get("timestamp"),
+            context=dikt.get("context"),
+            graph_name=dikt.get("graph_name", None),
+        )
+
+    def is_expired(self, validity_period=86400) -> bool:
+        current_timestamp = time.time()
+        if current_timestamp - self.timestamp > validity_period:
+            return True
+        return False
+
+    def reset_timestamp(self):
+        self.timestamp = time.time()
 
 
 class GSConfig(object):
@@ -62,19 +106,26 @@ class GSConfig(object):
     def current_context(self) -> Context:
         if self._current_context is None:
             return None
-        if self._current_context not in self._contexts.keys():
+        if self._current_context not in self._contexts:
             raise RuntimeError(
                 f"Failed to get current context: {self._current_context}"
             )
         return self._contexts[self._current_context]
 
     def set_and_write(self, context: Context):
-        # treat the same endpoint as the same coordinator
+        # treat the same endpoint with same services as the same coordinator
         for _, v in self._contexts.items():
             if (
                 context.coordinator_endpoint == v.coordinator_endpoint
-                and context.solution == v.solution
+                and context.flex == v.flex
             ):
+                # reset to global context
+                v.switch_context("global")
+                contexts = [v.to_dict() for _, v in self._contexts.items()]
+                write_yaml_file(
+                    {"contexts": contexts, "current-context": self._current_context},
+                    GS_CONFIG_DEFAULT_LOCATION,
+                )
                 return
 
         # set
@@ -83,10 +134,24 @@ class GSConfig(object):
 
         # write
         contexts = [v.to_dict() for _, v in self._contexts.items()]
-        with open(GS_CONFIG_DEFAULT_LOCATION, "w") as file:
-            yaml.dump(
-                {"contexts": contexts, "current-context": self._current_context}, file
-            )
+        write_yaml_file(
+            {"contexts": contexts, "current-context": self._current_context},
+            GS_CONFIG_DEFAULT_LOCATION,
+        )
+
+    def update_and_write(self, context: Context):
+        if context.name not in self._contexts:
+            raise RuntimeError(f"Failed to get context: {context.name}")
+
+        # update
+        self._contexts[context.name] = context
+
+        # write
+        contexts = [v.to_dict() for _, v in self._contexts.items()]
+        write_yaml_file(
+            {"contexts": contexts, "current-context": self._current_context},
+            GS_CONFIG_DEFAULT_LOCATION,
+        )
 
     def remove_and_write(self, current_context: Context):
         # remove
@@ -95,10 +160,10 @@ class GSConfig(object):
 
         # write
         contexts = [v.to_dict() for _, v in self._contexts.items()]
-        with open(GS_CONFIG_DEFAULT_LOCATION, "w") as file:
-            yaml.dump(
-                {"contexts": contexts, "current-context": self._current_context}, file
-            )
+        write_yaml_file(
+            {"contexts": contexts, "current-context": self._current_context},
+            GS_CONFIG_DEFAULT_LOCATION,
+        )
 
 
 class GSConfigLoader(object):
@@ -118,23 +183,19 @@ class GSConfigLoader(object):
         for c in config_dict["contexts"]:
             if current_context == c["name"]:
                 current_context_exists = True
-            contexts[c["name"]] = Context(
-                name=c["name"],
-                solution=c["solution"],
-                coordinator_endpoint=c["coordinator_endpoint"],
-            )
+            contexts[c["name"]] = Context.from_dict(c)
 
         if not current_context_exists:
             raise RuntimeError(
-                f"Current context {current_context} is not exists in config file {GS_CONFIG_DEFAULT_LOCATION}"
+                "Current context {0} is not exists in config file {1}".format(
+                    current_context, GS_CONFIG_DEFAULT_LOCATION
+                )
             )
 
         return contexts, current_context
 
     def load_config(self):
-        config_dict = None
-        with open(self._config_file, "r") as file:
-            config_dict = yaml.safe_load(file)
+        config_dict = read_yaml_file(self._config_file)
         contexts, current_context = self._parse_config(config_dict)
         return GSConfig(contexts, current_context)
 
@@ -149,8 +210,7 @@ def load_gs_config():
     if not os.path.exists(config_file):
         workdir = os.path.dirname(config_file)
         os.makedirs(workdir, exist_ok=True)
-        with open(config_file, "w") as file:
-            yaml.safe_dump({}, file)
+        write_yaml_file({}, config_file)
 
     loader = GSConfigLoader(config_file)
     return loader.load_config()

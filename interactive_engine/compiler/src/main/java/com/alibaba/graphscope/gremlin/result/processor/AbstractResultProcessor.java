@@ -16,189 +16,162 @@
 
 package com.alibaba.graphscope.gremlin.result.processor;
 
+import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.FrontendConfig;
+import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.exception.FrontendException;
 import com.alibaba.graphscope.common.result.ResultParser;
+import com.alibaba.graphscope.common.utils.ClassUtils;
 import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
+import com.alibaba.graphscope.gremlin.result.GroupResultParser;
+import com.alibaba.graphscope.proto.frontend.Code;
+import com.alibaba.pegasus.common.StreamIterator;
 import com.alibaba.pegasus.intf.ResultProcessor;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
+import com.google.common.collect.Lists;
 
 import io.grpc.Status;
-import io.netty.channel.ChannelHandlerContext;
 
-import org.apache.tinkerpop.gremlin.driver.MessageSerializer;
 import org.apache.tinkerpop.gremlin.driver.Tokens;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
 import org.apache.tinkerpop.gremlin.server.Context;
 import org.apache.tinkerpop.gremlin.server.Settings;
-import org.apache.tinkerpop.gremlin.server.handler.Frame;
-import org.apache.tinkerpop.gremlin.server.handler.StateKey;
 import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public abstract class AbstractResultProcessor extends StandardOpProcessor
         implements ResultProcessor {
-    private static Logger logger = LoggerFactory.getLogger(AbstractResultProcessor.class);
-
     protected final Context writeResult;
     protected final ResultParser resultParser;
     protected final QueryStatusCallback statusCallback;
-
+    protected final QueryTimeoutConfig timeoutConfig;
     protected final List<Object> resultCollectors;
     protected final int resultCollectorsBatchSize;
-
-    // can write back to gremlin context session if true
-    protected boolean isContextWritable;
+    protected final StreamIterator<PegasusClient.JobResponse> responseStreamIterator;
 
     protected AbstractResultProcessor(
-            Context writeResult, ResultParser resultParser, QueryStatusCallback statusCallback) {
+            Configs configs,
+            Context writeResult,
+            ResultParser resultParser,
+            QueryStatusCallback statusCallback,
+            QueryTimeoutConfig timeoutConfig) {
         this.writeResult = writeResult;
         this.resultParser = resultParser;
         this.statusCallback = statusCallback;
+        this.timeoutConfig = timeoutConfig;
 
         RequestMessage msg = writeResult.getRequestMessage();
         Settings settings = writeResult.getSettings();
         // init batch size from resultIterationBatchSize in conf/gremlin-server.yaml,
-        // or args in RequestMessage which is originate from gremlin client
+        // or args in RequestMessage which is originated from gremlin client
         this.resultCollectorsBatchSize =
                 (Integer)
                         msg.optionalArgs(Tokens.ARGS_BATCH_SIZE)
                                 .orElse(settings.resultIterationBatchSize);
         this.resultCollectors = new ArrayList<>(this.resultCollectorsBatchSize);
-        this.isContextWritable = true;
+        this.responseStreamIterator =
+                new StreamIterator<>(
+                        FrontendConfig.PER_QUERY_STREAM_BUFFER_MAX_CAPACITY.get(configs));
     }
 
     @Override
     public synchronized void process(PegasusClient.JobResponse response) {
         try {
-            if (isContextWritable) {
-                // send back a page of results if batch size is met and then reset the
-                // resultCollectors
-                if (this.resultCollectors.size() >= this.resultCollectorsBatchSize) {
-                    aggregateResults();
-                    writeResultList(
-                            writeResult, resultCollectors, ResponseStatusCode.PARTIAL_CONTENT);
-                    this.resultCollectors.clear();
-                }
-                resultCollectors.addAll(resultParser.parseFrom(response));
-            }
+            responseStreamIterator.putData(response);
         } catch (Exception e) {
-            statusCallback.getQueryLogger().error("process response from grpc fail", e);
-            // cannot write to this context any more
-            isContextWritable = false;
-            statusCallback.onEnd(false);
-            writeResultList(
-                    writeResult,
-                    Collections.singletonList(e.getMessage()),
-                    ResponseStatusCode.SERVER_ERROR);
+            throw new RuntimeException(e);
         }
     }
 
     @Override
     public synchronized void finish() {
-        if (isContextWritable) {
-            isContextWritable = false;
-            statusCallback.onEnd(true);
-            aggregateResults();
-            writeResultList(writeResult, resultCollectors, ResponseStatusCode.SUCCESS);
+        try {
+            responseStreamIterator.finish();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
     @Override
     public synchronized void error(Status status) {
-        logger.error("error return from grpc, status {}", status);
-        if (isContextWritable) {
-            isContextWritable = false;
-            statusCallback.onEnd(false);
-            writeResultList(
-                    writeResult,
-                    Collections.singletonList(status.toString()),
-                    ResponseStatusCode.SERVER_ERROR);
-        }
+        responseStreamIterator.fail(status.asException());
     }
 
-    public synchronized void cancel() {
-        this.isContextWritable = false;
+    // request results from remote engine service in blocking way
+    public void request() {
+        try {
+            BatchResponseProcessor responseProcessor = new BatchResponseProcessor();
+            while (responseStreamIterator.hasNext()) {
+                responseProcessor.process(responseStreamIterator.next());
+            }
+            responseProcessor.finish();
+            statusCallback.getQueryLogger().info("[compile]: process results success");
+        } catch (Throwable t) {
+            // if the exception is caused by InterruptedException, it means a timeout exception has
+            // been thrown by gremlin executor
+            Exception executionException =
+                    (t != null && t.getCause() instanceof InterruptedException)
+                            ? new FrontendException(
+                                    Code.TIMEOUT,
+                                    ClassUtils.getTimeoutError(
+                                            "Timeout has been detected by gremlin executor",
+                                            timeoutConfig),
+                                    t)
+                            : ClassUtils.handleExecutionException(t, timeoutConfig);
+            if (executionException instanceof FrontendException) {
+                ((FrontendException) executionException)
+                        .getDetails()
+                        .put("QueryId", statusCallback.getQueryLogger().getQueryId());
+            }
+            String errorMsg = executionException.getMessage();
+            statusCallback.onErrorEnd(executionException, errorMsg);
+            writeResult.writeAndFlush(
+                    ResponseMessage.build(writeResult.getRequestMessage())
+                            .code(ResponseStatusCode.SERVER_ERROR)
+                            .statusMessage(errorMsg)
+                            .create());
+        } finally {
+            // close the responseStreamIterator so that the subsequent grpc callback do nothing
+            // actually
+            if (responseStreamIterator != null) {
+                responseStreamIterator.close();
+            }
+        }
     }
 
     protected abstract void aggregateResults();
 
-    protected void writeResultList(
-            final Context context,
-            final List<Object> resultList,
-            final ResponseStatusCode statusCode) {
-        final ChannelHandlerContext ctx = context.getChannelHandlerContext();
-        final RequestMessage msg = context.getRequestMessage();
-        final MessageSerializer serializer = ctx.channel().attr(StateKey.SERIALIZER).get();
-        final boolean useBinary = ctx.channel().attr(StateKey.USE_BINARY).get();
-
-        if (statusCode == ResponseStatusCode.SERVER_ERROR) {
-            ResponseMessage.Builder builder =
-                    ResponseMessage.build(msg).code(ResponseStatusCode.SERVER_ERROR);
-            if (resultList.size() > 0) {
-                builder.statusMessage((String) resultList.get(0));
+    private class BatchResponseProcessor {
+        public void process(PegasusClient.JobResponse response) {
+            // send back a page of results if batch size is met and then reset the
+            // resultCollectors
+            if (resultCollectors.size() >= resultCollectorsBatchSize
+                    && !(resultParser instanceof GroupResultParser)) {
+                aggregateResults();
+                writeResult.writeAndFlush(
+                        ResponseMessage.build(writeResult.getRequestMessage())
+                                .code(ResponseStatusCode.PARTIAL_CONTENT)
+                                .result(Lists.newArrayList(resultCollectors))
+                                .create());
+                resultCollectors.clear();
             }
-            ctx.writeAndFlush(builder.create());
-            return;
+            resultCollectors.addAll(
+                    ClassUtils.callException(
+                            () -> resultParser.parseFrom(response), Code.GREMLIN_INVALID_RESULT));
         }
 
-        boolean retryOnce = false;
-        while (true) {
-            if (ctx.channel().isWritable()) {
-                Frame frame = null;
-                try {
-                    frame =
-                            makeFrame(
-                                    context,
-                                    msg,
-                                    serializer,
-                                    useBinary,
-                                    resultList,
-                                    statusCode,
-                                    Collections.emptyMap(),
-                                    Collections.emptyMap());
-                    ctx.writeAndFlush(frame).get();
-                    break;
-                } catch (Exception e) {
-                    if (frame != null) {
-                        frame.tryRelease();
-                    }
-                    logger.error(
-                            "write "
-                                    + resultList.size()
-                                    + " result to context "
-                                    + context
-                                    + " status code=>"
-                                    + statusCode
-                                    + " fail",
-                            e);
-                    throw new RuntimeException(e);
-                }
-            } else {
-                if (retryOnce) {
-                    String message =
-                            "write result to context fail for context " + msg + " is too busy";
-                    logger.error(message);
-                    throw new RuntimeException(message);
-                } else {
-                    logger.warn(
-                            "Pausing response writing as writeBufferHighWaterMark exceeded on "
-                                    + msg
-                                    + " - writing will continue once client has caught up");
-                    retryOnce = true;
-                    try {
-                        TimeUnit.MILLISECONDS.sleep(10L);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
+        public void finish() {
+            statusCallback.onSuccessEnd();
+            aggregateResults();
+            writeResult.writeAndFlush(
+                    ResponseMessage.build(writeResult.getRequestMessage())
+                            .code(ResponseStatusCode.SUCCESS)
+                            .result(resultCollectors)
+                            .create());
         }
     }
 }

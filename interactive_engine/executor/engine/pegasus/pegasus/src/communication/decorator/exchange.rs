@@ -27,11 +27,11 @@ use crate::communication::decorator::BlockPush;
 use crate::communication::{IOResult, Magic};
 use crate::data::MicroBatch;
 use crate::data_plane::Push;
-use crate::errors::IOError;
+use crate::errors::{IOError, IOErrorKind};
 use crate::graph::Port;
 use crate::progress::{DynPeers, EndOfScope};
 use crate::tag::tools::map::TidyTagMap;
-use crate::{Data, Tag};
+use crate::{Data, Tag, WorkerId};
 
 struct Exchange<D> {
     magic: Magic,
@@ -61,6 +61,7 @@ pub(crate) struct ExchangeByDataPush<D: Data> {
     pub src: u32,
     pub port: Port,
     index: u32,
+    total_peers: u32,
     scope_level: u32,
     buffers: Vec<ScopeBufferPool<D>>,
     pushes: Vec<EventEmitPush<D>>,
@@ -72,13 +73,13 @@ pub(crate) struct ExchangeByDataPush<D: Data> {
 impl<D: Data> ExchangeByDataPush<D> {
     pub(crate) fn new(
         info: ChannelInfo, router: Box<dyn RouteFunction<D>>, buffers: Vec<ScopeBufferPool<D>>,
-        pushes: Vec<EventEmitPush<D>>,
+        pushes: Vec<EventEmitPush<D>>, worker_id: WorkerId,
     ) -> Self {
-        let src = crate::worker_id::get_current_worker().index;
         let len = pushes.len();
         let cancel_handle = MultiConsCancelPtr::new(info.scope_level, len);
         ExchangeByDataPush {
-            src,
+            src: worker_id.index,
+            total_peers: worker_id.total_peers(),
             port: info.source_port,
             index: info.index(),
             scope_level: info.scope_level,
@@ -147,7 +148,11 @@ impl<D: Data> ExchangeByDataPush<D> {
 
     fn flush_last_buffer(&mut self, tag: &Tag) -> IOResult<()> {
         if let Some(block) = self.blocks.remove(tag) {
-            assert!(block.is_empty(), "has block outstanding");
+            if !block.is_empty() {
+                let mut err = IOError::new(IOErrorKind::Internal);
+                err.set_io_cause(std::io::Error::new(std::io::ErrorKind::Other, "Has block outstanding"));
+                return Err(err);
+            }
         }
 
         for index in 0..self.pushes.len() {
@@ -188,7 +193,7 @@ impl<D: Data> ExchangeByDataPush<D> {
             push_stat.push(pushes);
         }
 
-        let mut weight = DynPeers::all();
+        let mut weight = DynPeers::all(self.total_peers);
         if self.scope_level != 0 {
             weight = DynPeers::empty();
             for (i, p) in push_stat.iter().enumerate() {
@@ -259,7 +264,18 @@ impl<D: Data> ExchangeByDataPush<D> {
             would_block!("no buffer available in exchange;")
         } else {
             if let Some(end) = batch.take_end() {
-                assert!(end.peers_contains(self.src), "push illegal data without allow;");
+                if !end.peers_contains(self.src) {
+                    let mut err = IOError::new(IOErrorKind::Internal);
+                    err.set_io_cause(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Push illegal data without permission, peers: {:?}, src: {};",
+                            end.peers(),
+                            self.src
+                        ),
+                    ));
+                    return Err(err);
+                }
                 self.flush_last_buffer(&batch.tag)?;
                 for (i, (t, g, children)) in self.update_end(None, &end).enumerate() {
                     let mut new_end = end.clone();
@@ -307,7 +323,14 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                 if level == self.scope_level {
                     if end.peers().value() == 0 {
                         // TODO: seems unreachable;
-                        assert_eq!(batch.get_seq(), 0);
+                        if batch.get_seq() != 0 {
+                            let mut err = IOError::new(IOErrorKind::Internal);
+                            err.set_io_cause(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                "Batch seq is not 0",
+                            ));
+                            return Err(err);
+                        }
                         // handle empty stream
                         let mut owner = 0;
                         if level > 0 {
@@ -322,7 +345,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                                 let mut new_end = end.clone();
                                 new_end.total_send = 0;
                                 new_end.global_total_send = 0;
-                                new_end.update_peers(DynPeers::single(self.src));
+                                new_end.update_peers(DynPeers::single(self.src), self.total_peers);
                                 p.push_end(new_end, DynPeers::single(self.src))?;
                             }
                         } else {
@@ -353,14 +376,25 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                             new_end.total_send = 0;
                             new_end.global_total_send = 0;
                             if end.tag.is_root() {
-                                p.sync_end(new_end, DynPeers::all())?;
+                                p.sync_end(new_end, DynPeers::all(self.total_peers))?;
                             } else {
                                 p.sync_end(new_end, DynPeers::empty())?;
                             }
                         }
                     } else {
                         // not the first batch;
-                        assert!(end.peers_contains(self.src), "pushed invalid data without allow;");
+                        if !end.peers_contains(self.src) {
+                            let mut err = IOError::new(IOErrorKind::Internal);
+                            err.set_io_cause(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!(
+                                    "Push illegal data without permission, peers: {:?}, src: {};",
+                                    end.peers(),
+                                    self.src
+                                ),
+                            ));
+                            return Err(err);
+                        }
                         self.flush_last_buffer(batch.tag())?;
                         for (i, (t, g, children)) in self.update_end(None, &end).enumerate() {
                             let mut new_end = end.clone();
@@ -375,7 +409,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                         let mut new_end = end.clone();
                         new_end.total_send = 0;
                         new_end.global_total_send = 0;
-                        p.sync_end(new_end, DynPeers::all())?;
+                        p.sync_end(new_end, DynPeers::all(self.total_peers))?;
                     }
                 }
             } else {
@@ -384,9 +418,27 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
             Ok(())
         } else if len == 1 {
             // only one data, not need re-batching;
-            assert_eq!(level, self.scope_level);
+            if level != self.scope_level {
+                let mut err = IOError::new(IOErrorKind::Internal);
+                err.set_io_cause(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("scope_level in batch is not equal to that in channel, scope_level in batch: {}, scope_level in channel: {}", level, self.scope_level)
+                ));
+                return Err(err);
+            }
             if let Some(end) = batch.take_end() {
-                assert!(end.peers_contains(self.src), "invalid data, can't push without allow;");
+                if !end.peers_contains(self.src) {
+                    let mut err = IOError::new(IOErrorKind::Internal);
+                    err.set_io_cause(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Push illegal data without permission, peers: {:?}, src: {};",
+                            end.peers(),
+                            self.src
+                        ),
+                    ));
+                    return Err(err);
+                }
                 let x = batch
                     .get(0)
                     .expect("expect at least one entry as len = 1");
@@ -394,7 +446,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                 if batch.get_seq() == 0 {
                     // multi source;
                     self.pushes[target].push(batch)?;
-                    let children = DynPeers::all();
+                    let children = DynPeers::all(self.total_peers);
                     for i in 0..self.pushes.len() {
                         let mut new_end = end.clone();
                         if i != target {
@@ -416,7 +468,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                             new_end.global_total_send = g;
                             if i == target {
                                 let mut batch = std::mem::replace(&mut batch, MicroBatch::empty());
-                                new_end.update_peers(children);
+                                new_end.update_peers(children, self.total_peers);
                                 batch.set_end(new_end);
                                 self.pushes[i].push(batch)?;
                             } else {
@@ -458,7 +510,14 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
             }
             Ok(())
         } else {
-            assert_eq!(level, self.scope_level);
+            if level != self.scope_level {
+                let mut err = IOError::new(IOErrorKind::Internal);
+                err.set_io_cause(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("scope_level in batch is not equal to that in channel, scope_level in batch: {}, scope_level in channel: {}", level, self.scope_level)
+                ));
+                return Err(err);
+            }
             self.push_inner(batch)
         }
     }
@@ -538,6 +597,7 @@ impl<D: Data> BlockPush for ExchangeByDataPush<D> {
 pub struct ExchangeByBatchPush<D: Data> {
     pub ch_info: ChannelInfo,
     src: u32,
+    total_peers: u32,
     scope_level: u32,
     pushes: Vec<EventEmitPush<D>>,
     magic: Magic,
@@ -546,17 +606,27 @@ pub struct ExchangeByBatchPush<D: Data> {
 }
 
 impl<D: Data> ExchangeByBatchPush<D> {
-    pub fn new(ch_info: ChannelInfo, route: BatchRoute<D>, pushes: Vec<EventEmitPush<D>>) -> Self {
+    pub fn new(
+        ch_info: ChannelInfo, route: BatchRoute<D>, pushes: Vec<EventEmitPush<D>>, worker_id: WorkerId,
+    ) -> Self {
         let len = pushes.len();
         let magic = Magic::new(len);
-        let src = crate::worker_id::get_current_worker().index;
         let cancel_handle = match route {
             BatchRoute::AllToOne(t) => CancelHandle::SC(SingleConsCancel::new(t)),
             BatchRoute::Dyn(_) => CancelHandle::MC(MultiConsCancelPtr::new(ch_info.scope_level, len)),
         };
         let scope_level = ch_info.scope_level;
 
-        ExchangeByBatchPush { ch_info, src, scope_level, pushes, magic, route, cancel_handle }
+        ExchangeByBatchPush {
+            ch_info,
+            src: worker_id.index,
+            total_peers: worker_id.total_peers(),
+            scope_level,
+            pushes,
+            magic,
+            route,
+            cancel_handle,
+        }
     }
 
     pub(crate) fn update_cancel_handle(&mut self, cancel_handle: CancelHandle) {
@@ -581,7 +651,7 @@ impl<D: Data> ExchangeByBatchPush<D> {
             push_stat.push(pushes);
         }
 
-        let mut weight = DynPeers::all();
+        let mut weight = DynPeers::all(self.total_peers);
         if self.scope_level != 0 {
             weight = DynPeers::empty();
             for (i, p) in push_stat.iter().enumerate() {
@@ -616,7 +686,7 @@ impl<D: Data> ExchangeByBatchPush<D> {
                         let mut new_end = end.clone();
                         new_end.total_send = 0;
                         new_end.global_total_send = 0;
-                        new_end.update_peers(DynPeers::single(self.src));
+                        new_end.update_peers(DynPeers::single(self.src), self.total_peers);
                         p.push_end(new_end, DynPeers::single(self.src))?;
                     }
                 } else {
@@ -659,8 +729,18 @@ impl<D: Data> ExchangeByBatchPush<D> {
     fn handle_last_batch(
         &mut self, target: usize, mut end: EndOfScope, mut batch: MicroBatch<D>,
     ) -> Result<(), IOError> {
-        assert!(end.peers_contains(self.src));
-
+        if !end.peers_contains(self.src) {
+            let mut err = IOError::new(IOErrorKind::Internal);
+            err.set_io_cause(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "Push illegal data without permission, peers: {:?}, src: {};",
+                    end.peers(),
+                    self.src
+                ),
+            ));
+            return Err(err);
+        }
         if end.peers().value() == 1 {
             // if only one peers, it must be this worker;
             if batch.get_seq() == 0 {
@@ -676,7 +756,7 @@ impl<D: Data> ExchangeByBatchPush<D> {
                     }
                 }
 
-                end.update_peers(DynPeers::single(target as u32));
+                end.update_peers(DynPeers::single(target as u32), self.total_peers);
                 end.total_send = total_send;
                 end.global_total_send = total_send;
                 batch.set_end(end);
@@ -690,7 +770,7 @@ impl<D: Data> ExchangeByBatchPush<D> {
                     new_end.global_total_send = g;
                     if i == target {
                         let mut batch = std::mem::replace(&mut batch, MicroBatch::empty());
-                        new_end.update_peers(c);
+                        new_end.update_peers(c, self.total_peers);
                         batch.set_end(new_end);
                         self.pushes[i].push(batch)?;
                     } else {
@@ -773,14 +853,18 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByBatchPush<D> {
                 }
             }
         } else {
-            assert!(batch.is_empty());
+            if !batch.is_empty() {
+                let mut err = IOError::new(IOErrorKind::Internal);
+                err.set_io_cause(std::io::Error::new(std::io::ErrorKind::Other, "Batch is not empty"));
+                return Err(err);
+            }
             if let Some(end) = batch.take_end() {
                 if end.peers_contains(self.src) {
                     for p in self.pushes.iter_mut() {
                         let mut new_end = end.clone();
                         new_end.total_send = 0;
                         new_end.global_total_send = 0;
-                        p.sync_end(new_end, DynPeers::all())?;
+                        p.sync_end(new_end, DynPeers::all(self.total_peers))?;
                     }
                 }
             } else {

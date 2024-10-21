@@ -3,6 +3,7 @@ package com.alibaba.graphscope.groot.frontend.write;
 import com.alibaba.graphscope.groot.common.RoleType;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
+import com.alibaba.graphscope.groot.common.exception.UnsupportedOperationException;
 import com.alibaba.graphscope.groot.common.util.PkHashUtils;
 import com.alibaba.graphscope.groot.rpc.ChannelManager;
 import com.alibaba.graphscope.groot.rpc.RoleClients;
@@ -39,10 +40,10 @@ public class DefaultEdgeIdGenerator extends RoleClients<IdAllocateClient>
 
     @Override
     public long getHashId(long srcId, long dstId, int labelId, List<byte[]> pks) {
-        if (pks != null && pks.size() > 0) {
-            return PkHashUtils.hash(srcId, dstId, labelId, pks);
+        if (pks == null || pks.size() == 0) {
+            throw new UnsupportedOperationException("Cannot get hash id when pk is empty");
         }
-        return PkHashUtils.hash(srcId, dstId, labelId, System.nanoTime());
+        return PkHashUtils.hash(srcId, dstId, labelId, pks);
     }
 
     private void allocateNewIds() {

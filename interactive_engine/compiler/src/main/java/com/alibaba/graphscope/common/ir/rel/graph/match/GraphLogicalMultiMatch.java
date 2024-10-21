@@ -16,12 +16,15 @@
 
 package com.alibaba.graphscope.common.ir.rel.graph.match;
 
+import com.alibaba.graphscope.common.ir.rel.GraphShuttle;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.hint.RelHint;
 import org.apache.calcite.rel.type.RelDataType;
@@ -89,6 +92,24 @@ public class GraphLogicalMultiMatch extends AbstractLogicalMatch {
                                 })
                         .collect(Collectors.toList());
         return new RelRecordType(StructKind.FULLY_QUALIFIED, dedup);
+    }
+
+    @Override
+    public RelNode accept(RelShuttle shuttle) {
+        if (shuttle instanceof GraphShuttle) {
+            return ((GraphShuttle) shuttle).visit(this);
+        }
+        return shuttle.visit(this);
+    }
+
+    @Override
+    public GraphLogicalMultiMatch copy(RelTraitSet traitSet, List<RelNode> inputs) {
+        return new GraphLogicalMultiMatch(
+                (GraphOptCluster) getCluster(),
+                ImmutableList.of(),
+                inputs.get(0),
+                sentences.get(0),
+                sentences.subList(1, sentences.size()));
     }
 
     public List<RelNode> getSentences() {

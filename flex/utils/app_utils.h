@@ -40,6 +40,8 @@ class Encoder {
 
   void put_byte(uint8_t v);
 
+  void put_bytes(const char* data, size_t size);
+
   size_t skip_byte();
 
   void put_byte_at(size_t pos, uint8_t v);
@@ -47,6 +49,10 @@ class Encoder {
   void put_string(const std::string& v);
 
   void put_string_view(const std::string_view& v);
+
+  void put_small_string(const std::string& v);
+
+  void put_small_string_view(const std::string_view& v);
 
   void put_double(double v);
 
@@ -67,11 +73,17 @@ class Decoder {
 
   std::string_view get_string();
 
+  std::string_view get_bytes();
+
+  std::string_view get_small_string();
+
   uint8_t get_byte();
 
   double get_double();
 
   const char* data() const;
+
+  size_t size() const;
 
   bool empty() const;
 

@@ -18,20 +18,16 @@ package com.alibaba.graphscope.common.ir.tools.config;
 
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalExpand;
 import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalGetV;
-import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
+import com.alibaba.graphscope.common.ir.rel.type.AliasNameWithId;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlOperator;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -46,8 +42,10 @@ public class PathExpandConfig {
 
     private final GraphOpt.PathExpandPath pathOpt;
     private final GraphOpt.PathExpandResult resultOpt;
+    private final @Nullable RexNode untilCondition;
 
     @Nullable private final String alias;
+    @Nullable private final String startAlias;
 
     protected PathExpandConfig(
             RelNode expand,
@@ -56,14 +54,18 @@ public class PathExpandConfig {
             int fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
-            @Nullable String alias) {
+            @Nullable RexNode untilCondition,
+            @Nullable String alias,
+            @Nullable String startAlias) {
         this.expand = Objects.requireNonNull(expand);
         this.getV = Objects.requireNonNull(getV);
         this.offset = offset;
         this.fetch = fetch;
         this.resultOpt = resultOpt;
         this.pathOpt = pathOpt;
+        this.untilCondition = untilCondition;
         this.alias = alias;
+        this.startAlias = startAlias;
     }
 
     public static Builder newBuilder(GraphBuilder innerBuilder) {
@@ -72,6 +74,10 @@ public class PathExpandConfig {
 
     public @Nullable String getAlias() {
         return alias;
+    }
+
+    public @Nullable String getStartAlias() {
+        return startAlias;
     }
 
     public GraphOpt.PathExpandPath getPathOpt() {
@@ -98,6 +104,10 @@ public class PathExpandConfig {
         return getV;
     }
 
+    public @Nullable RexNode getUntilCondition() {
+        return untilCondition;
+    }
+
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
@@ -108,14 +118,15 @@ public class PathExpandConfig {
         builder.append(", fetch=" + fetch);
         builder.append(", pathOpt=" + pathOpt);
         builder.append(", resultOpt=" + resultOpt);
+        if (untilCondition != null) {
+            builder.append(", untilCondition=" + untilCondition);
+        }
         builder.append(", alias='" + alias + '\'');
         builder.append("}");
         return builder.toString();
     }
 
-    public static final class Builder {
-        private final GraphBuilder innerBuilder;
-
+    public static final class Builder extends GraphBuilder {
         private RelNode expand;
         private RelNode getV;
 
@@ -125,86 +136,64 @@ public class PathExpandConfig {
         private GraphOpt.PathExpandPath pathOpt;
         private GraphOpt.PathExpandResult resultOpt;
 
-        @Nullable private String alias;
+        private @Nullable RexNode untilCondition;
 
-        protected Builder(GraphBuilder innerBuilder) {
-            this.innerBuilder =
-                    GraphBuilder.create(
-                            null,
-                            (GraphOptCluster) innerBuilder.getCluster(),
-                            innerBuilder.getRelOptSchema());
+        @Nullable private String alias;
+        @Nullable private String startAlias;
+
+        protected Builder(GraphBuilder parentBuilder) {
+            super(
+                    parentBuilder.getContext(),
+                    (GraphOptCluster) parentBuilder.getCluster(),
+                    parentBuilder.getRelOptSchema());
+            if (parentBuilder.size() > 0) {
+                this.push(parentBuilder.peek());
+            }
             this.pathOpt = GraphOpt.PathExpandPath.ARBITRARY;
             this.resultOpt = GraphOpt.PathExpandResult.END_V;
         }
 
         public Builder expand(ExpandConfig config) {
             if (this.getV == null && this.expand == null) {
+                GraphLogicalExpand expandRel = (GraphLogicalExpand) super.expand(config).build();
                 this.expand =
                         GraphLogicalExpand.create(
-                                (GraphOptCluster) innerBuilder.getCluster(),
+                                (GraphOptCluster) expandRel.getCluster(),
                                 ImmutableList.of(),
                                 null,
-                                config.getOpt(),
-                                innerBuilder.getTableConfig(
-                                        config.getLabels(), GraphOpt.Source.EDGE),
-                                AliasInference.DEFAULT_NAME);
-                innerBuilder.push(this.expand);
+                                expandRel.getOpt(),
+                                expandRel.getTableConfig(),
+                                AliasInference.DEFAULT_NAME,
+                                AliasNameWithId.DEFAULT);
+                push(this.expand);
             }
             return this;
         }
 
         public Builder getV(GetVConfig config) {
             if (this.expand != null && this.getV == null) {
+                GraphLogicalGetV getVRel = (GraphLogicalGetV) super.getV(config).build();
                 this.getV =
                         GraphLogicalGetV.create(
-                                (GraphOptCluster) innerBuilder.getCluster(),
+                                (GraphOptCluster) getVRel.getCluster(),
                                 ImmutableList.of(),
                                 null,
-                                config.getOpt(),
-                                innerBuilder.getTableConfig(
-                                        config.getLabels(), GraphOpt.Source.VERTEX),
-                                AliasInference.DEFAULT_NAME);
-                // (the alias of endV is given in the getV
-                // base)
-                innerBuilder.push(this.getV);
+                                getVRel.getOpt(),
+                                getVRel.getTableConfig(),
+                                AliasInference.DEFAULT_NAME,
+                                AliasNameWithId.DEFAULT);
+                push(this.getV);
             }
             return this;
         }
 
         public Builder filter(RexNode... conjunctions) {
-            Preconditions.checkArgument(
-                    this.getV != null || this.expand != null,
-                    "expand and getV are all null in path_expand");
-            innerBuilder.filter(conjunctions);
+            return (Builder) super.filter(conjunctions);
+        }
+
+        public Builder untilCondition(@Nullable RexNode untilCondition) {
+            this.untilCondition = untilCondition;
             return this;
-        }
-
-        public Builder filter(List<RexNode> conjunctions) {
-            Preconditions.checkArgument(
-                    this.getV != null || this.expand != null,
-                    "expand and getV are all null in path_expand");
-            innerBuilder.filter(conjunctions);
-            return this;
-        }
-
-        public RexGraphVariable variable(@Nullable String alias) {
-            return innerBuilder.variable(alias);
-        }
-
-        public RexGraphVariable variable(@Nullable String alias, String property) {
-            return innerBuilder.variable(alias, property);
-        }
-
-        public RexLiteral literal(@Nullable Object value) {
-            return innerBuilder.literal(value);
-        }
-
-        public RexNode call(SqlOperator operator, RexNode... operands) {
-            return innerBuilder.call(operator, operands);
-        }
-
-        public RexNode call(SqlOperator operator, Iterable<? extends RexNode> operands) {
-            return innerBuilder.call(operator, operands);
         }
 
         public Builder range(int offset, int fetch) {
@@ -228,12 +217,22 @@ public class PathExpandConfig {
             return this;
         }
 
-        public PathExpandConfig build() {
-            return new PathExpandConfig(expand, getV, offset, fetch, resultOpt, pathOpt, alias);
+        public Builder startAlias(@Nullable String startAlias) {
+            this.startAlias = startAlias;
+            return this;
         }
 
-        public GraphBuilder getInnerBuilder() {
-            return innerBuilder;
+        public PathExpandConfig buildConfig() {
+            return new PathExpandConfig(
+                    expand,
+                    getV,
+                    offset,
+                    fetch,
+                    resultOpt,
+                    pathOpt,
+                    untilCondition,
+                    alias,
+                    startAlias);
         }
     }
 }

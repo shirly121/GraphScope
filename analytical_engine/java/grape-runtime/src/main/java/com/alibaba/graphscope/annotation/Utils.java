@@ -48,8 +48,8 @@ public class Utils {
                         .build());
     }
 
-    public static void addLongCXXTemplate(AnnotationSpec.Builder buider) {
-        buider.addMember(
+    public static void addLongCXXTemplate(AnnotationSpec.Builder builder) {
+        builder.addMember(
                 "templates",
                 "$L",
                 AnnotationSpec.builder(CXXTemplate.class)
@@ -237,6 +237,8 @@ public class Utils {
         } else if (javaType.equals("java.lang.Double") || javaType.equals("Double")) {
             return "double";
         } else if (javaType.equals("com.alibaba.graphscope.ds.StringView")) {
+            return "std::string";
+        } else if (javaType.equals("com.alibaba.graphscope.stdcxx.StdString")) {
             return "std::string";
         }
         throw new IllegalStateException("Unrecognized type " + javaType + " sign: " + signed);

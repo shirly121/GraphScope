@@ -1,8 +1,8 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
-#include <math.h>
 
 #include "grin/predefine.h"
 
@@ -369,7 +369,7 @@ void test_property_vertex_property_value(const char* uri_str) {
 #else
       printf("%s %zu: %lld\n", v_names[__vt][vid], j, pv);
 #endif
-    } else if (dt == String) {
+    } else if (dt == StringView) {
       const char* pv = grin_get_vertex_property_value_of_string(g, v, vp);
       assert(grin_get_last_error_code() == NO_ERROR);
 #ifdef GRIN_ENABLE_ROW
@@ -527,7 +527,7 @@ void test_property_edge_property_value(const char* uri_str,
 #else
         printf("%s %zu %lld: %lf\n", v_names[__vt][vid], j, uid, pv);
 #endif
-      } else if (dt == String) {
+      } else if (dt == StringView) {
         const char* pv = grin_get_edge_property_value_of_string(g, e, ep);
         assert(grin_get_last_error_code() == NO_ERROR);
 #ifdef GRIN_ENABLE_ROW
@@ -715,9 +715,9 @@ void test_property(const char* uri_str) {
 /**
 void test_partition_reference(const char* uri_str) {
   printf("+++++++++++++++++++++ Test partition/reference
-+++++++++++++++++++++\n"); 
++++++++++++++++++++++\n");
 GRIN_PARTITIONED_GRAPH pg =
-grin_get_partitioned_graph_from_storage(argv[1]); 
+grin_get_partitioned_graph_from_storage(argv[1]);
 GRIN_PARTITION_LIST
 local_partitions = grin_get_local_partition_list(pg);
   assert(grin_get_partition_list_size(pg, local_partitions) >= 2);
@@ -922,7 +922,7 @@ void test_topology_adjacent_list(const char* uri_str, GRIN_DIRECTION dir) {
     acnt++;
     grin_get_next_adjacent_list_iter(g, ali);
   }
-#ifdef GRIN_ENABLE_ADJAECENT_LIST_ARRAY
+#ifdef GRIN_ENABLE_ADJACENT_LIST_ARRAY
   assert(acnt == grin_get_adjacent_list_size(g, al));
 #endif
   grin_destroy_adjacent_list_iter(g, ali);
@@ -1052,14 +1052,14 @@ void test_vertex_property_value(const char* uri_str) {
 void test_perf(const char* uri_str) { test_vertex_property_value(uri_str); }
 // uri_str =
 //"flex://"
-//    "../../../../storages/rt_mutable_graph/modern_graph/?schema_file={schema_file}&bulk_load_file={bulk_load_file}";
+//    "../../../../storages/rt_mutable_graph/modern_graph/?schema_file={schema_file}&data_dir={data_dir}";
 int main(int argc, char** argv) {
   if (argc != 2) {
     printf("Usage: %s <uri>\n", argv[0]);
     return 1;
   }
   const char* uri_str = argv[1];
-  //print uri
+  // print uri
   printf("uri: %s\n", uri_str);
 
   test_index(uri_str);

@@ -20,12 +20,22 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "flex/utils/result.h"
 
 #include "glog/logging.h"
 
 namespace gs {
 
 std::vector<std::string> get_yaml_files(const std::string& plugin_dir);
+
+Result<std::string> get_json_string_from_yaml(const std::string& file_path);
+
+Result<std::string> get_json_string_from_yaml(const YAML::Node& yaml_node);
+
+Status write_yaml_node_to_yaml_string(const YAML::Node& node,
+                                      YAML::Emitter& emitter);
+
+Result<std::string> get_yaml_string_from_yaml_node(const YAML::Node& node);
 
 namespace config_parsing {
 template <typename T>
@@ -68,34 +78,6 @@ static bool expect_config(YAML::Node root, const std::string& key,
     return false;
   }
   return true;
-}
-// When file_path is absolute path, try to find the file in the absolute path.
-// When data_location is give, try to find the file in data_location first.
-// When data_location is not given, try to find the file Under FLEX_DATA_DIR
-// When FLEX_DATA_DIR is not set, try to find the file under current path.
-
-static bool access_file(const std::string data_location,
-                        std::string& file_path) {
-  if (file_path.size() == 0) {
-    return false;
-  }
-  if (file_path[0] == '/') {
-    std::filesystem::path path(file_path);
-    return std::filesystem::exists(path);
-  }
-
-  std::string real_location;
-  if (!data_location.empty()) {
-    real_location = data_location;
-  } else if (std::getenv("FLEX_DATA_DIR") != NULL) {
-    real_location = std::string(std::getenv("FLEX_DATA_DIR"));
-  } else {
-    real_location = std::filesystem::current_path().generic_string();
-  }
-
-  file_path = real_location + "/" + file_path;
-  std::filesystem::path path(file_path);
-  return std::filesystem::exists(path);
 }
 
 }  // namespace config_parsing

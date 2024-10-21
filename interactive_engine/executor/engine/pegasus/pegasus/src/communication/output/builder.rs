@@ -30,7 +30,7 @@ use crate::Data;
 #[derive(Copy, Clone, Debug)]
 pub struct OutputMeta {
     pub port: Port,
-    /// This is the the scope level of operator with this output port belongs to.
+    /// This is the scope level of operator with this output port belongs to.
     pub scope_level: u32,
     pub batch_size: usize,
     pub batch_capacity: u32,
@@ -159,6 +159,7 @@ impl<D: Data> OutputBuilder for OutputBuilderImpl<D> {
 
         if let Some(main_push) = main_push {
             let meta = self.meta.borrow();
+            let src = main_push.src;
             let mut tee = Tee::<D>::new(meta.port, meta.scope_level, main_push);
             for p in shared.iter_mut() {
                 if let Some(push) = p.take() {
@@ -166,7 +167,7 @@ impl<D: Data> OutputBuilder for OutputBuilderImpl<D> {
                 }
             }
 
-            let output = OutputHandle::new(*meta, tee);
+            let output = OutputHandle::new(*meta, tee, src);
             Some(Box::new(RefWrapOutput::wrap(output)) as Box<dyn OutputProxy>)
         } else {
             None

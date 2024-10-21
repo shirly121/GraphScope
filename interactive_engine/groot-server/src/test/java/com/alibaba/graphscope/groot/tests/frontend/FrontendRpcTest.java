@@ -17,14 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
-import com.alibaba.graphscope.groot.SnapshotCache;
 import com.alibaba.graphscope.groot.SnapshotWithSchema;
 import com.alibaba.graphscope.groot.common.schema.wrapper.GraphDef;
 import com.alibaba.graphscope.groot.common.util.BackupInfo;
 import com.alibaba.graphscope.groot.frontend.*;
 import com.alibaba.graphscope.groot.frontend.FrontendSnapshotService;
-import com.alibaba.graphscope.groot.operation.BatchId;
-import com.alibaba.graphscope.groot.operation.OperationBatch;
+import com.alibaba.graphscope.groot.frontend.SnapshotCache;
 import com.alibaba.graphscope.groot.rpc.RoleClients;
 import com.alibaba.graphscope.groot.schema.request.DdlRequestBatch;
 import com.alibaba.graphscope.proto.groot.*;
@@ -64,24 +62,6 @@ public class FrontendRpcTest {
     }
 
     @Test
-    void testIngestorWriteClient() {
-        IngestorWriteGrpc.IngestorWriteBlockingStub stub =
-                mock(IngestorWriteGrpc.IngestorWriteBlockingStub.class);
-        IngestorWriteClient client = new IngestorWriteClient(stub);
-        when(stub.writeIngestor(any()))
-                .thenReturn(WriteIngestorResponse.newBuilder().setSnapshotId(10L).build());
-        BatchId batchId = client.writeIngestor("test_req", 2, OperationBatch.newBuilder().build());
-        assertEquals(batchId.getSnapshotId(), 10L);
-        verify(stub)
-                .writeIngestor(
-                        WriteIngestorRequest.newBuilder()
-                                .setRequestId("test_req")
-                                .setQueueId(2)
-                                .setOperationBatch(OperationBatch.newBuilder().build().toProto())
-                                .build());
-    }
-
-    @Test
     void testSchemaClient() {
         SchemaGrpc.SchemaBlockingStub stub = mock(SchemaGrpc.SchemaBlockingStub.class);
         when(stub.submitBatchDdl(any()))
@@ -103,9 +83,9 @@ public class FrontendRpcTest {
         SchemaClient client = mock(SchemaClient.class);
         when(clients.getClient(0)).thenReturn(client);
 
-        SchemaWriter schemaWriter = new SchemaWriter(clients);
-        schemaWriter.submitBatchDdl(
-                "test_req", "test_session", DdlRequestBatch.newBuilder().build());
+        clients.getClient(0)
+                .submitBatchDdl(
+                        "test_req", "test_session", DdlRequestBatch.newBuilder().build().toProto());
         verify(client)
                 .submitBatchDdl(
                         "test_req", "test_session", DdlRequestBatch.newBuilder().build().toProto());

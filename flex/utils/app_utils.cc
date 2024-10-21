@@ -53,6 +53,10 @@ void Encoder::put_int_at(size_t pos, int v) {
 
 void Encoder::put_byte(uint8_t v) { buf_.push_back(static_cast<char>(v)); }
 
+void Encoder::put_bytes(const char* data, size_t size) {
+  buf_.insert(buf_.end(), data, data + size);
+}
+
 size_t Encoder::skip_byte() {
   size_t size = buf_.size();
   buf_.resize(size + 1);
@@ -79,8 +83,23 @@ void Encoder::put_string_view(const std::string_view& v) {
   memcpy(&buf_[size + 4], v.data(), len);
 }
 
+void Encoder::put_small_string(const std::string& v) {
+  size_t size = buf_.size();
+  int len = v.size();
+  buf_.resize(size + sizeof(uint8_t) + len);
+  buf_[size] = static_cast<char>(len);
+  memcpy(&buf_[size + 1], v.data(), len);
+}
 
-void Encoder::put_double(double v){
+void Encoder::put_small_string_view(const std::string_view& v) {
+  size_t size = buf_.size();
+  int len = v.size();
+  buf_.resize(size + sizeof(uint8_t) + len);
+  buf_[size] = static_cast<char>(len);
+  memcpy(&buf_[size + 1], v.data(), len);
+}
+
+void Encoder::put_double(double v) {
   size_t size = buf_.size();
   buf_.resize(size + sizeof(double));
   memcpy(&buf_[size], &v, sizeof(double));
@@ -98,7 +117,7 @@ static int char_ptr_to_int(const char* data) {
   return *ptr;
 }
 
-static double char_ptr_to_double(const char* data){
+static double char_ptr_to_double(const char* data) {
   const double* ptr = reinterpret_cast<const double*>(data);
   return *ptr;
 }
@@ -115,14 +134,25 @@ int64_t Decoder::get_long() {
   return ret;
 }
 
-double Decoder::get_double(){
+double Decoder::get_double() {
   double ret = char_ptr_to_double(data_);
   data_ += 8;
   return ret;
 }
-
+std::string_view Decoder::get_bytes() {
+  std::string_view ret(data_, end_ - data_);
+  data_ = end_;
+  return ret;
+}
 std::string_view Decoder::get_string() {
   int len = get_int();
+  std::string_view ret(data_, len);
+  data_ += len;
+  return ret;
+}
+
+std::string_view Decoder::get_small_string() {
+  int len = static_cast<int>(get_byte());
   std::string_view ret(data_, len);
   data_ += len;
   return ret;
@@ -131,6 +161,8 @@ std::string_view Decoder::get_string() {
 uint8_t Decoder::get_byte() { return static_cast<uint8_t>(*(data_++)); }
 
 const char* Decoder::data() const { return data_; }
+
+size_t Decoder::size() const { return end_ - data_; }
 
 bool Decoder::empty() const { return data_ == end_; }
 

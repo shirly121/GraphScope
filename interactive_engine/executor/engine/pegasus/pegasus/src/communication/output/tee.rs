@@ -25,7 +25,7 @@ use crate::communication::decorator::{BlockPush, MicroBatchPush};
 use crate::communication::IOResult;
 use crate::data::MicroBatch;
 use crate::data_plane::Push;
-use crate::errors::IOError;
+use crate::errors::{IOError, IOErrorKind};
 use crate::graph::Port;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
@@ -154,9 +154,8 @@ pub(crate) struct PerChannelPush<D: Data> {
 
 impl<D: Data> PerChannelPush<D> {
     pub(crate) fn new(
-        ch_info: ChannelInfo, delta: MergedScopeDelta, push: MicroBatchPush<D>, ch: CancelHandle,
+        ch_info: ChannelInfo, delta: MergedScopeDelta, push: MicroBatchPush<D>, ch: CancelHandle, src: u32,
     ) -> Self {
-        let src = crate::worker_id::get_current_worker().index;
         let cancel_handle = ChannelCancelPtr::new(ch_info.scope_level, delta.clone(), ch);
         let re_seq = TidyTagMap::new(ch_info.scope_level);
         PerChannelPush { ch_info, src, delta, push, cancel_handle, re_seq }
@@ -223,13 +222,27 @@ impl<D: Data> Push<MicroBatch<D>> for PerChannelPush<D> {
                 batch.set_tag(tag);
                 self.push.push(batch)
             } else {
-                //is not end, and is emtpy, ignore;
+                //is not end, and is empty, ignore;
                 Ok(())
             }
         } else if batch.tag.len() < self.delta.origin_scope_level {
             // batch from parent scope;
-            assert!(batch.is_empty(), "batch from parent is not empty;");
-            assert!(batch.is_last(), "batch from parent is not last;");
+            if !batch.is_empty() {
+                let mut err = IOError::new(IOErrorKind::Internal);
+                err.set_io_cause(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Batch from parent is not empty;",
+                ));
+                return Err(err);
+            }
+            if !batch.is_last() {
+                let mut err = IOError::new(IOErrorKind::Internal);
+                err.set_io_cause(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Batch from parent is not last;",
+                ));
+                return Err(err);
+            }
             if batch.tag.len() as u32 == self.ch_info.scope_level {
                 let seq = self.re_seq.remove(&batch.tag).unwrap_or(0);
                 batch.set_seq(seq);
@@ -337,7 +350,7 @@ impl<D: Data> BlockPush for Tee<D> {
     fn try_unblock(&mut self, tag: &Tag) -> Result<bool, IOError> {
         let mut would_block = self.main_push.try_unblock(tag)?;
         for o in self.other_pushes.iter_mut() {
-            would_block |= o.try_unblock(tag)?;
+            would_block &= o.try_unblock(tag)?;
         }
         Ok(would_block)
     }

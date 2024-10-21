@@ -79,117 +79,7 @@ public enum TestGraphFactory implements GraphProperties {
             return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
         }
     },
-    GRINV6D {
-        @Override
-        public Map<String, Object> getProperties(Configs configs) {
-            String json =
-                    "{\n"
-                            + "  \"vertex_properties\": {\n"
-                            + "    \"-9223372036854775808\": {\n"
-                            + "      \"name\": \"marko\",\n"
-                            + "      \"age\": 29\n"
-                            + "    },\n"
-                            + "    \"1\": {\n"
-                            + "      \"name\": \"vadas\",\n"
-                            + "      \"age\": 27\n"
-                            + "    },\n"
-                            + "    \"-9151314442816847872\": {\n"
-                            + "      \"name\": \"lop\",\n"
-                            + "      \"lang\": \"java\"\n"
-                            + "    },\n"
-                            + "    \"0\": {\n"
-                            + "      \"name\": \"josh\",\n"
-                            + "      \"age\": 32\n"
-                            + "    },\n"
-                            + "    \"-9151314442816847871\": {\n"
-                            + "      \"name\": \"ripple\",\n"
-                            + "      \"lang\": \"java\"\n"
-                            + "    },\n"
-                            + "    \"2\": {\n"
-                            + "      \"name\": \"peter\",\n"
-                            + "      \"age\": 35\n"
-                            + "    }\n"
-                            + "  },\n"
-                            + "  \"edge_properties\": {\n"
-                            + "    \"1\": {\n"
-                            + "      \"weight\": 0.5\n"
-                            + "    },\n"
-                            + "    \"4\": {\n"
-                            + "      \"weight\": 0.4\n"
-                            + "    },\n"
-                            + "    \"2\": {\n"
-                            + "      \"weight\": 1.0\n"
-                            + "    },\n"
-                            + "    \"3\": {\n"
-                            + "      \"weight\": 0.4\n"
-                            + "    },\n"
-                            + "    \"0\": {\n"
-                            + "      \"weight\": 1.0\n"
-                            + "    },\n"
-                            + "    \"5\": {\n"
-                            + "      \"weight\": 0.2\n"
-                            + "    }\n"
-                            + "  }\n"
-                            + "}";
-            return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
-        }
-    },
-    GRINGRAPHAR {
-        @Override
-        public Map<String, Object> getProperties(Configs configs) {
-            String json =
-                    "{\n"
-                            + "  \"vertex_properties\": {\n"
-                            + "    \"3\": {\n"
-                            + "      \"name\": \"marko\",\n"
-                            + "      \"age\": 29\n"
-                            + "    },\n"
-                            + "    \"0\": {\n"
-                            + "      \"name\": \"vadas\",\n"
-                            + "      \"age\": 27\n"
-                            + "    },\n"
-                            + "    \"1048576\": {\n"
-                            + "      \"name\": \"lop\",\n"
-                            + "      \"lang\": \"java\"\n"
-                            + "    },\n"
-                            + "    \"2\": {\n"
-                            + "      \"name\": \"josh\",\n"
-                            + "      \"age\": 32\n"
-                            + "    },\n"
-                            + "    \"1048577\": {\n"
-                            + "      \"name\": \"ripple\",\n"
-                            + "      \"lang\": \"java\"\n"
-                            + "    },\n"
-                            + "    \"1\": {\n"
-                            + "      \"name\": \"peter\",\n"
-                            + "      \"age\": 35\n"
-                            + "    }\n"
-                            + "  },\n"
-                            + "  \"edge_properties\": {\n"
-                            + "    \"12884901888\": {\n"
-                            + "      \"weight\": 0.5\n"
-                            + "    },\n"
-                            + "    \"4\": {\n"
-                            + "      \"weight\": 0.4\n"
-                            + "    },\n"
-                            + "    \"12884901890\": {\n"
-                            + "      \"weight\": 1.0\n"
-                            + "    },\n"
-                            + "    \"3\": {\n"
-                            + "      \"weight\": 0.4\n"
-                            + "    },\n"
-                            + "    \"0\": {\n"
-                            + "      \"weight\": 1.0\n"
-                            + "    },\n"
-                            + "    \"5\": {\n"
-                            + "      \"weight\": 0.2\n"
-                            + "    }\n"
-                            + "  }\n"
-                            + "}";
-            return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
-        }
-    },
-    MCSR {
+    RUST_MCSR {
         @Override
         public Map<String, Object> getProperties(Configs configs) {
             String json =
@@ -250,27 +140,27 @@ public enum TestGraphFactory implements GraphProperties {
             String json =
                     "{\n"
                             + "  \"vertex_properties\": {\n"
-                            + "    \"-7732428334775821489\": {\n"
+                            + "    \"7279245059266044353\": {\n"
                             + "      \"name\": \"marko\",\n"
                             + "      \"age\": 29\n"
                             + "    },\n"
-                            + "    \"6308168136910223060\": {\n"
+                            + "    \"-4593408084868477921\": {\n"
                             + "      \"name\": \"vadas\",\n"
                             + "      \"age\": 27\n"
                             + "    },\n"
-                            + "    \"-7991964441648465618\": {\n"
+                            + "    \"7263461402022796979\": {\n"
                             + "      \"name\": \"lop\",\n"
                             + "      \"lang\": \"java\"\n"
                             + "    },\n"
-                            + "    \"-6112228345218519679\": {\n"
+                            + "    \"-8728313207994723275\": {\n"
                             + "      \"name\": \"josh\",\n"
                             + "      \"age\": 32\n"
                             + "    },\n"
-                            + "    \"2233628339503041259\": {\n"
+                            + "    \"6632543798356094189\": {\n"
                             + "      \"name\": \"ripple\",\n"
                             + "      \"lang\": \"java\"\n"
                             + "    },\n"
-                            + "    \"-2045066182110421307\": {\n"
+                            + "    \"-5566731246168985051\": {\n"
                             + "      \"name\": \"peter\",\n"
                             + "      \"age\": 35\n"
                             + "    }\n"
@@ -280,16 +170,16 @@ public enum TestGraphFactory implements GraphProperties {
                             + "      \"weight\": 0.5\n"
                             + "    },\n"
                             + "    \"1000001\": {\n"
-                            + "      \"weight\": 0.4\n"
+                            + "      \"weight\": 1.0\n"
                             + "    },\n"
                             + "    \"1000004\": {\n"
-                            + "      \"weight\": 1.0\n"
-                            + "    },\n"
-                            + "    \"1000003\": {\n"
                             + "      \"weight\": 0.4\n"
                             + "    },\n"
-                            + "    \"1000002\": {\n"
+                            + "    \"1000003\": {\n"
                             + "      \"weight\": 1.0\n"
+                            + "    },\n"
+                            + "    \"1000002\": {\n"
+                            + "      \"weight\": 0.4\n"
                             + "    },\n"
                             + "    \"1000005\": {\n"
                             + "      \"weight\": 0.2\n"
@@ -405,6 +295,61 @@ public enum TestGraphFactory implements GraphProperties {
                                 + "  }\n"
                                 + "}";
             }
+            return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
+        }
+    },
+    CPP_MCSR {
+        @Override
+        public Map<String, Object> getProperties(Configs configs) {
+            String json =
+                    "{\n"
+                            + "  \"vertex_properties\": {\n"
+                            + "    \"0\": {\n"
+                            + "      \"name\": \"marko\",\n"
+                            + "      \"age\": 29\n"
+                            + "    },\n"
+                            + "    \"1\": {\n"
+                            + "      \"name\": \"vadas\",\n"
+                            + "      \"age\": 27\n"
+                            + "    },\n"
+                            + "    \"2\": {\n"
+                            + "      \"name\": \"josh\",\n"
+                            + "      \"age\": 32\n"
+                            + "    },\n"
+                            + "    \"3\": {\n"
+                            + "      \"name\": \"peter\",\n"
+                            + "      \"age\": 35\n"
+                            + "    },\n"
+                            + "    \"72057594037927936\": {\n"
+                            + "      \"name\": \"lop\",\n"
+                            + "      \"lang\": \"java\"\n"
+                            + "    },\n"
+                            + "    \"72057594037927937\": {\n"
+                            + "      \"name\": \"ripple\",\n"
+                            + "      \"lang\": \"java\"\n"
+                            + "    }\n"
+                            + "  },\n"
+                            + "  \"edge_properties\": {\n"
+                            + "    \"1103806595072\": {\n"
+                            + "      \"weight\": 0.4\n" // 1-[created]->3
+                            + "    },\n"
+                            + "    \"1103808692224\": {\n"
+                            + "      \"weight\": 0.4\n" // 4-[created]->3
+                            + "    },\n"
+                            + "    \"1103809740800\": {\n"
+                            + "      \"weight\": 1.0\n" // 6-[created]->3
+                            + "    },\n"
+                            + "    \"1103808692225\": {\n"
+                            + "      \"weight\": 0.2\n" // 4-[created]->5
+                            + "    },\n"
+                            + "    \"1\": {\n"
+                            + "      \"weight\": 0.5\n" // 1-[knows]->2
+                            + "    },\n"
+                            + "    \"2\": {\n"
+                            + "      \"weight\": 1.0\n" // 2-[knows]->4
+                            + "    }\n"
+                            + "  }\n"
+                            + "}";
             return JsonUtils.fromJson(json, new TypeReference<Map<String, Object>>() {});
         }
     }

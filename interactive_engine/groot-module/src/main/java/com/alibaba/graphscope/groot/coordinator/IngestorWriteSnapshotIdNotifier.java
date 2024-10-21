@@ -21,58 +21,40 @@ import com.alibaba.graphscope.groot.rpc.RoleClients;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class IngestorWriteSnapshotIdNotifier implements WriteSnapshotIdNotifier {
+public class IngestorWriteSnapshotIdNotifier {
     private static final Logger logger =
             LoggerFactory.getLogger(IngestorWriteSnapshotIdNotifier.class);
 
-    private RoleClients<IngestorSnapshotClient> ingestorSnapshotClients;
-    private int ingestorCount;
+    private final RoleClients<IngestorSnapshotClient> ingestorSnapshotClients;
+    private final int frontendCount;
 
     public IngestorWriteSnapshotIdNotifier(
             Configs configs, RoleClients<IngestorSnapshotClient> ingestorSnapshotClients) {
         this.ingestorSnapshotClients = ingestorSnapshotClients;
-        this.ingestorCount = CommonConfig.INGESTOR_NODE_COUNT.get(configs);
+        this.frontendCount = CommonConfig.FRONTEND_NODE_COUNT.get(configs);
     }
 
-    @Override
-    public void notifyWriteSnapshotIdChanged(long snapshotId) {
-        for (int i = 0; i < this.ingestorCount; i++) {
-            try {
-                int realtimeWriterId = i;
-                this.ingestorSnapshotClients
-                        .getClient(realtimeWriterId)
-                        .advanceIngestSnapshotId(
-                                snapshotId,
-                                new CompletionCallback<Long>() {
-                                    @Override
-                                    public void onCompleted(Long previousSnapshotId) {
-                                        if (previousSnapshotId > snapshotId) {
-                                            logger.error(
-                                                    "unexpected previousSnapshotId ["
-                                                            + previousSnapshotId
-                                                            + "], "
-                                                            + "should <= ["
-                                                            + snapshotId
-                                                            + "]. "
-                                                            + "target realtimeWriter ["
-                                                            + realtimeWriterId
-                                                            + "]");
-                                        }
-                                    }
+    public void notifyWriteSnapshotIdChanged(long si) {
+        CompletionCallback<Long> callback =
+                new CompletionCallback<Long>() {
+                    @Override
+                    public void onCompleted(Long prev) {
+                        if (prev > si) {
+                            logger.error("unexpected previous SI {}, should <= {}", prev, si);
+                        }
+                    }
 
-                                    @Override
-                                    public void onError(Throwable t) {
-                                        logger.error(
-                                                "error in advanceIngestSnapshotId ["
-                                                        + snapshotId
-                                                        + "]. realtimeWriter ["
-                                                        + realtimeWriterId
-                                                        + "]",
-                                                t);
-                                    }
-                                });
+                    @Override
+                    public void onError(Throwable t) {
+                        logger.error("error in advanceIngestSnapshotId {}: {}", si, t.toString());
+                    }
+                };
+        for (int i = 0; i < this.frontendCount; i++) {
+            try {
+                IngestorSnapshotClient client = ingestorSnapshotClients.getClient(i);
+                client.advanceIngestSnapshotId(si, callback);
             } catch (Exception e) {
-                logger.warn("update writeSnapshotId failed. realtimeWriter [" + i + "]", e);
+                logger.warn("update writeSnapshotId failed. realtimeWriter [{}]", i, e);
             }
         }
     }

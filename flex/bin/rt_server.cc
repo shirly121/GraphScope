@@ -37,7 +37,9 @@ int main(int argc, char** argv) {
       "http port of query handler")("graph-config,g", bpo::value<std::string>(),
                                     "graph schema config file")(
       "data-path,d", bpo::value<std::string>(), "data directory path")(
-      "bulk-load,l", bpo::value<std::string>(), "bulk-load config file");
+      "warmup,w", bpo::value<bool>()->default_value(false),
+      "warmup graph data")("memory-level,m",
+                           bpo::value<int>()->default_value(1));
   google::InitGoogleLogging(argv[0]);
   FLAGS_logtostderr = true;
 
@@ -55,12 +57,13 @@ int main(int argc, char** argv) {
   }
 
   bool enable_dpdk = false;
+  bool warmup = vm["warmup"].as<bool>();
+  int memory_level = vm["memory-level"].as<int>();
   uint32_t shard_num = vm["shard-num"].as<uint32_t>();
   uint16_t http_port = vm["http-port"].as<uint16_t>();
 
   std::string graph_schema_path = "";
   std::string data_path = "";
-  std::string bulk_load_config_path = "";
 
   if (!vm.count("graph-config")) {
     LOG(ERROR) << "graph-config is required";
@@ -72,9 +75,6 @@ int main(int argc, char** argv) {
     return -1;
   }
   data_path = vm["data-path"].as<std::string>();
-  if (vm.count("bulk-load")) {
-    bulk_load_config_path = vm["bulk-load"].as<std::string>();
-  }
 
   setenv("TZ", "Asia/Shanghai", 1);
   tzset();
@@ -83,9 +83,15 @@ int main(int argc, char** argv) {
   auto& db = gs::GraphDB::get();
 
   auto schema = gs::Schema::LoadFromYaml(graph_schema_path);
-  auto loading_config =
-      gs::LoadingConfig::ParseFromYaml(schema, bulk_load_config_path);
-  db.Init(schema, loading_config, data_path, shard_num);
+  if (!schema.ok()) {
+    LOG(FATAL) << "Failed to load schema: " << schema.status().error_message();
+  }
+  gs::GraphDBConfig config(schema.value(), data_path, shard_num);
+  config.memory_level = memory_level;
+  if (config.memory_level >= 2) {
+    config.enable_auto_compaction = true;
+  }
+  db.Open(config);
 
   t0 += grape::GetCurrentTime();
 
@@ -93,7 +99,14 @@ int main(int argc, char** argv) {
 
   // start service
   LOG(INFO) << "GraphScope http server start to listen on port " << http_port;
-  server::GraphDBService::get().init(shard_num, http_port, enable_dpdk);
+
+  server::ServiceConfig service_config;
+  service_config.shard_num = shard_num;
+  service_config.dpdk_mode = enable_dpdk;
+  service_config.query_port = http_port;
+  service_config.start_admin_service = false;
+  service_config.start_compiler = false;
+  server::GraphDBService::get().init(service_config);
   server::GraphDBService::get().run_and_wait_for_exit();
 
   return 0;

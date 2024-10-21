@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+use opentelemetry::global::BoxedSpan;
+use opentelemetry::{trace, trace::Span, KeyValue};
 use pegasus_executor::{Task, TaskState};
 
 use crate::api::primitive::source::Source;
@@ -46,12 +48,15 @@ pub struct Worker<D: Data, T: Debug + Send + 'static> {
     sink: ResultSink<T>,
     resources: ResourceMap,
     keyed_resources: KeyedResources,
+    is_finished: bool,
+    span: BoxedSpan,
     _ph: std::marker::PhantomData<D>,
 }
 
 impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
     pub(crate) fn new(
         conf: &Arc<JobConf>, id: WorkerId, peer_guard: &Arc<AtomicUsize>, sink: ResultSink<T>,
+        span: BoxedSpan,
     ) -> Self {
         if peer_guard.fetch_add(1, Ordering::SeqCst) == 0 {
             pegasus_memory::alloc::new_task(conf.job_id as usize);
@@ -65,6 +70,8 @@ impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
             sink,
             resources: ResourceMap::default(),
             keyed_resources: KeyedResources::default(),
+            is_finished: false,
+            span: span,
             _ph: std::marker::PhantomData,
         }
     }
@@ -75,12 +82,23 @@ impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
     {
         // set current worker's id into tls variable to make it accessible at anywhere;
         let _g = crate::worker_id::guard(self.id);
-        let resource =
-            crate::communication::build_channel::<Event>(ChannelId::new(self.id.job_id, 0), &self.conf)?;
-        assert_eq!(resource.ch_id.index, 0);
+        let resource = crate::communication::build_channel::<Event>(
+            ChannelId::new(self.id.job_id, 0),
+            &self.conf,
+            self.id,
+        )?;
+        if resource.ch_id.index != 0 {
+            return Err(BuildJobError::InternalError(String::from("Event channel index must be 0")));
+        }
         let (mut tx, rx) = resource.take();
         if self.conf.total_workers() > 1 {
-            assert_eq!(tx.len(), self.id.total_peers() as usize + 1);
+            if tx.len() != self.id.total_peers() as usize + 1 {
+                return Err(BuildJobError::InternalError(format!(
+                    "Incorrect number of senders, senders size: {}, total_peers: {};",
+                    tx.len(),
+                    self.id.total_peers(),
+                )));
+            }
             let mut abort = tx.swap_remove(self.id.index as usize);
             abort.close().ok();
         }
@@ -101,7 +119,7 @@ impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
         let root = Box::new(root_builder)
             .build()
             .expect("no output;");
-        let end = EndOfScope::new(Tag::Root, DynPeers::all(), 0, 0);
+        let end = EndOfScope::new(Tag::Root, DynPeers::all(self.id.total_peers()), 0, 0);
         root.notify_end(end).ok();
         root.close().ok();
         Ok(())
@@ -131,7 +149,7 @@ impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
     }
 
     fn release(&mut self) {
-        if self.peer_guard.fetch_sub(1, Ordering::SeqCst) == 1 {
+        if self.peer_guard.load(Ordering::SeqCst) == 0 {
             pegasus_memory::alloc::remove_task(self.conf.job_id as usize);
         }
         if !crate::remove_cancel_hook(self.conf.job_id).is_ok() {
@@ -223,26 +241,50 @@ impl<D: Data, T: Debug + Send + 'static> Task for Worker<D, T> {
     fn execute(&mut self) -> TaskState {
         let _g = crate::worker_id::guard(self.id);
         if self.check_cancel() {
+            self.span
+                .set_status(trace::Status::error("Job is canceled"));
+            self.span.end();
+
             self.sink.set_cancel_hook(true);
             return TaskState::Finished;
         }
 
         let _ctx = WorkerContext::new(&mut self.resources, &mut self.keyed_resources);
+        let trace_id = self.span.span_context().trace_id();
+        let trace_id_hex = format!("{:x}", trace_id);
 
         match self.task.execute() {
             Ok(state) => {
                 if TaskState::Finished == state {
+                    let elapsed = self.start.elapsed().as_millis();
                     info_worker!(
-                        "job({}) '{}' finished, used {:?} ms;",
+                        "trace_id:{}, job({}) '{}' finished, used {:?} ms;",
+                        trace_id_hex,
                         self.id.job_id,
                         self.conf.job_name,
-                        self.start.elapsed().as_millis()
-                    )
+                        elapsed
+                    );
+                    self.is_finished = true;
+                    self.span
+                        .set_attribute(KeyValue::new("used_ms", elapsed.to_string()));
+                    self.span.set_status(trace::Status::Ok);
+                    self.span.end();
+                    // if this is last worker, return Finished
+                    if self.peer_guard.fetch_sub(1, Ordering::SeqCst) == 1 {
+                        state
+                    } else {
+                        // if other workers are not finished, return NotReady until all workers finished
+                        TaskState::NotReady
+                    }
+                } else {
+                    state
                 }
-                state
             }
             Err(e) => {
-                error_worker!("job({}) execute error: {}", self.id.job_id, e);
+                error_worker!("trace_id:{}, job({}) execute error: {}", trace_id_hex, self.id.job_id, e);
+                self.span
+                    .set_status(trace::Status::error(format!("Execution error: {}", e)));
+                self.span.end();
                 self.sink.on_error(e);
                 TaskState::Finished
             }
@@ -255,23 +297,34 @@ impl<D: Data, T: Debug + Send + 'static> Task for Worker<D, T> {
             self.sink.set_cancel_hook(true);
             return TaskState::Finished;
         }
-
-        match self.task.check_ready() {
-            Ok(state) => {
-                if TaskState::Finished == state {
-                    info_worker!(
-                        "job({}) '{}' finished, used {:?};",
-                        self.id.job_id,
-                        self.conf.job_name,
-                        self.start.elapsed()
-                    );
+        if !self.is_finished {
+            match self.task.check_ready() {
+                Ok(state) => {
+                    {
+                        if TaskState::Finished == state {
+                            let elapsed = self.start.elapsed().as_millis();
+                            info_worker!(
+                                "job({}) '{}' finished, used {:?};",
+                                self.id.job_id,
+                                self.conf.job_name,
+                                elapsed
+                            );
+                        }
+                    }
+                    state
                 }
-                state
+                Err(e) => {
+                    error_worker!("job({}) execute error: {}", self.id.job_id, e);
+                    self.sink.on_error(e);
+                    TaskState::Finished
+                }
             }
-            Err(e) => {
-                error_worker!("job({}) execute error: {}", self.id.job_id, e);
-                self.sink.on_error(e);
-                TaskState::Finished
+        } else {
+            // all workers are finished, return state Finished
+            if self.peer_guard.load(Ordering::SeqCst) == 0 {
+                return TaskState::Finished;
+            } else {
+                return TaskState::NotReady;
             }
         }
     }

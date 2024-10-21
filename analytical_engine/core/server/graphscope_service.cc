@@ -27,7 +27,7 @@
 
 #include "core/server/rpc_utils.h"
 #include "proto/attr_value.pb.h"
-#include "proto/error_codes.pb.h"
+#include "proto/error/coordinator.pb.h"
 #include "proto/graph_def.pb.h"
 #include "proto/message.pb.h"
 #include "proto/op_def.pb.h"
@@ -121,7 +121,7 @@ Status GraphScopeService::HeartBeat(ServerContext* context,
 
     if (!success) {
       op_result->set_error_msg(error_msgs);
-      // break dag exection flow
+      // break dag execution flow
       stream->Write(response_head);
       return Status(StatusCode::INTERNAL, error_msgs);
     }
@@ -147,7 +147,7 @@ Status GraphScopeService::HeartBeat(ServerContext* context,
       for (auto& e : result) {
         if (e.has_large_data()) {
           std::string error_msg =
-              "Error: Result require consistenct among multiple workers can "
+              "Error: Result require consistency among multiple workers can "
               "not be large data.";
           op_result->set_code(rpc::Code::WORKER_RESULTS_INCONSISTENT_ERROR);
           op_result->set_error_msg(error_msg);

@@ -16,23 +16,30 @@
 
 package com.alibaba.graphscope.common.ir.rel.graph;
 
+import com.alibaba.graphscope.common.ir.meta.glogue.DetailedExpandCost;
+import com.alibaba.graphscope.common.ir.rel.GraphShuttle;
+import com.alibaba.graphscope.common.ir.rel.type.AliasNameWithId;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.type.GraphPathType;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
 import org.apache.calcite.plan.GraphOptCluster;
+import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rel.hint.RelHint;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.rel.type.RelRecordType;
 import org.apache.calcite.rex.RexNode;
-import org.apache.commons.lang3.ObjectUtils;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.List;
@@ -41,6 +48,9 @@ import java.util.Objects;
 public class GraphLogicalPathExpand extends SingleRel {
     private final RelNode expand;
     private final RelNode getV;
+
+    // fuse expand with getV to a single operator
+    private final RelNode fused;
 
     private final @Nullable RexNode offset;
     private final @Nullable RexNode fetch;
@@ -52,6 +62,14 @@ public class GraphLogicalPathExpand extends SingleRel {
 
     private final int aliasId;
 
+    private final AliasNameWithId startAlias;
+
+    private final boolean optional;
+
+    private final @Nullable RexNode untilCondition;
+
+    private @Nullable RelOptCost cachedCost = null;
+
     protected GraphLogicalPathExpand(
             GraphOptCluster cluster,
             @Nullable List<RelHint> hints,
@@ -62,10 +80,44 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
-            @Nullable String aliasName) {
+            @Nullable RexNode untilCondition,
+            @Nullable String aliasName,
+            AliasNameWithId startAlias,
+            boolean optional) {
         super(cluster, RelTraitSet.createEmpty(), input);
         this.expand = Objects.requireNonNull(expand);
         this.getV = Objects.requireNonNull(getV);
+        this.fused = null;
+        this.offset = offset;
+        this.fetch = fetch;
+        this.pathOpt = pathOpt;
+        this.aliasName =
+                AliasInference.inferDefault(
+                        aliasName, AliasInference.getUniqueAliasList(input, true));
+        this.aliasId = cluster.getIdGenerator().generate(this.aliasName);
+        this.startAlias = Objects.requireNonNull(startAlias);
+        this.optional = optional;
+        this.resultOpt = resultOpt;
+        this.untilCondition = untilCondition;
+    }
+
+    protected GraphLogicalPathExpand(
+            GraphOptCluster cluster,
+            @Nullable List<RelHint> hints,
+            RelNode input,
+            RelNode fused,
+            @Nullable RexNode offset,
+            @Nullable RexNode fetch,
+            GraphOpt.PathExpandResult resultOpt,
+            GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
+            @Nullable String aliasName,
+            AliasNameWithId startAlias,
+            boolean optional) {
+        super(cluster, RelTraitSet.createEmpty(), input);
+        this.expand = null;
+        this.getV = null;
+        this.fused = Objects.requireNonNull(fused);
         this.offset = offset;
         this.fetch = fetch;
         this.resultOpt = resultOpt;
@@ -74,6 +126,9 @@ public class GraphLogicalPathExpand extends SingleRel {
                 AliasInference.inferDefault(
                         aliasName, AliasInference.getUniqueAliasList(input, true));
         this.aliasId = cluster.getIdGenerator().generate(this.aliasName);
+        this.startAlias = Objects.requireNonNull(startAlias);
+        this.optional = optional;
+        this.untilCondition = untilCondition;
     }
 
     public static GraphLogicalPathExpand create(
@@ -86,21 +141,138 @@ public class GraphLogicalPathExpand extends SingleRel {
             @Nullable RexNode fetch,
             GraphOpt.PathExpandResult resultOpt,
             GraphOpt.PathExpandPath pathOpt,
-            String aliasName) {
+            @Nullable RexNode untilCondition,
+            String aliasName,
+            AliasNameWithId startAlias,
+            boolean optional) {
         return new GraphLogicalPathExpand(
-                cluster, hints, input, expand, getV, offset, fetch, resultOpt, pathOpt, aliasName);
+                cluster,
+                hints,
+                input,
+                expand,
+                getV,
+                offset,
+                fetch,
+                resultOpt,
+                pathOpt,
+                untilCondition,
+                aliasName,
+                startAlias,
+                optional);
+    }
+
+    public static GraphLogicalPathExpand create(
+            GraphOptCluster cluster,
+            List<RelHint> hints,
+            RelNode input,
+            RelNode expand,
+            RelNode getV,
+            @Nullable RexNode offset,
+            @Nullable RexNode fetch,
+            GraphOpt.PathExpandResult resultOpt,
+            GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
+            String aliasName,
+            AliasNameWithId startAlias) {
+        return create(
+                cluster,
+                hints,
+                input,
+                expand,
+                getV,
+                offset,
+                fetch,
+                resultOpt,
+                pathOpt,
+                untilCondition,
+                aliasName,
+                startAlias,
+                false);
+    }
+
+    public static GraphLogicalPathExpand create(
+            GraphOptCluster cluster,
+            List<RelHint> hints,
+            RelNode input,
+            RelNode fused,
+            @Nullable RexNode offset,
+            @Nullable RexNode fetch,
+            GraphOpt.PathExpandResult resultOpt,
+            GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
+            String aliasName,
+            AliasNameWithId startAlias) {
+        return create(
+                cluster,
+                hints,
+                input,
+                fused,
+                offset,
+                fetch,
+                resultOpt,
+                pathOpt,
+                untilCondition,
+                aliasName,
+                startAlias,
+                false);
+    }
+
+    public static GraphLogicalPathExpand create(
+            GraphOptCluster cluster,
+            List<RelHint> hints,
+            RelNode input,
+            RelNode fused,
+            @Nullable RexNode offset,
+            @Nullable RexNode fetch,
+            GraphOpt.PathExpandResult resultOpt,
+            GraphOpt.PathExpandPath pathOpt,
+            @Nullable RexNode untilCondition,
+            String aliasName,
+            AliasNameWithId startAlias,
+            boolean optional) {
+        Preconditions.checkArgument(
+                resultOpt != GraphOpt.PathExpandResult.ALL_V_E,
+                "can not fuse expand with getV if result opt is set to " + resultOpt.name());
+        return new GraphLogicalPathExpand(
+                cluster,
+                hints,
+                input,
+                fused,
+                offset,
+                fetch,
+                resultOpt,
+                pathOpt,
+                untilCondition,
+                aliasName,
+                startAlias,
+                optional);
     }
 
     @Override
     public RelWriter explainTerms(RelWriter pw) {
         return super.explainTerms(pw)
-                .item("expand", RelOptUtil.toString(expand))
-                .item("getV", RelOptUtil.toString(getV))
+                .itemIf("expand", RelOptUtil.toString(expand), expand != null)
+                .itemIf("getV", RelOptUtil.toString(getV), getV != null)
+                .itemIf("fused", RelOptUtil.toString(fused), fused != null)
                 .itemIf("offset", offset, offset != null)
                 .itemIf("fetch", fetch, fetch != null)
                 .item("path_opt", getPathOpt())
                 .item("result_opt", getResultOpt())
-                .item("alias", AliasInference.SIMPLE_NAME(getAliasName()));
+                .itemIf("until_condition", untilCondition, untilCondition != null)
+                .item("alias", AliasInference.SIMPLE_NAME(getAliasName()))
+                .itemIf(
+                        "aliasId",
+                        getAliasId(),
+                        pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES)
+                .itemIf(
+                        "start_alias",
+                        startAlias.getAliasName(),
+                        startAlias.getAliasName() != AliasInference.DEFAULT_NAME)
+                .itemIf(
+                        "startAliasId",
+                        startAlias.getAliasId(),
+                        pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES)
+                .itemIf("optional", optional, optional);
     }
 
     public String getAliasName() {
@@ -127,6 +299,10 @@ public class GraphLogicalPathExpand extends SingleRel {
         return getV;
     }
 
+    public @Nullable RelNode getFused() {
+        return fused;
+    }
+
     public @Nullable RexNode getOffset() {
         return offset;
     }
@@ -135,30 +311,111 @@ public class GraphLogicalPathExpand extends SingleRel {
         return fetch;
     }
 
+    public AliasNameWithId getStartAlias() {
+        return startAlias;
+    }
+
+    public boolean isOptional() {
+        return optional;
+    }
+
+    public @Nullable RexNode getUntilCondition() {
+        return untilCondition;
+    }
+
     @Override
     protected RelDataType deriveRowType() {
-        ObjectUtils.requireNonEmpty(
-                this.expand.getRowType().getFieldList(),
-                "data type of expand operator should have at least one column field");
-        ObjectUtils.requireNonEmpty(
-                this.getV.getRowType().getFieldList(),
-                "data type of getV operator should have at least one column field");
         return new RelRecordType(
                 ImmutableList.of(
                         new RelDataTypeFieldImpl(
                                 getAliasName(),
                                 getAliasId(),
-                                new GraphPathType(
-                                        new GraphPathType.ElementType(
-                                                this.expand
-                                                        .getRowType()
-                                                        .getFieldList()
-                                                        .get(0)
-                                                        .getType(),
-                                                this.getV
-                                                        .getRowType()
-                                                        .getFieldList()
-                                                        .get(0)
-                                                        .getType())))));
+                                new GraphPathType(getElementType(), optional))));
+    }
+
+    private GraphPathType.ElementType getElementType() {
+        GraphLogicalExpand innerExpand = null;
+        GraphLogicalGetV innerGetV = null;
+        if (this.fused instanceof GraphPhysicalGetV) {
+            innerExpand = ((GraphPhysicalExpand) this.fused.getInput(0)).getFusedExpand();
+            innerGetV = ((GraphPhysicalGetV) this.fused).getFusedGetV();
+        } else if (this.fused instanceof GraphPhysicalExpand) {
+            innerExpand = ((GraphPhysicalExpand) this.fused).getFusedExpand();
+            innerGetV = ((GraphPhysicalExpand) this.fused).getFusedGetV();
+        } else if (this.expand != null && this.getV != null) {
+            innerExpand = (GraphLogicalExpand) this.expand;
+            innerGetV = (GraphLogicalGetV) this.getV;
+        }
+        Preconditions.checkArgument(
+                innerExpand != null && !innerExpand.getRowType().getFieldList().isEmpty(),
+                "data type of expand operator should have at least one column field");
+        Preconditions.checkArgument(
+                innerGetV != null && !innerGetV.getRowType().getFieldList().isEmpty(),
+                "data type of getV operator should have at least one column field");
+        return new GraphPathType.ElementType(
+                innerExpand.getRowType().getFieldList().get(0).getType(),
+                innerGetV.getRowType().getFieldList().get(0).getType());
+    }
+
+    @Override
+    public GraphLogicalPathExpand copy(RelTraitSet traitSet, List<RelNode> inputs) {
+        GraphLogicalPathExpand copy;
+        if (this.fused != null) {
+            copy =
+                    new GraphLogicalPathExpand(
+                            (GraphOptCluster) getCluster(),
+                            ImmutableList.of(),
+                            inputs.get(0),
+                            this.fused,
+                            getOffset(),
+                            getFetch(),
+                            getResultOpt(),
+                            getPathOpt(),
+                            getUntilCondition(),
+                            getAliasName(),
+                            getStartAlias(),
+                            isOptional());
+        } else {
+            copy =
+                    new GraphLogicalPathExpand(
+                            (GraphOptCluster) getCluster(),
+                            ImmutableList.of(),
+                            inputs.get(0),
+                            this.expand,
+                            this.getV,
+                            getOffset(),
+                            getFetch(),
+                            getResultOpt(),
+                            getPathOpt(),
+                            getUntilCondition(),
+                            getAliasName(),
+                            getStartAlias(),
+                            isOptional());
+        }
+        copy.setCachedCost(this.cachedCost);
+        return copy;
+    }
+
+    @Override
+    public RelNode accept(RelShuttle shuttle) {
+        if (shuttle instanceof GraphShuttle) {
+            return ((GraphShuttle) shuttle).visit(this);
+        }
+        return shuttle.visit(this);
+    }
+
+    public void setCachedCost(RelOptCost cost) {
+        this.cachedCost = cost;
+    }
+
+    public RelOptCost getCachedCost() {
+        return this.cachedCost;
+    }
+
+    @Override
+    public double estimateRowCount(RelMetadataQuery mq) {
+        return cachedCost instanceof DetailedExpandCost
+                ? ((DetailedExpandCost) cachedCost).getExpandFilteringRows()
+                : super.estimateRowCount(mq);
     }
 }

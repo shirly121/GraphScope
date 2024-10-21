@@ -13,7 +13,7 @@ docker run --name dev -it --shm-size=4096m registry.cn-hongkong.aliyuncs.com/gra
 Please refer to [Dev Environment](../development/dev_guide.md#dev-environment) to find more options to get a dev environment.
 
 ## Build GIE with Vineyard Store on Local
-In [GIE standalone deployment](./deployment.md), we have instructed on how to deploy GIE in a Kubenetes cluster with Vineyard store. Here, we show how to develop and test GIE with vineyard store on a local machine.
+In [GIE standalone deployment](./deployment.md), we have instructed on how to deploy GIE in a Kubernetes cluster with Vineyard store. Here, we show how to develop and test GIE with vineyard store on a local machine.
 
 Clone the ``graphscope'' repo if you do not have it.
 ```bash
@@ -105,7 +105,6 @@ $GIE_TEST_HOME/bin/gaia_executor $GIE_TEST_HOME/conf/log4rs.yml $GIE_TEST_HOME/c
 ## Pegasus service config
 # a.k.a. thread num
 pegasus.worker.num = 1
-pegasus.timeout = 240000
 pegasus.batch.size = 1024
 pegasus.output.capacity = 16
 
@@ -126,6 +125,9 @@ neo4j.bolt.server.port = 7687
 # disable authentication if username or password is not set
 # auth.username = default
 # auth.password = default
+
+# set total execution time for a query
+query.execution.timeout.ms: 3000000
 ```
 
 6. Start the `frontend`:

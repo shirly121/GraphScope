@@ -17,12 +17,10 @@
 package com.alibaba.graphscope.cypher.antlr4;
 
 import com.alibaba.graphscope.common.ir.planner.rules.FilterMatchRule;
-import com.alibaba.graphscope.common.ir.planner.rules.NotMatchToAntiJoinRule;
 
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.rules.CoreRules;
-import org.apache.calcite.runtime.CalciteException;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -44,8 +42,8 @@ public class WhereTest {
                     + " person]}], alias=[c], opt=[END])\n"
                     + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
                     + " alias=[b], opt=[OUT])\n"
-                    + "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software,"
-                    + " person]}], alias=[a], opt=[VERTEX])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
                 where.explain().trim());
     }
@@ -60,9 +58,8 @@ public class WhereTest {
         Assert.assertEquals(
                 "GraphLogicalProject(a=[a], isAppend=[false])\n"
                     + "  GraphLogicalSource(tableConfig=[{isAll=true, tables=[software, person]}],"
-                    + " alias=[a], fusedFilter=[[AND(=(DEFAULT.name, _UTF-8'kli'),"
-                    + " OR(=(+(DEFAULT.age, 1), 29), =(DEFAULT.name, _UTF-8'marko')))]],"
-                    + " opt=[VERTEX])",
+                    + " alias=[a], fusedFilter=[[AND(=(_.name, _UTF-8'kli'), OR(=(+(_.age, 1), 29),"
+                    + " =(_.name, _UTF-8'marko')))]], opt=[VERTEX])",
                 where.explain().trim());
     }
 
@@ -73,9 +70,9 @@ public class WhereTest {
                         .build();
         Assert.assertEquals(
                 "GraphLogicalProject(n=[n], isAppend=[false])\n"
-                    + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
-                    + " alias=[n], fusedFilter=[[OR(=(DEFAULT.name, ?0), =(DEFAULT.name, ?1))]],"
-                    + " opt=[VERTEX])",
+                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                        + " alias=[n], fusedFilter=[[OR(=(_.name, ?0), =(_.name, ?1))]],"
+                        + " opt=[VERTEX])",
                 where.explain().trim());
     }
 
@@ -92,8 +89,8 @@ public class WhereTest {
                     + "    GraphLogicalSingleMatch(input=[null],"
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
                     + " alias=[m], opt=[OTHER])\n"
-                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[BOTH])\n"
+                    + "  GraphLogicalExpand(tableConfig=[{isAll=false, tables=[knows]}], alias=[_],"
+                    + " opt=[BOTH])\n"
                     + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
                     + " alias=[n], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
@@ -110,8 +107,8 @@ public class WhereTest {
         Assert.assertEquals(
                 "GraphLogicalProject(a=[a], isAppend=[false])\n"
                         + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
-                        + " alias=[a], fusedFilter=[[>(CASE(=(DEFAULT.name, _UTF-8'marko'), 1,"
-                        + " >(DEFAULT.age, 10), 2, 3), 2)]], opt=[VERTEX])",
+                        + " alias=[a], fusedFilter=[[>(CASE(=(_.name, _UTF-8'marko'), 1,"
+                        + " >(_.age, 10), 2, 3), 2)]], opt=[VERTEX])",
                 where.explain().trim());
     }
 
@@ -124,58 +121,29 @@ public class WhereTest {
                         .build();
         Assert.assertEquals(
                 "GraphLogicalProject(a=[a], b=[b], isAppend=[false])\n"
-                    + "  LogicalFilter(condition=[AND(NOT(=(a, b)), NOT(EXISTS({\n"
-                    + "GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}], alias=[b],"
-                    + " opt=[END])\n"
-                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
-                    + " alias=[a], opt=[VERTEX])\n"
-                    + "})))])\n"
-                    + "    GraphLogicalSingleMatch(input=[null],"
-                    + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
-                    + " alias=[b], opt=[END])\n"
-                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software, person]}],"
-                    + " alias=[DEFAULT], opt=[END])\n"
-                    + "      GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created,"
-                    + " knows]}], alias=[DEFAULT], opt=[OUT])\n"
-                    + "        GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
-                    + " alias=[a], opt=[VERTEX])\n"
-                    + "], matchOpt=[INNER])",
-                before.explain().trim());
-
-        RelOptPlanner planner =
-                com.alibaba.graphscope.common.ir.Utils.mockPlanner(
-                        NotMatchToAntiJoinRule.Config.DEFAULT);
-        planner.setRoot(before);
-        RelNode after = planner.findBestExp();
-        Assert.assertEquals(
-                "GraphLogicalProject(a=[a], b=[b], isAppend=[false])\n"
                     + "  LogicalFilter(condition=[<>(a, b)])\n"
                     + "    LogicalJoin(condition=[AND(=(a, a), =(b, b))], joinType=[anti])\n"
                     + "      GraphLogicalSingleMatch(input=[null],"
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
                     + " alias=[b], opt=[END])\n"
-                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software, person]}],"
-                    + " alias=[DEFAULT], opt=[END])\n"
-                    + "      GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created,"
-                    + " knows]}], alias=[DEFAULT], opt=[OUT])\n"
+                    + "  GraphLogicalExpand(tableConfig=[{isAll=false, tables=[knows]}], alias=[_],"
+                    + " opt=[OUT])\n"
+                    + "    GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[_], opt=[END])\n"
+                    + "      GraphLogicalExpand(tableConfig=[{isAll=false, tables=[knows]}],"
+                    + " alias=[_], opt=[OUT])\n"
                     + "        GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
                     + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])\n"
                     + "      GraphLogicalSingleMatch(input=[null],"
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[person]}],"
                     + " alias=[b], opt=[END])\n"
-                    + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
+                    + "  GraphLogicalExpand(tableConfig=[{isAll=false, tables=[knows]}], alias=[_],"
+                    + " opt=[OUT])\n"
                     + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
                     + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
-                after.explain().trim());
+                before.explain().trim());
     }
 
     // 'b is null' cannot be pushed down, for the conversion will change the semantics
@@ -193,9 +161,9 @@ public class WhereTest {
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software,"
                     + " person]}], alias=[b], opt=[END])\n"
                     + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software,"
-                    + " person]}], alias=[a], opt=[VERTEX])\n"
+                    + " alias=[_], opt=[OUT])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
                 multiMatch.explain().trim());
         RelOptPlanner optPlanner =
@@ -213,9 +181,9 @@ public class WhereTest {
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software,"
                     + " person]}], alias=[b], opt=[END])\n"
                     + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software,"
-                    + " person]}], alias=[a], opt=[VERTEX])\n"
+                    + " alias=[_], opt=[OUT])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
                 after.explain().trim());
     }
@@ -236,9 +204,9 @@ public class WhereTest {
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software,"
                     + " person]}], alias=[b], opt=[END])\n"
                     + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software,"
-                    + " person]}], alias=[a], opt=[VERTEX])\n"
+                    + " alias=[_], opt=[OUT])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
                 multiMatch.explain().trim());
 
@@ -255,11 +223,11 @@ public class WhereTest {
                     + " person]}], alias=[a], opt=[VERTEX])\n"
                     + "    GraphLogicalSingleMatch(input=[null],"
                     + " sentence=[GraphLogicalGetV(tableConfig=[{isAll=true, tables=[software,"
-                    + " person]}], alias=[b], fusedFilter=[[IS NOT NULL(DEFAULT)]], opt=[END])\n"
+                    + " person]}], alias=[b], fusedFilter=[[IS NOT NULL(_)]], opt=[END])\n"
                     + "  GraphLogicalExpand(tableConfig=[{isAll=true, tables=[created, knows]}],"
-                    + " alias=[DEFAULT], opt=[OUT])\n"
-                    + "    GraphLogicalSource(tableConfig=[{isAll=true, tables=[software,"
-                    + " person]}], alias=[a], opt=[VERTEX])\n"
+                    + " alias=[_], opt=[OUT])\n"
+                    + "    GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                    + " alias=[a], opt=[VERTEX])\n"
                     + "], matchOpt=[INNER])",
                 after.explain().trim());
     }
@@ -292,16 +260,26 @@ public class WhereTest {
                                             + " creationDate.month > 1990 and creationDate.day = 12"
                                             + " Return creationDate")
                             .build();
-        } catch (CalciteException e) {
+        } catch (Exception e) {
             Assert.assertTrue(
                     e.getMessage()
                             .contains(
-                                    "Cannot apply EXTRACT to arguments of type 'EXTRACT(<INTERVAL"
-                                        + " MONTH>, <CHAR(1)>)'. Supported form(s):"
-                                        + " 'EXTRACT(<DATETIME_INTERVAL>, <DATETIME_INTERVAL>)'\n"
-                                        + "'EXTRACT(<DATETIME_INTERVAL>, <DATETIME>)'"));
+                                    "invalid property lookup operation, cannot get property or"
+                                            + " extract interval from expr=[creationDate,"
+                                            + " type=CHAR(1)]"));
             return;
         }
         Assert.fail("should have thrown exceptions for property 'name' is not a date type");
+    }
+
+    @Test
+    public void where_11_test() {
+        // the condition is fused into source and identified as primary key filtering
+        RelNode where = Utils.eval("Match (a:person) Where elementId(a) = 2 Return a").build();
+        Assert.assertEquals(
+                "GraphLogicalProject(a=[a], isAppend=[false])\n"
+                        + "  GraphLogicalSource(tableConfig=[{isAll=false, tables=[person]}],"
+                        + " alias=[a], opt=[VERTEX], uniqueKeyFilters=[=(_.~id, 2)])",
+                where.explain().trim());
     }
 }

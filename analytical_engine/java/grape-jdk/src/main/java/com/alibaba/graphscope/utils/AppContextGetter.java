@@ -97,7 +97,7 @@ public class AppContextGetter {
      */
     public static String getDefaultContextName(Class<? extends DefaultAppBase> appClass) {
         // There is a special case: GiraphComputation, which is a driver, since ctx type is
-        // not specified at compile time, so it is not possible to retrive in a normal way.
+        // not specified at compile time, so it is not possible to retrieve in a normal way.
         if (appClass.getName().equals("com.alibaba.graphscope.app.GiraphComputationAdaptor")) {
             return "com.alibaba.graphscope.context.GiraphComputationAdaptorContext";
         }
@@ -126,7 +126,7 @@ public class AppContextGetter {
      * For parallel property app ,the index of context type in template is 1.
      *
      * @param appClass user-defined app class object.
-     * @return the corrsponding class name.
+     * @return the corresponding class name.
      */
     public static String getParallelPropertyContextName(
             Class<? extends ParallelPropertyAppBase> appClass) {
@@ -172,12 +172,16 @@ public class AppContextGetter {
     public static String getLabeledVertexDataContextDataType(LabeledVertexDataContext ctxObj) {
         Class<? extends LabeledVertexDataContext> ctxClass = ctxObj.getClass();
         Class<?> ret = getBaseClassTemplateType(ctxClass, 1);
-        if (ret.getName() == "java.lang.Double") {
+        if (ret.getName().equals("java.lang.Double")) {
             return "double";
-        } else if (ret.getName() == "java.lang.Integer") {
+        } else if (ret.getName().equals("java.lang.Integer")) {
             return "uint32_t";
-        } else if (ret.getName() == "java.lang.Long") {
+        } else if (ret.getName().equals("java.lang.Long")) {
             return "uint64_t";
+        } else if (ret.getName().equals("com.alibaba.graphscope.ds.StringView")
+                || ret.getName().equals("java.lang.String")
+                || ret.getName().equals("com.alibaba.graphscope.stdcxx.StdString")) {
+            return "std::string";
         }
         return null;
     }
@@ -194,12 +198,16 @@ public class AppContextGetter {
             logger.info("vertex data context class: " + ret.getName());
         }
 
-        if (ret.getName() == "java.lang.Double") {
+        if (ret.getName().equals("java.lang.Double")) {
             return "double";
-        } else if (ret.getName() == "java.lang.Integer") {
+        } else if (ret.getName().equals("java.lang.Integer")) {
             return "int32_t";
-        } else if (ret.getName() == "java.lang.Long") {
+        } else if (ret.getName().equals("java.lang.Long")) {
             return "int64_t";
+        } else if (ret.getName().equals("com.alibaba.graphscope.ds.StringView")
+                || ret.getName().equals("java.lang.String")
+                || ret.getName().equals("com.alibaba.graphscope.stdcxx.StdString")) {
+            return "std::string";
         }
         return null;
     }

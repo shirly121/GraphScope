@@ -76,12 +76,40 @@ function find_resources(){
   #fi
 }
 
+# Generate a yaml contains the metadata about the c++ procedure
+generate_cpp_yaml() {
+  if [ $# -ne 5 ]; then
+    echo "Usage: generate_cpp_yaml <procedure_name> <procedure_description> <output_so_name> <procedure_query_string> <output_yaml_file>"
+    echo " but receive: "$#
+    exit 1
+  fi
+  local procedure_name=$1
+  local procedure_description=$2
+  local output_so_name=$3
+  local procedure_query=$4
+  local output_yaml_file=$5
+  local template_str="""
+name: ${procedure_name}
+description: \"${procedure_description}\"
+library: ${output_so_name}
+type: cpp
+query: |
+  """
+  # for each line in procedure_query, add 2 spaces
+  while IFS= read -r line; do
+    # add newline after each line
+    template_str="${template_str}  ${line}\n"
+  done <<< "'${procedure_query}'"
+  echo "${template_str}" > ${output_yaml_file}
+  info "Generate yaml file to ${output_yaml_file}"
+}
+
 
 cypher_to_plan() {
-  if [ $# -ne 8 ]; then
+  if [ $# -lt 8 ] || [ $# -gt 9 ]; then
     echo "Usage: cypher_to_plan <query_name> <input_file> <output_plan file>"
     echo "                      <output_yaml_file> <ir_compiler_properties> <graph_schema_path>"
-    echo "                      <procedure_name> <procedure_description>" 
+    echo "                      <procedure_name> <procedure_description> [statistic_path]" 
     echo " but receive: "$#
     exit 1
   fi
@@ -95,6 +123,11 @@ cypher_to_plan() {
   # get procedure_name and procedure_description
   procedure_name=$7
   procedure_description=$8
+  if [ $# -eq 9 ]; then
+    statistic_path=$9
+  else
+    statistic_path=""
+  fi
 
   # find java executable
   info "IR compiler properties = ${ir_compiler_properties}"
@@ -133,15 +166,22 @@ cypher_to_plan() {
     err "Compiler jar = ${COMPILER_JAR} not exists."
     exit 1
   fi
-  # add extrac_key_value_config
-  extra_config="name:${procedure_name}"
-  extra_config="${extra_config},description:${procedure_description}"
+  # dump extra_key_value_config to a temp yaml, containing the extra config
+  extra_arg_config_file="${real_output_yaml}_extra_config.yaml"
+  cat <<EOM > ${extra_arg_config_file}
+name: ${procedure_name}
+description: "${procedure_description}"
+type: cypher
+EOM
 
   cmd="java -cp ${COMPILER_LIB_DIR}/*:${COMPILER_JAR}"
   cmd="${cmd} -Dgraph.schema=${graph_schema_path}"
   cmd="${cmd} -Djna.library.path=${IR_CORE_LIB_DIR}"
-  cmd="${cmd} com.alibaba.graphscope.common.ir.tools.GraphPlanner ${ir_compiler_properties} ${real_input_path} ${real_output_path} ${real_output_yaml} '${extra_config}'"
-  info "running physical plan genration with ${cmd}"
+  if [ ! -z ${statistic_path} ]; then
+    cmd="${cmd} -Dgraph.statistics=${statistic_path}"
+  fi
+  cmd="${cmd} com.alibaba.graphscope.common.ir.tools.GraphPlanner ${ir_compiler_properties} ${real_input_path} ${real_output_path} ${real_output_yaml} ${extra_arg_config_file}"
+  info "running physical plan generation with ${cmd}"
   eval ${cmd}
 
   info "---------------------------"
@@ -160,9 +200,9 @@ cypher_to_plan() {
 
 compile_hqps_so() {
   #check input params size eq 2 or 3
-  if [ $# -gt 7 ] || [ $# -lt 4 ]; then
+  if [ $# -gt 8 ] || [ $# -lt 4 ]; then
     echo "Usage: $0 <input_file> <work_dir> <ir_compiler_properties_file>  <graph_schema_file> "
-    echo "          [output_dir] [stored_procedure_name] [stored_procedure_description]"
+    echo "          [statistic_path] [output_dir] [stored_procedure_name] [stored_procedure_description]"
     exit 1
   fi
   input_path=$1
@@ -187,6 +227,12 @@ compile_hqps_so() {
     procedure_description=""
   fi
 
+  if [ $# -ge 8 ]; then
+    statistic_path=$8
+  else
+    statistic_path=""
+  fi
+
   info "Input path = ${input_path}"
   info "Work dir = ${work_dir}"
   info "ir compiler properties = ${ir_compiler_properties}"
@@ -194,10 +240,11 @@ compile_hqps_so() {
   info "Output dir = ${output_dir}"
   info "Procedure name = ${procedure_name}"
   info "Procedure description = ${procedure_description}"
+  info "Statistic path = ${statistic_path}"
 
   last_file_name=$(basename ${input_path})
 
-  # requiest last_file_name suffix is .pb
+  # request last_file_name suffix is .pb
   if [[ $last_file_name == *.pb ]]; then
     query_name="${last_file_name%.pb}"
   elif [[ $last_file_name == *.cc ]]; then
@@ -222,10 +269,14 @@ compile_hqps_so() {
   dst_yaml_path="${output_dir}/${procedure_name}.yaml"
   if [[ $(uname) == "Linux" ]]; then
     output_so_path="${cur_dir}/lib${procedure_name}.so"
+    output_yaml_path="${cur_dir}/${procedure_name}.yaml"
     dst_so_path="${output_dir}/lib${procedure_name}.so"
+    dst_so_name="lib${procedure_name}.so"
   elif [[ $(uname) == "Darwin" ]]; then
     output_so_path="${cur_dir}/lib${procedure_name}.dylib"
+    output_yaml_path="${cur_dir}/${procedure_name}.yaml"
     dst_so_path="${output_dir}/lib${procedure_name}.dylib"
+    dst_so_name="lib${procedure_name}.dylib"
   else
     err "Not support OS."
     exit 1
@@ -233,7 +284,7 @@ compile_hqps_so() {
 
   #only do codegen when receives a .pb file.
   if [[ $last_file_name == *.pb ]]; then
-    cmd="${CODEGEN_RUNNER} -e hqps -i ${input_path} -o ${output_cc_path}"
+    cmd="${CODEGEN_RUNNER} -e hqps -i ${input_path} -o ${output_cc_path} -g ${graph_schema_path}"
     info "Codegen command = ${cmd}"
     eval ${cmd}
     info "----------------------------"
@@ -241,20 +292,28 @@ compile_hqps_so() {
     info "Generating code from cypher query, procedure name: ${procedure_name}, description: ${procedure_description}"
     # first do .cypher to .pb
     output_pb_path="${cur_dir}/${procedure_name}.pb"
-    output_yaml_path="${cur_dir}/${procedure_name}.yaml"
     cypher_to_plan ${procedure_name} ${input_path} ${output_pb_path} \
       ${output_yaml_path} ${ir_compiler_properties} ${graph_schema_path} \
-      ${procedure_name} "${procedure_description}"
+      ${procedure_name} "${procedure_description}" ${statistic_path}
 
     info "----------------------------"
     info "Codegen from cypher query done."
     info "----------------------------"
-    cmd="${CODEGEN_RUNNER} -e hqps -i ${output_pb_path} -o ${output_cc_path}"
+    cmd="${CODEGEN_RUNNER} -e hqps -i ${output_pb_path} -o ${output_cc_path} -g ${graph_schema_path}"
     info "Codegen command = ${cmd}"
     eval ${cmd}
     # then. do .pb to .cc
   elif [[ $last_file_name == *.cc ]]; then
-    cp $input_path ${output_cc_path}
+    # read the input_path into a long string into procedure_query_str
+    procedure_query_str=$(cat ${input_path})
+    echo "Procedure query string: ${procedure_query_str}"
+    # Generate the .yaml file
+    echo "Generating yaml file for ${procedure_name}, description: ${procedure_description}"
+    generate_cpp_yaml ${procedure_name} "${procedure_description}" ${dst_so_name} "${procedure_query_str}" ${output_yaml_path}
+    # copy if path is not equal
+    if [ ${input_path} != ${output_cc_path} ]; then
+      cp $input_path ${output_cc_path}
+    fi
   fi
   info "Start running cmake and make"
   #check output_cc_path exists
@@ -267,7 +326,7 @@ compile_hqps_so() {
   cp ${CMAKE_TEMPLATE_PATH} ${cur_dir}/CMakeLists.txt
   # run cmake and make in output path.
   pushd ${cur_dir}
-  cmd="cmake . -DQUERY_NAME=${query_name} -DFLEX_INCLUDE_PREFIX=${FLEX_INCLUDE_PREFIX}"
+  cmd="cmake . -DQUERY_NAME=${procedure_name} -DFLEX_INCLUDE_PREFIX=${FLEX_INCLUDE_PREFIX}"
   # if CMAKE_CXX_COMPILER is set, use it.
   if [ ! -z ${CMAKE_CXX_COMPILER} ]; then
     cmd="${cmd} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
@@ -276,7 +335,7 @@ compile_hqps_so() {
   if [ ! -z ${CMAKE_C_COMPILER} ]; then
     cmd="${cmd} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
   fi
-  info "Cmake command = ${cmd}"
+  info "CMake command = ${cmd}"
   info "---------------------------"
   eval ${cmd}
 
@@ -301,23 +360,28 @@ compile_hqps_so() {
   info "Finish building, output to ${output_so_path}"
   popd
 
+  # strip the output_so_path
+  strip ${output_so_path}
+  # clean the cmake directory, the cmake files may take up a lot of space
+  cmd="rm -rf ${cur_dir}/CMakeFiles"
+  eval ${cmd}
+
   ################### now copy ##########################
   # if dst_so_path eq output_so_path, skip copying.
-  if [ ${dst_so_path} == ${output_so_path} ]; then
+  if [[ ${dst_so_path} == ${output_so_path} ]]; then
     info "Output dir is same as work dir, skip copying."
     exit 0
   fi
   # copy output to output_dir
-  if [ ! -z ${output_dir} ]; then
+  if [[ ! -z ${output_dir} ]]; then
     mkdir -p ${output_dir}
   else
     info "Output dir not set, skip copying."
     exit 0
   fi
   # check output_dir doesn't contains output_so_name
-  if [ -f ${dst_so_path} ]; then
-    err "Output dir ${output_dir} already contains ${procedure_name}.so, please remove it first."
-    exit 1
+  if [[ -f ${dst_so_path} ]]; then
+    emph "Output dir ${output_dir} already contains ${procedure_name}.so,overriding it."
   fi
   cp ${output_so_path} ${output_dir}
   #check dst_so_path exists
@@ -326,12 +390,18 @@ compile_hqps_so() {
     exit 1
   fi
   # copy the generated yaml
-  cp ${output_yaml_path} ${output_dir}
-  if [ ! -f ${dst_yaml_path} ]; then
-    err "Copy failed, ${dst_yaml_path} not exists."
+  if [ ! -z ${output_yaml_path} ]; then
+    cp ${output_yaml_path} ${output_dir}
+    if [ ! -f ${dst_yaml_path} ]; then
+      err "Copy failed, ${dst_yaml_path} not exists."
+      exit 1
+    fi
+    info "Generate yaml file to ${dst_yaml_path}"
+  else
+    err "No yaml file generated."
     exit 1
   fi
-  info "Finish copying, output to ${dst_so_path}"
+  info "Finish compiling and copying, output to ${dst_so_path}"
 }
 
 compile_pegasus_so() {
@@ -359,7 +429,7 @@ compile_pegasus_so() {
   last_file_name=$(basename ${input_path})
 
   info "last file name: ${last_file_name}"
-  # requiest last_file_name suffix is .pb
+  # request last_file_name suffix is .pb
   if [[ $last_file_name == *.pb ]]; then
     query_name="${last_file_name%.pb}"
     info "File has .pb suffix."
@@ -438,8 +508,7 @@ compile_pegasus_so() {
   fi
   # check output_dir doesn't contains output_so_name
   if [ -f ${dst_so_path} ]; then
-    err "Output dir ${output_dir} already contains ${query_name}.so, please remove it first."
-    exit 1
+    err "Output dir ${output_dir} already contains ${query_name}.so, overriding it."
   fi
   cp ${output_so_path} ${output_dir}
   #check dst_so_path exists
@@ -500,6 +569,10 @@ run() {
       PROCEDURE_DESCRIPTION="${i#*=}"
       shift # past argument=value
       ;;
+    --statistic_path=*)
+      STATISTIC_PATH="${i#*=}"
+      shift # past argument=value
+      ;;
     -* | --*)
       err "Unknown option $i"
       exit 1
@@ -517,6 +590,7 @@ run() {
   echo "Output path            ="${OUTPUT_DIR}
   echo "Procedure name         ="${PROCEDURE_NAME}
   echo "Procedure description  ="${PROCEDURE_DESCRIPTION}
+  echo "Statistic path         ="${STATISTIC_PATH}
 
   find_resources
 
@@ -534,8 +608,15 @@ run() {
   if [ ${ENGINE_TYPE} == "hqps" ]; then
     echo "Engine type is hqps, generating dynamic library for hqps engine."
     # if PROCEDURE_DESCRIPTION is not set, use empty string
-    if [ -z ${PROCEDURE_DESCRIPTION} ]; then
+    if [ -z "${PROCEDURE_DESCRIPTION}" ]; then
       PROCEDURE_DESCRIPTION="Automatic generated description for stored procedure ${PROCEDURE_NAME}."
+    else
+      # assume is a file, read the content
+      if [ -f ${PROCEDURE_DESCRIPTION} ]; then
+        PROCEDURE_DESCRIPTION=$(cat ${PROCEDURE_DESCRIPTION})
+      else
+        PROCEDURE_DESCRIPTION="Automatic generated description for stored procedure ${PROCEDURE_NAME}."
+      fi
     fi
     # if PROCEDURE_NAME is not set, use input file name
     if [ -z "${PROCEDURE_NAME}" ]; then
@@ -544,7 +625,7 @@ run() {
       PROCEDURE_NAME="${PROCEDURE_NAME%.cc}"
       PROCEDURE_NAME="${PROCEDURE_NAME%.pb}"
     fi
-    compile_hqps_so ${INPUT} ${WORK_DIR} ${IR_CONF} ${GRAPH_SCHEMA_PATH} ${OUTPUT_DIR} ${PROCEDURE_NAME} "${PROCEDURE_DESCRIPTION}"
+    compile_hqps_so ${INPUT} ${WORK_DIR} ${IR_CONF} ${GRAPH_SCHEMA_PATH} ${OUTPUT_DIR} ${PROCEDURE_NAME} "${PROCEDURE_DESCRIPTION}" ${STATISTIC_PATH}
 
   # else if engine_type equals pegasus
   elif [ ${ENGINE_TYPE} == "pegasus" ]; then

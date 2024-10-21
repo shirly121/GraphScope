@@ -16,16 +16,16 @@ package com.alibaba.graphscope.groot.discovery;
 import com.alibaba.graphscope.groot.common.RoleType;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.exception.UnsupportedOperationException;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 public class LocalNodeProvider implements Function<Integer, GrootNode> {
 
-    private Configs configs;
-    private RoleType roleType;
-    private AtomicReference<GrootNode> localNodeRef = new AtomicReference<>();
+    private final Configs configs;
+    private final RoleType roleType;
+    private final AtomicReference<GrootNode> localNodeRef = new AtomicReference<>();
 
     public LocalNodeProvider(Configs configs) {
         this(RoleType.fromName(CommonConfig.ROLE_NAME.get(configs)), configs);
@@ -43,7 +43,7 @@ public class LocalNodeProvider implements Function<Integer, GrootNode> {
                         null, GrootNode.createGraphNode(roleType, configs, port));
         if (!suc) {
             if (!CommonConfig.DISCOVERY_MODE.get(this.configs).equalsIgnoreCase("file")) {
-                throw new GrootException("localNode can only be set once");
+                throw new UnsupportedOperationException("localNode can only be set once");
             }
         }
         return localNodeRef.get();

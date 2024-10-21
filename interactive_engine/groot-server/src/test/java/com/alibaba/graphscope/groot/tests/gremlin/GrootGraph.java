@@ -17,8 +17,9 @@ import com.alibaba.graphscope.gremlin.integration.graph.RemoteTestGraph;
 import com.alibaba.graphscope.gremlin.plugin.traversal.IrCustomizedTraversalSource;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
-import com.alibaba.graphscope.groot.common.config.GremlinConfig;
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.config.FrontendConfig;
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
+import com.alibaba.graphscope.groot.common.exception.UnsupportedOperationException;
 import com.alibaba.graphscope.groot.sdk.GrootClient;
 import com.alibaba.graphscope.groot.sdk.schema.Edge;
 import com.alibaba.graphscope.groot.sdk.schema.Vertex;
@@ -72,13 +73,13 @@ public class GrootGraph extends RemoteTestGraph {
             // This is to ensure the frontend can communicate some RPC after start, to make the
             // graphdef not null anymore, in snapshotCache.
             Thread.sleep(3000);
-            int port = GremlinConfig.GREMLIN_PORT.get(configs);
+            int port = FrontendConfig.GREMLIN_SERVER_PORT.get(configs);
             this.cluster = createCluster("localhost", port);
             this.ddlClient = GrootClient.newBuilder().addHost("localhost", 55556).build();
             this.remoteConnection = DriverRemoteConnection.using(cluster);
         } catch (Throwable e) {
             this.closeGraph();
-            throw new GrootException(e);
+            throw new InvalidArgumentException(e);
         }
     }
 
@@ -126,7 +127,7 @@ public class GrootGraph extends RemoteTestGraph {
                                 .getResource(schemaResource)
                                 .toURI());
         String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-        this.ddlClient.loadJsonSchema(json);
+        this.ddlClient.loadSchema(json);
     }
 
     public void loadData(LoadGraphWith.GraphData graphData) throws InterruptedException {

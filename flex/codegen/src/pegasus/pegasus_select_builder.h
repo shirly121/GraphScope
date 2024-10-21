@@ -67,7 +67,7 @@ class SelectOpBuilder {
     for (auto i : case_exprs) {
       vars_code += i;
     }
-    for (auto i = 0; i < var_names.size(); i++) {
+    for (size_t i = 0; i < var_names.size(); i++) {
       int32_t input_index;
       std::pair<int32_t, std::vector<int32_t>> input_type;
       VLOG(10) << "Input tag is " << var_tags[i];
@@ -102,13 +102,13 @@ class SelectOpBuilder {
               "let vertex_label = LDBCVertexParser::<usize>::get_label_id(i%1% "
               "as usize);\n"
               "let %2% = \n"
-              "%3%"  // get property for differen labels
+              "%3%"  // get property for different labels
               "else {\n"
               "panic!(\"Unexpected label: {}\", vertex_label)"
               "}\n");
 
           std::string condition_code;
-          for (auto j = 0; j < input_type.second.size(); j++) {
+          for (size_t j = 0; j < input_type.second.size(); j++) {
             boost::format condition_fmter(
                 "if vertex_label == %1% {\n"
                 "%2%[vertex_id]\n"

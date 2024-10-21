@@ -251,7 +251,7 @@ impl LogicalPlan {
                         let node_parent_children_len = node_parent.borrow().children.len();
                         node_flow += node_parent_flow / (node_parent_children_len as u64);
                     } else {
-                        // If one of current node's parent's flow is still not avaliable, it sugguests that
+                        // If one of current node's parent's flow is still not avaliable, it suggests that
                         // it is too early to get current node's flow
                         // Therefore, we delay the current node's flow computation by adding it to the queue again
                         // and jump to the next iteration
@@ -484,7 +484,7 @@ impl LogicalPlan {
         self.meta.set_curr_node(new_curr_node);
         // Configure `NodeMeta` for current node
         let _ = self.meta.curr_node_meta_mut();
-        // By default, refer to the nodes that the the parent nodes refer to
+        // By default, refer to the nodes that the parent nodes refer to
         // Certain operators will modify the referred nodes during preprocessing, including
         // Scan, EdgeExpand, PathExpand, GetV, Apply and Project
         let ref_parent_nodes = self.meta.get_referred_nodes(&parent_ids);
@@ -833,11 +833,9 @@ fn check_primary_key_from_pb(
 /// To optimize a triplet predicate of <pk, cmp, val> into an `IndexPredicate`.
 /// Notice that multiple tables allowed. If the tables have the same pk, it can be optimized into one `IndexPredicate`.
 fn triplet_to_index_predicate(
-    operators: &[common_pb::ExprOpr], tables: &Vec<common_pb::NameOrId>, is_vertex: bool, meta: &StoreMeta,
+    expr: &mut common_pb::Expression, tables: &Vec<common_pb::NameOrId>, is_vertex: bool, meta: &StoreMeta,
 ) -> IrResult<Option<pb::IndexPredicate>> {
-    if operators.len() != 3 {
-        return Ok(None);
-    }
+    let operators = expr.operators.as_slice();
     if meta.schema.is_none() {
         return Ok(None);
     }
@@ -848,40 +846,50 @@ fn triplet_to_index_predicate(
     let mut key = None;
     let mut is_eq = false;
     let mut is_within = false;
-    if let Some(item) = &operators.get(0).unwrap().item {
-        match item {
-            common_pb::expr_opr::Item::Var(var) => {
-                if let Some(property) = &var.property {
-                    if let Some(item) = &property.item {
-                        match item {
-                            common_pb::property::Item::Key(col) => {
-                                let mut is_pk = true;
-                                for table in tables {
-                                    let (is_pk_, num_pks) =
-                                        check_primary_key_from_pb(schema, table, col, is_vertex);
-                                    if !is_pk_ || num_pks != 1 {
-                                        is_pk = false;
+    let size = expr.operators.len();
+    let mut pk_var_idx = 0;
+    for idx in 0..size {
+        if let Some(item) = &operators.get(idx).unwrap().item {
+            match item {
+                common_pb::expr_opr::Item::Var(var) => {
+                    if let Some(property) = &var.property {
+                        if let Some(item) = &property.item {
+                            match item {
+                                common_pb::property::Item::Key(col) => {
+                                    let mut is_pk = true;
+                                    for table in tables {
+                                        let (is_pk_, num_pks) =
+                                            check_primary_key_from_pb(schema, table, col, is_vertex);
+                                        if !is_pk_ || num_pks != 1 {
+                                            is_pk = false;
+                                            break;
+                                        }
+                                    }
+                                    if is_pk {
+                                        key = Some(property.clone());
+                                        pk_var_idx = idx;
                                         break;
                                     }
                                 }
-                                if is_pk {
-                                    key = Some(property.clone());
-                                }
+                                _ => { /*do nothing*/ }
                             }
-                            _ => { /*do nothing*/ }
                         }
                     }
                 }
+                _ => { /*do nothing*/ }
             }
-            _ => { /*do nothing*/ }
         }
-    };
+    }
 
     if key.is_none() {
         return Ok(None);
     }
 
-    if let Some(item) = &operators.get(1).unwrap().item {
+    if operators.len() < pk_var_idx + 2 {
+        return Ok(None);
+    }
+
+    if let Some(item) = &operators.get(pk_var_idx + 1).unwrap().item {
         match item {
             common_pb::expr_opr::Item::Logical(l) => {
                 if *l == 0 {
@@ -900,75 +908,74 @@ fn triplet_to_index_predicate(
         return Ok(None);
     }
 
-    if let Some(item) = &operators.get(2).unwrap().item {
+    let mut idx_pred = None;
+    if let Some(item) = &operators.get(pk_var_idx + 2).unwrap().item {
         match item {
             common_pb::expr_opr::Item::Const(c) => {
                 if is_within {
-                    let or_predicates = match c.item.clone().unwrap() {
-                        common_pb::value::Item::I32Array(array) => array
-                            .item
-                            .into_iter()
-                            .map(|val| build_and_predicate(key.clone(), val.into()))
-                            .collect(),
-                        common_pb::value::Item::I64Array(array) => array
-                            .item
-                            .into_iter()
-                            .map(|val| build_and_predicate(key.clone(), val.into()))
-                            .collect(),
-                        common_pb::value::Item::F64Array(array) => array
-                            .item
-                            .into_iter()
-                            .map(|val| build_and_predicate(key.clone(), val.into()))
-                            .collect(),
-                        common_pb::value::Item::StrArray(array) => array
-                            .item
-                            .into_iter()
-                            .map(|val| build_and_predicate(key.clone(), val.into()))
-                            .collect(),
-                        _ => Err(IrError::Unsupported(format!(
-                            "unsupported value type for within: {:?}",
-                            c
-                        )))?,
-                    };
-                    return Ok(Some(pb::IndexPredicate { or_predicates }));
+                    idx_pred = Some(pb::IndexPredicate {
+                        or_predicates: vec![build_and_predicate(
+                            key,
+                            c.clone(),
+                            common_pb::Logical::Within,
+                        )],
+                    });
                 } else {
-                    let idx_pred =
-                        pb::IndexPredicate { or_predicates: vec![build_and_predicate(key, c.clone())] };
-                    return Ok(Some(idx_pred));
+                    idx_pred = Some(pb::IndexPredicate {
+                        or_predicates: vec![build_and_predicate(key, c.clone(), common_pb::Logical::Eq)],
+                    });
                 }
             }
 
             common_pb::expr_opr::Item::Param(param) => {
-                let idx_pred = pb::IndexPredicate {
+                idx_pred = Some(pb::IndexPredicate {
                     or_predicates: vec![pb::index_predicate::AndPredicate {
                         predicates: vec![pb::index_predicate::Triplet {
                             key,
                             value: Some(param.clone().into()),
-                            cmp: None,
+                            cmp: if is_within {
+                                unsafe { std::mem::transmute(common_pb::Logical::Within) }
+                            } else {
+                                unsafe { std::mem::transmute(common_pb::Logical::Eq) }
+                            },
                         }],
                     }],
-                };
-
-                return Ok(Some(idx_pred));
+                });
             }
             _ => { /*do nothing*/ }
         }
     }
 
-    Ok(None)
+    if idx_pred.is_some() {
+        // process the original expr by removing the triplet
+        expr.operators.drain(pk_var_idx..pk_var_idx + 3);
+        // if has other expr oprs, use a 'true' to replace the index triplet
+        if expr.operators.len() > 0 {
+            expr.operators.insert(
+                pk_var_idx,
+                common_pb::ExprOpr {
+                    item: Some(common_pb::expr_opr::Item::Const(common_pb::Value {
+                        item: Some(common_pb::value::Item::Boolean(true)),
+                    })),
+                    node_type: None,
+                },
+            );
+        }
+    }
+    Ok(idx_pred)
 }
 
 fn build_and_predicate(
-    key: Option<common_pb::Property>, value: common_pb::Value,
+    key: Option<common_pb::Property>, value: common_pb::Value, cmp: common_pb::Logical,
 ) -> pb::index_predicate::AndPredicate {
     pb::index_predicate::AndPredicate {
-        predicates: vec![pb::index_predicate::Triplet { key, value: Some(value.into()), cmp: None }],
+        predicates: vec![pb::index_predicate::Triplet { key, value: Some(value.into()), cmp: cmp as i32 }],
     }
 }
 
 fn get_table_id_from_pb(schema: &Schema, name: &common_pb::NameOrId) -> Option<KeyId> {
     name.item.as_ref().and_then(|item| match item {
-        common_pb::name_or_id::Item::Name(name) => schema.get_table_id(name),
+        common_pb::name_or_id::Item::Name(name) => schema.get_entity_or_relation_id(name),
         common_pb::name_or_id::Item::Id(id) => Some(*id),
     })
 }
@@ -1027,7 +1034,7 @@ fn preprocess_label(
                     common_pb::value::Item::Str(name) => {
                         let new_item = common_pb::value::Item::I32(
                             schema
-                                .get_table_id(name)
+                                .get_entity_or_relation_id(name)
                                 .ok_or_else(|| IrError::TableNotExist(NameOrId::Str(name.to_string())))?,
                         );
                         debug!("table: {:?} -> {:?}", item, new_item);
@@ -1039,9 +1046,11 @@ fn preprocess_label(
                                 .item
                                 .iter()
                                 .map(|name| {
-                                    schema.get_table_id(name).ok_or_else(|| {
-                                        IrError::TableNotExist(NameOrId::Str(name.to_string()))
-                                    })
+                                    schema
+                                        .get_entity_or_relation_id(name)
+                                        .ok_or_else(|| {
+                                            IrError::TableNotExist(NameOrId::Str(name.to_string()))
+                                        })
                                 })
                                 .collect::<IrResult<Vec<_>>>()?,
                         });
@@ -1101,7 +1110,17 @@ fn preprocess_expression(
                 common_pb::expr_opr::Item::Map(key_values) => {
                     for key_val in &mut key_values.key_vals {
                         if let Some(value) = key_val.value.as_mut() {
-                            preprocess_var(value, meta, plan_meta, false)?;
+                            match value {
+                                common_pb::variable_key_value::Value::Val(val) => {
+                                    preprocess_var(val, meta, plan_meta, false)?;
+                                }
+                                common_pb::variable_key_value::Value::Nested(_) => {
+                                    return Err(IrError::Unsupported("nested value in Map".to_string()));
+                                }
+                                common_pb::variable_key_value::Value::PathFunc(_) => {
+                                    return Err(IrError::Unsupported("PathFunc in Map".to_string()));
+                                }
+                            }
                         }
                     }
                     count = 0;
@@ -1285,16 +1304,14 @@ impl AsLogical for pb::Scan {
         }
         if let Some(params) = self.params.as_mut() {
             if self.idx_predicate.is_none() {
-                if let Some(expr) = &params.predicate {
-                    let idx_pred = triplet_to_index_predicate(
-                        expr.operators.as_slice(),
-                        &params.tables,
-                        self.scan_opt != 1,
-                        meta,
-                    )?;
+                if let Some(expr) = params.predicate.as_mut() {
+                    let idx_pred =
+                        triplet_to_index_predicate(expr, &params.tables, self.scan_opt != 1, meta)?;
 
                     if idx_pred.is_some() {
-                        params.predicate = None;
+                        if expr.operators.is_empty() {
+                            params.predicate = None;
+                        }
                         self.idx_predicate = idx_pred;
                     }
                 }
@@ -1477,7 +1494,13 @@ fn is_whole_graph(operator: &pb::logical_plan::Operator) -> bool {
                     && scan
                         .params
                         .as_ref()
-                        .map(|params| !params.is_queryable() && is_params_all_labels(params))
+                        .map(|params| {
+                            !(params.has_columns()
+                                || params.has_predicates()
+                                || params.has_sample()
+                                || params.has_limit())
+                                && is_params_all_labels(params)
+                        })
                         .unwrap_or(true)
             }
             pb::logical_plan::operator::Opr::Root(_) => true,
@@ -1496,7 +1519,7 @@ fn is_params_all_labels(params: &pb::QueryParams) -> bool {
             .as_ref()
             .and_then(|store_meta| store_meta.schema.as_ref())
         {
-            let params_label_ids: BTreeSet<LabelId> = params
+            let mut params_label_ids: Vec<LabelId> = params
                 .tables
                 .iter()
                 .filter_map(|name_or_id| {
@@ -1509,11 +1532,11 @@ fn is_params_all_labels(params: &pb::QueryParams) -> bool {
                     }
                 })
                 .collect();
-            let meta_label_ids: BTreeSet<LabelId> = schema
-                .entity_labels_iter()
-                .map(|(_, label_id)| label_id)
-                .collect();
-            params_label_ids.eq(&meta_label_ids)
+
+            params_label_ids.sort();
+            params_label_ids.dedup();
+
+            schema.check_all_entity_labels(&params_label_ids)
         } else {
             false
         }
@@ -2229,7 +2252,7 @@ mod test {
                             item: Some(common_pb::property::Item::Key("name".into())),
                         }),
                         value: Some("John".to_string().into()),
-                        cmp: None,
+                        cmp: common_pb::Logical::Eq as i32,
                     }]
                 }]
             }
@@ -2276,7 +2299,7 @@ mod test {
                             item: Some(common_pb::property::Item::Key("name".into())),
                         }),
                         value: Some("John".to_string().into()),
-                        cmp: None,
+                        cmp: common_pb::Logical::Eq as i32,
                     }]
                 }]
             }
@@ -2332,7 +2355,7 @@ mod test {
                             item: Some(common_pb::property::Item::Key("name".into())),
                         }),
                         value: Some(dyn_param.into()),
-                        cmp: None,
+                        cmp: common_pb::Logical::Eq as i32,
                     }]
                 }]
             }
@@ -2372,29 +2395,146 @@ mod test {
         assert_eq!(
             scan.idx_predicate.unwrap(),
             pb::IndexPredicate {
-                or_predicates: vec![
-                    pb::index_predicate::AndPredicate {
-                        predicates: vec![pb::index_predicate::Triplet {
-                            key: Some(common_pb::Property {
-                                item: Some(common_pb::property::Item::Key("name".into())),
-                            }),
-                            value: Some("John".to_string().into()),
-                            cmp: None,
-                        }]
-                    },
-                    pb::index_predicate::AndPredicate {
-                        predicates: vec![pb::index_predicate::Triplet {
-                            key: Some(common_pb::Property {
-                                item: Some(common_pb::property::Item::Key("name".into())),
-                            }),
-                            value: Some("Josh".to_string().into()),
-                            cmp: None,
-                        }]
-                    }
-                ]
+                or_predicates: vec![pb::index_predicate::AndPredicate {
+                    predicates: vec![pb::index_predicate::Triplet {
+                        key: Some(common_pb::Property {
+                            item: Some(common_pb::property::Item::Key("name".into())),
+                        }),
+                        value: Some(
+                            common_pb::Value {
+                                item: Some(common_pb::value::Item::StrArray(common_pb::StringArray {
+                                    item: vec!["John".to_string(), "Josh".to_string()].into(),
+                                })),
+                            }
+                            .into()
+                        ),
+                        cmp: common_pb::Logical::Within as i32,
+                    }]
+                }]
             }
         );
     }
+
+    #[test]
+    fn scan_fused_pred_to_idx_pred() {
+        let mut plan_meta = PlanMeta::default();
+        plan_meta.set_curr_node(0);
+        plan_meta.curr_node_meta_mut();
+        plan_meta.refer_to_nodes(0, vec![0]);
+        let meta = StoreMeta {
+            schema: Some(
+                Schema::from_json(std::fs::File::open("resource/modern_schema_pk.json").unwrap()).unwrap(),
+            ),
+        };
+        let mut scan = pb::Scan {
+            scan_opt: 0,
+            alias: None,
+            params: Some(pb::QueryParams {
+                tables: vec!["person".into()],
+                columns: vec![],
+                is_all_columns: false,
+                limit: None,
+                predicate: Some(str_to_expr_pb("@.age == 27 && (@.name == \"John\")".to_string()).unwrap()),
+                sample_ratio: 1.0,
+                extra: HashMap::new(),
+            }),
+            idx_predicate: None,
+            is_count_only: false,
+            meta_data: None,
+        };
+
+        scan.preprocess(&meta, &mut plan_meta).unwrap();
+        let expected_params = pb::QueryParams {
+            tables: vec![0.into()], // label_id of "person"
+            columns: vec![],
+            is_all_columns: false,
+            limit: None,
+            predicate: Some(str_to_expr_pb("@.age == 27 && (true)".to_string()).unwrap()),
+            sample_ratio: 1.0,
+            extra: HashMap::new(),
+        };
+        assert_eq!(
+            scan.idx_predicate.unwrap(),
+            pb::IndexPredicate {
+                or_predicates: vec![pb::index_predicate::AndPredicate {
+                    predicates: vec![pb::index_predicate::Triplet {
+                        key: Some(common_pb::Property {
+                            item: Some(common_pb::property::Item::Key("name".into())),
+                        }),
+                        value: Some("John".to_string().into()),
+                        cmp: common_pb::Logical::Eq as i32,
+                    }]
+                }]
+            }
+        );
+        assert_eq!(scan.params.unwrap(), expected_params);
+    }
+
+    #[test]
+    fn scan_fused_pred_to_idx_pred_with_within() {
+        let mut plan_meta = PlanMeta::default();
+        plan_meta.set_curr_node(0);
+        plan_meta.curr_node_meta_mut();
+        plan_meta.refer_to_nodes(0, vec![0]);
+        let meta = StoreMeta {
+            schema: Some(
+                Schema::from_json(std::fs::File::open("resource/modern_schema_pk.json").unwrap()).unwrap(),
+            ),
+        };
+        let mut scan = pb::Scan {
+            scan_opt: 0,
+            alias: None,
+            params: Some(pb::QueryParams {
+                tables: vec!["person".into()],
+                columns: vec![],
+                is_all_columns: false,
+                limit: None,
+                predicate: Some(
+                    str_to_expr_pb("@.name within [\"John\", \"Josh\"] && @.age == 27".to_string())
+                        .unwrap(),
+                ),
+                sample_ratio: 1.0,
+                extra: HashMap::new(),
+            }),
+            idx_predicate: None,
+            is_count_only: false,
+            meta_data: None,
+        };
+
+        scan.preprocess(&meta, &mut plan_meta).unwrap();
+        let expected_params = pb::QueryParams {
+            tables: vec![0.into()], // label_id of "person"
+            columns: vec![],
+            is_all_columns: false,
+            limit: None,
+            predicate: Some(str_to_expr_pb("true && @.age == 27".to_string()).unwrap()),
+            sample_ratio: 1.0,
+            extra: HashMap::new(),
+        };
+        assert_eq!(
+            scan.idx_predicate.unwrap(),
+            pb::IndexPredicate {
+                or_predicates: vec![pb::index_predicate::AndPredicate {
+                    predicates: vec![pb::index_predicate::Triplet {
+                        key: Some(common_pb::Property {
+                            item: Some(common_pb::property::Item::Key("name".into())),
+                        }),
+                        value: Some(
+                            common_pb::Value {
+                                item: Some(common_pb::value::Item::StrArray(common_pb::StringArray {
+                                    item: vec!["John".to_string(), "Josh".to_string()].into(),
+                                })),
+                            }
+                            .into()
+                        ),
+                        cmp: common_pb::Logical::Within as i32,
+                    }]
+                }]
+            }
+        );
+        assert_eq!(scan.params.unwrap(), expected_params);
+    }
+
     #[test]
     fn column_maintain_case1() {
         let mut plan = LogicalPlan::with_root();
@@ -2477,6 +2617,7 @@ mod test {
             expand_opt: 0,
             alias: Some("here".into()),
             meta_data: None,
+            is_optional: false,
         };
         plan.append_operator_as_node(expand.into(), vec![1])
             .unwrap();
@@ -2555,6 +2696,7 @@ mod test {
             expand_opt: 1,
             alias: Some("e".into()),
             meta_data: None,
+            is_optional: false,
         };
         plan.append_operator_as_node(expand.into(), vec![1])
             .unwrap();
@@ -2701,6 +2843,7 @@ mod test {
             expand_opt: 1,
             alias: Some("b".into()),
             meta_data: None,
+            is_optional: false,
         };
         opr_id = plan
             .append_operator_as_node(expand.into(), vec![opr_id as NodeId])
@@ -2883,6 +3026,7 @@ mod test {
             expand_opt: 0,
             alias: Some("a".into()),
             meta_data: None,
+            is_optional: false,
         };
         plan.append_operator_as_node(expand.into(), vec![1])
             .unwrap();
@@ -2896,6 +3040,7 @@ mod test {
             expand_opt: 0,
             alias: None,
             meta_data: None,
+            is_optional: false,
         };
         plan.append_operator_as_node(expand.into(), vec![2])
             .unwrap();
@@ -2960,6 +3105,7 @@ mod test {
             expand_opt: 0,
             alias: None,
             meta_data: None,
+            is_optional: false,
         };
         let oprid = plan
             .append_operator_as_node(expand.into(), vec![0])
@@ -3192,6 +3338,7 @@ mod test {
             expand_opt: 1,
             alias: None,
             meta_data: None,
+            is_optional: false,
         };
         let subtask = plan
             .append_operator_as_node(expand.into(), vec![])
@@ -3329,6 +3476,7 @@ mod test {
             expand_opt: 0,
             alias: None,
             meta_data: None,
+            is_optional: false,
         };
         let filter = pb::Select { predicate: Some(str_to_expr_pb("@.age > 10".to_string()).unwrap()) };
 
@@ -3429,6 +3577,7 @@ mod test {
             expand_opt: 0,
             alias: Some("o".into()),
             meta_data: None,
+            is_optional: false,
         };
 
         let root_id = plan
@@ -3507,6 +3656,7 @@ mod test {
             expand_opt: 0,
             alias: None,
             meta_data: None,
+            is_optional: false,
         };
         let root_id = plan
             .append_operator_as_node(expand.into(), vec![])

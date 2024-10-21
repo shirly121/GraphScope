@@ -16,17 +16,29 @@
 
 package com.alibaba.graphscope.gremlin.integration.processor;
 
+import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.channel.ChannelFetcher;
+import com.alibaba.graphscope.common.client.type.ExecutionRequest;
 import com.alibaba.graphscope.common.config.Configs;
+import com.alibaba.graphscope.common.config.FrontendConfig;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
+import com.alibaba.graphscope.common.ir.tools.QueryCache;
+import com.alibaba.graphscope.common.ir.tools.QueryIdGenerator;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
-import com.alibaba.graphscope.common.store.IrMeta;
+import com.alibaba.graphscope.common.utils.ClassUtils;
+import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.graphscope.gremlin.integration.result.GraphProperties;
-import com.alibaba.graphscope.gremlin.integration.result.GremlinTestResultProcessor;
+import com.alibaba.graphscope.gremlin.integration.resultx.GremlinTestRecordParser;
+import com.alibaba.graphscope.gremlin.integration.resultx.GremlinTestResultProcessor;
+import com.alibaba.graphscope.gremlin.plugin.MetricsCollector;
 import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.graphscope.gremlin.plugin.processor.IrStandardOpProcessor;
 import com.alibaba.graphscope.gremlin.plugin.script.AntlrGremlinScriptEngine;
+import com.alibaba.graphscope.gremlin.plugin.script.AntlrGremlinScriptEngineFactory;
+import com.alibaba.graphscope.gremlin.plugin.script.GremlinCalciteScriptEngineFactory;
+import com.alibaba.graphscope.gremlin.resultx.ResultSchema;
 
 import org.apache.tinkerpop.gremlin.driver.Tokens;
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
@@ -43,6 +55,7 @@ import org.apache.tinkerpop.gremlin.util.function.ThrowingConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
 
@@ -59,13 +72,25 @@ public class IrTestOpProcessor extends IrStandardOpProcessor {
 
     public IrTestOpProcessor(
             Configs configs,
+            QueryIdGenerator idGenerator,
+            QueryCache queryCache,
             GraphPlanner graphPlanner,
+            ExecutionClient executionClient,
             ChannelFetcher fetcher,
             IrMetaQueryCallback metaQueryCallback,
             Graph graph,
             GraphTraversalSource g,
             GraphProperties testGraph) {
-        super(configs, graphPlanner, fetcher, metaQueryCallback, graph, g);
+        super(
+                configs,
+                idGenerator,
+                queryCache,
+                graphPlanner,
+                executionClient,
+                fetcher,
+                metaQueryCallback,
+                graph,
+                g);
         this.context = new SimpleScriptContext();
         Bindings globalBindings = new SimpleBindings();
         globalBindings.put("g", g);
@@ -90,25 +115,87 @@ public class IrTestOpProcessor extends IrStandardOpProcessor {
                         (context -> {
                             Bytecode byteCode =
                                     (Bytecode) message.getArgs().get(Tokens.ARGS_GREMLIN);
-                            String script = getScript(byteCode);
-                            Traversal traversal =
-                                    (Traversal) scriptEngine.eval(script, this.context);
-                            applyStrategies(traversal);
-                            long jobId = graphPlanner.generateUniqueId();
+                            String language =
+                                    FrontendConfig.GREMLIN_SCRIPT_LANGUAGE_NAME.get(configs);
+                            // hack ways to remove quote in expr, so we can use ANTLR to perform
+                            // syntax checking
+                            boolean removeQuoteInExpr =
+                                    language.equals(GremlinCalciteScriptEngineFactory.LANGUAGE_NAME)
+                                            ? true
+                                            : false;
+                            String script = getScript(byteCode, removeQuoteInExpr);
+                            BigInteger queryId = idGenerator.generateId();
+                            String queryName = idGenerator.generateName(queryId);
                             IrMeta irMeta = metaQueryCallback.beforeExec();
                             QueryStatusCallback statusCallback =
-                                    createQueryStatusCallback(script, jobId);
-                            processTraversal(
-                                    traversal,
-                                    new GremlinTestResultProcessor(
-                                            ctx,
+                                    ClassUtils.createQueryStatusCallback(
+                                            queryId,
+                                            null,
+                                            script,
+                                            new MetricsCollector.Gremlin(evalOpTimer),
+                                            queryHistogram,
+                                            configs);
+                            QueryTimeoutConfig timeoutConfig =
+                                    new QueryTimeoutConfig(
+                                            FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs));
+                            switch (language) {
+                                case AntlrGremlinScriptEngineFactory.LANGUAGE_NAME:
+                                    Traversal traversal =
+                                            (Traversal) scriptEngine.eval(script, this.context);
+                                    applyStrategies(traversal);
+                                    processTraversal(
                                             traversal,
-                                            statusCallback,
-                                            testGraph,
-                                            this.configs),
-                                    irMeta,
-                                    new QueryTimeoutConfig(ctx.getRequestTimeout()),
-                                    statusCallback.getQueryLogger());
+                                            new com.alibaba.graphscope.gremlin.integration.result
+                                                    .GremlinTestResultProcessor(
+                                                    configs,
+                                                    ctx,
+                                                    traversal,
+                                                    statusCallback,
+                                                    testGraph,
+                                                    timeoutConfig),
+                                            irMeta,
+                                            new QueryTimeoutConfig(ctx.getRequestTimeout()),
+                                            statusCallback.getQueryLogger());
+                                    break;
+                                case GremlinCalciteScriptEngineFactory.LANGUAGE_NAME:
+                                    QueryCache.Value value =
+                                            queryCache.get(
+                                                    queryCache.createKey(
+                                                            graphPlanner.instance(script, irMeta)));
+                                    GraphPlanner.Summary summary = value.summary;
+                                    ResultSchema resultSchema =
+                                            new ResultSchema(summary.getLogicalPlan());
+                                    GremlinTestResultProcessor listener =
+                                            new GremlinTestResultProcessor(
+                                                    configs,
+                                                    ctx,
+                                                    new GremlinTestRecordParser(
+                                                            resultSchema,
+                                                            testGraph.getProperties(configs)),
+                                                    resultSchema,
+                                                    statusCallback,
+                                                    timeoutConfig);
+                                    if (value.result != null && value.result.isCompleted) {
+                                        List<IrResult.Results> records = value.result.records;
+                                        records.forEach(k -> listener.onNext(k.getRecord()));
+                                        listener.onCompleted();
+                                    } else {
+                                        executionClient.submit(
+                                                new ExecutionRequest(
+                                                        queryId,
+                                                        queryName,
+                                                        summary.getLogicalPlan(),
+                                                        summary.getPhysicalPlan()),
+                                                listener,
+                                                timeoutConfig);
+                                    }
+                                    // request results from remote engine in a blocking way
+                                    listener.request();
+                                    break;
+                                default:
+                                    throw new IllegalArgumentException(
+                                            "invalid script language name: " + language);
+                            }
                             metaQueryCallback.afterExec(irMeta);
                         });
                 return op;
@@ -124,7 +211,7 @@ public class IrTestOpProcessor extends IrStandardOpProcessor {
         }
     }
 
-    private String getScript(Bytecode byteCode) {
+    private String getScript(Bytecode byteCode, boolean removeQuoteInExpr) {
         String script = GroovyTranslator.of("g").translate(byteCode).getScript();
         // remove type cast from original script, g.V().has("age",P.gt((int) 30))
         List<String> typeCastStrs =
@@ -132,6 +219,48 @@ public class IrTestOpProcessor extends IrStandardOpProcessor {
         for (String type : typeCastStrs) {
             script = script.replaceAll(type, "");
         }
+        if (removeQuoteInExpr) {
+            String exprPattern = "expr(";
+            int exprIdx = script.indexOf(exprPattern);
+            if (exprIdx < 0) {
+                return script;
+            }
+            int i;
+            for (i = exprIdx + exprPattern.length();
+                    i < script.length() && !isQuote(script.charAt(i));
+                    ++i)
+                ;
+            if (i == script.length()) {
+                return script;
+            }
+            int leftQuoteIdx = i;
+            int leftBraceCnt = 1;
+            for (; i < script.length() && leftBraceCnt != 0; ++i) {
+                if (script.charAt(i) == '(') {
+                    ++leftBraceCnt;
+                } else if (script.charAt(i) == ')') {
+                    --leftBraceCnt;
+                }
+            }
+            if (i == script.length()) {
+                return script;
+            }
+            while (i > leftQuoteIdx && !isQuote(script.charAt(i))) {
+                --i;
+            }
+            if (i == leftQuoteIdx) {
+                return script;
+            }
+            int rightQuoteIdx = i;
+            script =
+                    script.substring(0, leftQuoteIdx)
+                            + script.substring(leftQuoteIdx + 1, rightQuoteIdx)
+                            + script.substring(rightQuoteIdx + 1);
+        }
         return script;
+    }
+
+    private boolean isQuote(char ch) {
+        return ch == '\'' || ch == '\"';
     }
 }

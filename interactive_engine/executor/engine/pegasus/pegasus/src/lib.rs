@@ -21,9 +21,11 @@ extern crate lazy_static;
 extern crate enum_dispatch;
 #[macro_use]
 extern crate pegasus_common;
+extern crate core;
 
 use std::cell::Cell;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Once;
 use std::sync::{Arc, Mutex, RwLock};
 
 mod config;
@@ -58,6 +60,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use config::{read_from, Configuration, JobConf, ServerConf};
 pub use data::Data;
+use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry::{global, KeyValue};
 pub use pegasus_common::codec;
 pub use pegasus_memory::alloc::check_current_task_memory;
 pub use pegasus_network::ServerDetect;
@@ -166,14 +170,17 @@ pub fn startup(conf: Configuration) -> Result<(), StartupError> {
             return Err(StartupError::CannotFindServers);
         }
     }
-    let mut lock = SERVERS
-        .write()
-        .expect("fetch servers lock failure;");
-    assert!(lock.is_empty());
-    for s in servers {
-        lock.push(s);
+    if let Ok(mut lock) = SERVERS.write() {
+        if !lock.is_empty() {
+            return Err(StartupError::InternalError("servers list is not empty".into()));
+        }
+        for s in servers {
+            lock.push(s);
+        }
+        lock.sort();
+    } else {
+        return Err(StartupError::InternalError("fetch servers lock failure".into()));
     }
-    lock.sort();
     Ok(())
 }
 
@@ -264,8 +271,11 @@ where
 {
     init_env();
     let cancel_hook = sink.get_cancel_hook().clone();
-    let mut lock = JOB_CANCEL_MAP.write().expect("lock poisoned");
-    lock.insert(conf.job_id, cancel_hook);
+    if let Ok(mut lock) = JOB_CANCEL_MAP.write() {
+        lock.insert(conf.job_id, cancel_hook);
+    } else {
+        return Err(BuildJobError::from("JOB_CANCEL_MAP is poisoned;"))?;
+    }
     let peer_guard = Arc::new(AtomicUsize::new(0));
     let conf = Arc::new(conf);
     let workers = allocate_local_worker(&conf)?;
@@ -273,9 +283,22 @@ where
         return Ok(());
     }
     let worker_ids = workers.unwrap();
+    let tracer = global::tracer("executor");
+    let current_cx = opentelemetry::Context::current();
+    let current_span = current_cx.span();
+    let trace_id = current_span.span_context().trace_id();
+    let trace_id_hex = format!("{:x}", trace_id);
+
     let mut workers = Vec::new();
-    for id in worker_ids {
-        let mut worker = Worker::new(&conf, id, &peer_guard, sink.clone());
+    for worker_id in worker_ids {
+        let mut worker = tracer.in_span(format!("/pegasus::run_opt"), |cx| {
+            cx.span()
+                .set_attribute(KeyValue::new("worker-id", worker_id.index.to_string()));
+            let span = tracer
+                .span_builder(format!("/worker-{}", worker_id.index))
+                .start_with_context(&tracer, &cx);
+            Worker::new(&conf, worker_id, &peer_guard, sink.clone(), span)
+        });
         let _g = crate::worker_id::guard(worker.id);
         logic(&mut worker)?;
         workers.push(worker);
@@ -285,7 +308,14 @@ where
         return Ok(());
     }
 
-    info!("spawn job_{}({}) with {} workers;", conf.job_name, conf.job_id, workers.len());
+    info!(
+        "trace_id:{}, spawn job_{}({}) with {} workers;",
+        trace_id_hex,
+        conf.job_name,
+        conf.job_id,
+        workers.len()
+    );
+
     match pegasus_executor::spawn_batch(workers) {
         Ok(_) => Ok(()),
         Err(e) => {
@@ -364,7 +394,6 @@ fn allocate_local_worker(conf: &Arc<JobConf>) -> Result<Option<WorkerIdIter>, Bu
     }
 }
 
-use std::sync::Once;
 lazy_static! {
     static ref SINGLETON_INIT: Once = Once::new();
 }

@@ -5,7 +5,7 @@ use crate::db::api::*;
 use crate::db::common::concurrency::volatile::Volatile;
 use crate::db::util::lock::GraphMutexLock;
 
-const MAX_SIZE: usize = 128;
+pub const MAX_SIZE: usize = 4096;
 const SIZE_MASK: usize = MAX_SIZE - 1;
 const TOMBSTONE: i64 = i64::min_value();
 const EMPTY_SI: SnapshotId = 0;
@@ -68,7 +68,7 @@ impl VersionManager {
     pub fn add(&self, si: SnapshotId, data: i64) -> GraphResult<()> {
         if data == TOMBSTONE {
             let msg = format!("cannot using this interface to add tombstone");
-            let err = gen_graph_err!(GraphErrorCode::InvalidOperation, msg, add, si, data);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, add, si, data);
             return Err(err);
         }
         let res = self.do_add_data(si, data);
@@ -100,9 +100,8 @@ impl VersionManager {
             let cur_si = self.slots[idx].get_si();
             let _data = self.slots[idx].get_data();
             if cur_si == 0 {
-                let msg =
-                    format!("A bug found! Something wrong with the VersionManager. Maybe thread unsafe");
-                let err = gen_graph_err!(GraphErrorCode::GraphStoreBug, msg, gc, si);
+                let msg = format!("cur_si should not be 0! Maybe thread unsafe");
+                let err = gen_graph_err!(ErrorCode::ILLEGAL_STATE, msg, gc, si);
                 return Err(err);
             }
             if cur_si <= si {
@@ -128,13 +127,13 @@ impl VersionManager {
     fn do_add_data(&self, si: SnapshotId, data: i64) -> GraphResult<()> {
         if si <= 0 {
             let msg = format!("cannot add data with version less equal than 0");
-            let err = gen_graph_err!(GraphErrorCode::InvalidOperation, msg, do_add_data, si, data);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, do_add_data, si, data);
             return Err(err);
         }
         let _guard = res_unwrap!(self.lock.lock(), add, si, data)?;
         if self.size() >= MAX_SIZE {
             let msg = format!("version count exceed limit {}", MAX_SIZE);
-            let err = gen_graph_err!(GraphErrorCode::TooManyVersions, msg, do_add_data, si, data);
+            let err = gen_graph_err!(ErrorCode::TOO_MANY_VERSIONS, msg, do_add_data, si, data);
             return Err(err);
         }
         let tail = self.get_tail();
@@ -146,7 +145,7 @@ impl VersionManager {
             if last_si >= si {
                 let msg =
                     format!("version {} is less equal than last version {}, it's invalid", si, last_si);
-                let err = gen_graph_err!(GraphErrorCode::InvalidOperation, msg, do_add_data, si, data);
+                let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, do_add_data, si, data);
                 return Err(err);
             }
         }

@@ -26,6 +26,8 @@ namespace gs {
 static constexpr const char* time_stamp = "time_stamp";
 static constexpr const char* graph_var = "graph";
 static constexpr const char* GRAPE_INTERFACE_CLASS = "gs::MutableCSRInterface";
+static constexpr const char* SESSION_VAR = "sess";
+static constexpr const char* SESSION_CLASS_NAME = "GraphDBSession";
 static constexpr const char* GRAPE_INTERFACE_HEADER =
     "flex/engines/hqps_db/database/mutable_csr_interface.h";
 static constexpr const char* EDGE_EXPAND_OPT_NAME = "edge_expand_opt";
@@ -41,7 +43,7 @@ static constexpr const char* PATH_OPT_NAME = "path_opt";
 static constexpr const char* MAPPER_NAME = "mapper";
 static constexpr const char* APP_BASE_HEADER =
     "flex/engines/apps/cypher_app_base.h";
-static constexpr const char* APP_BASE_CLASS_NAME = "HqpsAppBase";
+static constexpr const char* APP_BASE_CLASS_NAME = "AppBase";
 static constexpr const char* QUERY_FUNC_RETURN = "results::CollectiveResults";
 
 enum class StorageBackend {
@@ -64,7 +66,11 @@ struct TagIndMapping {
       return -1;
     }
     print_debug_info();
-    CHECK(tag_id < tag_id_2_tag_inds_.size())
+    if (tag_id >= (int) tag_id_2_tag_inds_.size()) {
+      // If tag_id is not found, we assume it is the head node.
+      return -1;
+    }
+    CHECK(tag_id < (int) tag_id_2_tag_inds_.size())
         << "tag id: " << tag_id << " not found";
     return tag_id_2_tag_inds_[tag_id];
   }
@@ -78,7 +84,7 @@ struct TagIndMapping {
     if (it == tag_ind_2_tag_ids_.end()) {
       auto new_tag_ind = tag_ind_2_tag_ids_.size();
       tag_ind_2_tag_ids_.emplace_back(tag_id);
-      auto old_size = tag_id_2_tag_inds_.size();
+      auto old_size = (int32_t) tag_id_2_tag_inds_.size();
       if (tag_id + 1 > old_size) {
         tag_id_2_tag_inds_.resize(tag_id + 1);
         for (auto i = old_size; i < tag_id; ++i) {
@@ -100,8 +106,8 @@ struct TagIndMapping {
         *std::max_element(tag_id_2_tag_inds_.begin(), tag_id_2_tag_inds_.end());
     auto max_tag_id =
         *std::max_element(tag_ind_2_tag_ids_.begin(), tag_ind_2_tag_ids_.end());
-    CHECK(max_ind + 1 == tag_ind_2_tag_ids_.size());
-    CHECK(max_tag_id + 1 == tag_id_2_tag_inds_.size());
+    CHECK(max_ind + 1 == (int32_t) tag_ind_2_tag_ids_.size());
+    CHECK(max_tag_id + 1 == (int32_t) tag_id_2_tag_inds_.size());
   }
 
   void print_debug_info() const {
@@ -117,6 +123,13 @@ struct TagIndMapping {
     return tag_id_2_tag_inds_;
   }
 
+  bool HasTagId(int32_t tag_id) const {
+    return tag_id < (int32_t) tag_id_2_tag_inds_.size() &&
+           tag_id_2_tag_inds_[tag_id] != -1;
+  }
+
+  int32_t GetMaxTagId() const { return tag_id_2_tag_inds_.size() - 1; }
+
   // convert tag_ind (us) to tag ids
   std::vector<int32_t> tag_ind_2_tag_ids_;
   // convert tag ids(pb) to tag_inds
@@ -129,14 +142,15 @@ class BuildingContext {
                   std::string query_name = "Query0",
                   std::string ctx_prefix = "")
       : storage_backend_(storage_type),
-        app_base_header_(APP_BASE_HEADER),
+        query_name_(query_name),
         ctx_id_(0),
         var_id_(0),
-        query_name_(query_name),
+        expr_id_(0),
         expr_var_id_(0),
         mapper_var_id_(0),
-        expr_id_(0),
+        lambda_func_id_(0),
         ctx_prefix_(ctx_prefix),
+        app_base_header_(APP_BASE_HEADER),
         alias_size_(0) {
     if (storage_type == StorageBackend::kGrape) {
       graph_header_ = GRAPE_INTERFACE_HEADER;
@@ -151,16 +165,17 @@ class BuildingContext {
                   std::string query_name = "Query0",
                   std::string ctx_prefix = "")
       : storage_backend_(storage_type),
-        graph_interface_(graph_interface),
-        graph_header_(graph_header),
-        app_base_header_(APP_BASE_HEADER),
+        query_name_(query_name),
         ctx_id_(0),
         var_id_(0),
-        query_name_(query_name),
+        expr_id_(0),
         expr_var_id_(0),
         mapper_var_id_(0),
-        expr_id_(0),
+        lambda_func_id_(0),
         ctx_prefix_(ctx_prefix),
+        app_base_header_(APP_BASE_HEADER),
+        graph_interface_(graph_interface),
+        graph_header_(graph_header),
         alias_size_(0) {}
 
   // int32_t GetCurrentCtxId() const { return ctx_id_; }
@@ -290,6 +305,10 @@ class BuildingContext {
 
   std::string GraphVar() const { return graph_var; }
 
+  std::string SessionVar() const { return SESSION_VAR; }
+
+  std::string GetSessionTypeName() const { return SESSION_CLASS_NAME; }
+
   void AddParameterVar(const codegen::ParamConst& var) {
     parameter_vars_.emplace_back(var);
   }
@@ -317,7 +336,7 @@ class BuildingContext {
 
   // for input tag_id,
   // return -1 if tag_id == -1
-  // return new asigned tag_ind if it doesn't appears before;
+  // return new assigned tag_ind if it doesn't appears before;
   // return the found tag_ind if it appears before;
   int32_t CreateOrGetTagInd(int tag_id) {
     return tag_ind_mapping_.CreateOrGetTagInd(tag_id);
@@ -351,7 +370,7 @@ class BuildingContext {
   void SetAliasType(int32_t alias, int32_t type,
                     std::vector<int32_t>& label_list) {
     auto index = tag_index_[alias];
-    if (tag_type_.size() <= index) {
+    if ((int32_t) tag_type_.size() <= index) {
       tag_type_.resize(index + 1);
     }
     tag_type_[index].first = type;
@@ -365,7 +384,7 @@ class BuildingContext {
   }
 
   int32_t SetAlias(int32_t cur_alias) {
-    if (cur_alias >= tag_index_.size()) {
+    if (cur_alias >= (int32_t) tag_index_.size()) {
       tag_index_.resize(cur_alias + 1, -1);
     }
     if (tag_index_[cur_alias] != -1) {
@@ -402,7 +421,7 @@ class BuildingContext {
     }
   }
 
-  void SetOutput(int32_t index, std::vector<codegen::DataType>& output) {
+  void SetOutput(size_t index, std::vector<codegen::DataType>& output) {
     if (cur_outputs_.size() <= index) {
       cur_outputs_.resize(index + 1);
     }
@@ -432,10 +451,10 @@ class BuildingContext {
   int32_t expr_var_id_;
   int32_t mapper_var_id_;
   int32_t lambda_func_id_;
+  std::string ctx_prefix_;
+  std::string app_base_header_;
   std::string graph_interface_;
   std::string graph_header_;
-  std::string app_base_header_;
-  std::string ctx_prefix_;
 
   std::vector<codegen::ParamConst> parameter_vars_;
   std::vector<std::string> expr_code_;

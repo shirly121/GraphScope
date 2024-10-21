@@ -42,7 +42,13 @@ static constexpr const char*
     EDGE_EXPAND_E_OPT_MULTI_EDGE_NO_FILTER_TEMPLATE_STR =
         "auto %1% = gs::make_edge_expand_multie_opt<%2%>(%3%, %4%, %5%);\n";
 
-// This opt can only be used by both edge expandv, with multiplet edge triplet,
+// Edge expande, with multiple edge triplet. with filter.
+static constexpr const char* EDGE_EXPAND_E_OPT_MULTI_EDGE_FILTER_TEMPLATE_STR =
+    "auto %1% = gs::make_filter(%2%(%3%) %4%);\n"
+    "auto %5% = gs::make_edge_expand_multie_opt<%6%>(%7%, %8%, %9%, "
+    "std::move(%1%));\n";
+
+//  This opt can only be used by both edge expandv, with multiple edge triplet,
 static constexpr const char*
     EDGE_EXPAND_V_OPT_MULTI_EDGE_NO_FILTER_TEMPLATE_STR =
         "auto %1% = gs::make_edge_expand_multiv_opt(%2%, %3%);\n";
@@ -84,12 +90,12 @@ std::string make_edge_expand_e_func_template_str(
     ss << ",";
   }
   // if empty type is given, use grape::EmptyType.
-  for (int i = 0; i < edge_prop_types.size(); ++i) {
+  for (size_t i = 0; i < edge_prop_types.size(); ++i) {
     ss << "std::tuple<";
     if (edge_prop_types[i].size() == 0) {
       ss << "grape::EmptyType";
     } else {
-      for (int j = 0; j < edge_prop_types[i].size(); ++j) {
+      for (size_t j = 0; j < edge_prop_types[i].size(); ++j) {
         ss << edge_prop_types[i][j];
         if (j != edge_prop_types[i].size() - 1) {
           ss << ", ";
@@ -109,10 +115,10 @@ std::string edge_label_triplet_to_array_str(
   std::stringstream ss;
   ss << "std::array<std::array<label_id_t, 3>, " << edge_label_triplet.size()
      << ">{";
-  for (int i = 0; i < edge_label_triplet.size(); ++i) {
+  for (size_t i = 0; i < edge_label_triplet.size(); ++i) {
     ss << "std::array<label_id_t, 3>{";
     CHECK(edge_label_triplet[i].size() == 3);
-    for (int j = 0; j < edge_label_triplet[i].size(); ++j) {
+    for (size_t j = 0; j < edge_label_triplet[i].size(); ++j) {
       ss << edge_label_triplet[i][j];
       if (j != edge_label_triplet[i].size() - 1) {
         ss << ", ";
@@ -131,12 +137,12 @@ std::string edge_label_triplet_to_vector_str(
     const std::vector<std::vector<int32_t>>& edge_label_triplet) {
   std::stringstream ss;
   ss << "std::vector<std::array<label_id_t, 3>>{";
-  for (int i = 0; i < edge_label_triplet.size(); ++i) {
+  for (size_t i = 0; i < edge_label_triplet.size(); ++i) {
     ss << "std::array<label_id_t, 3>{";
     if (edge_label_triplet[i].size() != 3) {
       throw std::runtime_error("edge label triplet size must be 3");
     }
-    for (int j = 0; j < edge_label_triplet[i].size(); ++j) {
+    for (size_t j = 0; j < edge_label_triplet[i].size(); ++j) {
       ss << edge_label_triplet[i][j];
       if (j != edge_label_triplet[i].size() - 1) {
         ss << ", ";
@@ -160,7 +166,7 @@ std::string make_prop_tuple_array(const std::vector<std::string>& prop_names,
   std::string prop_names_str;
   {
     std::stringstream ss;
-    for (int i = 0; i < prop_names.size(); ++i) {
+    for (size_t i = 0; i < prop_names.size(); ++i) {
       ss << add_quote(prop_names[i]);
       if (i != prop_names.size() - 1) {
         ss << ", ";
@@ -175,7 +181,7 @@ std::string make_prop_tuple_array(const std::vector<std::string>& prop_names,
     if (prop_types.size() == 0) {
       ss << "grape::EmptyType";
     } else {
-      for (int i = 0; i < prop_types.size(); ++i) {
+      for (size_t i = 0; i < prop_types.size(); ++i) {
         if (prop_types[i].empty()) {
           ss << "grape::EmptyType";
         } else {
@@ -200,7 +206,7 @@ std::string make_prop_tuple_array_tuple(
   std::stringstream ss;
   ss << "std::tuple{";
   CHECK(prop_names.size() == prop_types.size());
-  for (auto i = 0; i < prop_names.size(); ++i) {
+  for (size_t i = 0; i < prop_names.size(); ++i) {
     VLOG(10) << "prop_names: " << gs::to_string(prop_names[i])
              << ", prop_types: " << gs::to_string(prop_types[i]);
     ss << make_prop_tuple_array(prop_names[i], prop_types[i]);
@@ -210,6 +216,49 @@ std::string make_prop_tuple_array_tuple(
   }
   ss << "}";
   return ss.str();
+}
+
+static void BuildExprFromPredicate(BuildingContext& ctx,
+                                   const common::Expression& expr,
+                                   std::string& expr_func_name,
+                                   std::string& func_construct_params_str,
+                                   std::string& property_selectors_str) {
+  auto expr_builder = ExprBuilder(ctx);
+  expr_builder.set_return_type(common::DataType::BOOLEAN);
+  expr_builder.AddAllExprOpr(expr.operators());
+  std::string expr_code;
+  std::vector<codegen::ParamConst> func_call_param_const;
+  std::vector<std::pair<int32_t, std::string>> expr_tag_props;
+  std::vector<common::DataType> unused_expr_ret_type;
+  std::tie(expr_func_name, func_call_param_const, expr_tag_props, expr_code,
+           unused_expr_ret_type) = expr_builder.Build();
+  VLOG(10) << "Found expr in edge_expand_opt:  " << expr_func_name;
+  // generate code.
+  ctx.AddExprCode(expr_code);
+
+  {
+    std::stringstream ss;
+    for (size_t i = 0; i < func_call_param_const.size(); ++i) {
+      ss << func_call_param_const[i].var_name;
+      if (i != func_call_param_const.size() - 1) {
+        ss << ", ";
+      }
+    }
+    func_construct_params_str = ss.str();
+  }
+  {
+    std::stringstream ss;
+    if (expr_tag_props.size() > 0) {
+      ss << ",";
+    }
+    for (size_t i = 0; i < expr_tag_props.size(); ++i) {
+      ss << expr_tag_props[i].second;
+      if (i != expr_tag_props.size() - 1) {
+        ss << ", ";
+      }
+    }
+    property_selectors_str = ss.str();
+  }
 }
 
 template <typename LabelT>
@@ -226,7 +275,6 @@ static std::pair<std::string, std::string> BuildOneLabelEdgeExpandOpt(
       edge_label_id_str, dst_label_ids_str, edge_prop_selectors_str,
       edge_expand_e_types_str;
   {
-    auto& ir_data_type = meta_data.type();
     std::vector<std::vector<std::string>> prop_names;
     std::vector<std::vector<std::string>> prop_types;
     std::tie(prop_names, prop_types) =
@@ -235,7 +283,7 @@ static std::pair<std::string, std::string> BuildOneLabelEdgeExpandOpt(
 
     if (prop_names.size() > 0) {
       // check prop_names[0] is same with prop_names[1] and others
-      for (int i = 1; i < prop_names.size(); ++i) {
+      for (size_t i = 1; i < prop_names.size(); ++i) {
         CHECK(prop_names[0] == prop_names[i]);
       }
       auto& cur_prop_names = prop_names[0];
@@ -246,7 +294,7 @@ static std::pair<std::string, std::string> BuildOneLabelEdgeExpandOpt(
         std::string type_names;
         {
           std::stringstream ss;
-          for (int i = 0; i < cur_prop_types.size(); ++i) {
+          for (size_t i = 0; i < cur_prop_types.size(); ++i) {
             if (cur_prop_types[i].empty()) {
               ss << "grape::EmptyType";
             } else {
@@ -263,7 +311,7 @@ static std::pair<std::string, std::string> BuildOneLabelEdgeExpandOpt(
         }
         {
           std::stringstream ss;
-          for (int i = 0; i < cur_prop_names.size(); ++i) {
+          for (size_t i = 0; i < cur_prop_names.size(); ++i) {
             ss << add_quote(cur_prop_names[i]);
             if (i != cur_prop_names.size() - 1) {
               ss << ", ";
@@ -285,47 +333,11 @@ static std::pair<std::string, std::string> BuildOneLabelEdgeExpandOpt(
   // first check whether expand_opt contains expression.
   if (params.has_predicate()) {
     VLOG(10) << "Found expr in edge expand";
-    auto& expr = params.predicate();
-    auto expr_builder = ExprBuilder(ctx);
-    expr_builder.set_return_type(common::DataType::BOOLEAN);
-    expr_builder.AddAllExprOpr(expr.operators());
-    std::string expr_code;
-    std::vector<codegen::ParamConst> func_call_param_const;
-    std::vector<std::pair<int32_t, std::string>> expr_tag_props;
-    std::vector<common::DataType> unused_expr_ret_type;
-    std::tie(expr_func_name, func_call_param_const, expr_tag_props, expr_code,
-             unused_expr_ret_type) = expr_builder.Build();
-    VLOG(10) << "Found expr in edge_expand_opt:  " << expr_func_name;
-    // generate code.
-    ctx.AddExprCode(expr_code);
-
-    {
-      std::stringstream ss;
-      for (auto i = 0; i < func_call_param_const.size(); ++i) {
-        ss << func_call_param_const[i].var_name;
-        if (i != func_call_param_const.size() - 1) {
-          ss << ", ";
-        }
-      }
-      func_construct_params_str = ss.str();
-    }
-    {
-      std::stringstream ss;
-      if (expr_tag_props.size() > 0) {
-        ss << ",";
-      }
-      for (int i = 0; i < expr_tag_props.size(); ++i) {
-        ss << expr_tag_props[i].second;
-        if (i != expr_tag_props.size() - 1) {
-          ss << ", ";
-        }
-      }
-      property_selectors_str = ss.str();
-    }
+    BuildExprFromPredicate(ctx, params.predicate(), expr_func_name,
+                           func_construct_params_str, property_selectors_str);
   }
 
   {
-    auto& edge_table = params.tables();
     LabelT edge_label =
         try_get_label_from_name_or_id<LabelT>(params.tables()[0]);
     edge_label_id_str = ensure_label_id(edge_label);
@@ -358,14 +370,14 @@ static std::pair<std::string, std::string> BuildOneLabelEdgeExpandOpt(
     }
   } else {
     if (params.has_predicate()) {
-      VLOG(10) << "Building EdgeExpanV with predicate";
+      VLOG(10) << "Building EdgeExpandV with predicate";
       formater = boost::format(EDGE_EXPAND_V_OPT_FILTER_TEMPLATE_STR);
       formater % expr_var_name % expr_func_name % func_construct_params_str %
           property_selectors_str % opt_var_name %
           gs::direction_pb_to_str(direction) % edge_label_id_str %
           dst_label_ids_str;
     } else {
-      VLOG(10) << "Buliding EdgeExpandV without predicate";
+      VLOG(10) << "Building EdgeExpandV without predicate";
       formater = boost::format(EDGE_EXPAND_V_OPT_NO_FILTER_TEMPLATE_STR);
       formater % opt_var_name % gs::direction_pb_to_str(direction) %
           edge_label_id_str % dst_label_ids_str;
@@ -382,8 +394,9 @@ static std::pair<std::string, std::string> BuildMultiLabelEdgeExpandOpt(
     const algebra::QueryParams& params,
     const physical::EdgeExpand::ExpandOpt& expand_opt,
     const physical::PhysicalOpr::MetaData& meta_data) {
+  std::string expr_var_name = ctx.GetNextExprVarName();
   std::string opt_var_name = ctx.GetNextEdgeOptName();
-  std::string func_construct_params_str, property_selectors_str,
+  std::string expr_func_name, func_construct_params_str, property_selectors_str,
       edge_label_id_str, dst_label_ids_str, edge_prop_selectors_str,
       edge_expand_e_types_str;
 
@@ -402,28 +415,46 @@ static std::pair<std::string, std::string> BuildMultiLabelEdgeExpandOpt(
   auto edge_named_prop_array =
       make_prop_tuple_array_tuple(prop_names, prop_types);
 
+  if (params.has_predicate()) {
+    VLOG(10) << "Found expr in edge expand with multiple label triplet";
+    BuildExprFromPredicate(ctx, params.predicate(), expr_func_name,
+                           func_construct_params_str, property_selectors_str);
+  }
+
   boost::format formater;
   if (expand_opt ==
       physical::EdgeExpand::ExpandOpt::EdgeExpand_ExpandOpt_EDGE) {
     auto edge_triplet_2d_array =
         edge_label_triplet_to_array_str(edge_label_triplet);
-    formater =
-        boost::format(EDGE_EXPAND_E_OPT_MULTI_EDGE_NO_FILTER_TEMPLATE_STR);
-    formater % opt_var_name % func_template_str %
-        gs::direction_pb_to_str(direction) % edge_triplet_2d_array %
-        edge_named_prop_array;
+    if (params.has_predicate()) {
+      formater =
+          boost::format(EDGE_EXPAND_E_OPT_MULTI_EDGE_FILTER_TEMPLATE_STR);
+      formater % expr_var_name % expr_func_name % func_construct_params_str %
+          property_selectors_str % opt_var_name % func_template_str %
+          gs::direction_pb_to_str(direction) % edge_triplet_2d_array %
+          edge_named_prop_array;
+    } else {
+      formater =
+          boost::format(EDGE_EXPAND_E_OPT_MULTI_EDGE_NO_FILTER_TEMPLATE_STR);
+      formater % opt_var_name % func_template_str %
+          gs::direction_pb_to_str(direction) % edge_triplet_2d_array %
+          edge_named_prop_array;
+    }
   } else if (expand_opt ==
              physical::EdgeExpand::ExpandOpt::EdgeExpand_ExpandOpt_VERTEX) {
-    auto edge_triplet_2d_vector =
-        edge_label_triplet_to_vector_str(edge_label_triplet);
-    formater =
-        boost::format(EDGE_EXPAND_V_OPT_MULTI_EDGE_NO_FILTER_TEMPLATE_STR);
-    formater % opt_var_name % gs::direction_pb_to_str(direction) %
-        edge_triplet_2d_vector;
+    if (params.has_predicate()) {
+      LOG(FATAL) << "Currently not supported";
+    } else {
+      auto edge_triplet_2d_vector =
+          edge_label_triplet_to_vector_str(edge_label_triplet);
+      formater =
+          boost::format(EDGE_EXPAND_V_OPT_MULTI_EDGE_NO_FILTER_TEMPLATE_STR);
+      formater % opt_var_name % gs::direction_pb_to_str(direction) %
+          edge_triplet_2d_vector;
+    }
   } else {
     throw std::runtime_error("Unknown expand opt");
   }
-
   return std::make_pair(opt_var_name, formater.str());
 }
 
@@ -501,8 +532,8 @@ class EdgeExpandOpBuilder {
       CHECK(graph_data_type.size() > 0);
 
       CHECK(direction_ != internal::Direction::kNotSet);
-      for (auto ele_labe_type : graph_data_type) {
-        auto& triplet = ele_labe_type.label();
+      for (auto ele_label_type : graph_data_type) {
+        auto& triplet = ele_label_type.label();
         auto& dst_label = triplet.dst_label();
         edge_labels_.emplace_back(triplet.label());
         if (direction_ == internal::Direction::kOut) {
@@ -511,9 +542,8 @@ class EdgeExpandOpBuilder {
         } else if (direction_ == internal::Direction::kIn) {
           dst_vertex_labels_.emplace_back(triplet.src_label().value());
         } else {  // kBoth
-          auto src = triplet.src_label().value();
-          auto dst = triplet.dst_label().value();
-          dst_vertex_labels_.emplace_back(src);
+          dst_vertex_labels_.emplace_back(triplet.src_label().value());
+          dst_vertex_labels_.emplace_back(dst_label.value());
         }
       }
       VLOG(10) << "before join: " << gs::to_string(dst_vertex_labels_);
@@ -540,7 +570,7 @@ class EdgeExpandOpBuilder {
     // EdgeExpandOpt.
     std::unordered_set<LabelT> edge_label_set(edge_labels_.begin(),
                                               edge_labels_.end());
-    if (edge_label_set.size() == 1) {
+    if (edge_label_set.size() == 1 && dst_vertex_labels_.size() == 1) {
       LOG(INFO) << "Building simple edge expand opt, with only one edge label";
       std::tie(opt_name, opt_code) = BuildOneLabelEdgeExpandOpt(
           ctx_, direction_, query_params_, dst_vertex_labels_, expand_opt_,

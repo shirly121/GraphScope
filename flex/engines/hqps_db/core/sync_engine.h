@@ -34,7 +34,7 @@
 #include "flex/engines/hqps_db/core/operator/group_by.h"
 #include "flex/engines/hqps_db/core/operator/path_expand.h"
 #include "flex/engines/hqps_db/core/operator/scan.h"
-#include "flex/engines/hqps_db/core/operator/shorest_path.h"
+#include "flex/engines/hqps_db/core/operator/shortest_path.h"
 #include "flex/engines/hqps_db/core/operator/sink.h"
 #include "flex/engines/hqps_db/core/utils/props.h"
 
@@ -44,6 +44,7 @@ template <typename GRAPH_INTERFACE>
 class SyncEngine : public BaseEngine {
   using label_id_t = typename GRAPH_INTERFACE::label_id_t;
   using vertex_id_t = typename GRAPH_INTERFACE::vertex_id_t;
+  using gid_t = typename GRAPH_INTERFACE::gid_t;
   using default_vertex_set_t = DefaultRowVertexSet<label_id_t, vertex_id_t>;
   using two_label_set_t =
       TwoLabelVertexSet<vertex_id_t, label_id_t, grape::EmptyType>;
@@ -114,7 +115,7 @@ class SyncEngine : public BaseEngine {
                                      num_labels != 2)>::type* = nullptr,
             typename COL_T =
                 GeneralVertexSet<vertex_id_t, label_id_t, grape::EmptyType>>
-  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertex(
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertex(
       const GRAPH_INTERFACE& graph,
       std::array<label_id_t, num_labels>&& v_labels,
       Filter<EXPR, SELECTOR...>&& filter) {
@@ -168,10 +169,9 @@ class SyncEngine : public BaseEngine {
                 nullptr,
             typename COL_T = default_vertex_set_t>
   static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithOid(
-      const GRAPH_INTERFACE& graph, LabelT v_label, OID_T oid) {
-    auto v_set_tuple =
-        Scan<GRAPH_INTERFACE>::ScanVertexWithOid(graph, v_label, oid);
-
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<OID_T>&& oids) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithOid(
+        graph, v_label, std::move(oids));
     return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
   }
 
@@ -180,10 +180,9 @@ class SyncEngine : public BaseEngine {
       typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
       typename COL_T = default_vertex_set_t>
   static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithOid(
-      const GRAPH_INTERFACE& graph, LabelT v_label, OID_T oid) {
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<OID_T>&& oids) {
     auto v_set_tuple = Scan<GRAPH_INTERFACE>::template ScanVertexWithOid<OID_T>(
-        graph, v_label, oid);
-
+        graph, v_label, std::move(oids));
     return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
   }
 
@@ -194,24 +193,181 @@ class SyncEngine : public BaseEngine {
       typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
   static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithOid(
       const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
-      OID_T oid) {
+      std::vector<OID_T>&& oids) {
     auto v_set_tuple =
         Scan<GRAPH_INTERFACE>::template ScanVertexWithOid<OID_T, num_labels>(
-            graph, v_labels, oid);
-
+            graph, v_labels, std::move(oids));
     return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
   }
 
   template <
-      AppendOpt append_opt, typename LabelT, size_t num_labels,
+      AppendOpt append_opt, typename OID_T, typename LabelT, size_t num_labels,
       typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
       typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
   static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithOid(
       const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
-      int64_t oid) {
-    auto v_set_tuple =
-        Scan<GRAPH_INTERFACE>::ScanVertexWithOid(graph, v_labels, oid);
+      std::vector<OID_T>&& oids) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithOid(
+        graph, v_labels, std::move(oids));
+    return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
 
+  ///////////////// ScanVertexWith Gid//////////////////
+  template <AppendOpt append_opt, typename GID_T, typename LabelT,
+            typename std::enable_if<(append_opt == AppendOpt::Persist)>::type* =
+                nullptr,
+            typename COL_T = default_vertex_set_t>
+  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithGid(
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<GID_T>&& gids) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithGid(
+        graph, v_label, std::move(gids));
+    return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename GID_T, typename LabelT,
+      typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
+      typename COL_T = default_vertex_set_t>
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithGid(
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<GID_T>&& gids) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::template ScanVertexWithGid(
+        graph, v_label, std::move(gids));
+    return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename GID_T, typename LabelT, size_t num_labels,
+      typename std::enable_if<(append_opt == AppendOpt::Persist)>::type* =
+          nullptr,
+      typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
+  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithGid(
+      const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
+      std::vector<GID_T>&& gids) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::template ScanVertexWithGid(
+        graph, v_labels, std::move(gids));
+    return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename GID_T, typename LabelT, size_t num_labels,
+      typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
+      typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithGid(
+      const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
+      std::vector<GID_T>&& gids) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithGid(
+        graph, v_labels, std::move(gids));
+    return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  ///////////////// ScanVertexWith Expr and oid//////////////////
+  template <AppendOpt append_opt, typename OID_T, typename LabelT,
+            typename EXPR, typename... SELECTOR,
+            typename std::enable_if<(append_opt == AppendOpt::Persist)>::type* =
+                nullptr,
+            typename COL_T = default_vertex_set_t>
+  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithOidExpr(
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<OID_T>&& oids,
+      Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithOidExpr(
+        graph, v_label, std::move(oids), std::move(filter));
+    return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename OID_T, typename LabelT, typename EXPR,
+      typename... SELECTOR,
+      typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
+      typename COL_T = default_vertex_set_t>
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithOidExpr(
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<OID_T>&& oids,
+      Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple =
+        Scan<GRAPH_INTERFACE>::template ScanVertexWithOidExpr<OID_T>(
+            graph, v_label, std::move(oids), std::move(filter));
+    return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename OID_T, typename LabelT, size_t num_labels,
+      typename EXPR, typename... SELECTOR,
+      typename std::enable_if<(append_opt == AppendOpt::Persist)>::type* =
+          nullptr,
+      typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
+  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithOidExpr(
+      const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
+      std::vector<OID_T>&& oids, Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple =
+        Scan<GRAPH_INTERFACE>::template ScanVertexWithOidExpr<OID_T,
+                                                              num_labels>(
+            graph, v_labels, std::move(oids), std::move(filter));
+    return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename OID_T, typename LabelT, size_t num_labels,
+      typename EXPR, typename... SELECTOR,
+      typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
+      typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithOidExpr(
+      const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
+      std::vector<OID_T>&& oids, Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithOidExpr(
+        graph, v_labels, std::move(oids), std::move(filter));
+    return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  ///////////////// ScanVertexWith Expr and gid//////////////////
+  template <AppendOpt append_opt, typename GID_T, typename LabelT,
+            typename EXPR, typename... SELECTOR,
+            typename std::enable_if<(append_opt == AppendOpt::Persist)>::type* =
+                nullptr,
+            typename COL_T = default_vertex_set_t>
+  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithGidExpr(
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<GID_T>&& gids,
+      Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithGidExpr(
+        graph, v_label, std::move(gids), std::move(filter));
+    return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename GID_T, typename LabelT, typename EXPR,
+      typename... SELECTOR,
+      typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
+      typename COL_T = default_vertex_set_t>
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithGidExpr(
+      const GRAPH_INTERFACE& graph, LabelT v_label, std::vector<GID_T>&& gids,
+      Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::template ScanVertexWithGidExpr(
+        graph, v_label, std::move(gids), std::move(filter));
+    return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename GID_T, typename LabelT, size_t num_labels,
+      typename EXPR, typename... SELECTOR,
+      typename std::enable_if<(append_opt == AppendOpt::Persist)>::type* =
+          nullptr,
+      typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
+  static Context<COL_T, 0, 0, grape::EmptyType> ScanVertexWithGidExpr(
+      const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
+      std::vector<GID_T>&& gids, Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::template ScanVertexWithGidExp(
+        graph, v_labels, std::move(gids), std::move(filter));
+    return Context<COL_T, 0, 0, grape::EmptyType>(std::move(v_set_tuple));
+  }
+
+  template <
+      AppendOpt append_opt, typename GID_T, typename LabelT, size_t num_labels,
+      typename EXPR, typename... SELECTOR,
+      typename std::enable_if<(append_opt == AppendOpt::Temp)>::type* = nullptr,
+      typename COL_T = GeneralVertexSet<vertex_id_t, LabelT, grape::EmptyType>>
+  static Context<COL_T, -1, 0, grape::EmptyType> ScanVertexWithGidExpr(
+      const GRAPH_INTERFACE& graph, std::array<LabelT, num_labels> v_labels,
+      std::vector<GID_T>&& gids, Filter<EXPR, SELECTOR...>&& filter) {
+    auto v_set_tuple = Scan<GRAPH_INTERFACE>::ScanVertexWithGidExpr(
+        graph, v_labels, std::move(gids), std::move(filter));
     return Context<COL_T, -1, 0, grape::EmptyType>(std::move(v_set_tuple));
   }
 
@@ -256,21 +412,16 @@ class SyncEngine : public BaseEngine {
   /// @return
   template <AppendOpt append_opt, int input_col_id, typename CTX_HEAD_T,
             int cur_alias, int base_tag, typename... CTX_PREV,
-            typename EDGE_FILTER_T, typename... SELECTOR,
-            typename RES_T = typename ResultContextT<
-                append_opt, default_vertex_set_t, cur_alias, CTX_HEAD_T,
-                base_tag, CTX_PREV...>::result_t>
-  static RES_T EdgeExpandV(
+            typename EDGE_FILTER_T, typename... SELECTOR>
+  static auto EdgeExpandV(
       const GRAPH_INTERFACE& graph,
       Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
-      EdgeExpandOpt<label_id_t, EDGE_FILTER_T, SELECTOR...>&& edge_expand_opt,
-      size_t limit = INT_MAX) {
+      EdgeExpandOpt<label_id_t, EDGE_FILTER_T, SELECTOR...>&& edge_expand_opt) {
     auto& select_node = gs::Get<input_col_id>(ctx);
 
     auto pair = EdgeExpand<GRAPH_INTERFACE>::template EdgeExpandV(
         graph, select_node, edge_expand_opt.dir_, edge_expand_opt.edge_label_,
-        edge_expand_opt.other_label_, std::move(edge_expand_opt.edge_filter_),
-        limit);
+        edge_expand_opt.other_label_, std::move(edge_expand_opt.edge_filter_));
     return ctx.template AddNode<append_opt>(
         std::move(pair.first), std::move(pair.second), input_col_id);
   }
@@ -318,7 +469,7 @@ class SyncEngine : public BaseEngine {
       size_t limit = INT_MAX) {
     // Unwrap params here.
     auto& select_node = gs::Get<alias_to_use>(ctx);
-    // Modifiy offsets.
+    // Modify offsets.
     // pass select node by reference.
     auto pair = EdgeExpand<GRAPH_INTERFACE>::template EdgeExpandE<T...>(
         graph, select_node, edge_expand_opt.dir_, edge_expand_opt.edge_label_,
@@ -327,7 +478,7 @@ class SyncEngine : public BaseEngine {
     // create new context node, update offsets.
     return ctx.template AddNode<append_opt>(
         std::move(pair.first), std::move(pair.second), alias_to_use);
-    // old context will be abondon here.
+    // old context will be abandoned here.
   }
 
   /// @brief //////// Edge Expand to Edge, with multiple dst vertex labels.
@@ -358,7 +509,7 @@ class SyncEngine : public BaseEngine {
       size_t limit = INT_MAX) {
     // Unwrap params here.
     auto& select_node = gs::Get<alias_to_use>(ctx);
-    // Modifiy offsets.
+    // Modify offsets.
     // pass select node by reference.
     auto pair = EdgeExpand<GRAPH_INTERFACE>::template EdgeExpandE<T...>(
         graph, select_node, edge_expand_opt.dir_, edge_expand_opt.edge_label_,
@@ -367,7 +518,7 @@ class SyncEngine : public BaseEngine {
     // create new context node, update offsets.
     return ctx.template AddNode<append_opt>(
         std::move(pair.first), std::move(pair.second), alias_to_use);
-    // old context will be abondon here.
+    // old context will be abandoned here.
   }
 
   template <AppendOpt opt, int alias_to_use, typename CTX_HEAD_T, int cur_alias,
@@ -380,7 +531,7 @@ class SyncEngine : public BaseEngine {
           edge_expand_opt) {
     // Unwrap params here.
     auto& select_node = gs::Get<alias_to_use>(ctx);
-    // Modifiy offsets.
+    // Modify offsets.
     // pass select node by reference.
     auto pair = EdgeExpand<GRAPH_INTERFACE>::EdgeExpandV(
         graph, select_node, edge_expand_opt.direction_,
@@ -390,7 +541,28 @@ class SyncEngine : public BaseEngine {
     // create new context node, update offsets.
     return ctx.template AddNode<opt>(std::move(pair.first),
                                      std::move(pair.second), alias_to_use);
-    // old context will be abondon here.
+    // old context will be abandoned here.
+  }
+
+  template <AppendOpt opt, int alias_to_use, typename CTX_HEAD_T, int cur_alias,
+            int base_tag, typename... CTX_PREV, typename LabelT,
+            typename EDGE_FILTER_T>
+  static auto EdgeExpandV(
+      const GRAPH_INTERFACE& graph,
+      Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
+      EdgeExpandVMultiTripletOpt<LabelT, EDGE_FILTER_T>&& edge_expand_opt) {
+    // Unwrap params here.
+    auto& select_node = gs::Get<alias_to_use>(ctx);
+    // Modify offsets.
+    // pass select node by reference.
+    auto pair = EdgeExpand<GRAPH_INTERFACE>::EdgeExpandV(
+        graph, select_node, edge_expand_opt.direction_,
+        edge_expand_opt.edge_label_triplets_,
+        std::move(edge_expand_opt.edge_filter_));
+    // create new context node, update offsets.
+    return ctx.template AddNode<opt>(std::move(pair.first),
+                                     std::move(pair.second), alias_to_use);
+    // old context will be abandoned here.
   }
 
   //////////////////////////////////////Path Expand/////////////////////////
@@ -398,11 +570,8 @@ class SyncEngine : public BaseEngine {
   template <AppendOpt opt, int alias_to_use, typename VERTEX_FILTER_T,
             typename CTX_HEAD_T, int cur_alias, int base_tag,
             typename... CTX_PREV, typename LabelT, typename EDGE_FILTER_T,
-            typename... T, typename RES_SET_T = vertex_set_t<dist_t, T...>,
-            typename RES_T =
-                typename ResultContextT<opt, RES_SET_T, cur_alias, CTX_HEAD_T,
-                                        base_tag, CTX_PREV...>::result_t>
-  static RES_T PathExpandV(
+            typename... T, typename RES_SET_T = vertex_set_t<dist_t, T...>>
+  static auto PathExpandV(
       const GRAPH_INTERFACE& graph,
       Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
       PathExpandVOpt<LabelT, EDGE_FILTER_T, VERTEX_FILTER_T, T...>&&
@@ -499,6 +668,32 @@ class SyncEngine : public BaseEngine {
     // old context will be abandon here.
   }
 
+  /// Expand to Path
+  template <AppendOpt opt, int alias_to_use, typename CTX_HEAD_T, int cur_alias,
+            int base_tag, typename... CTX_PREV, typename LabelT,
+            typename EDGE_FILTER_T, size_t get_v_num_labels,
+            typename VERTEX_FILTER_T>
+  static auto PathExpandP(
+      const GRAPH_INTERFACE& graph,
+      Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
+      PathExpandVMultiTripletOpt<LabelT, EDGE_FILTER_T, get_v_num_labels,
+                                 VERTEX_FILTER_T>&& path_expand_opt) {
+    if (path_expand_opt.path_opt_ != PathOpt::Arbitrary) {
+      LOG(FATAL) << "Only support Arbitrary path now";
+    }
+    if (path_expand_opt.result_opt_ != ResultOpt::EndV) {
+      LOG(FATAL) << "Only support EndV now";
+    }
+    auto& select_node = gs::Get<alias_to_use>(ctx);
+    auto pair = PathExpand<GRAPH_INTERFACE>::PathExpandP(
+        graph, select_node, std::move(path_expand_opt));
+
+    // create new context node, update offsets.
+    return ctx.template AddNode<opt>(std::move(pair.first),
+                                     std::move(pair.second), alias_to_use);
+    // old context will be abandon here.
+  }
+
   // get no props, just filter
   template <
       AppendOpt opt, int alias_to_use, typename CTX_HEAD_T, int cur_alias,
@@ -571,12 +766,12 @@ class SyncEngine : public BaseEngine {
 
   //////////////////////////////////////Project/////////////////////////
   // Project current relations to new columns, append or not.
-  // TODO: add type infere back:
+  // TODO: add type inference back:
   //      typename RES_T = typename ProjectResT<
   // is_append, Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>,
   // PROJECT_OPT>::result_t
-  template <bool is_append, typename CTX_HEAD_T, int cur_alias, int base_tag,
-            typename... CTX_PREV, typename... ProjMapper>
+  template <ProjectDesc is_append, typename CTX_HEAD_T, int cur_alias,
+            int base_tag, typename... CTX_PREV, typename... ProjMapper>
   static auto Project(
       const GRAPH_INTERFACE& graph,
       Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
@@ -650,7 +845,7 @@ class SyncEngine : public BaseEngine {
     grape::Bitset new_bitset;
     new_bitset.init(vertices.size());
     size_t cur_begin = last_offset[0];
-    for (auto i = 0; i < last_offset.size() - 1; ++i) {
+    for (size_t i = 0; i < last_offset.size() - 1; ++i) {
       auto limit = last_offset[i + 1];
       for (auto j = cur_begin; j < limit; ++j) {
         auto vid = vertices[j];
@@ -696,7 +891,7 @@ class SyncEngine : public BaseEngine {
       Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
       Filter<EXPR, SELECTOR...>&& filter) {
     VLOG(10) << "[Select]";
-    using ctx_t = Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>;
+
     // Currently only support select with head node.
     auto expr = filter.expr_;
     auto selectors = filter.selectors_;
@@ -723,7 +918,7 @@ class SyncEngine : public BaseEngine {
     auto& vertices = head.GetMutableVertices();
     auto& prop_getter = prop_getters[0];
     if constexpr (CTX_T::prev_alias_num == 0) {
-      for (auto i = 0; i < vertices.size(); ++i) {
+      for (size_t i = 0; i < vertices.size(); ++i) {
         auto vid = vertices[i];
         if (std::apply(expr, prop_getter.get_view(vid))) {
           if (cur < i) {
@@ -737,7 +932,7 @@ class SyncEngine : public BaseEngine {
       auto& last_offset = ctx.GetMutableOffset(-1);
 
       size_t cur_begin = last_offset[0];
-      for (auto i = 0; i < last_offset.size() - 1; ++i) {
+      for (size_t i = 0; i + 1 < last_offset.size(); ++i) {
         auto limit = last_offset[i + 1];
         for (auto j = cur_begin; j < limit; ++j) {
           auto vid = vertices[j];
@@ -760,7 +955,7 @@ class SyncEngine : public BaseEngine {
 
   //////////////////////////////////////Select/Filter/////////////////////////
   // Select with head node. The type doesn't change
-  // select can possiblely applied on multiple tags
+  // select can possibly applied on multiple tags
   // (!CTX_HEAD_T::is_row_vertex_set) && (!CTX_HEAD_T::is_two_label_set) &&
   template <
       int... in_col_id, typename CTX_HEAD_T, int cur_alias, int base_tag,
@@ -789,7 +984,7 @@ class SyncEngine : public BaseEngine {
     auto prop_getters_tuple =
         create_prop_getters_from_prop_desc(graph, ctx, prop_descs);
     for (auto iter : ctx) {
-      auto eles = iter.GetAllElement();
+      auto eles = iter.GetAllIndexElement();
       // if (expr(eles)) {
       // if (std::apply(expr, props)) {
       if (run_expr_filter(expr, prop_getters_tuple, eles)) {
@@ -808,6 +1003,97 @@ class SyncEngine : public BaseEngine {
     return std::move(ctx);
   }
 
+  //////////////////////////////////////Dedup/////////////////////////
+  // Special implementation to only dedup on one column.
+  // template <
+  //     int alias_to_use, typename CTX_HEAD_T, int cur_alias, int base_tag,
+  //     typename... CTX_PREV, typename PropT,
+  //     typename RES_T = Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>>
+  // static RES_T Dedup(
+  //     const GRAPH_INTERFACE& graph,
+  //     Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
+  //     std::tuple<PropertySelector<PropT>>&& selector) {
+  //   if constexpr (alias_to_use != cur_alias) {
+  //     // When we dedup a intermediate node, we need to
+  //     // 1) first dedup current node, no duplicate in us.
+  //     // 2) then iterate whole context, for later nodes, we only preserve the
+  //     // first element met.
+  //     //
+  //     // the result context type should be same with previous.
+  //     // 1 -> (2, 3)
+  //     // 2 -> (4, 5), 3 -> (6, 7);
+  //     //
+  //     // dedup on col 2, then we 1 -> (2, 3), 2 -> 4, 3 -> 6;
+
+  //     // first remove all possible duplication introduced by later csr.
+  //     ctx.template Dedup<alias_to_use>();
+  //   }
+  //   auto& select_node = gs::Get<alias_to_use>(ctx);
+  //   // dedup inplace, and return the offset_array to old node.
+  //   auto offset_to_old_node = select_node.Dedup(std::get<0>(selector));
+  //   // The offset need to be changed.
+  //   ctx.template
+  //   UpdateChildNode<alias_to_use>(std::move(offset_to_old_node)); return ctx;
+  // }
+
+  // Dedup with multiple columns.
+  template <
+      int... alias_to_use, typename CTX_HEAD_T, int cur_alias, int base_tag,
+      typename... CTX_PREV, typename... PropT,
+      typename RES_T = Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>>
+  static RES_T Dedup(
+      const GRAPH_INTERFACE& graph,
+      Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
+      std::tuple<PropertySelector<PropT>...>&& dedup_keys) {
+    auto prop_descs =
+        create_prop_descs_from_selectors<alias_to_use...>(dedup_keys);
+    LOG(INFO) << "Dedup with :" << demangle(prop_descs);
+    auto prop_getters_tuple =
+        create_prop_getters_from_prop_desc(graph, ctx, prop_descs);
+
+    std::vector<size_t> active_indices;
+    std::vector<size_t> new_offset;
+
+    auto& cur_ = ctx.GetMutableHead();
+    new_offset.reserve(cur_.Size());
+    new_offset.emplace_back(0);
+
+    dedup_impl(ctx, active_indices, new_offset, prop_getters_tuple);
+
+    cur_.SubSetWithIndices(active_indices);
+    ctx.merge_offset_with_back(new_offset);
+    return ctx;
+  }
+
+  template <typename CTX_T, typename... PropGetterT>
+  static void dedup_impl(CTX_T& ctx, std::vector<size_t>& active_indices,
+                         std::vector<size_t>& new_offset,
+                         std::tuple<PropGetterT...>& prop_getters_tuple) {
+    // prop_tuple_t is the tuple of got type from prop_getters_tuple, by
+    // applying to ctx_all_ele_t
+    // using ctx_all_ele_t = typename CTX_T::index_ele_tuples_t;
+    using prop_tuple_t = std::tuple<typename PropGetterT::prop_element_t...>;
+    std::unordered_set<prop_tuple_t, boost::hash<prop_tuple_t>> dedup_set;
+    auto index_seq = std::make_index_sequence<sizeof...(PropGetterT)>();
+    size_t cnt = 0;
+    for (auto iter : ctx) {
+      auto index_eles = iter.GetAllIndexElement();
+      // for each element of prop_getter_tuple, apply get_from_all_element
+      // to index_eles, and make result as a tuple
+      auto key_tuple = get_prop_from_index_ele_with_prop_getter(
+          prop_getters_tuple, index_eles, index_seq);
+
+      if (dedup_set.find(key_tuple) == dedup_set.end()) {
+        dedup_set.insert(key_tuple);
+        active_indices.emplace_back(cnt);
+      }
+      cnt += 1;
+      new_offset.emplace_back(active_indices.size());
+    }
+    LOG(INFO) << "Dedup active record: " << active_indices.size() << " out of "
+              << cnt;
+  }
+
   template <typename EXPR, typename... PROP_GETTER, typename... ELE>
   static inline bool run_expr_filter(
       const EXPR& expr, std::tuple<PROP_GETTER...>& prop_getter_tuple,
@@ -822,11 +1108,12 @@ class SyncEngine : public BaseEngine {
   static inline bool run_expr_filter_impl(
       const EXPR& expr, std::tuple<PROP_GETTER...>& prop_getter_tuple,
       std::tuple<ELE...>& eles, std::index_sequence<Is...>) {
-    return expr(std::get<Is>(prop_getter_tuple).get_from_all_element(eles)...);
+    return expr(
+        std::get<Is>(prop_getter_tuple).get_from_all_index_element(eles)...);
   }
 
   //////////////////////////////////////Group/////////////////////////
-  // We currently support group with one key, and possiblely multiple values.
+  // We currently support group with one key, and possibly multiple values.
   // create a brand new context type.
   // group count is included in this implementation.
   template <typename CTX_HEAD_T, int cur_alias, int base_tag,
@@ -839,7 +1126,7 @@ class SyncEngine : public BaseEngine {
       Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>&& ctx,
       std::tuple<GROUP_KEY...>&& group_key,
       std::tuple<AGG_FUNC...>&& agg_func) {
-    VLOG(10) << "[Group] with with group opt";
+    VLOG(10) << "[Group] with group opt";
     return GroupByOp<GRAPH_INTERFACE>::GroupByImpl(
         graph, std::move(ctx), std::move(group_key), std::move(agg_func));
   }
@@ -875,7 +1162,7 @@ class SyncEngine : public BaseEngine {
     std::array<int32_t,
                Context<CTX_HEAD_T, cur_alias, base_tag, CTX_PREV...>::col_num>
         tag_ids;
-    for (int i = 0; i < tag_ids.size(); i++) {
+    for (size_t i = 0; i < tag_ids.size(); i++) {
       tag_ids[i] = i;
     }
     return Sink(graph, ctx, tag_ids);

@@ -16,7 +16,7 @@
 
 package com.alibaba.graphscope.common.utils;
 
-import com.alibaba.graphscope.common.ir.meta.reader.FileFormatType;
+import com.alibaba.graphscope.common.ir.meta.schema.FileFormatType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Resources;
 
@@ -40,7 +40,7 @@ public class FileUtils {
     }
 
     public static FileFormatType getFormatType(String file) throws IOException {
-        // can not differentiate between properties and YAML format files based on their content,
+        // cannot differentiate between properties and YAML format files based on their content,
         // so here the determination is made based on the file extension.
         if (file.endsWith(".properties")) return FileFormatType.PROPERTIES;
         try (InputStream inputStream = new FileInputStream(file)) {

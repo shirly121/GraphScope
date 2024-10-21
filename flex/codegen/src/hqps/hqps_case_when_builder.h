@@ -54,7 +54,7 @@ class CaseWhenBuilder : public ExprBuilder {
           when_expr) {
     VLOG(10) << "Got when then exprs of size: " << when_expr.size();
 
-    // Basiclly, each when_then is a if then.
+    // Basically, each when_then is a if then.
     for (auto& when_then_expr : when_expr) {
       auto& when_val = when_then_expr.when_expression();
       auto& the_result_expr = when_then_expr.then_result_expression();
@@ -92,7 +92,7 @@ class CaseWhenBuilder : public ExprBuilder {
   }
 
   ret_t Build() const override {
-    for (auto i = 0; i < construct_params_.size(); ++i) {
+    for (size_t i = 0; i < construct_params_.size(); ++i) {
       ctx_.AddParameterVar(construct_params_[i]);
     }
 
@@ -105,7 +105,7 @@ class CaseWhenBuilder : public ExprBuilder {
     func_call_template_typename_str = get_func_call_typename_str();
 
     func_call_params_str = get_func_call_params_str();
-    // the func_call impl is overrided
+    // the func_call impl is overridden
     func_call_impl_str = get_func_call_impl_str();
     private_filed_str = get_private_filed_str();
 
@@ -113,7 +113,8 @@ class CaseWhenBuilder : public ExprBuilder {
     auto ret_type_str = common_data_type_pb_2_str(res_data_type_);
     formater % class_name_ % ret_type_str % constructor_param_str %
         field_init_code_str % func_call_template_typename_str % "auto" %
-        func_call_params_str % func_call_impl_str % private_filed_str;
+        func_call_params_str % func_call_impl_str % private_filed_str %
+        get_filter_null_str();
 
     std::string str = formater.str();
 
@@ -168,7 +169,7 @@ class CaseWhenBuilder : public ExprBuilder {
 
   std::string get_func_call_impl_str() const override {
     std::stringstream ss;
-    for (int i = 0; i < when_then_codes_.size(); ++i) {
+    for (size_t i = 0; i < when_then_codes_.size(); ++i) {
       ss << when_then_codes_[i] << std::endl;
     }
     ss << else_code_ << std::endl;
@@ -194,7 +195,7 @@ class CaseWhenBuilder : public ExprBuilder {
       construct_params_.push_back(param_const);
     }
     if (set_ret_type) {
-      for (auto i = 0; i < oprs.size(); ++i) {
+      for (int32_t i = 0; i < oprs.size(); ++i) {
         auto cur_opr = oprs[i];
         auto node_type = cur_opr.node_type();
         if (node_type.type_case() == common::IrDataType::kDataType) {

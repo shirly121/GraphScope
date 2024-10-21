@@ -13,13 +13,11 @@
  */
 package com.alibaba.graphscope.groot.tests.store;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
 import com.alibaba.graphscope.groot.meta.MetaService;
-import com.alibaba.graphscope.groot.metrics.MetricsCollector;
 import com.alibaba.graphscope.groot.operation.OperationBatch;
 import com.alibaba.graphscope.groot.operation.OperationBlob;
 import com.alibaba.graphscope.groot.operation.StoreDataBatch;
@@ -41,15 +39,12 @@ public class StoreServiceTest {
         MetaService mockMetaService = mock(MetaService.class);
         when(mockMetaService.getPartitionsByStoreId(0)).thenReturn(Arrays.asList(0));
 
-        StoreService spyStoreService =
-                spy(new StoreService(configs, mockMetaService, new MetricsCollector(configs)));
+        StoreService spyStoreService = spy(new StoreService(configs, mockMetaService));
 
         GraphPartition mockGraphPartition = mock(GraphPartition.class);
-        when(mockGraphPartition.recover()).thenReturn(10L);
         doReturn(mockGraphPartition).when(spyStoreService).makeGraphPartition(any(), eq(0));
 
         spyStoreService.start();
-        assertEquals(spyStoreService.recover(), 10L);
 
         StoreDataBatch storeDataBatch =
                 StoreDataBatch.newBuilder()

@@ -14,15 +14,21 @@
 package com.alibaba.graphscope.groot.servers;
 
 import com.alibaba.graphscope.groot.CuratorUtils;
-import com.alibaba.graphscope.groot.SnapshotCache;
 import com.alibaba.graphscope.groot.common.RoleType;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.config.CoordinatorConfig;
+import com.alibaba.graphscope.groot.common.exception.InternalException;
 import com.alibaba.graphscope.groot.coordinator.*;
+import com.alibaba.graphscope.groot.coordinator.IngestorWriteClient;
+import com.alibaba.graphscope.groot.coordinator.backup.BackupManager;
+import com.alibaba.graphscope.groot.coordinator.backup.BackupService;
+import com.alibaba.graphscope.groot.coordinator.backup.StoreBackupClient;
+import com.alibaba.graphscope.groot.coordinator.backup.StoreBackupTaskSender;
 import com.alibaba.graphscope.groot.discovery.*;
-import com.alibaba.graphscope.groot.frontend.IngestorWriteClient;
+import com.alibaba.graphscope.groot.frontend.SnapshotCache;
 import com.alibaba.graphscope.groot.meta.DefaultMetaService;
+import com.alibaba.graphscope.groot.meta.FileMetaStore;
 import com.alibaba.graphscope.groot.meta.MetaService;
 import com.alibaba.graphscope.groot.meta.MetaStore;
 import com.alibaba.graphscope.groot.rpc.ChannelManager;
@@ -31,7 +37,7 @@ import com.alibaba.graphscope.groot.rpc.RoleClients;
 import com.alibaba.graphscope.groot.rpc.RpcServer;
 import com.alibaba.graphscope.groot.schema.ddl.DdlExecutors;
 import com.alibaba.graphscope.groot.wal.LogService;
-import com.alibaba.graphscope.groot.wal.kafka.KafkaLogService;
+import com.alibaba.graphscope.groot.wal.LogServiceFactory;
 
 import io.grpc.NameResolver;
 
@@ -42,32 +48,31 @@ import java.io.IOException;
 public class Coordinator extends NodeBase {
 
     private CuratorFramework curator;
-    private NodeDiscovery discovery;
-    private SnapshotManager snapshotManager;
-    private MetaService metaService;
-    private SchemaManager schemaManager;
-    private SnapshotNotifier snapshotNotifier;
-    private RpcServer rpcServer;
-    private ChannelManager channelManager;
-    private LogRecycler logRecycler;
-    private GraphInitializer graphInitializer;
-    private IdAllocator idAllocator;
-    private BackupManager backupManager;
+    private final NodeDiscovery discovery;
+    private final SnapshotManager snapshotManager;
+    private final MetaService metaService;
+    private final SchemaManager schemaManager;
+    private final SnapshotNotifier snapshotNotifier;
+    private final RpcServer rpcServer;
+    private final ChannelManager channelManager;
+    private final LogRecycler logRecycler;
+    private final GraphInitializer graphInitializer;
+    private final IdAllocator idAllocator;
+    private final BackupManager backupManager;
 
-    private GarbageCollectManager garbageCollectManager;
+    private final GarbageCollectManager garbageCollectManager;
 
     public Coordinator(Configs configs) {
         super(configs);
         configs = reConfig(configs);
         LocalNodeProvider localNodeProvider = new LocalNodeProvider(configs);
-        MetaStore metaStore;
+        MetaStore metaStore =
+                new FileMetaStore(CoordinatorConfig.FILE_META_STORE_PATH.get(configs));
         if (CommonConfig.DISCOVERY_MODE.get(configs).equalsIgnoreCase("file")) {
             this.discovery = new FileDiscovery(configs);
-            metaStore = new FileMetaStore(configs);
         } else {
             this.curator = CuratorUtils.makeCurator(configs);
             this.discovery = new ZkDiscovery(configs, localNodeProvider, this.curator);
-            metaStore = new ZkMetaStore(configs, this.curator);
         }
         NameResolver.Factory nameResolverFactory = new GrootNameResolverFactory(this.discovery);
         this.channelManager = new ChannelManager(configs, nameResolverFactory);
@@ -77,35 +82,36 @@ public class Coordinator extends NodeBase {
                         this.channelManager, RoleType.FRONTEND, FrontendSnapshotClient::new);
         RoleClients<IngestorSnapshotClient> ingestorSnapshotClients =
                 new RoleClients<>(
-                        this.channelManager, RoleType.INGESTOR, IngestorSnapshotClient::new);
-        WriteSnapshotIdNotifier writeSnapshotIdNotifier =
+                        this.channelManager, RoleType.FRONTEND, IngestorSnapshotClient::new);
+        IngestorWriteSnapshotIdNotifier writeSnapshotIdNotifier =
                 new IngestorWriteSnapshotIdNotifier(configs, ingestorSnapshotClients);
-        LogService logService = new KafkaLogService(configs);
-        this.snapshotManager =
-                new SnapshotManager(configs, metaStore, logService, writeSnapshotIdNotifier);
+
+        this.snapshotManager = new SnapshotManager(configs, metaStore, writeSnapshotIdNotifier);
         DdlExecutors ddlExecutors = new DdlExecutors();
         RoleClients<IngestorWriteClient> ingestorWriteClients =
-                new RoleClients<>(this.channelManager, RoleType.INGESTOR, IngestorWriteClient::new);
+                new RoleClients<>(this.channelManager, RoleType.FRONTEND, IngestorWriteClient::new);
         DdlWriter ddlWriter = new DdlWriter(ingestorWriteClients);
         this.metaService = new DefaultMetaService(configs);
+        int storeCount = CommonConfig.STORE_NODE_COUNT.get(configs);
+        int frontendCount = CommonConfig.FRONTEND_NODE_COUNT.get(configs);
         RoleClients<StoreSchemaClient> storeSchemaClients =
                 new RoleClients<>(this.channelManager, RoleType.STORE, StoreSchemaClient::new);
-        GraphDefFetcher graphDefFetcher = new GraphDefFetcher(storeSchemaClients);
+        GraphDefFetcher graphDefFetcher = new GraphDefFetcher(storeSchemaClients, storeCount);
         this.schemaManager =
                 new SchemaManager(
+                        configs,
                         this.snapshotManager,
                         ddlExecutors,
                         ddlWriter,
                         this.metaService,
-                        graphDefFetcher);
+                        graphDefFetcher,
+                        frontendSnapshotClients);
         this.snapshotNotifier =
                 new SnapshotNotifier(
                         this.discovery,
                         this.snapshotManager,
                         this.schemaManager,
                         frontendSnapshotClients);
-        IngestProgressService ingestProgressService =
-                new IngestProgressService(this.snapshotManager);
         SnapshotCommitService snapshotCommitService =
                 new SnapshotCommitService(this.snapshotManager);
         SchemaService schemaService = new SchemaService(this.schemaManager);
@@ -135,12 +141,12 @@ public class Coordinator extends NodeBase {
                 new RpcServer(
                         configs,
                         localNodeProvider,
-                        ingestProgressService,
                         snapshotCommitService,
                         schemaService,
                         idAllocateService,
                         backupService,
                         coordinatorSnapshotService);
+        LogService logService = LogServiceFactory.makeLogService(configs);
         this.logRecycler = new LogRecycler(configs, logService, this.snapshotManager);
         this.graphInitializer = new GraphInitializer(configs, this.curator, metaStore, logService);
     }
@@ -156,7 +162,7 @@ public class Coordinator extends NodeBase {
         try {
             this.rpcServer.start();
         } catch (IOException e) {
-            throw new GrootException(e);
+            throw new InternalException(e);
         }
         this.discovery.start();
         this.channelManager.start();

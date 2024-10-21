@@ -8,12 +8,12 @@
 [![Docs-en](https://shields.io/badge/Docs-English-blue?logo=Read%20The%20Docs)](https://graphscope.io/docs)
 [![Docs-zh](https://shields.io/badge/Docs-%E4%B8%AD%E6%96%87-blue?logo=Read%20The%20Docs)](https://graphscope.io/docs/zh/)
 [![Translation](https://shields.io/badge/README-English-blue)](https://github.com/alibaba/GraphScope)
-[![Playground](https://shields.io/badge/JupyterLab-Try%20GraphScope%20Now!-F37626?logo=jupyter)](https://try.graphscope.app)
+[![Playground](https://shields.io/badge/JupyterLab-Try%20GraphScope%20Now!-F37626?logo=jupyter)](https://try.graphscope.io)
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/alibaba/GraphScope)
 
 GraphScope 是阿里巴巴达摩院智能计算实验室研发并开源的一站式图计算平台。依托于阿里海量数据和丰富场景，与达摩院的高水平研究，GraphScope 致力于针对实际生产场景中图计算的挑战，提供一站式高效的解决方案。
 
-GraphScope 提供了 Python 客户端，能十分方便的对接上下游工作流，具有一站式、开发便捷、性能极致等特点。它整合了智能计算实验室多个重要的创新性技术，包括 [GRAPE](https://github.com/alibaba/libgrape-lite)，[MaxGraph](interactive_engine/)，[Graph-Learn](https://github.com/alibaba/graph-learn)，分别支持图分析、图的交互式查询和图学习任务，引擎间使用 [Vineyard](htps://github.com/v6d-io/v6d) 存储，提供跨进程，零拷贝的内存数据共享服务。其中核心优势包括在业界首次支持了 Gremlin 分布式编译优化，支持了算法的自动并行化、提供了企业级场景下的极致性能等。在阿里巴巴内外部应用中，GraphScope 已经证明在多个关键互联网领域（如风控，电商推荐，广告，网络安全，知识图谱等）实现了重要的业务新价值。
+GraphScope 提供了 Python 客户端，能十分方便的对接上下游工作流，具有一站式、开发便捷、性能极致等特点。它整合了智能计算实验室多个重要的创新性技术，包括 [GRAPE](https://github.com/alibaba/libgrape-lite)，[MaxGraph](interactive_engine/)，[Graph-Learn](https://github.com/alibaba/graph-learn)，分别支持图分析、图的交互式查询和图学习任务，引擎间使用 [Vineyard](https://github.com/v6d-io/v6d) 存储，提供跨进程，零拷贝的内存数据共享服务。其中核心优势包括在业界首次支持了 Gremlin 分布式编译优化，支持了算法的自动并行化、提供了企业级场景下的极致性能等。在阿里巴巴内外部应用中，GraphScope 已经证明在多个关键互联网领域（如风控，电商推荐，广告，网络安全，知识图谱等）实现了重要的业务新价值。
 
 GraphScope 整合了达摩院的多项学术研究成果，其中的核心技术曾获得数据库领域顶级学术会议 SIGMOD2017 最佳论文奖、VLDB2017 最佳演示奖、VLDB2020 最佳论文奖亚军、世界人工智能创新大赛SAIL奖等。GraphScope 的交互查询引擎的论文已被 NSDI 2021录用。还有其它围绕 GraphScope 的十多项研究成果发表在领域顶级的学术会议或期刊上，如 TODS、SIGMOD、VLDB、KDD等。
 
@@ -21,7 +21,7 @@ GraphScope 整合了达摩院的多项学术研究成果，其中的核心技术
 
 ## 快速开始
 
-我们提供了一个基于 JupyterLab 的 [Playground](https://try.graphscope.app)，您可以从浏览器中在线试用 GraphScope。
+我们提供了一个基于 JupyterLab 的 [Playground](https://try.graphscope.io)，您可以从浏览器中在线试用 GraphScope。
 
 GraphScope 支持本地运行，或在 [Kubernetes (k8s)](https://kubernetes.io/) 管理的集群上运行。为了快速上手，我们先从本地部署的方式开始。
 
@@ -211,12 +211,7 @@ GraphScope 是为处理超大图设计，而单机的内存通常不能够容纳
 
 为了继续本篇教程，请确保你拥有一个 k8s 集群与相应的安全证书 （比如，k8s API 服务器的地址，一般存储在 `~/.kube/config` 文件中）
 
-另外，你也可以使用 [Kind](https://kind.sigs.k8s.io) 部署一个本地的 k8s 集群，我们提供了一个脚本来部署环境。
-
-```bash
-# for usage, type -h
-./scripts/install_deps.sh --k8s
-```
+另外，你也可以使用 [Kind](https://kind.sigs.k8s.io) 部署一个本地的 k8s 集群，Kind 的安装和部署可以参考官网的 [Quick Start](https://kind.sigs.k8s.io/docs/user/quick-start/)。
 
 如果你没有安装 `graphscope` 包，这里可以只安装客户端的包。
 

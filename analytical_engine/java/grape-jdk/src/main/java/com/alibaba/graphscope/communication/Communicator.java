@@ -39,7 +39,7 @@ public class Communicator {
     }
 
     /**
-     * This function is set private, not intended to be invokede by user. It is meat to only be
+     * This function is set private, not intended to be invoked by user. It is meat to only be
      * called by jni, and let the exceptions accepted by cpp, so they can be obviously displayed.
      *
      * @param appAddr the address of the c++ app instance.
@@ -58,8 +58,13 @@ public class Communicator {
         for (Constructor constructor : constructors) {
             if (constructor.getParameterCount() == 1
                     && constructor.getParameterTypes()[0].getName().equals("long")) {
-                communicatorImpl = communicatorClass.cast(constructor.newInstance(appAddr));
-                logger.info("Init communicator:" + communicatorImpl);
+                try {
+                    communicatorImpl = communicatorClass.cast(constructor.newInstance(appAddr));
+                    logger.info("Init communicator:" + communicatorImpl);
+                } catch (Exception e) {
+                    logger.error("Failed to initialize communicator", e);
+                    throw e;
+                }
             }
         }
     }

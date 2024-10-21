@@ -16,7 +16,7 @@ package com.alibaba.graphscope.groot.discovery;
 import com.alibaba.graphscope.groot.common.RoleType;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.exception.NetworkFailureException;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -29,10 +29,10 @@ import java.util.Objects;
 @JsonRootName("details")
 public class GrootNode {
 
-    private String roleName;
-    private int idx;
-    private String host;
-    private int port;
+    private final String roleName;
+    private final int idx;
+    private final String host;
+    private final int port;
 
     @JsonCreator
     public GrootNode(
@@ -58,7 +58,7 @@ public class GrootNode {
             try {
                 host = InetAddress.getLocalHost().getHostAddress();
             } catch (UnknownHostException e) {
-                throw new GrootException(e);
+                throw new NetworkFailureException(e);
             }
         }
         return new GrootNode(role.getName(), idx, host, port);

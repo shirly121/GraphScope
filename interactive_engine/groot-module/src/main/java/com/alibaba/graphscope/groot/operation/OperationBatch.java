@@ -13,21 +13,26 @@
  */
 package com.alibaba.graphscope.groot.operation;
 
+import com.alibaba.graphscope.groot.common.exception.IllegalStateException;
 import com.alibaba.graphscope.proto.groot.OperationBatchPb;
 import com.alibaba.graphscope.proto.groot.OperationPb;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 public class OperationBatch implements Iterable<OperationBlob> {
 
-    private long latestSnapshotId;
-    private List<OperationBlob> operationBlobs;
+    private final long latestSnapshotId;
+    private final List<OperationBlob> operationBlobs;
+    private final String traceId;
 
-    private OperationBatch(long latestSnapshotId, List<OperationBlob> operationBlobs) {
+    private OperationBatch(
+            long latestSnapshotId, List<OperationBlob> operationBlobs, String traceId) {
         this.latestSnapshotId = latestSnapshotId;
         this.operationBlobs = operationBlobs;
+        this.traceId = traceId;
     }
 
     public static OperationBatch parseProto(OperationBatchPb proto) {
@@ -37,7 +42,7 @@ public class OperationBatch implements Iterable<OperationBlob> {
         for (OperationPb operationPb : operationPbs) {
             operationBlobs.add(OperationBlob.parseProto(operationPb));
         }
-        return new OperationBatch(latestSnapshotId, operationBlobs);
+        return new OperationBatch(latestSnapshotId, operationBlobs, proto.getTraceId());
     }
 
     public int getOperationCount() {
@@ -53,6 +58,10 @@ public class OperationBatch implements Iterable<OperationBlob> {
         return latestSnapshotId;
     }
 
+    public String getTraceId() {
+        return traceId;
+    }
+
     public OperationBlob getOperationBlob(int i) {
         return operationBlobs.get(i);
     }
@@ -60,6 +69,9 @@ public class OperationBatch implements Iterable<OperationBlob> {
     public OperationBatchPb toProto() {
         OperationBatchPb.Builder builder = OperationBatchPb.newBuilder();
         builder.setLatestSnapshotId(latestSnapshotId);
+        if (this.traceId != null) {
+            builder.setTraceId(traceId);
+        }
         for (OperationBlob operationBlob : operationBlobs) {
             builder.addOperations(operationBlob.toProto());
         }
@@ -81,19 +93,19 @@ public class OperationBatch implements Iterable<OperationBlob> {
 
         OperationBatch that = (OperationBatch) o;
 
-        return operationBlobs != null
-                ? operationBlobs.equals(that.operationBlobs)
-                : that.operationBlobs == null;
+        return Objects.equals(operationBlobs, that.operationBlobs);
     }
 
     public static class Builder {
 
         private boolean built = false;
         private long latestSnapshotId;
+        private String traceId;
         private List<OperationBlob> operationBlobs;
 
         private Builder() {
             this.latestSnapshotId = 0L;
+            this.traceId = null;
             this.operationBlobs = new ArrayList<>();
         }
 
@@ -121,9 +133,18 @@ public class OperationBatch implements Iterable<OperationBlob> {
             return this;
         }
 
+        public Builder setTraceId(String traceId) {
+            this.traceId = traceId;
+            return this;
+        }
+
+        public int getOperationCount() {
+            return operationBlobs.size();
+        }
+
         public OperationBatch build() {
             this.built = true;
-            return new OperationBatch(latestSnapshotId, operationBlobs);
+            return new OperationBatch(latestSnapshotId, operationBlobs, traceId);
         }
     }
 }

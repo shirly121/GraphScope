@@ -15,7 +15,7 @@
  */
 package com.alibaba.graphscope.groot.wal.kafka;
 
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.exception.InternalException;
 import com.alibaba.graphscope.groot.wal.LogEntry;
 import com.alibaba.graphscope.groot.wal.LogWriter;
 
@@ -36,14 +36,11 @@ public class KafkaLogWriter implements LogWriter {
     private static final Logger logger = LoggerFactory.getLogger(KafkaLogWriter.class);
 
     private static final LogEntrySerializer ser = new LogEntrySerializer();
-    private Producer<LogEntry, LogEntry> producer;
-    private String topicName;
-    private int partitionId;
+    private final Producer<LogEntry, LogEntry> producer;
+    private final String topicName;
 
-    public KafkaLogWriter(
-            String servers, String topicName, int partitionId, Map<String, String> customConfigs) {
+    public KafkaLogWriter(String servers, String topicName, Map<String, String> customConfigs) {
         this.topicName = topicName;
-        this.partitionId = partitionId;
 
         Map<String, Object> producerConfig = new HashMap<>();
         producerConfig.put("bootstrap.servers", servers);
@@ -57,17 +54,31 @@ public class KafkaLogWriter implements LogWriter {
         this.producer = new KafkaProducer<>(producerConfig, ser, ser);
     }
 
+    public long append(int partition, LogEntry logEntry) {
+        Future<RecordMetadata> future =
+                producer.send(new ProducerRecord<>(topicName, partition, null, logEntry));
+        return waitFuture(future);
+    }
+
     @Override
     public long append(LogEntry logEntry) {
-        Future<RecordMetadata> future =
-                producer.send(
-                        new ProducerRecord<>(this.topicName, this.partitionId, null, logEntry));
+        Future<RecordMetadata> future = producer.send(new ProducerRecord<>(topicName, logEntry));
+        return waitFuture(future);
+    }
+
+    @Override
+    public Future<RecordMetadata> appendAsync(int partition, LogEntry logEntry) {
+        Future<RecordMetadata> future = producer.send(new ProducerRecord<>(topicName, logEntry));
+        return future;
+    }
+
+    public long waitFuture(Future<RecordMetadata> future) {
         RecordMetadata recordMetadata;
         try {
             recordMetadata = future.get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("append kafka failed", e);
-            throw new GrootException(e);
+            throw new InternalException(e);
         }
         return recordMetadata.offset();
     }

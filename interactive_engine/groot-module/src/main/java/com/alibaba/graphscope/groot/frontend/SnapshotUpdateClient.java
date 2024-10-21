@@ -16,12 +16,12 @@
 
 package com.alibaba.graphscope.groot.frontend;
 
+import com.alibaba.graphscope.groot.common.exception.InternalException;
+import com.alibaba.graphscope.groot.rpc.RpcChannel;
 import com.alibaba.graphscope.groot.rpc.RpcClient;
 import com.alibaba.graphscope.proto.groot.CoordinatorSnapshotServiceGrpc;
 import com.alibaba.graphscope.proto.groot.UpdateMinQuerySnapshotIdRequest;
 import com.alibaba.graphscope.proto.groot.UpdateMinQuerySnapshotIdResponse;
-
-import io.grpc.ManagedChannel;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,17 +30,12 @@ import org.slf4j.LoggerFactory;
 public class SnapshotUpdateClient extends RpcClient {
     private static final Logger logger = LoggerFactory.getLogger(SnapshotUpdateClient.class);
 
-    private CoordinatorSnapshotServiceGrpc.CoordinatorSnapshotServiceBlockingStub stub;
-
-    public SnapshotUpdateClient(ManagedChannel channel) {
+    public SnapshotUpdateClient(RpcChannel channel) {
         super(channel);
-        this.stub = CoordinatorSnapshotServiceGrpc.newBlockingStub(channel);
     }
 
-    public SnapshotUpdateClient(
-            CoordinatorSnapshotServiceGrpc.CoordinatorSnapshotServiceBlockingStub stub) {
-        super((ManagedChannel) stub.getChannel());
-        this.stub = stub;
+    private CoordinatorSnapshotServiceGrpc.CoordinatorSnapshotServiceBlockingStub getStub() {
+        return CoordinatorSnapshotServiceGrpc.newBlockingStub(rpcChannel.getChannel());
     }
 
     public void updateSnapshot(int frontendId, long snapshotId) throws RuntimeException {
@@ -49,9 +44,9 @@ public class SnapshotUpdateClient extends RpcClient {
                         .setFrontendId(frontendId)
                         .setSnapshotId(snapshotId)
                         .build();
-        UpdateMinQuerySnapshotIdResponse res = stub.updateMinQuerySnapshotId(req);
+        UpdateMinQuerySnapshotIdResponse res = getStub().updateMinQuerySnapshotId(req);
         if (!res.getSuccess()) {
-            throw new RuntimeException("update snapshot fail {} " + res.getErrMsg());
+            throw new InternalException("update snapshot fail {} " + res.getErrMsg());
         }
     }
 }

@@ -61,6 +61,10 @@ class Graph:
         )
         return self._conn.batch_write(request)
 
+    def update_vertex_properties_batch(self, vertices: list):
+        request = to_write_requests_pb("VERTEX", vertices, write_service_pb2.UPDATE)
+        return self._conn.batch_write(request)
+
     def delete_vertex(self, vertex_pk: VertexRecordKey):
         return self.delete_vertices([vertex_pk])
 
@@ -81,6 +85,10 @@ class Graph:
         request = to_write_requests_pb(
             "EDGE", [[edge, properties]], write_service_pb2.UPDATE
         )
+        return self._conn.batch_write(request)
+
+    def update_edge_properties_batch(self, edges: list):
+        request = to_write_requests_pb("EDGE", edges, write_service_pb2.UPDATE)
         return self._conn.batch_write(request)
 
     def delete_edge(self, edge: EdgeRecordKey):
@@ -183,6 +191,27 @@ class Connection:
             request, metadata=self._metadata
         )
         return response.partitionStates
+
+    def replay_records(self, offset: int, timestamp: int):
+        request = write_service_pb2.ReplayRecordsRequest()
+        request.offset = offset
+        request.timestamp = timestamp
+        response = self._write_service_stub.replayRecords(
+            request, metadata=self._metadata
+        )
+        return response.snapshot_id
+
+    def compact_db(self):
+        request = model_pb2.CompactDBRequest()
+        response = self._client_service_stub.compactDB(request, metadata=self._metadata)
+        return response.success
+
+    def reopen_secondary(self):
+        request = model_pb2.ReopenSecondaryRequest()
+        response = self._client_service_stub.reopenSecondary(
+            request, metadata=self._metadata
+        )
+        return response.success
 
     def _encode_metadata(self, username, password):
         if not (username and password):

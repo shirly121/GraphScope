@@ -199,8 +199,8 @@ message IndexPredicate {
          common.Value const = 2;
          common.DynamicParam param = 3;
     }
-    // TODO(longbin) More comparators (gt, ge, lt, le, ne) other than equivalence (eq) may be required
-    common.None cmp = 4;
+    // TODO(longbin) More comparators (gt, ge, lt, le, ne) other than equivalence (eq or within) may be required
+    common.Logical cmp = 4;
   }
   // A collection of `Triplet` that forms a logical **AND** of all `Predicate`s.
   message AndPredicate {
@@ -307,6 +307,8 @@ message EdgeExpand {
   // Expand option, i.e., expand vertices/edges/degree.
   ExpandOpt expand_opt = 5;
   MetaData meta_data = 6;
+  // Whether the expand is optional, if true, the expand will return a `None` if the edge does not exist
+  bool is_optional = 7;
 }
 
 message PathExpand {
@@ -321,6 +323,8 @@ message PathExpand {
     ARBITRARY = 0;
     // a path without vertex duplications
     SIMPLE = 1;
+    // a path without edge duplications
+    TRAIL = 2;
   }
    // Define what result is required for this path. We currently support `EndV` and `AllV`, while an option to
    // include all edges and vertices may be needed in the future.
@@ -347,6 +351,8 @@ message PathExpand {
   ResultOpt result_opt = 6;
   // A condition formulated as an expression predicate
   common.Expression condition = 7;
+  // Whether the expand is optional, if true, the expand will return a `None` if the path does not exist
+  bool is_optional = 8;
 }
 
 /*

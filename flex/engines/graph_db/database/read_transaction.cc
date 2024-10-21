@@ -30,6 +30,8 @@ void ReadTransaction::Commit() { release(); }
 
 void ReadTransaction::Abort() { release(); }
 
+const MutablePropertyFragment& ReadTransaction::graph() const { return graph_; }
+
 ReadTransaction::vertex_iterator::vertex_iterator(
     label_t label, vid_t cur, vid_t num, const MutablePropertyFragment& graph)
     : label_(label), cur_(cur), num_(num), graph_(graph) {}
@@ -56,7 +58,7 @@ int ReadTransaction::vertex_iterator::FieldNum() const {
 
 ReadTransaction::edge_iterator::edge_iterator(
     label_t neighbor_label, label_t edge_label,
-    std::shared_ptr<MutableCsrConstEdgeIterBase> iter)
+    std::shared_ptr<CsrConstEdgeIterBase> iter)
     : neighbor_label_(neighbor_label),
       edge_label_(edge_label),
       iter_(std::move(iter)) {}
@@ -113,15 +115,15 @@ Any ReadTransaction::GetVertexId(label_t label, vid_t index) const {
 }
 
 ReadTransaction::edge_iterator ReadTransaction::GetOutEdgeIterator(
-    label_t label, vid_t u, label_t neighnor_label, label_t edge_label) const {
-  return {neighnor_label, edge_label,
-          graph_.get_outgoing_edges(label, u, neighnor_label, edge_label)};
+    label_t label, vid_t u, label_t neighbor_label, label_t edge_label) const {
+  return {neighbor_label, edge_label,
+          graph_.get_outgoing_edges(label, u, neighbor_label, edge_label)};
 }
 
 ReadTransaction::edge_iterator ReadTransaction::GetInEdgeIterator(
-    label_t label, vid_t u, label_t neighnor_label, label_t edge_label) const {
-  return {neighnor_label, edge_label,
-          graph_.get_incoming_edges(label, u, neighnor_label, edge_label)};
+    label_t label, vid_t u, label_t neighbor_label, label_t edge_label) const {
+  return {neighbor_label, edge_label,
+          graph_.get_incoming_edges(label, u, neighbor_label, edge_label)};
 }
 
 const Schema& ReadTransaction::schema() const { return graph_.schema(); }

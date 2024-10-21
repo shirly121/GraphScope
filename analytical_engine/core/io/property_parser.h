@@ -133,6 +133,13 @@ struct Graph {
   bool retain_oid = true;
   bool compact_edges = false;
   bool use_perfect_hash = false;
+  // This is used to extend the label data
+  // when user try to add data to existed labels.
+  // the available option is 0/1/2,
+  // 0 stands for no extend,
+  // 1 stands for extend vertex label data,
+  // 2 stands for extend edge label data.
+  int extend_type = 0;
 
   std::string SerializeToString() const {
     std::stringstream ss;
@@ -238,19 +245,24 @@ inline void SplitTable(const std::string& data, int num,
 inline void DistributeChunk(const rpc::Chunk& chunk, int num,
                             std::vector<rpc::Chunk>& distributed_chunk) {
   distributed_chunk.resize(num);
-  const auto& attrs = chunk.attr();
-  std::string protocol = attrs.at(rpc::PROTOCOL).s();
+  // Copy to a map to avoid the undefined reference issue (inside
+  // protobuf's internal code: Map::at()') on MacOS
+  std::map<int, rpc::AttrValue> params;
+  for (auto& pair : chunk.attr()) {
+    params[pair.first] = pair.second;
+  }
+  std::string protocol = params.at(rpc::PROTOCOL).s();
   std::vector<std::string> distributed_values;
   const std::string& data = chunk.buffer();
   if (protocol == "pandas") {
     SplitTable(data, num, distributed_values);
   } else {
-    distributed_values.resize(num, attrs.at(rpc::SOURCE).s());
+    distributed_values.resize(num, params.at(rpc::SOURCE).s());
   }
   for (int i = 0; i < num; ++i) {
     distributed_chunk[i].set_buffer(std::move(distributed_values[i]));
     auto* attr = distributed_chunk[i].mutable_attr();
-    for (auto& pair : attrs) {
+    for (auto& pair : params) {
       (*attr)[pair.first].CopyFrom(pair.second);
     }
   }
@@ -289,6 +301,7 @@ inline bl::result<std::shared_ptr<detail::Graph>> ParseCreatePropertyGraph(
   BOOST_LEAF_AUTO(compact_edges, params.Get<bool>(rpc::COMPACT_EDGES, false));
   BOOST_LEAF_AUTO(use_perfect_hash,
                   params.Get<bool>(rpc::USE_PERFECT_HASH, false));
+  BOOST_LEAF_AUTO(extend_type, params.Get<int64_t>(rpc::EXTEND_LABEL_DATA, 0));
 
   auto graph = std::make_shared<detail::Graph>();
   graph->directed = directed;
@@ -296,6 +309,7 @@ inline bl::result<std::shared_ptr<detail::Graph>> ParseCreatePropertyGraph(
   graph->retain_oid = retain_oid;
   graph->compact_edges = compact_edges;
   graph->use_perfect_hash = use_perfect_hash;
+  graph->extend_type = extend_type;
 
   const auto& large_attr = params.GetLargeAttr();
   for (const auto& item : large_attr.chunk_list().items()) {

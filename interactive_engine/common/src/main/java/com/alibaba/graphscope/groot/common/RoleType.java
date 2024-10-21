@@ -13,20 +13,17 @@
  */
 package com.alibaba.graphscope.groot.common;
 
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
+
 import java.util.HashMap;
 import java.util.Map;
 
 public enum RoleType {
     UNKNOWN("unknown"),
     FRONTEND("frontend"),
-    FRONTEND_SERVICE("frontend_service"),
-    INGESTOR("ingestor"),
     STORE("store"),
     COORDINATOR("coordinator"),
-    EXECUTOR_GRAPH("executor_graph"),
-    EXECUTOR_QUERY("executor_query"),
-    EXECUTOR_MANAGE("executor_manage"),
-    EXECUTOR_ENGINE("executor_engine"),
+    FRONTEND_SERVICE("frontend_service"),
     GAIA_ENGINE("gaia_engine"),
     GAIA_RPC("gaia_rpc");
 
@@ -46,14 +43,12 @@ public enum RoleType {
         for (RoleType role : RoleType.values()) {
             lookup.put(role.getName(), role);
         }
-        lookup.put("store-gaia", STORE);
-        lookup.put("frontend-gaia", FRONTEND);
     }
 
     public static RoleType fromName(String roleName) {
         RoleType roleType = lookup.get(roleName);
         if (roleType == null || roleType == RoleType.UNKNOWN) {
-            throw new IllegalArgumentException("Unknown RoleType: [" + roleName + "]");
+            throw new InvalidArgumentException("Unknown RoleType: [" + roleName + "]");
         }
         return roleType;
     }

@@ -15,13 +15,15 @@
  */
 package com.alibaba.graphscope.groot.common.config;
 
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
+
 import java.util.function.Function;
 
 public class Config<T> {
-    private String key;
-    private String defaultVal;
+    private final String key;
+    private final String defaultVal;
 
-    private Function<String, T> parseFunc;
+    private final Function<String, T> parseFunc;
 
     public Config(String key, String defaultVal, Function<String, T> parseFunc) {
         this.key = key;
@@ -35,21 +37,21 @@ public class Config<T> {
             T val = parseFunc.apply(valStr);
             return val;
         } catch (Exception e) {
-            throw new IllegalArgumentException(
+            throw new InvalidArgumentException(
                     "key [" + key + "] val [" + valStr + "] parse failed", e);
         }
     }
 
     public static Config<Short> shortConfig(String key, short defaultVal) {
-        return new Config<>(key, String.valueOf(defaultVal), (s) -> Short.parseShort(s));
+        return new Config<>(key, String.valueOf(defaultVal), Short::parseShort);
     }
 
     public static Config<Integer> intConfig(String key, int defaultVal) {
-        return new Config<>(key, String.valueOf(defaultVal), (s) -> Integer.parseInt(s));
+        return new Config<>(key, String.valueOf(defaultVal), Integer::parseInt);
     }
 
     public static Config<Long> longConfig(String key, long defaultVal) {
-        return new Config<>(key, String.valueOf(defaultVal), (s) -> Long.parseLong(s));
+        return new Config<>(key, String.valueOf(defaultVal), Long::parseLong);
     }
 
     public static Config<String> stringConfig(String key, String defaultVal) {
@@ -57,7 +59,7 @@ public class Config<T> {
     }
 
     public static Config<Boolean> boolConfig(String key, boolean defaultVal) {
-        return new Config<>(key, String.valueOf(defaultVal), (s) -> Boolean.parseBoolean(s));
+        return new Config<>(key, String.valueOf(defaultVal), Boolean::parseBoolean);
     }
 
     public String getKey() {

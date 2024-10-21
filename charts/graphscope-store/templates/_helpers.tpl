@@ -31,12 +31,12 @@ If release name contains chart name it will be used as a full name.
 {{- printf "%s-%s" (include "graphscope-store.fullname" .) "frontend" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "graphscope-store.ingestor.fullname" -}}
-{{- printf "%s-%s" (include "graphscope-store.fullname" .) "ingestor" | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-
 {{- define "graphscope-store.store.fullname" -}}
 {{- printf "%s-%s" (include "graphscope-store.fullname" .) "store" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "graphscope-store.portal.fullname" -}}
+{{- printf "%s-%s" (include "graphscope-store.fullname" .) "portal" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*
@@ -59,6 +59,13 @@ Return the proper graphscope-store test image name
 */}}
 {{- define "graphscope-store.test.image" -}}
 {{ include "common.images.image" (dict "imageRoot" .Values.test.image "global" .Values.global ) }}
+{{- end -}}
+
+{{/*
+Return the proper portal image name
+*/}}
+{{- define "graphscope-store.portal.coordinator.image" -}}
+{{ include "common.images.image" (dict "imageRoot" .Values.portal.coordinatorImage "global" .Values.global ) }}
 {{- end -}}
 
 {{/*
@@ -160,4 +167,13 @@ Get full broker list.
 {{- $brokerList = append $brokerList (printf "%s-%d.%s-headless.%s.svc.%s:%d" $fullname $i $fullname $releaseNamespace $clusterDomain $servicePort) }}
 {{- end }}
 {{- join "," $brokerList | printf "%s" -}}
+{{- end -}}
+
+
+{{/*
+Create a default fully qualified zookeeper name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+*/}}
+{{- define "graphscope-store.zookeeper.fullname" -}}
+{{- printf "%s-%s" .Release.Name "zookeeper" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

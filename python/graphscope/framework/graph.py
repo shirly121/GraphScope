@@ -28,6 +28,7 @@ from typing import List
 from typing import Mapping
 from typing import Tuple
 from typing import Union
+from urllib.parse import urlparse
 
 try:
     import vineyard
@@ -65,6 +66,7 @@ class GraphInterface(metaclass=ABCMeta):
         self._vertex_map = graph_def_pb2.GLOBAL_VERTEX_MAP
         self._compact_edges = False
         self._use_perfect_hash = False
+        self._extend_label_data = 0
 
     @property
     def session_id(self):
@@ -116,18 +118,17 @@ class GraphInterface(metaclass=ABCMeta):
     def load_from(cls, path, sess, **kwargs):
         raise NotImplementedError
 
-    def archive(self, path, **kwargs):
-        raise NotImplementedError
-
     @abstractmethod
     def project(self, vertices, edges):
         raise NotImplementedError
 
     def unload(self):
-        warnings.warn(
-            "The Graph.unload() method has been deprecated, please using the `del` operator instead, e.g., `del graph`",
-            DeprecationWarning,
-        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("always", DeprecationWarning)
+            warnings.warn(
+                "The Graph.unload() method has been deprecated, please using the `del` operator instead, i.e., `del graph`",
+                DeprecationWarning,
+            )
 
     def _from_nx_graph(self, g):
         """Create a gs graph from a nx graph.
@@ -181,7 +182,7 @@ class GraphInterface(metaclass=ABCMeta):
         config[types_pb2.VINEYARD_ID] = utils.i_to_attr(int(vineyard_id))
         # FIXME(hetao) hardcode oid/vid type for codegen, when loading from vineyard
         #
-        # the metadata should be retrived from vineyard
+        # the metadata should be retrieved from vineyard
         config[types_pb2.OID_TYPE] = utils.s_to_attr("int64_t")
         config[types_pb2.VID_TYPE] = utils.s_to_attr("uint64_t")
         return dag_utils.create_graph(
@@ -195,7 +196,7 @@ class GraphInterface(metaclass=ABCMeta):
         config[types_pb2.VINEYARD_NAME] = utils.s_to_attr(str(vineyard_name))
         # FIXME(hetao) hardcode oid/vid type for codegen, when loading from vineyard
         #
-        # the metadata should be retrived from vineyard
+        # the metadata should be retrieved from vineyard
         config[types_pb2.OID_TYPE] = utils.s_to_attr("int64_t")
         config[types_pb2.VID_TYPE] = utils.s_to_attr("uint64_t")
         return dag_utils.create_graph(
@@ -215,6 +216,7 @@ class GraphInterface(metaclass=ABCMeta):
         config[types_pb2.VERTEX_MAP_TYPE] = utils.i_to_attr(self._vertex_map)
         config[types_pb2.COMPACT_EDGES] = utils.b_to_attr(self._compact_edges)
         config[types_pb2.USE_PERFECT_HASH] = utils.b_to_attr(self._use_perfect_hash)
+        config[types_pb2.EXTEND_LABEL_DATA] = utils.i_to_attr(self._extend_label_data)
         return dag_utils.create_graph(
             self.session_id, graph_def_pb2.ARROW_PROPERTY, inputs=None, attrs=config
         )
@@ -304,6 +306,11 @@ class GraphDAGNode(DAGNode, GraphInterface):
         self._vertex_map = utils.vertex_map_type_to_enum(vertex_map)
         self._compact_edges = compact_edges
         self._use_perfect_hash = use_perfect_hash
+        # for need to extend label in 'eager mode' when add_vertices and add_edges
+        # 0 - not extending label
+        # 1 - extend vertex label
+        # 2 - extend edge label
+        self._extend_label_data = 0
 
         # list of pair <parent_op_key, VertexLabel/EdgeLabel>
         self._unsealed_vertices_and_edges = list()
@@ -457,16 +464,6 @@ class GraphDAGNode(DAGNode, GraphInterface):
         op = dag_utils.graph_to_dataframe(self, selector, vertex_range)
         return ResultDAGNode(self, op)
 
-    def archive(self, path):
-        """Archive the graph to gar format with graph yaml file path.
-
-        Args:
-            path (str): The graph yaml file path describe how to archive the graph.
-        """
-        check_argument(self.graph_type == graph_def_pb2.ARROW_PROPERTY)
-        op = dag_utils.archive_graph(self, path)
-        return ArchivedGraph(self._session, op)
-
     def to_directed(self):
         op = dag_utils.to_directed(self)
         graph_dag_node = GraphDAGNode(self._session, op)
@@ -505,10 +502,15 @@ class GraphDAGNode(DAGNode, GraphInterface):
                 "Cannot incrementally add vertices to graphs with compacted edges, "
                 "please use `graphscope.load_from()` instead."
             )
-        if label in self._v_labels:
-            raise ValueError(f"Label {label} already existed in graph.")
         if not self._v_labels and self._e_labels:
             raise ValueError("Cannot manually add vertices after inferred vertices.")
+        # currently not support local_vertex_map
+        if label in self._v_labels:
+            self._extend_label_data = 1
+            warnings.warn(
+                f"Label {label} already existed in graph"
+                ", origin label data will be extend."
+            )
         unsealed_vertices_and_edges = deepcopy(self._unsealed_vertices_and_edges)
         vertex_label = VertexLabel(
             label=label,
@@ -520,7 +522,8 @@ class GraphDAGNode(DAGNode, GraphInterface):
         )
         unsealed_vertices_and_edges.append((self.op.key, vertex_label))
         v_labels = deepcopy(self._v_labels)
-        v_labels.append(label)
+        if self._extend_label_data == 0:
+            v_labels.append(label)
         # generate and add a loader op to dag
         loader_op = dag_utils.create_loader(vertex_label)
         self._session.dag.add_op(loader_op)
@@ -616,7 +619,7 @@ class GraphDAGNode(DAGNode, GraphInterface):
 
         if self.evaluated:
             if label in self._e_labels:
-                raise ValueError(f"Label {label} already existed in graph")
+                self._extend_label_data = 2
 
         unsealed_vertices = list()
         unsealed_edges = list()
@@ -634,7 +637,7 @@ class GraphDAGNode(DAGNode, GraphInterface):
             v_labels.append(dst_label)
 
         parent = self
-        if label in self.e_labels:
+        if not self.evaluated and label in self.e_labels:
             # aggregate op with the same edge label
             fork = False
             unsealed_vertices_and_edges = list()
@@ -1164,49 +1167,182 @@ class Graph(GraphInterface):
             self.signature == self._saved_signature, "Graph has been modified!"
         )
 
-    def save_to(self, path, **kwargs):
-        """Serialize graph to a location.
-        The meta and data of graph is dumped to specified location,
-        and can be restored by `Graph.load_from` in other sessions.
-
-        Each worker will write a `path_{worker_id}.meta` file and
-        a `path_{worker_id}` file to storage.
-        Args:
-            path (str): supported storages are local, hdfs, oss, s3
-        """
-
-        op = dag_utils.save_graph_to(self, path, self._vineyard_id, **kwargs)
-        self._session.dag.add_op(op)
-        return self._session._wrapper(op)
-
-    @classmethod
-    def load_from(cls, path, sess, **kwargs):
-        """Construct a `Graph` by deserialize from `path`.
-        It will read all serialization files, which is dumped by
-        `Graph.serialize`.
-        If any serialize file doesn't exists or broken, will error out.
-
-        Args:
-            path (str): Path contains the serialization files.
-            sess (`graphscope.Session`): The target session
-                that the graph will be construct in
-
-        Returns:
-            `Graph`: A new graph object. Schema and data is supposed to be
-                identical with the one that called serialized method.
-        """
-        op = dag_utils.load_graph_from(path, sess, **kwargs)
+    @staticmethod
+    def _load_from_graphar(path, sess, **kwargs):
+        # graphar now only support global vertex map.
+        vertex_map = utils.vertex_map_type_to_enum("global")
+        # oid_type = utils.get_oid_type_from_graph_info(path)
+        config = {
+            types_pb2.OID_TYPE: utils.s_to_attr(
+                "int64_t"
+            ),  # graphar use vertex index as oid, so it always be int64_t
+            types_pb2.VID_TYPE: utils.s_to_attr("uint64_t"),
+            types_pb2.IS_FROM_VINEYARD_ID: utils.b_to_attr(False),
+            types_pb2.IS_FROM_GAR: utils.b_to_attr(True),
+            types_pb2.VERTEX_MAP_TYPE: utils.i_to_attr(vertex_map),
+            types_pb2.COMPACT_EDGES: utils.b_to_attr(False),
+            types_pb2.GRAPH_INFO_PATH: utils.s_to_attr(path),
+            types_pb2.STORAGE_OPTIONS: utils.s_to_attr(json.dumps(kwargs)),
+        }
+        op = dag_utils.create_graph(
+            sess.session_id, graph_def_pb2.ARROW_PROPERTY, inputs=[], attrs=config
+        )
         return sess._wrapper(GraphDAGNode(sess, op))
 
-    def archive(self, path):
-        """Archive graph gar format files base on the graph info.
-        The meta and data of graph is dumped to specified location,
-        and can be restored by `Graph.deserialize` in other sessions.
+    @classmethod
+    def load_from(cls, uri, sess=None, **kwargs):
+        """Load a ArrowProperty graph from a certain data source. The data source
+        can be vineyard serialized files, graphar serialized files, or other data
+        sources supported by graphscope.
 
         Args:
-            path (str): the graph info file path.
+            uri (str): URI contains the description of the data source or
+                path contains the serialization files,
+                example: "graphar+file:///tmp/graphar/xxx"
+            sess (`graphscope.Session`): The target session that the graph
+                will be construct, if None, use the default session.
+            selector (dict, optional): the selector to select the data to read.
+            graphar_store_in_local (bool, optional): whether store graphar format in local, default is False.
+        Returns:
+            `Graph`: A new graph object.
         """
-        return self._session._wrapper(self._graph_node.archive(path))
+        from graphscope.client.session import get_default_session
+
+        def _check_load_options(load_options):
+            for k, v in load_options.items():
+                if k == "selector":
+                    if not isinstance(v, dict):
+                        raise ValueError(
+                            "selector should be a dict, but got {}".format(type(v))
+                        )
+                elif k == "graphar_store_in_local":
+                    if not isinstance(v, bool):
+                        raise ValueError(
+                            "graphar_store_in_local should be a bool, but got {}".format(
+                                v
+                            )
+                        )
+
+        if sess is None:
+            sess = get_default_session()
+        uri_str = uri
+        uri = urlparse(uri)
+        if uri.scheme and "+" in uri.scheme:
+            source = uri.scheme.split("+")[0]
+            if uri.scheme.split("+")[-1] not in ["file", "s3", "oss", "hdfs"]:
+                raise ValueError(
+                    "Unknown file system %s, currently only support file, s3, oss and hdfs"
+                    % uri.scheme.split("+")[-1]
+                )
+            path = uri.scheme.split("+")[-1] + "://" + uri.netloc + uri.path
+            if source == "graphar":
+                _check_load_options(kwargs)
+                return cls._load_from_graphar(path, sess, **kwargs)
+            else:
+                raise ValueError("Unknown source %s with uri $s:" % source, uri_str)
+        else:
+            # not a uri string, assume it is a path for deserialization
+            op = dag_utils.deserialize_graph(uri_str, sess, **kwargs)
+            return sess._wrapper(GraphDAGNode(sess, op))
+
+    def save_to(
+        self,
+        path,
+        format="serialization",
+        **kwargs,
+    ):
+        """Save graph to specified location with specified format.
+
+        Args:
+            path (str): the directory path to write graph.
+            format (str): the format to write graph, default is "serialization".
+            selector (dict, optional): the selector to select the data to write.
+            graphar_graph_name (str, optional): the name of graph in graphar format.
+            graphar_file_type (str, optional): the file type of graphar format,
+                support "parquet", "orc", "csv", default is "parquet".
+            graphar_vertex_chunk_size (int, optional): the chunk size of vertex in graphar format, default is 2^18.
+            graphar_edge_chunk_size (int, optional): the chunk size of edge in graphar format, default is 2^22.
+            graphar_store_in_local (bool, optional): whether store graphar format in local, default is False.
+
+        Return (dict): A dict contains the type and uri string of output data.
+        """
+
+        def _check_write_options(write_options):
+            for k, v in write_options.items():
+                if k == "graphar_graph_name" and not isinstance(v, str):
+                    raise ValueError(
+                        "graphar_graph_name should be a string, but got {}".format(
+                            type(v)
+                        )
+                    )
+                elif k == "graphar_file_type" and v not in ["parquet", "orc", "csv"]:
+                    raise ValueError(
+                        "graphar_file_type should be one of ['parquet', 'orc', 'csv'], but got {}".format(
+                            v
+                        )
+                    )
+                elif k == "graphar_vertex_chunk_size":
+                    if not isinstance(v, int) or v <= 0:
+                        raise ValueError(
+                            "graphar_vertex_chunk_size should be a positive integer, but got {}".format(
+                                v
+                            )
+                        )
+                elif k == "graphar_edge_chunk_size":
+                    if not isinstance(v, int) or v <= 0:
+                        raise ValueError(
+                            "graphar_edge_chunk_size should be a positive integer, but got {}".format(
+                                v
+                            )
+                        )
+                elif k == "graphar_store_in_local":
+                    if not isinstance(v, bool):
+                        raise ValueError(
+                            "graphar_store_in_local should be a bool, but got {}".format(
+                                v
+                            )
+                        )
+                elif k == "selector":
+                    if not isinstance(v, dict):
+                        raise ValueError(
+                            "selector should be a dict, but got {}".format(type(v))
+                        )
+
+        if format == "graphar":
+            if "graphar_graph_name" not in kwargs:
+                kwargs["graphar_graph_name"] = "graph"  # default graph name
+            _check_write_options(kwargs)
+            graph_name = kwargs["graphar_graph_name"]
+
+            maybe_uri = urlparse(path)
+            if maybe_uri.scheme and maybe_uri.scheme not in [
+                "file",
+                "s3",
+                "oss",
+                "hdfs",
+            ]:
+                raise ValueError(
+                    "Unknown file system %s, currently only support file, s3, oss and hdfs"
+                    % maybe_uri.scheme
+                )
+            if not maybe_uri.scheme:
+                maybe_uri = maybe_uri._replace(scheme="file")
+
+            op = dag_utils.save_to_graphar(self, path, **kwargs)
+            self._session.dag.add_op(op)
+            self._session._wrapper(op)
+            return {
+                "type": format,
+                "URI": "graphar+" + maybe_uri.geturl() + graph_name + ".graph.yaml",
+            }
+        elif format == "serialization":
+            # serialize graph
+            op = dag_utils.serialize_graph(self, path, **kwargs)
+            self._session.dag.add_op(op)
+            self._session._wrapper(op)
+            return {"type": format, "URI": path}
+        else:
+            raise ValueError("Unknown format: %s" % format)
 
     @apply_docstring(GraphDAGNode.add_vertices)
     def add_vertices(
@@ -1295,17 +1431,6 @@ class UnloadedGraph(DAGNode):
     """Unloaded graph node in a DAG."""
 
     def __init__(self, session, op):
-        self._session = session
-        self._op = op
-        # add op to dag
-        self._session.dag.add_op(self._op)
-
-
-class ArchivedGraph(DAGNode):
-    """Archived graph node in a DAG"""
-
-    def __init__(self, session, op):
-        super().__init__()
         self._session = session
         self._op = op
         # add op to dag

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "flex/codegen/src/hqps_generator.h"
 #include "flex/codegen/src/pegasus_generator.h"
+#include "flex/storages/rt_mutable_graph/schema.h"
 
 namespace bpo = boost::program_options;
 
@@ -59,7 +60,7 @@ void deserialize_plan_and_gen_pegasus(const std::string& input_file_path,
                                       const std::string& output_file_path) {
   auto input_json = read_json_str_from_path(input_file_path);
   physical::PhysicalPlan plan;
-  google::protobuf::util::JsonStringToMessage(input_json, &plan);
+  auto st = google::protobuf::util::JsonStringToMessage(input_json, &plan);
   gs::BuildingContext ctx;
   // parse query name from input_file_path
   std::string query_name =
@@ -71,19 +72,52 @@ void deserialize_plan_and_gen_pegasus(const std::string& input_file_path,
 }
 
 void deserialize_plan_and_gen_hqps(const std::string& input_file_path,
-                                   const std::string& output_file_path) {
+                                   const std::string& output_file_path,
+                                   const std::string& graph_schema_path,
+                                   bool dump_json_plan = true) {
   LOG(INFO) << "Start deserializing from: " << input_file_path;
   std::string content_str = read_binary_str_from_path(input_file_path);
-  LOG(INFO) << "Deserilized plan size : " << content_str.size() << ", from "
+  LOG(INFO) << "Deserialized plan size : " << content_str.size() << ", from "
             << input_file_path;
   physical::PhysicalPlan plan_pb;
   auto stream = std::istringstream(content_str);
   CHECK(plan_pb.ParseFromArray(content_str.data(), content_str.size()));
-  LOG(INFO) << "deserilized plan size : " << plan_pb.ByteSizeLong();
-  VLOG(1) << "deserilized plan : " << plan_pb.DebugString();
+  LOG(INFO) << "deserialized plan size : " << plan_pb.ByteSizeLong();
+  VLOG(1) << "deserialized plan : " << plan_pb.DebugString();
+  if (dump_json_plan) {
+    std::string output_path = output_file_path + ".json";
+    std::string json_plan;
+    google::protobuf::util::JsonOptions option;
+    option.always_print_primitive_fields = true;
+    google::protobuf::util::MessageToJsonString(plan_pb, &json_plan, option);
+    std::ofstream out(output_path);
+    out << json_plan;
+    out.close();
+  }
   BuildingContext context;
-  QueryGenerator<uint8_t> query_generator(context, plan_pb);
-  auto res = query_generator.GenerateQuery();
+  std::shared_ptr<QueryGenerator<uint8_t>> query_generator;
+  // load schema
+  if (!graph_schema_path.empty()) {
+    auto schema_res = Schema::LoadFromYaml(graph_schema_path);
+    if (schema_res.ok()) {
+      LOG(INFO) << "Generate code with schema info: " << graph_schema_path;
+      query_generator = std::make_shared<QueryGenerator<uint8_t>>(
+          context, plan_pb, schema_res.value());
+    } else {
+      LOG(ERROR) << "Fail to load schema from path: " << graph_schema_path
+                 << ", " << schema_res.status().error_message()
+                 << ",generate code without schema info.";
+      query_generator =
+          std::make_shared<QueryGenerator<uint8_t>>(context, plan_pb);
+    }
+  } else {
+    LOG(INFO)
+        << "graph schema path is empty, generate code without schema info";
+    query_generator =
+        std::make_shared<QueryGenerator<uint8_t>>(context, plan_pb);
+  }
+
+  auto res = query_generator->GenerateQuery();
   LOG(INFO) << "Start writing to: " << output_file_path;
   output_code_to_file(res, output_file_path);
 }
@@ -94,7 +128,14 @@ int main(int argc, char** argv) {
   desc.add_options()("help", "Display help message")(
       "engine,e", bpo::value<std::string>(), "engine type")(
       "input,i", bpo::value<std::string>(), "input plan path")(
-      "output,o", bpo::value<std::string>(), "output file path");
+      "output,o", bpo::value<std::string>(), "output file path")(
+      "graph,g", bpo::value<std::string>()->default_value(""),
+      "graph schema path");
+  google::InitGoogleLogging(argv[0]);
+  FLAGS_logtostderr =
+      false;  // We avoid outputting logs to stderr to allow the interactive
+              // server capturing error logs and returning them to the
+              // client when code generation fails.
 
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
@@ -108,6 +149,7 @@ int main(int argc, char** argv) {
   std::string input_path = vm["input"].as<std::string>();
   std::string output_path = vm["output"].as<std::string>();
   std::string engine_type = vm["engine"].as<std::string>();
+  std::string graph_schema_path = vm["graph"].as<std::string>();
 
   if (!std::filesystem::exists(input_path)) {
     LOG(ERROR) << "input file: [" << input_path << "] not found";
@@ -123,7 +165,8 @@ int main(int argc, char** argv) {
     gs::deserialize_plan_and_gen_pegasus(input_path, output_path);
   } else if (engine_type == "hqps") {
     LOG(INFO) << "Start generating hqps code";
-    gs::deserialize_plan_and_gen_hqps(input_path, output_path);
+    gs::deserialize_plan_and_gen_hqps(input_path, output_path,
+                                      graph_schema_path);
   } else {
     LOG(ERROR) << "Unknown engine type: " << engine_type
                << ", valid engine types: "

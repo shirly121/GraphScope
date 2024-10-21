@@ -23,7 +23,7 @@
 #include <vector>
 #include "flex/engines/graph_db/database/graph_db.h"
 #include "flex/engines/http_server/executor_group.actg.h"
-#include "flex/engines/http_server/generated/executor_ref.act.autogen.h"
+#include "flex/engines/http_server/generated/actor/executor_ref.act.autogen.h"
 #include "flex/engines/http_server/graph_db_service.h"
 
 namespace bpo = boost::program_options;
@@ -52,8 +52,8 @@ class Req {
     std::vector<char> tmp(size);
     size_t index = 0;
     while (fi.read(buffer.data(), size)) {
-      auto len = fi.gcount();
-      for (size_t i = 0; i < len; ++i) {
+      std::streamsize len = fi.gcount();
+      for (std::streamsize i = 0; i < len; ++i) {
         if (index >= 4 && tmp[index - 1] == '#') {
           if (tmp[index - 4] == 'e' && tmp[index - 3] == 'o' &&
               tmp[index - 2] == 'r') {
@@ -118,7 +118,7 @@ class Req {
         "IC9", "IC10", "IC11", "IC12", "IC13", "IC14", "IS1", "IS2",
         "IS3", "IS4",  "IS5",  "IS6",  "IS7",  "IU1",  "IU2", "IU3",
         "IU4", "IU5",  "IU6",  "IU7",  "IU8"};
-    for (auto i = 0; i < vec.size(); ++i) {
+    for (size_t i = 0; i < vec.size(); ++i) {
       size_t sz = ts[i].size();
       if (sz > 0) {
         std::cout << queries[i] << "; mean: " << vec[i] * 1. / count[i]
@@ -155,9 +155,8 @@ int main(int argc, char** argv) {
       "version,v", "Display version")("shard-num,s",
                                       bpo::value<uint32_t>()->default_value(1),
                                       "shard number of actor system")(
-      "graph-config,g", bpo::value<std::string>(), "graph schema config file")(
       "data-path,d", bpo::value<std::string>(), "data directory path")(
-      "bulk-load,l", bpo::value<std::string>(), "bulk-load config file")(
+      "graph-config,g", bpo::value<std::string>(), "graph schema config file")(
       "warmup-num,w", bpo::value<uint32_t>()->default_value(0),
       "num of warmup reqs")("benchmark-num,b",
                             bpo::value<uint32_t>()->default_value(0),
@@ -185,7 +184,6 @@ int main(int argc, char** argv) {
 
   std::string graph_schema_path = "";
   std::string data_path = "";
-  std::string bulk_load_config_path = "";
 
   if (!vm.count("graph-config")) {
     LOG(ERROR) << "graph-config is required";
@@ -197,9 +195,6 @@ int main(int argc, char** argv) {
     return -1;
   }
   data_path = vm["data-path"].as<std::string>();
-  if (vm.count("bulk-load")) {
-    bulk_load_config_path = vm["bulk-load"].as<std::string>();
-  }
 
   setenv("TZ", "Asia/Shanghai", 1);
   tzset();
@@ -208,9 +203,11 @@ int main(int argc, char** argv) {
   auto& db = gs::GraphDB::get();
 
   auto schema = gs::Schema::LoadFromYaml(graph_schema_path);
-  auto loading_config =
-      gs::LoadingConfig::ParseFromYaml(schema, bulk_load_config_path);
-  db.Init(schema, loading_config, data_path, shard_num);
+  if (!schema.ok()) {
+    LOG(ERROR) << "Failed to load graph schema from " << graph_schema_path;
+    return -1;
+  }
+  db.Open(schema.value(), data_path, shard_num);
 
   t0 += grape::GetCurrentTime();
   uint32_t warmup_num = vm["warmup-num"].as<uint32_t>();
@@ -225,12 +222,12 @@ int main(int argc, char** argv) {
   int ac = 1;
   char* av[] = {(char*) "rt_bench"};
   app.run(ac, av, [shard_num] {
-    return seastar::parallel_for_each(
-               boost::irange<unsigned>(0u, shard_num),
-               [](unsigned id) {
-                 return seastar::smp::submit_to(
-                     id, [id] { return Req::get().simulate(); });
-               })
+    return seastar::parallel_for_each(boost::irange<unsigned>(0u, shard_num),
+                                      [](unsigned id) {
+                                        return seastar::smp::submit_to(id, [] {
+                                          return Req::get().simulate();
+                                        });
+                                      })
         .then([] {
           hiactor::actor_engine().exit();
           fmt::print("Exit actor system.\n");

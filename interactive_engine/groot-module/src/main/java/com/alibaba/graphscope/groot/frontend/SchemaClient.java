@@ -13,8 +13,9 @@
  */
 package com.alibaba.graphscope.groot.frontend;
 
+import com.alibaba.graphscope.groot.common.exception.DdlException;
+import com.alibaba.graphscope.groot.rpc.RpcChannel;
 import com.alibaba.graphscope.groot.rpc.RpcClient;
-import com.alibaba.graphscope.groot.schema.request.DdlException;
 import com.alibaba.graphscope.proto.groot.DdlRequestBatchPb;
 import com.alibaba.graphscope.proto.groot.SchemaGrpc;
 import com.alibaba.graphscope.proto.groot.SubmitBatchDdlRequest;
@@ -23,17 +24,16 @@ import com.alibaba.graphscope.proto.groot.SubmitBatchDdlResponse;
 import io.grpc.ManagedChannel;
 
 public class SchemaClient extends RpcClient {
-
-    private SchemaGrpc.SchemaBlockingStub stub;
-
-    public SchemaClient(ManagedChannel channel) {
+    public SchemaClient(RpcChannel channel) {
         super(channel);
-        this.stub = SchemaGrpc.newBlockingStub(channel);
     }
 
     public SchemaClient(SchemaGrpc.SchemaBlockingStub stub) {
         super((ManagedChannel) stub.getChannel());
-        this.stub = stub;
+    }
+
+    private SchemaGrpc.SchemaBlockingStub getStub() {
+        return SchemaGrpc.newBlockingStub(rpcChannel.getChannel());
     }
 
     public long submitBatchDdl(
@@ -44,10 +44,9 @@ public class SchemaClient extends RpcClient {
                         .setSessionId(sessionId)
                         .setDdlRequests(ddlRequestBatchPb)
                         .build();
-        SubmitBatchDdlResponse submitBatchDdlResponse = stub.submitBatchDdl(request);
+        SubmitBatchDdlResponse submitBatchDdlResponse = getStub().submitBatchDdl(request);
         if (submitBatchDdlResponse.getSuccess()) {
-            long ddlSnapshotId = submitBatchDdlResponse.getDdlSnapshotId();
-            return ddlSnapshotId;
+            return submitBatchDdlResponse.getDdlSnapshotId();
         } else {
             throw new DdlException(submitBatchDdlResponse.getMsg());
         }

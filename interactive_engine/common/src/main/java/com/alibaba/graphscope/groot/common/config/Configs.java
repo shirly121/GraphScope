@@ -25,7 +25,7 @@ import java.util.Properties;
 
 public class Configs {
 
-    private Properties properties;
+    private final Properties properties;
 
     public Configs() {
         this.properties = new Properties();
@@ -45,10 +45,7 @@ public class Configs {
     public Configs(Map<String, String> configs) {
         this.properties = new Properties();
         if (configs != null && !configs.isEmpty()) {
-            configs.forEach(
-                    (k, v) -> {
-                        this.properties.setProperty(k, v);
-                    });
+            configs.forEach(this.properties::setProperty);
         }
     }
 

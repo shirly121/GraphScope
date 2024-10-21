@@ -40,6 +40,7 @@ static constexpr const char* EXPR_BUILDER_TEMPLATE_STR =
     "struct %1% {\n"
     "  public: \n"
     "   using result_t = %2%;\n"
+    "   static constexpr bool filter_null = %10%;\n"
     "   %1%(%3%) %4% {}\n"
     "   %5%\n"
     "   inline %6% operator()(%7%) const {\n"
@@ -62,9 +63,25 @@ static std::pair<int32_t, std::string> variable_to_tag_id_property_selector(
   }
   int real_tag_ind = ctx.GetTagInd(tag_id);
   if (var.has_property()) {
-    std::string prop_name = var.property().key().name();
-    std::string prop_type = data_type_2_string(
-        common_data_type_pb_2_data_type(var.node_type().data_type()));
+    auto var_property = var.property();
+    std::string prop_name, prop_type;
+    if (var_property.has_label()) {
+      prop_name = "label";
+      prop_type = data_type_2_string(codegen::DataType::kLabelId);
+    } else if (var_property.has_key()) {
+      prop_name = var.property().key().name();
+      prop_type = data_type_2_string(
+          common_data_type_pb_2_data_type(var.node_type().data_type()));
+    } else if (var_property.has_id()) {
+      // prop_name = "id";
+      // prop_type = data_type_2_string(
+      //     common_data_type_pb_2_data_type(var.node_type().data_type()));
+      prop_name = "global_id";
+      prop_type = data_type_2_string(codegen::DataType::kGlobalVertexId);
+    } else {
+      LOG(FATAL) << "Unexpected property type: " << var.DebugString();
+    }
+
     boost::format formater(PROPERTY_SELECTOR);
     formater % prop_type % prop_name;
 
@@ -78,6 +95,18 @@ static std::pair<int32_t, std::string> variable_to_tag_id_property_selector(
     if (var.node_type().type_case() == common::IrDataType::kDataType) {
       prop_type = data_type_2_string(
           common_data_type_pb_2_data_type(var.node_type().data_type()));
+    } else if (var.node_type().type_case() == common::IrDataType::kGraphType) {
+      if (var.node_type().graph_type().element_opt() ==
+          common::GraphDataType::GraphElementOpt::
+              GraphDataType_GraphElementOpt_VERTEX) {
+        prop_type = data_type_2_string(codegen::DataType::kGlobalVertexId);
+      } else if (var.node_type().graph_type().element_opt() ==
+                 common::GraphDataType::GraphElementOpt::
+                     GraphDataType_GraphElementOpt_EDGE) {
+        prop_type = data_type_2_string(codegen::DataType::kEdgeId);
+      } else {
+        LOG(FATAL) << "Unexpect graph type: " << var.node_type().DebugString();
+      }
     } else {
       prop_type = GRAPE_EMPTY_TYPE;
     }
@@ -112,6 +141,12 @@ static std::string logical_to_str(const common::Logical& logical) {
     return "< WithIn > ";
   case common::Logical::ISNULL:
     return "NONE ==";  // Convert
+  case common::Logical::ENDSWITH:
+    return "< EndWith > ";
+  case common::Logical::STARTSWITH:
+    return "< StartWith > ";
+  case common::Logical::REGEX:
+    return "< Regex > ";
   default:
     throw std::runtime_error("unknown logical");
   }
@@ -169,9 +204,9 @@ static std::string value_pb_to_str(const common::Value& value) {
   }
 }
 
-bool constains_vertex_id(const std::vector<codegen::ParamConst>& params) {
+bool contains_vertex_id(const std::vector<codegen::ParamConst>& params) {
   for (auto& param : params) {
-    if (param.type == codegen::DataType::kVertexId ||
+    if (param.type == codegen::DataType::kGlobalVertexId ||
         param.type == codegen::DataType::kEdgeId) {
       return true;
     }
@@ -204,7 +239,7 @@ static common::DataType eval_expr_return_type(const common::Expression& expr) {
         operator_stack.pop();
       }
     } else if (item_case == common::ExprOpr::kLogical ||
-               common::ExprOpr::kArith) {
+               item_case == common::ExprOpr::kArith) {
       operator_stack.push(opr);
     } else if (item_case == common::ExprOpr::kConst ||
                item_case == common::ExprOpr::kVar ||
@@ -235,14 +270,14 @@ static common::DataType eval_expr_return_type(const common::Expression& expr) {
   return tmp_stack.top().node_type().data_type();
 }
 
-// Simlutate the calculation of expression, return the result data type.
+// Simulate the calculation of expression, return the result data type.
 // convert to prefix expression
 
 /*Build a expression struct from expression*/
 class ExprBuilder {
  public:
   ExprBuilder(BuildingContext& ctx, int var_id = 0, bool no_build = false)
-      : ctx_(ctx) {
+      : ctx_(ctx), null_presents_(false) {
     if (!no_build) {
       // no build indicates whether we will use this builder as a helper.
       // If set to true, we will not let queryClassName and next_expr_name
@@ -255,6 +290,10 @@ class ExprBuilder {
     res_data_type_.emplace_back(data_type);
   }
 
+  const std::vector<common::DataType>& get_return_type() const {
+    return res_data_type_;
+  }
+
   void add_return_type(common::DataType data_type) {
     res_data_type_.emplace_back(data_type);
   }
@@ -265,30 +304,9 @@ class ExprBuilder {
     // If we meet label keys just ignore.
     auto size = expr_ops.size();
     VLOG(10) << "Adding expr of size: " << size;
-    for (auto i = 0; i < size;) {
+    for (int32_t i = 0; i < size;) {
       auto expr = expr_ops[i];
-      if (expr.has_var() && expr.var().property().has_label()) {
-        VLOG(10) << "Found label in expr, skip this check";
-        int j = i;
-        for (; j < size; ++j) {
-          if (expr_ops[j].item_case() == common::ExprOpr::kBrace &&
-              expr_ops[j].brace() ==
-                  common::ExprOpr::Brace::ExprOpr_Brace_RIGHT_BRACE) {
-            VLOG(10) << "Found right brace at ind: " << j
-                     << ", started at: " << i;
-            AddExprOpr(std::string("true"));
-            AddExprOpr(expr_ops[j]);
-            i = j + 1;
-            break;
-          }
-        }
-        if (j == size) {
-          LOG(WARNING) << "no right brace found" << j << "size: " << size;
-          // just add true, since the current expresion has no other expr_ops
-          AddExprOpr(std::string("true"));
-          i = j;
-        }
-      } else if (expr.has_extract()) {
+      if (expr.has_extract()) {
         // special case for extract
         auto extract = expr.extract();
         if (i + 1 >= size) {
@@ -340,11 +358,8 @@ class ExprBuilder {
       // and also set a expr node for it. which is unique.
       make_var_name_unique(param_const);
       func_call_vars_.push_back(param_const);
-      expr_nodes_.emplace_back(param_const.var_name);
+      expr_nodes_.emplace_back(param_const.expr_var_name);
 
-      // expr_nodes_.emplace_back(param_const.var_name);
-      // convert a variable to a tag property,
-      // gs::NamedProperty<gs::Int64>{"prop1"}, saved for later use.
       tag_selectors_.emplace_back(
           variable_to_tag_id_property_selector(ctx_, var));
       VLOG(10) << "Got var: " << var.DebugString();
@@ -354,6 +369,9 @@ class ExprBuilder {
     case common::ExprOpr::kLogical: {
       auto logical = opr.logical();
       auto str = logical_to_str(logical);
+      if (logical == common::Logical::ISNULL) {
+        null_presents_ = true;
+      }
       VLOG(10) << "Got expr opt logical: " << str;
       expr_nodes_.emplace_back(std::move(str));
       break;
@@ -368,7 +386,7 @@ class ExprBuilder {
       VLOG(10) << "receive param const: " << param_const_pb.DebugString();
       make_var_name_unique(param_const);
       construct_params_.push_back(param_const);
-      expr_nodes_.emplace_back(param_const.var_name + "_");
+      expr_nodes_.emplace_back(param_const.expr_var_name);
       break;
     }
 
@@ -385,21 +403,18 @@ class ExprBuilder {
       auto vars = opr.vars();
       std::stringstream ss;
       ss << "std::tuple{";
-      for (auto i = 0; i < vars.keys_size(); ++i) {
+      for (int32_t i = 0; i < (int32_t) vars.keys_size(); ++i) {
         auto cur_var = vars.keys(i);
         auto param_const = variable_to_param_const(cur_var, ctx_);
         make_var_name_unique(param_const);
         // for each variable, we need add the variable to func_call_vars_.
         // and also set a expr node for it. which is unique.
         func_call_vars_.push_back(param_const);
-        ss << param_const.var_name;
+        ss << param_const.expr_var_name;
         if (i < vars.keys_size() - 1) {
           ss << ",";
         }
 
-        // expr_nodes_.emplace_back(param_const.var_name);
-        // convert a variable to a tag property,
-        // gs::NamedProperty<gs::Int64>{"prop1"}, saved for later use.
         tag_selectors_.emplace_back(
             variable_to_tag_id_property_selector(ctx_, cur_var));
       }
@@ -419,8 +434,8 @@ class ExprBuilder {
     }
   }
 
-  // Add extract operator with var. Currently not support extract on a compicate
-  // expression.
+  // Add extract operator with var. Currently not support extract on a
+  // complicated expression.
   void AddExtractOpr(const common::Extract& extract_opr,
                      const common::ExprOpr& expr_opr) {
     CHECK(expr_opr.item_case() == common::ExprOpr::kVar)
@@ -469,7 +484,7 @@ class ExprBuilder {
                      std::vector<common::DataType>>
   Build() const {
     // Insert param vars to context.
-    for (auto i = 0; i < construct_params_.size(); ++i) {
+    for (size_t i = 0; i < construct_params_.size(); ++i) {
       ctx_.AddParameterVar(construct_params_[i]);
     }
 
@@ -488,7 +503,7 @@ class ExprBuilder {
     formater % class_name_ % common_data_type_pb_2_str(res_data_type_) %
         constructor_param_str % field_init_code_str %
         func_call_template_typename_str % "auto" % func_call_params_str %
-        func_call_impl_str % private_filed_str;
+        func_call_impl_str % private_filed_str % get_filter_null_str();
 
     std::string str = formater.str();
 
@@ -499,13 +514,22 @@ class ExprBuilder {
   bool empty() const { return expr_nodes_.empty(); }
 
  protected:
+  // If null presents in our expression, we need to get null records. Otherwise,
+  // we can feed expression with non-null records.
+  std::string get_filter_null_str() const {
+    if (null_presents_) {
+      return "false";
+    } else {
+      return "true";
+    }
+  }
   // return the concatenated string of constructor's input params
   std::string get_constructor_params_str() const {
     std::stringstream ss;
-    for (int i = 0; i < construct_params_.size(); ++i) {
+    for (size_t i = 0; i < construct_params_.size(); ++i) {
       ss << data_type_2_string(construct_params_[i].type) << " "
-         << construct_params_[i].var_name;
-      if (i != construct_params_.size() - 1) {
+         << construct_params_[i].expr_var_name;
+      if (i + 1 != construct_params_.size()) {
         ss << ",";
       }
     }
@@ -517,9 +541,9 @@ class ExprBuilder {
     if (!construct_params_.empty()) {
       ss << ":";
     }
-    for (int i = 0; i < construct_params_.size(); ++i) {
-      ss << construct_params_[i].var_name << "_"
-         << "(" << construct_params_[i].var_name << ")";
+    for (size_t i = 0; i < construct_params_.size(); ++i) {
+      ss << construct_params_[i].expr_var_name << "("
+         << construct_params_[i].expr_var_name << ")";
       if (i != construct_params_.size() - 1) {
         ss << ",";
       }
@@ -529,17 +553,26 @@ class ExprBuilder {
 
   std::string get_func_call_typename_str() const {
     std::string typename_template = "";
-    if (constains_vertex_id(func_call_vars_)) {
+    if (contains_edge_id(func_call_vars_)) {
       typename_template = "template <typename vertex_id_t>";
     }
     return typename_template;
   }
 
+  bool contains_edge_id(const std::vector<codegen::ParamConst>& params) const {
+    for (auto& param : params) {
+      if (param.type == codegen::DataType::kEdgeId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   std::string get_func_call_params_str() const {
     std::stringstream ss;
-    for (int i = 0; i < func_call_vars_.size(); ++i) {
+    for (size_t i = 0; i < func_call_vars_.size(); ++i) {
       ss << data_type_2_string(func_call_vars_[i].type) << " "
-         << func_call_vars_[i].var_name;
+         << func_call_vars_[i].expr_var_name;
       if (i != func_call_vars_.size() - 1) {
         ss << ",";
       }
@@ -550,7 +583,7 @@ class ExprBuilder {
   virtual std::string get_func_call_impl_str() const {
     std::stringstream ss;
     ss << "return ";
-    for (auto i = 0; i < expr_nodes_.size(); ++i) {
+    for (size_t i = 0; i < expr_nodes_.size(); ++i) {
       ss << expr_nodes_[i] << " ";
     }
     ss << ";";
@@ -559,9 +592,9 @@ class ExprBuilder {
 
   std::string get_private_filed_str() const {
     std::stringstream ss;
-    for (auto i = 0; i < construct_params_.size(); ++i) {
+    for (size_t i = 0; i < construct_params_.size(); ++i) {
       ss << data_type_2_string(construct_params_[i].type) << " "
-         << construct_params_[i].var_name << "_;" << std::endl;
+         << construct_params_[i].expr_var_name << ";" << std::endl;
     }
     return ss.str();
   }
@@ -569,23 +602,23 @@ class ExprBuilder {
   void make_var_name_unique(codegen::ParamConst& param_const) {
     std::unordered_set<std::string> var_names;
     for (auto& param : construct_params_) {
-      auto res = var_names.insert(param.var_name);
-      CHECK(res.second) << "var name: " << param.var_name
+      auto res = var_names.insert(param.expr_var_name);
+      CHECK(res.second) << "var name: " << param.expr_var_name
                         << " already exists, illegal state";
     }
     for (auto& param : func_call_vars_) {
-      auto res = var_names.insert(param.var_name);
-      CHECK(res.second) << "var name: " << param.var_name
+      auto res = var_names.insert(param.expr_var_name);
+      CHECK(res.second) << "var name: " << param.expr_var_name
                         << " already exists, illegal state";
     }
-    auto cur_var_name = param_const.var_name;
+    auto cur_var_name = param_const.expr_var_name;
     int i = 0;
     while (var_names.find(cur_var_name) != var_names.end()) {
-      cur_var_name = param_const.var_name + "_" + std::to_string(i);
+      cur_var_name = param_const.expr_var_name + "_" + std::to_string(i);
       ++i;
     }
-    param_const.var_name = cur_var_name;
-    VLOG(10) << "make var name unique: " << param_const.var_name;
+    param_const.expr_var_name = cur_var_name;
+    VLOG(10) << "make var name unique: " << param_const.expr_var_name;
   }
 
   // this corresponding to the input params.
@@ -602,6 +635,7 @@ class ExprBuilder {
   std::vector<common::DataType> res_data_type_;
 
   std::string class_name_;
+  bool null_presents_;
 };
 }  // namespace gs
 

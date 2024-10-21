@@ -1,11 +1,9 @@
 package com.alibaba.graphscope.groot.frontend.write;
 
 import com.alibaba.graphscope.groot.CompletionCallback;
-import com.alibaba.graphscope.groot.SnapshotCache;
 import com.alibaba.graphscope.groot.common.config.Configs;
-import com.alibaba.graphscope.groot.common.config.FrontendConfig;
-import com.alibaba.graphscope.groot.common.exception.GrootException;
-import com.alibaba.graphscope.groot.common.exception.PropertyDefNotFoundException;
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
+import com.alibaba.graphscope.groot.common.exception.NotFoundException;
 import com.alibaba.graphscope.groot.common.schema.api.GraphElement;
 import com.alibaba.graphscope.groot.common.schema.api.GraphProperty;
 import com.alibaba.graphscope.groot.common.schema.api.GraphSchema;
@@ -13,100 +11,77 @@ import com.alibaba.graphscope.groot.common.schema.wrapper.DataType;
 import com.alibaba.graphscope.groot.common.schema.wrapper.EdgeKind;
 import com.alibaba.graphscope.groot.common.schema.wrapper.LabelId;
 import com.alibaba.graphscope.groot.common.schema.wrapper.PropertyValue;
-import com.alibaba.graphscope.groot.common.util.EdgeRecordKey;
-import com.alibaba.graphscope.groot.common.util.PkHashUtils;
-import com.alibaba.graphscope.groot.common.util.VertexRecordKey;
-import com.alibaba.graphscope.groot.common.util.WriteSessionUtil;
-import com.alibaba.graphscope.groot.frontend.IngestorWriteClient;
-import com.alibaba.graphscope.groot.meta.MetaService;
-import com.alibaba.graphscope.groot.metrics.MetricsAgent;
-import com.alibaba.graphscope.groot.metrics.MetricsCollector;
+import com.alibaba.graphscope.groot.common.util.*;
+import com.alibaba.graphscope.groot.frontend.SnapshotCache;
 import com.alibaba.graphscope.groot.operation.EdgeId;
 import com.alibaba.graphscope.groot.operation.OperationBatch;
 import com.alibaba.graphscope.groot.operation.OperationType;
 import com.alibaba.graphscope.groot.operation.VertexId;
 import com.alibaba.graphscope.groot.operation.dml.*;
-import com.alibaba.graphscope.groot.rpc.RoleClients;
+import com.alibaba.graphscope.proto.groot.RequestOptionsPb;
+
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.metrics.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class GraphWriter implements MetricsAgent {
-
-    public static final String WRITE_REQUESTS_TOTAL = "write.requests.total";
-    public static final String WRITE_REQUESTS_PER_SECOND = "write.requests.per.second";
-    public static final String INGESTOR_BLOCK_TIME_MS = "ingestor.block.time.ms";
-    public static final String INGESTOR_BLOCK_TIME_AVG_MS = "ingestor.block.time.avg.ms";
-    public static final String PENDING_WRITE_COUNT = "pending.write.count";
-
-    private AtomicLong writeRequestsTotal;
-    private volatile long lastUpdateWriteRequestsTotal;
-    private volatile long writeRequestsPerSecond;
-    private volatile long lastUpdateTime;
-    private AtomicLong ingestorBlockTimeNano;
-    private volatile long ingestorBlockTimeAvgMs;
-    private volatile long lastUpdateIngestorBlockTimeNano;
-    private AtomicInteger pendingWriteCount;
-    /**
-     * true: enable use hash64(srcId, dstId, edgeLabelId, edgePks) to generate eid;
-     */
-    private boolean enableHashEid;
-
-    private SnapshotCache snapshotCache;
-    private EdgeIdGenerator edgeIdGenerator;
-    private MetaService metaService;
-    private RoleClients<IngestorWriteClient> ingestWriteClients;
-    private AtomicLong lastWrittenSnapshotId = new AtomicLong(0L);
-
+public class GraphWriter {
     private static final Logger logger = LoggerFactory.getLogger(GraphWriter.class);
+
+    private LongCounter writeCounter;
+    private LongHistogram writeHistogram;
+    private final SnapshotCache snapshotCache;
+    private final EdgeIdGenerator edgeIdGenerator;
+    private final AtomicLong lastWrittenSnapshotId = new AtomicLong(0L);
+
+    private final KafkaAppender kafkaAppender;
+    private ScheduledExecutorService scheduler;
 
     public GraphWriter(
             SnapshotCache snapshotCache,
             EdgeIdGenerator edgeIdGenerator,
-            MetaService metaService,
-            RoleClients<IngestorWriteClient> ingestWriteClients,
-            MetricsCollector metricsCollector,
+            KafkaAppender appender,
             Configs configs) {
         this.snapshotCache = snapshotCache;
         this.edgeIdGenerator = edgeIdGenerator;
-        this.metaService = metaService;
-        this.ingestWriteClients = ingestWriteClients;
         initMetrics();
-        metricsCollector.register(this, () -> updateMetrics());
-        // default for incr eid generate
-        this.enableHashEid = FrontendConfig.ENABLE_HASH_GENERATE_EID.get(configs);
+        this.kafkaAppender = appender;
     }
 
-    public long writeBatch(
-            String requestId, String writeSession, List<WriteRequest> writeRequests) {
-        CompletableFuture<Long> future = new CompletableFuture<>();
-        writeBatch(
-                requestId,
-                writeSession,
-                writeRequests,
-                new CompletionCallback<Long>() {
-                    @Override
-                    public void onCompleted(Long res) {
-                        future.complete(res);
-                    }
+    public void start() {
+        this.scheduler =
+                Executors.newSingleThreadScheduledExecutor(
+                        ThreadFactoryUtils.daemonThreadFactoryWithLogExceptionHandler(
+                                "kafka-appender-try-start", logger));
 
-                    @Override
-                    public void onError(Throwable t) {
-                        future.completeExceptionally(t);
-                    }
-                });
-        try {
-            return future.get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new GrootException(e);
+        this.scheduler.scheduleWithFixedDelay(
+                this::tryStartProcessors, 0, 2000, TimeUnit.MILLISECONDS);
+    }
+
+    public void stop() {
+        if (this.scheduler != null) {
+            this.scheduler.shutdown();
+            try {
+                this.scheduler.awaitTermination(3000L, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+            this.scheduler = null;
+        }
+        kafkaAppender.stop();
+    }
+
+    private void tryStartProcessors() {
+        if (!kafkaAppender.isStarted()) {
+            kafkaAppender.start();
         }
     }
 
@@ -114,10 +89,11 @@ public class GraphWriter implements MetricsAgent {
             String requestId,
             String writeSession,
             List<WriteRequest> writeRequests,
+            RequestOptionsPb optionsPb,
             CompletionCallback<Long> callback) {
-        this.pendingWriteCount.incrementAndGet();
         GraphSchema schema = snapshotCache.getSnapshotWithSchema().getGraphDef();
         OperationBatch.Builder batchBuilder = OperationBatch.newBuilder();
+        String upTraceId = optionsPb == null ? null : optionsPb.getTraceId();
         for (WriteRequest writeRequest : writeRequests) {
             OperationType operationType = writeRequest.getOperationType();
             DataRecord dataRecord = writeRequest.getDataRecord();
@@ -147,64 +123,52 @@ public class GraphWriter implements MetricsAgent {
                     addClearEdgePropertiesOperation(batchBuilder, schema, dataRecord);
                     break;
                 default:
-                    throw new IllegalArgumentException(
+                    throw new InvalidArgumentException(
                             "Invalid operationType [" + operationType + "]");
             }
         }
+        batchBuilder.setTraceId(upTraceId);
         OperationBatch operationBatch = batchBuilder.build();
-        int writeQueueId = getWriteQueueId(writeSession);
-        int ingestorId = this.metaService.getIngestorIdForQueue(writeQueueId);
-        long startTimeNano = System.nanoTime();
-        this.ingestWriteClients
-                .getClient(ingestorId)
-                .writeIngestorAsync(
-                        requestId,
-                        writeQueueId,
-                        operationBatch,
-                        new CompletionCallback<Long>() {
-                            @Override
-                            public void onCompleted(Long res) {
-                                long writeSnapshotId = res;
-                                lastWrittenSnapshotId.updateAndGet(
-                                        x -> x < writeSnapshotId ? writeSnapshotId : x);
-                                writeRequestsTotal.addAndGet(writeRequests.size());
-                                finish();
-                                callback.onCompleted(res);
-                            }
+        long startTime = System.currentTimeMillis();
+        AttributesBuilder attrs = Attributes.builder();
+        this.kafkaAppender.ingestBatch(
+                requestId,
+                operationBatch,
+                new IngestCallback() {
+                    @Override
+                    public void onSuccess(long snapshotId) {
+                        attrs.put("success", true).put("message", "");
+                        writeCounter.add(writeRequests.size(), attrs.build());
+                        writeHistogram.record(
+                                System.currentTimeMillis() - startTime, attrs.build());
+                        lastWrittenSnapshotId.updateAndGet(x -> Math.max(x, snapshotId));
+                        callback.onCompleted(snapshotId);
+                    }
 
-                            @Override
-                            public void onError(Throwable t) {
-                                finish();
-                                callback.onError(t);
-                            }
+                    @Override
+                    public void onFailure(Exception e) {
+                        attrs.put("success", false).put("message", e.getMessage());
+                        writeCounter.add(writeRequests.size(), attrs.build());
+                        writeHistogram.record(
+                                System.currentTimeMillis() - startTime, attrs.build());
+                        callback.onError(e);
+                    }
+                });
+    }
 
-                            void finish() {
-                                long ingestorCompleteTimeNano = System.nanoTime();
-                                ingestorBlockTimeNano.addAndGet(
-                                        ingestorCompleteTimeNano - startTimeNano);
-                                pendingWriteCount.decrementAndGet();
-                            }
-                        });
+    public List<Long> replayWALFrom(long offset, long timestamp) throws IOException {
+        return kafkaAppender.replayDMLRecordsFrom(offset, timestamp);
     }
 
     public boolean flushSnapshot(long snapshotId, long waitTimeMs) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        this.snapshotCache.addListener(snapshotId, () -> latch.countDown());
+        this.snapshotCache.addListener(snapshotId, latch::countDown);
         return latch.await(waitTimeMs, TimeUnit.MILLISECONDS);
     }
 
     public boolean flushLastSnapshot(long waitTimeMs) throws InterruptedException {
         long snapshotId = this.lastWrittenSnapshotId.get();
         return this.flushSnapshot(snapshotId, waitTimeMs);
-    }
-
-    private int getWriteQueueId(String session) {
-        int queueCount = this.metaService.getQueueCount();
-        if (queueCount <= 1) {
-            throw new IllegalStateException("expect queueCount > 1, but was [" + queueCount + "]");
-        }
-        long clientIdx = WriteSessionUtil.getClientIdx(session);
-        return (int) (clientIdx % (queueCount - 1)) + 1;
     }
 
     private void addDeleteEdgeOperation(
@@ -221,7 +185,7 @@ public class GraphWriter implements MetricsAgent {
         EdgeId edgeId = getEdgeId(schema, dataRecord, false);
         if (edgeId.id == 0) {
             // This is for update edge, if edgeInnerId is 0, generate new id, incase there isn't
-            // such a edge
+            // such an edge
             edgeId.id = edgeIdGenerator.getNextId();
         }
         EdgeKind edgeKind = getEdgeKind(schema, dataRecord);
@@ -337,7 +301,7 @@ public class GraphWriter implements MetricsAgent {
                     (propertyName, valString) -> {
                         GraphProperty propertyDef = graphElement.getProperty(propertyName);
                         if (propertyDef == null) {
-                            throw new PropertyDefNotFoundException(
+                            throw new NotFoundException(
                                     "property ["
                                             + propertyName
                                             + "] not found in ["
@@ -408,8 +372,9 @@ public class GraphWriter implements MetricsAgent {
             GraphSchema schema,
             DataRecord dataRecord) {
         long edgeInnerId;
-        if (this.enableHashEid) {
-            GraphElement edgeDef = schema.getElement(edgeRecordKey.getLabel());
+        GraphElement edgeDef = schema.getElement(edgeRecordKey.getLabel());
+        List<GraphProperty> pks = edgeDef.getPrimaryKeyList();
+        if (pks != null && pks.size() > 0) {
             Map<Integer, PropertyValue> edgePkVals =
                     parseRawProperties(edgeDef, dataRecord.getProperties());
             List<byte[]> edgePkBytes = getPkBytes(edgePkVals, edgeDef);
@@ -497,53 +462,17 @@ public class GraphWriter implements MetricsAgent {
         return ids;
     }
 
-    @Override
     public void initMetrics() {
-        this.lastUpdateTime = System.nanoTime();
-        this.writeRequestsTotal = new AtomicLong(0L);
-        this.writeRequestsPerSecond = 0L;
-        this.ingestorBlockTimeNano = new AtomicLong(0L);
-        this.lastUpdateIngestorBlockTimeNano = 0L;
-        this.pendingWriteCount = new AtomicInteger(0);
-    }
-
-    @Override
-    public Map<String, String> getMetrics() {
-        return new HashMap<String, String>() {
-            {
-                put(WRITE_REQUESTS_TOTAL, String.valueOf(writeRequestsTotal.get()));
-                put(WRITE_REQUESTS_PER_SECOND, String.valueOf(writeRequestsPerSecond));
-                put(INGESTOR_BLOCK_TIME_MS, String.valueOf(ingestorBlockTimeNano.get() / 1000000));
-                put(INGESTOR_BLOCK_TIME_AVG_MS, String.valueOf(ingestorBlockTimeAvgMs));
-                put(PENDING_WRITE_COUNT, String.valueOf(pendingWriteCount.get()));
-            }
-        };
-    }
-
-    @Override
-    public String[] getMetricKeys() {
-        return new String[] {
-            WRITE_REQUESTS_TOTAL,
-            WRITE_REQUESTS_PER_SECOND,
-            INGESTOR_BLOCK_TIME_MS,
-            INGESTOR_BLOCK_TIME_AVG_MS,
-            PENDING_WRITE_COUNT,
-        };
-    }
-
-    private void updateMetrics() {
-        long currentTime = System.nanoTime();
-        long writeRequests = this.writeRequestsTotal.get();
-        long ingestBlockTime = this.ingestorBlockTimeNano.get();
-
-        long interval = currentTime - this.lastUpdateTime;
-        this.writeRequestsPerSecond =
-                1000000000 * (writeRequests - this.lastUpdateWriteRequestsTotal) / interval;
-        this.ingestorBlockTimeAvgMs =
-                1000 * (ingestBlockTime - this.lastUpdateIngestorBlockTimeNano) / interval;
-
-        this.lastUpdateWriteRequestsTotal = writeRequests;
-        this.lastUpdateIngestorBlockTimeNano = ingestBlockTime;
-        this.lastUpdateTime = currentTime;
+        Meter meter = GlobalOpenTelemetry.getMeter("GraphWriter");
+        this.writeCounter =
+                meter.counterBuilder("groot.frontend.write.count")
+                        .setDescription("Total count of write requests of one store node.")
+                        .build();
+        this.writeHistogram =
+                meter.histogramBuilder("groot.frontend.write.duration")
+                        .setDescription("Duration of write requests that be persist into the disk.")
+                        .ofLongs()
+                        .setUnit("ms")
+                        .build();
     }
 }

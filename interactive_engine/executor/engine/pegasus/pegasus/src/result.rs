@@ -53,6 +53,7 @@ impl<T: 'static> ResultSink<T> {
             match &mut self.kind {
                 ResultSinkKind::Customized(tx) => {
                     let msg = "Job is canceled".to_string();
+                    info_worker!("Job is canceled");
                     let err = JobExecError::from(msg);
                     tx.on_error(Box::new(err));
                 }

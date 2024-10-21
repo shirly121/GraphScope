@@ -15,6 +15,7 @@
  */
 package com.alibaba.graphscope.utils;
 
+import com.alibaba.graphscope.ds.StringView;
 import com.alibaba.graphscope.fragment.ArrowProjectedFragment;
 import com.alibaba.graphscope.fragment.IFragment;
 import com.alibaba.graphscope.fragment.ImmutableEdgecutFragment;
@@ -80,8 +81,10 @@ public class GrapeTypes {
             return Double.class;
         } else if (typeString.equals("float")) {
             return Float.class;
+        } else if (typeString.equals("std::string")) {
+            return StringView.class;
         }
-        throw new IllegalStateException("Not supported type stirng" + typeString);
+        throw new IllegalStateException("Not supported type string" + typeString);
     }
 
     public boolean parseFromSimpleFragment(IFragment fragment) {

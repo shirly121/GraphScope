@@ -3,8 +3,10 @@ use std::marker::PhantomData;
 
 use protobuf::Message;
 
-use crate::db::api::GraphErrorCode::InvalidData;
-use crate::db::api::{GraphError, GraphResult};
+use crate::db::api::{ErrorCode, GraphError, GraphResult};
+
+/// define the size that a length field takes in encoding an array
+pub const LEN_SIZE: usize = ::std::mem::size_of::<u32>();
 
 /// This reader won't check whether the offset is overflow when read bytes.
 /// It's for performance purpose. Be careful to use it.
@@ -111,7 +113,7 @@ impl UnsafeBytesWriter {
 }
 
 pub fn parse_pb<M: Message>(buf: &[u8]) -> GraphResult<M> {
-    Message::parse_from_bytes(buf).map_err(|e| GraphError::new(InvalidData, format!("{:?}", e)))
+    Message::parse_from_bytes(buf).map_err(|e| GraphError::new(ErrorCode::INVALID_DATA, format!("{:?}", e)))
 }
 
 #[cfg(test)]
@@ -122,9 +124,9 @@ mod tests {
         ($r_func:ident, $w_func:ident, $ty:ty) => {
             let mut buf = Vec::with_capacity(100);
             let mut writer = UnsafeBytesWriter::new(&mut buf);
-            writer.$w_func(20, 1.0 as $ty);
+            writer.$w_func(16, 1.0 as $ty);
             let reader = UnsafeBytesReader::new(&buf);
-            assert_eq!(reader.$r_func(20), 1.0 as $ty);
+            assert_eq!(reader.$r_func(16), 1.0 as $ty);
         };
     }
 

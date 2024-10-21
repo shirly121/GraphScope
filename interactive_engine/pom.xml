@@ -71,19 +71,44 @@
       <properties>
         <rust.compile.target>groot</rust.compile.target>
         <scala.version>2.13.9</scala.version>
+        <neo4j.version>4.4.0-SHADED</neo4j.version>
       </properties>
       <modules>
         <module>assembly</module>
         <module>common</module>
-        <module>data-load-tool</module>
         <module>executor</module>
         <module>groot-module</module>
         <module>groot-server</module>
-        <module>lgraph</module>
         <module>groot-client</module>
         <module>executor/engine/pegasus/clients/java/client</module>
         <module>compiler</module>
       </modules>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>shade-neo4j</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>mvn</executable>
+                  <arguments>
+                    <argument>-f</argument>
+                    <argument>neo4j-shaded/pom.xml</argument>
+                    <argument>install</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+            <inherited>false</inherited>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
     <profile>
       <id>groot-data-load</id>
@@ -198,7 +223,7 @@
     <antlr4.version>4.9.1</antlr4.version>
 
     <aliyun.oss.version>3.16.3</aliyun.oss.version>
-    <!-- httpcomponents version should aligh with version of OSS SDK -->
+    <!-- httpcomponents version should align with version of OSS SDK -->
     <httpcomponents.version>4.5.13</httpcomponents.version>
 
     <odps.sdk.public.version>0.36.4-public</odps.sdk.public.version>
@@ -226,7 +251,10 @@
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
 
-    <noe4j.version>4.4.0</noe4j.version>
+    <neo4j.version>4.4.0</neo4j.version>
+    <neo4j.driver.version>4.4.0</neo4j.driver.version>
+    <interactive.sdk.version>0.4.2</interactive.sdk.version>
+    <interactive.sdk.classifier>no-gaia-ir</interactive.sdk.classifier>
   </properties>
 
   <dependencyManagement>
@@ -516,6 +544,11 @@
       </dependency>
       <dependency>
         <groupId>org.apache.hadoop</groupId>
+        <artifactId>hadoop-hdfs-client</artifactId>
+        <version>${hadoop.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hadoop</groupId>
         <artifactId>hadoop-minicluster</artifactId>
         <version>${hadoop.version}</version>
         <scope>test</scope>
@@ -632,7 +665,7 @@
       <dependency>
         <groupId>org.neo4j</groupId>
         <artifactId>neo4j</artifactId>
-        <version>${noe4j.version}</version>
+        <version>${neo4j.version}</version>
         <exclusions>
           <exclusion>
               <groupId>org.slf4j</groupId>
@@ -643,7 +676,7 @@
       <dependency>
         <groupId>org.neo4j.driver</groupId>
         <artifactId>neo4j-java-driver</artifactId>
-        <version>${noe4j.version}</version>
+        <version>${neo4j.driver.version}</version>
         <scope>test</scope>
       </dependency>
       <dependency>
@@ -651,6 +684,19 @@
         <artifactId>value</artifactId>
         <version>${immutables.version}</version>
         <scope>provided</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>1.37.0</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.graphscope</groupId>
+        <artifactId>interactive</artifactId>
+        <version>${interactive.sdk.version}</version>
+        <classifier>${interactive.sdk.classifier}</classifier>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -689,10 +735,6 @@
         <plugin>
           <artifactId>maven-deploy-plugin</artifactId>
           <version>${maven.deploy.version}</version>
-        </plugin>
-        <plugin>
-          <artifactId>maven-shade-plugin</artifactId>
-          <version>${maven.shade.version}</version>
         </plugin>
         <plugin>
           <artifactId>maven-assembly-plugin</artifactId>
@@ -815,27 +857,16 @@
       </plugins>
     </pluginManagement>
     <plugins>
+      <!-- use flatten plugin to replace revision property value in mvn install,otherwise the version
+        of the locallly installed submodle(like compiler) is ${revision} -->
       <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>flatten-maven-plugin</artifactId>
-        <version>${flatten.maven.plugin}</version>
-        <configuration>
-          <updatePomFile>true</updatePomFile>
-          <flattenMode>resolveCiFriendliesOnly</flattenMode>
-        </configuration>
+        <groupId>com.outbrain.swinfra</groupId>
+        <artifactId>ci-friendly-flatten-maven-plugin</artifactId>
         <executions>
           <execution>
-            <id>flatten</id>
-            <phase>process-resources</phase>
-            <goals>
-              <goal>flatten</goal>
-            </goals>
-          </execution>
-          <execution>
-            <id>flatten.clean</id>
-            <phase>clean</phase>
             <goals>
               <goal>clean</goal>
+              <goal>flatten</goal>
             </goals>
           </execution>
         </executions>

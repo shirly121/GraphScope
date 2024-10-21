@@ -20,6 +20,7 @@ import static org.apache.giraph.conf.GiraphConstants.EDGE_MANAGER;
 import static org.apache.giraph.conf.GiraphConstants.TYPES_HOLDER_CLASS;
 
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.graphscope.ds.StringView;
 import com.alibaba.graphscope.fragment.IFragment;
 
 import org.apache.giraph.combiner.MessageCombiner;
@@ -86,9 +87,9 @@ public class ConfigurationUtils {
             logger.error("Empty class Path!");
             return new URL[] {};
         }
-        String[] splited = classPath.split(":");
+        String[] split = classPath.split(":");
         List<URL> res =
-                Arrays.stream(splited)
+                Arrays.stream(split)
                         .map(File::new)
                         .map(
                                 file -> {
@@ -104,8 +105,8 @@ public class ConfigurationUtils {
                 "Extracted URL"
                         + String.join(
                                 ":", res.stream().map(URL::toString).collect(Collectors.toList())));
-        URL[] ret = new URL[splited.length];
-        for (int i = 0; i < splited.length; ++i) {
+        URL[] ret = new URL[split.length];
+        for (int i = 0; i < split.length; ++i) {
             ret[i] = res.get(i);
         }
         return ret;
@@ -294,6 +295,9 @@ public class ConfigurationUtils {
         }
         if (grapeTypeClass.equals(Float.class)) {
             return giraphTypeClass.equals(FloatWritable.class);
+        }
+        if (grapeTypeClass.equals(String.class) || grapeTypeClass.equals(StringView.class)) {
+            return true;
         }
         logger.error(
                 "Unsupported grape type and giraph type: "

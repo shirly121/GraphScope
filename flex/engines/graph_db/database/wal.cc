@@ -32,10 +32,10 @@ void WalWriter::open(const std::string& prefix, int thread_id) {
     break;
   }
   if (fd_ == -1) {
-    LOG(FATAL) << "Failed to open wal file";
+    LOG(FATAL) << "Failed to open wal file " << strerror(errno);
   }
   if (ftruncate(fd_, TRUNC_SIZE) != 0) {
-    LOG(FATAL) << "Failed to truncate wal file";
+    LOG(FATAL) << "Failed to truncate wal file " << strerror(errno);
   }
   file_size_ = TRUNC_SIZE;
   file_used_ = 0;
@@ -43,7 +43,9 @@ void WalWriter::open(const std::string& prefix, int thread_id) {
 
 void WalWriter::close() {
   if (fd_ != -1) {
-    ::close(fd_);
+    if (::close(fd_) != 0) {
+      LOG(FATAL) << "Failed to close file" << strerror(errno);
+    }
     fd_ = -1;
     file_size_ = 0;
     file_used_ = 0;
@@ -60,7 +62,7 @@ void WalWriter::append(const char* data, size_t length) {
   if (expected_size > file_size_) {
     size_t new_file_size = (expected_size / TRUNC_SIZE + 1) * TRUNC_SIZE;
     if (ftruncate(fd_, new_file_size) != 0) {
-      LOG(FATAL) << "Failed to truncate wal file";
+      LOG(FATAL) << "Failed to truncate wal file " << strerror(errno);
     }
     file_size_ = new_file_size;
   }
@@ -68,18 +70,18 @@ void WalWriter::append(const char* data, size_t length) {
   file_used_ += length;
 
   if (static_cast<size_t>(write(fd_, data, length)) != length) {
-    LOG(FATAL) << "Failed to write wal file";
+    LOG(FATAL) << "Failed to write wal file " << strerror(errno);
   }
 
 #if 1
 #ifdef F_FULLFSYNC
   if (fcntl(fd_, F_FULLFSYNC) != 0) {
-    LOG(FATAL) << "Failed to fcntl sync wal file";
+    LOG(FATAL) << "Failed to fcntl sync wal file " << strerrno(errno);
   }
 #else
   // if (fsync(fd_) != 0) {
   if (fdatasync(fd_) != 0) {
-    LOG(FATAL) << "Failed to fsync wal file";
+    LOG(FATAL) << "Failed to fsync wal file " << strerror(errno);
   }
 #endif
 #endif
@@ -89,8 +91,10 @@ void WalWriter::append(const char* data, size_t length) {
 
 static constexpr size_t MAX_WALS_NUM = 134217728;
 
-WalsParser::WalsParser(const std::vector<std::string>& paths) {
+WalsParser::WalsParser(const std::vector<std::string>& paths)
+    : insert_wal_list_(NULL), insert_wal_list_size_(0) {
   for (auto path : paths) {
+    LOG(INFO) << "Start to ingest WALs from file: " << path;
     size_t file_size = std::filesystem::file_size(path);
     if (file_size == 0) {
       continue;
@@ -106,7 +110,15 @@ WalsParser::WalsParser(const std::vector<std::string>& paths) {
     mmapped_size_.push_back(file_size);
   }
 
-  insert_wal_list_.resize(MAX_WALS_NUM);
+  if (insert_wal_list_ != NULL) {
+    munmap(insert_wal_list_, insert_wal_list_size_ * sizeof(WalContentUnit));
+    insert_wal_list_ = NULL;
+    insert_wal_list_size_ = 0;
+  }
+  insert_wal_list_ = static_cast<WalContentUnit*>(
+      mmap(NULL, MAX_WALS_NUM * sizeof(WalContentUnit), PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0));
+  insert_wal_list_size_ = MAX_WALS_NUM;
   for (size_t i = 0; i < mmapped_ptrs_.size(); ++i) {
     char* ptr = static_cast<char*>(mmapped_ptrs_[i]);
     while (true) {
@@ -141,6 +153,9 @@ WalsParser::WalsParser(const std::vector<std::string>& paths) {
 }
 
 WalsParser::~WalsParser() {
+  if (insert_wal_list_ != NULL) {
+    munmap(insert_wal_list_, insert_wal_list_size_ * sizeof(WalContentUnit));
+  }
   size_t ptr_num = mmapped_ptrs_.size();
   for (size_t i = 0; i < ptr_num; ++i) {
     munmap(mmapped_ptrs_[i], mmapped_size_[i]);

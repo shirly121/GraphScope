@@ -17,8 +17,8 @@
 use std::convert::{TryFrom, TryInto};
 
 use dyn_type::{BorrowObject, Object};
-use ir_common::error::ParsePbError;
-use ir_common::expr_parse::error::{ExprError, ExprResult};
+use ir_common::error::{ParsePbError, ParsePbResult};
+use ir_common::expr_parse::to_suffix_expr;
 use ir_common::generated::algebra as pb;
 use ir_common::generated::common as common_pb;
 
@@ -32,127 +32,24 @@ pub trait EvalPred {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct UnaryPredicate {
+    pub(crate) operand: Operand,
+    pub(crate) cmp: common_pb::Logical,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Predicate {
     pub(crate) left: Operand,
     pub(crate) cmp: common_pb::Logical,
     pub(crate) right: Operand,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-enum Partial {
-    SingleItem { left: Option<Operand>, cmp: Option<common_pb::Logical>, right: Option<Operand> },
-    Predicates(Predicates),
-}
-
-impl Default for Partial {
-    fn default() -> Self {
-        Self::SingleItem { left: None, cmp: None, right: None }
-    }
-}
-
-#[allow(dead_code)]
-impl Partial {
-    pub fn get_left(&self) -> Option<&Operand> {
-        match self {
-            Partial::SingleItem { left, cmp: _, right: _ } => left.as_ref(),
-            Partial::Predicates(_) => None,
-        }
-    }
-
-    pub fn left(&mut self, item: Operand) -> ExprResult<()> {
-        match self {
-            Self::SingleItem { left, cmp: _, right: _ } => {
-                *left = Some(item);
-                Ok(())
-            }
-            Self::Predicates(_) => {
-                Err(ExprError::OtherErr(format!("invalid predicate: {:?}, {:?}", self, item)))
-            }
-        }
-    }
-
-    pub fn cmp(&mut self, logical: common_pb::Logical) -> ExprResult<()> {
-        match self {
-            Partial::SingleItem { left, cmp, right: _ } => {
-                if left.is_none() || cmp.is_some() {
-                    Err(ExprError::OtherErr(format!("invalid predicate: {:?}, {:?}", self, logical)))
-                } else {
-                    *cmp = Some(logical);
-                    Ok(())
-                }
-            }
-            Partial::Predicates(_) => Ok(()),
-        }
-    }
-
-    pub fn right(&mut self, item: Operand) -> ExprResult<()> {
-        match self {
-            Partial::SingleItem { left: _, cmp, right } => {
-                if cmp.is_none() || right.is_some() {
-                    Err(ExprError::OtherErr(format!("invalid predicate: {:?}, {:?}", self, item)))
-                } else {
-                    *right = Some(item);
-                    Ok(())
-                }
-            }
-            Partial::Predicates(_) => Ok(()),
-        }
-    }
-
-    pub fn predicates(&mut self, pred: Predicates) -> ExprResult<()> {
-        match self {
-            Partial::SingleItem { left, cmp: _, right: _ } => {
-                if !left.is_none() {
-                    return Err(ExprError::OtherErr(format!("invalid predicate: {:?}, {:?}", self, pred)));
-                }
-            }
-            Partial::Predicates(_) => {}
-        }
-        *self = Self::Predicates(pred);
-
-        Ok(())
-    }
-}
-
-impl From<Partial> for Option<Predicates> {
-    fn from(partial: Partial) -> Option<Predicates> {
-        match partial {
-            Partial::SingleItem { left, cmp, right } => {
-                if left.is_none() {
-                    None
-                } else if cmp.is_none() {
-                    Some(Predicates::SingleItem(left.unwrap()))
-                } else if right.is_some() {
-                    Some(Predicates::Predicate(Predicate {
-                        left: left.unwrap(),
-                        cmp: cmp.unwrap(),
-                        right: right.unwrap(),
-                    }))
-                } else if right.is_none() {
-                    if cmp.unwrap() == common_pb::Logical::Isnull {
-                        Some(Predicates::Predicate(Predicate {
-                            left: left.unwrap(),
-                            cmp: cmp.unwrap(),
-                            right: Operand::Const(Object::None),
-                        }))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            Partial::Predicates(pred) => Some(pred),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Predicates {
     Init,
     SingleItem(Operand),
-    Predicate(Predicate),
+    Unary(UnaryPredicate),
+    Binary(Predicate),
     Not(Box<Predicates>),
     And((Box<Predicates>, Box<Predicates>)),
     Or((Box<Predicates>, Box<Predicates>)),
@@ -179,17 +76,19 @@ impl TryFrom<pb::index_predicate::Triplet> for Predicates {
         } else {
             None
         };
-        let partial = Partial::SingleItem {
+        let predicate = Predicate {
             left: triplet
                 .key
                 .map(|var| var.try_into())
-                .transpose()?,
-            cmp: Some(common_pb::Logical::Eq),
-            right: value.map(|val| val.try_into()).transpose()?,
+                .transpose()?
+                .ok_or_else(|| ParsePbError::ParseError("missing key in `Triplet`".to_string()))?,
+            cmp: unsafe { std::mem::transmute(triplet.cmp) },
+            right: value
+                .map(|val| val.try_into())
+                .transpose()?
+                .ok_or_else(|| ParsePbError::ParseError("missing value in `Triplet`".to_string()))?,
         };
-
-        Option::<Predicates>::from(partial)
-            .ok_or_else(|| (ParsePbError::ParseError("invalid `Triplet` in `IndexPredicate`".to_string())))
+        Ok(Predicates::Binary(predicate))
     }
 }
 
@@ -260,6 +159,7 @@ impl<'a> EvalPred for BorrowObject<'a> {
                 }
                 Ok(true)
             }
+            // When dealing with filtering, None is considered as false; otherwise, it is considered as a `NULL` or `UNKNOWN`
             BorrowObject::None => Ok(false),
             _ => Ok(true),
         }
@@ -327,6 +227,31 @@ impl EvalPred for Operand {
                 }
                 Ok(true)
             }
+            Operand::Concat(_) => Err(ExprEvalError::Unsupported("Concat".to_string())),
+        }
+    }
+}
+
+impl EvalPred for UnaryPredicate {
+    fn eval_bool<E: Element, C: Context<E>>(&self, context: Option<&C>) -> ExprEvalResult<bool> {
+        use common_pb::Logical;
+        match self.cmp {
+            Logical::Isnull => {
+                let left = match self.operand.eval(context) {
+                    Ok(left) => Ok(left),
+                    Err(err) => match err {
+                        ExprEvalError::GetNoneFromContext => Ok(Object::None),
+                        _ => Err(err),
+                    },
+                };
+                Ok(apply_logical(&self.cmp, left?.as_borrow_object(), None)?
+                    .as_bool()
+                    .unwrap_or(false))
+            }
+            _ => Err(ExprEvalError::OtherErr(format!(
+                "invalid logical operator: {:?} in a unary predicate",
+                self.cmp
+            ))),
         }
     }
 }
@@ -352,20 +277,8 @@ impl EvalPred for Predicate {
             )?
             .as_bool()
             .unwrap_or(false)),
-            Logical::Isnull => {
-                let left = match self.left.eval(context) {
-                    Ok(left) => Ok(left),
-                    Err(err) => match err {
-                        ExprEvalError::GetNoneFromContext => Ok(Object::None),
-                        _ => Err(err),
-                    },
-                };
-                Ok(apply_logical(&self.cmp, left?.as_borrow_object(), None)?
-                    .as_bool()
-                    .unwrap_or(false))
-            }
             _ => Err(ExprEvalError::OtherErr(format!(
-                "invalid logical operator: {:?} in a predicate",
+                "invalid logical operator: {:?} in a binary predicate",
                 self.cmp
             ))),
         }
@@ -377,7 +290,8 @@ impl EvalPred for Predicates {
         match self {
             Predicates::Init => Ok(false),
             Predicates::SingleItem(item) => item.eval_bool(context),
-            Predicates::Predicate(pred) => pred.eval_bool(context),
+            Predicates::Unary(upred) => upred.eval_bool(context),
+            Predicates::Binary(pred) => pred.eval_bool(context),
             Predicates::Not(pred) => Ok(!pred.eval_bool(context)?),
             Predicates::And((pred1, pred2)) => Ok(pred1.eval_bool(context)? && pred2.eval_bool(context)?),
             Predicates::Or((pred1, pred2)) => Ok(pred1.eval_bool(context)? || pred2.eval_bool(context)?),
@@ -406,124 +320,124 @@ impl Predicates {
         }
     }
 
-    fn merge_partial(
-        self, curr_cmp: Option<common_pb::Logical>, partial: Partial, is_not: bool,
-    ) -> ExprResult<Predicates> {
-        use common_pb::Logical;
-        let old_partial = partial.clone();
-        if let Some(mut new_pred) = Option::<Predicates>::from(partial) {
-            if is_not {
-                new_pred = new_pred.not()
-            };
-            if let Some(cmp) = curr_cmp {
-                match cmp {
-                    Logical::And => Ok(self.and(new_pred)),
-                    Logical::Or => Ok(self.or(new_pred)),
-                    _ => unreachable!(),
-                }
-            } else {
-                Ok(new_pred)
-            }
-        } else {
-            Err(ExprError::OtherErr(format!("invalid predicate: {:?}", old_partial)))
+    fn take_operand(self) -> Option<Operand> {
+        match self {
+            Predicates::SingleItem(op) => Some(op),
+            _ => None,
         }
     }
 }
 
 #[allow(dead_code)]
-fn process_predicates(
-    iter: &mut dyn Iterator<Item = &common_pb::ExprOpr>,
-) -> ExprResult<Option<Predicates>> {
+fn process_predicates(rpn_tokens: Vec<common_pb::ExprOpr>) -> ParsePbResult<Predicates> {
     use common_pb::expr_opr::Item;
     use common_pb::Logical;
-    let mut partial = Partial::default();
-    let mut predicates = Predicates::default();
-    let mut curr_cmp: Option<common_pb::Logical> = None;
-    let mut is_not = false;
-    let mut left_brace_count = 0;
-    let mut container: Vec<common_pb::ExprOpr> = Vec::new();
+    let mut stack: Vec<Predicates> = Vec::new();
 
-    while let Some(opr) = iter.next() {
+    for opr in rpn_tokens {
         if let Some(item) = &opr.item {
             match item {
                 Item::Logical(l) => {
-                    if left_brace_count == 0 {
-                        let logical = unsafe { std::mem::transmute::<i32, common_pb::Logical>(*l) };
-                        match logical {
-                            Logical::Eq
-                            | Logical::Ne
-                            | Logical::Lt
-                            | Logical::Le
-                            | Logical::Gt
-                            | Logical::Ge
-                            | Logical::Within
-                            | Logical::Without
-                            | Logical::Startswith
-                            | Logical::Endswith
-                            | Logical::Isnull
-                            | Logical::Regex => partial.cmp(logical)?,
-                            Logical::Not => is_not = true,
-                            Logical::And | Logical::Or => {
-                                predicates = predicates.merge_partial(curr_cmp, partial, is_not)?;
-                                if is_not {
-                                    is_not = false;
-                                }
-                                partial = Partial::default();
-                                curr_cmp = Some(logical);
-                            }
+                    let logical = unsafe { std::mem::transmute::<i32, common_pb::Logical>(*l) };
+                    match logical {
+                        Logical::Eq
+                        | Logical::Ne
+                        | Logical::Lt
+                        | Logical::Le
+                        | Logical::Gt
+                        | Logical::Ge
+                        | Logical::Within
+                        | Logical::Without
+                        | Logical::Startswith
+                        | Logical::Endswith
+                        | Logical::Regex => {
+                            // binary operator
+                            let rhs = stack
+                                .pop()
+                                .ok_or_else(|| {
+                                    ParsePbError::ParseError(
+                                        "missing right for binary operator".to_string(),
+                                    )
+                                })?
+                                .take_operand()
+                                .ok_or_else(|| {
+                                    ParsePbError::ParseError(
+                                        "missing right operand for binary operator".to_string(),
+                                    )
+                                })?;
+                            let lhs = stack
+                                .pop()
+                                .ok_or_else(|| {
+                                    ParsePbError::ParseError("missing left for binary operator".to_string())
+                                })?
+                                .take_operand()
+                                .ok_or_else(|| {
+                                    ParsePbError::ParseError(
+                                        "missing left operand for binary operator".to_string(),
+                                    )
+                                })?;
+                            stack.push(Predicates::Binary(Predicate {
+                                left: lhs,
+                                cmp: logical,
+                                right: rhs,
+                            }));
                         }
-                    } else {
-                        container.push(opr.clone());
+                        Logical::Isnull => {
+                            // unary operator
+                            let operand = stack
+                                .pop()
+                                .ok_or_else(|| {
+                                    ParsePbError::ParseError(
+                                        "missing operand for unary operator".to_string(),
+                                    )
+                                })?
+                                .take_operand()
+                                .ok_or_else(|| {
+                                    ParsePbError::ParseError(
+                                        "missing operand for unary operator".to_string(),
+                                    )
+                                })?;
+                            stack.push(Predicates::Unary(UnaryPredicate { operand, cmp: logical }));
+                        }
+                        Logical::Not => {
+                            let pred = stack.pop().ok_or_else(|| {
+                                ParsePbError::ParseError(
+                                    "missing predicates for unary operator".to_string(),
+                                )
+                            })?;
+                            stack.push(Predicates::Not(Box::new(pred)));
+                        }
+                        Logical::And => {
+                            let rhs = stack.pop().ok_or_else(|| {
+                                ParsePbError::ParseError("missing right for And operator".to_string())
+                            })?;
+                            let lhs = stack.pop().ok_or_else(|| {
+                                ParsePbError::ParseError("missing left for And operator".to_string())
+                            })?;
+                            stack.push(Predicates::And((Box::new(lhs), Box::new(rhs))));
+                        }
+                        Logical::Or => {
+                            let rhs = stack.pop().ok_or_else(|| {
+                                ParsePbError::ParseError("missing right for Or operator".to_string())
+                            })?;
+                            let lhs = stack.pop().ok_or_else(|| {
+                                ParsePbError::ParseError("missing left for Or operator".to_string())
+                            })?;
+                            stack.push(Predicates::Or((Box::new(lhs), Box::new(rhs))));
+                        }
                     }
                 }
                 Item::Const(_) | Item::Var(_) | Item::Vars(_) | Item::VarMap(_) | Item::Map(_) => {
-                    if left_brace_count == 0 {
-                        if partial.get_left().is_none() {
-                            partial.left(opr.clone().try_into()?)?;
-                        } else {
-                            partial.right(opr.clone().try_into()?)?;
-                        }
-                    } else {
-                        container.push(opr.clone());
-                    }
+                    stack.push(Predicates::SingleItem(opr.try_into()?));
                 }
-                Item::Brace(brace) => {
-                    if *brace == 0 {
-                        if left_brace_count != 0 {
-                            container.push(opr.clone());
-                        }
-                        left_brace_count += 1;
-                    } else {
-                        left_brace_count -= 1;
-                        if left_brace_count == 0 {
-                            let mut iter = container.iter();
-                            if let Some(p) = process_predicates(&mut iter)? {
-                                partial.predicates(p)?;
-                                container.clear();
-                            } else {
-                                return Ok(None);
-                            }
-                        } else {
-                            container.push(opr.clone());
-                        }
-                    }
-                }
-                Item::Arith(_) => return Ok(None),
-                Item::Param(param) => {
-                    return Err(ExprError::unsupported(format!("Dynamic Param {:?}", param)))
-                }
-                Item::Case(case) => return Err(ExprError::unsupported(format!("Case When {:?}", case))),
-                Item::Extract(extract) => {
-                    return Err(ExprError::unsupported(format!("Extract {:?}", extract)))
-                }
+                _ => return Err(ParsePbError::Unsupported(format!("Item {:?}", item))),
             }
         }
     }
-
-    if left_brace_count == 0 {
-        Ok(Some(predicates.merge_partial(curr_cmp, partial, is_not)?))
+    if stack.len() != 1 {
+        Err(ParsePbError::ParseError(format!("{:?} in predicate parsing", stack)))
     } else {
-        Err(ExprError::UnmatchedLRBraces)
+        Ok(stack.pop().unwrap())
     }
 }
 
@@ -553,13 +467,21 @@ impl TryFrom<common_pb::Expression> for PEvaluator {
     type Error = ParsePbError;
 
     fn try_from(expr: common_pb::Expression) -> Result<Self, Self::Error> {
-        let mut iter = expr.operators.iter();
-        if let Some(pred) =
-            process_predicates(&mut iter).map_err(|err| ParsePbError::ParseError(format!("{:?}", err)))?
-        {
-            Ok(Self::Predicates(pred))
-        } else {
-            Ok(Self::General(expr.try_into()?))
+        let suffix_oprs = to_suffix_expr(expr.operators.clone())
+            .map_err(|err| ParsePbError::ParseError(format!("{:?}", err)))?;
+        let pred_res = process_predicates(suffix_oprs.clone());
+        match pred_res {
+            Ok(pred) => {
+                return Ok(Self::Predicates(pred));
+            }
+            Err(err) => match err {
+                ParsePbError::Unsupported(_) => {
+                    // fall back to general evaluator
+                    let eval = Evaluator::try_from(expr)?;
+                    Ok(Self::General(eval))
+                }
+                _ => Err(err),
+            },
         }
     }
 }
@@ -680,7 +602,7 @@ mod tests {
             PEvaluator::Predicates(pred) => {
                 assert_eq!(
                     pred.clone(),
-                    Predicates::Predicate(Predicate {
+                    Predicates::Binary(Predicate {
                         left: Operand::Const(object!(1)),
                         cmp: common_pb::Logical::Gt,
                         right: Operand::Const(object!(2)),
@@ -699,7 +621,7 @@ mod tests {
             PEvaluator::Predicates(pred) => {
                 assert_eq!(
                     pred.clone(),
-                    Predicates::Predicate(Predicate {
+                    Predicates::Binary(Predicate {
                         left: Operand::Const(object!(1)),
                         cmp: common_pb::Logical::Gt,
                         right: Operand::Const(object!(2)),
@@ -719,7 +641,7 @@ mod tests {
             PEvaluator::Predicates(pred) => {
                 assert_eq!(
                     pred.clone(),
-                    Predicates::Predicate(Predicate {
+                    Predicates::Binary(Predicate {
                         left: Operand::Const(object!(1)),
                         cmp: common_pb::Logical::Gt,
                         right: Operand::Const(object!(2)),
@@ -742,13 +664,11 @@ mod tests {
             PEvaluator::Predicates(pred) => {
                 assert_eq!(
                     pred.clone(),
-                    Predicates::SingleItem(Operand::Const(object!(1))).and(Predicates::Predicate(
-                        Predicate {
-                            left: Operand::Const(object!(1)),
-                            cmp: common_pb::Logical::Gt,
-                            right: Operand::Const(object!(2)),
-                        }
-                    ))
+                    Predicates::SingleItem(Operand::Const(object!(1))).and(Predicates::Binary(Predicate {
+                        left: Operand::Const(object!(1)),
+                        cmp: common_pb::Logical::Gt,
+                        right: Operand::Const(object!(2)),
+                    }))
                 );
             }
             PEvaluator::General(_) => panic!("should be predicate"),
@@ -767,7 +687,7 @@ mod tests {
                         tag: Some("a".into()),
                         prop_key: Some(PropKey::Key("name".into()))
                     }))
-                    .and(Predicates::Predicate(Predicate {
+                    .and(Predicates::Binary(Predicate {
                         left: Operand::Var {
                             tag: Some("a".into()),
                             prop_key: Some(PropKey::Key("age".into()))
@@ -775,7 +695,7 @@ mod tests {
                         cmp: common_pb::Logical::Gt,
                         right: Operand::Const(object!(2)),
                     }))
-                    .or(Predicates::Predicate(Predicate {
+                    .or(Predicates::Binary(Predicate {
                         left: Operand::Var { tag: Some("b".into()), prop_key: Some(PropKey::Id) },
                         cmp: common_pb::Logical::Eq,
                         right: Operand::Const(object!(10)),
@@ -793,7 +713,7 @@ mod tests {
         match &p_eval {
             PEvaluator::Predicates(pred) => assert_eq!(
                 pred.clone(),
-                Predicates::Predicate(Predicate {
+                Predicates::Binary(Predicate {
                     left: Operand::Var {
                         tag: Some("a".into()),
                         prop_key: Some(PropKey::Key("name".into()))
@@ -801,7 +721,7 @@ mod tests {
                     cmp: common_pb::Logical::Eq,
                     right: Operand::Const(object!("John")),
                 })
-                .and(Predicates::Predicate(Predicate {
+                .and(Predicates::Binary(Predicate {
                     left: Operand::Var {
                         tag: Some("a".into()),
                         prop_key: Some(PropKey::Key("age".into()))
@@ -809,12 +729,12 @@ mod tests {
                     cmp: common_pb::Logical::Gt,
                     right: Operand::Const(27_i64.into()),
                 }))
-                .or(Predicates::Predicate(Predicate {
+                .or(Predicates::Binary(Predicate {
                     left: Operand::Var { tag: Some("b".into()), prop_key: Some(PropKey::Label) },
                     cmp: common_pb::Logical::Eq,
                     right: Operand::Const(11_i64.into()),
                 })
-                .and(Predicates::Predicate(Predicate {
+                .and(Predicates::Binary(Predicate {
                     left: Operand::Var {
                         tag: Some("b".into()),
                         prop_key: Some(PropKey::Key("name".into()))
@@ -834,7 +754,7 @@ mod tests {
         match &p_eval {
             PEvaluator::Predicates(pred) => assert_eq!(
                 pred.clone(),
-                Predicates::Predicate(Predicate {
+                Predicates::Binary(Predicate {
                     left: Operand::Var {
                         tag: Some("a".into()),
                         prop_key: Some(PropKey::Key("name".into()))
@@ -843,7 +763,7 @@ mod tests {
                     right: Operand::Const(object!("John")),
                 })
                 .and(
-                    Predicates::Predicate(Predicate {
+                    Predicates::Binary(Predicate {
                         left: Operand::Var {
                             tag: Some("a".into()),
                             prop_key: Some(PropKey::Key("age".into()))
@@ -855,7 +775,7 @@ mod tests {
                         tag: Some("b".into()),
                         prop_key: Some(PropKey::Label)
                     })))
-                    .and(Predicates::Predicate(Predicate {
+                    .and(Predicates::Binary(Predicate {
                         left: Operand::Var {
                             tag: Some("b".into()),
                             prop_key: Some(PropKey::Key("name".into()))
@@ -865,6 +785,57 @@ mod tests {
                     }))
                 )
             ),
+            PEvaluator::General(_) => panic!("should be predicate"),
+        }
+
+        let expr = str_to_expr_pb("isnull @a.name".to_string()).unwrap();
+        let p_eval = PEvaluator::try_from(expr).unwrap();
+        match &p_eval {
+            PEvaluator::Predicates(pred) => {
+                assert_eq!(
+                    pred.clone(),
+                    Predicates::Unary(UnaryPredicate {
+                        operand: Operand::Var {
+                            tag: Some("a".into()),
+                            prop_key: Some(PropKey::Key("name".into()))
+                        },
+                        cmp: common_pb::Logical::Isnull,
+                    })
+                );
+            }
+            PEvaluator::General(_) => panic!("should be predicate"),
+        }
+
+        let expr = str_to_expr_pb("isnull @a.name && @a.age > 2 || isnull @b.age".to_string()).unwrap();
+        let p_eval = PEvaluator::try_from(expr).unwrap();
+        match &p_eval {
+            PEvaluator::Predicates(pred) => {
+                assert_eq!(
+                    pred.clone(),
+                    Predicates::Unary(UnaryPredicate {
+                        operand: Operand::Var {
+                            tag: Some("a".into()),
+                            prop_key: Some(PropKey::Key("name".into()))
+                        },
+                        cmp: common_pb::Logical::Isnull,
+                    })
+                    .and(Predicates::Binary(Predicate {
+                        left: Operand::Var {
+                            tag: Some("a".into()),
+                            prop_key: Some(PropKey::Key("age".into()))
+                        },
+                        cmp: common_pb::Logical::Gt,
+                        right: Operand::Const(object!(2)),
+                    }))
+                    .or(Predicates::Unary(UnaryPredicate {
+                        operand: Operand::Var {
+                            tag: Some("b".into()),
+                            prop_key: Some(PropKey::Key("age".into()))
+                        },
+                        cmp: common_pb::Logical::Isnull,
+                    }))
+                );
+            }
             PEvaluator::General(_) => panic!("should be predicate"),
         }
     }
@@ -908,12 +879,18 @@ mod tests {
             .eval_bool::<_, Vertices>(Some(&context))
             .unwrap());
 
+        let expr = str_to_expr_pb("true || true && false".to_string()).unwrap();
+        let p_eval = PEvaluator::try_from(expr).unwrap();
+        assert!(p_eval
+            .eval_bool::<_, Vertices>(Some(&context))
+            .unwrap());
+
         let expr = str_to_expr_pb(
             "@0.name == \"John\" && @0.age > 27 || @1.~label == 11 && @1.name == \"Alien\"".to_string(),
         )
         .unwrap();
         let p_eval = PEvaluator::try_from(expr).unwrap();
-        assert!(!p_eval
+        assert!(p_eval
             .eval_bool::<_, Vertices>(Some(&context))
             .unwrap());
 
@@ -949,13 +926,13 @@ mod tests {
         // [v1: id = 2, label = 11, age = 26, name = Jimmy, birthday = 19950816]
         let ctxt = prepare_context();
         let cases: Vec<&str> = vec![
-            "@0.hobbies isNull",                 // false
-            "!(@0.hobbies isNull)",              // true
-            "@1.hobbies isNull",                 // true
-            "!(@1.hobbies isNull)",              // false
-            "true isNull",                       // false
-            "false isNull",                      // false
-            "@1.hobbies isNull && @1.age == 26", // true
+            "isNull @0.hobbies",                 // false
+            "!(isNull @0.hobbies)",              // true
+            "isNull @1.hobbies",                 // true
+            "!(isNull @1.hobbies)",              // false
+            "isNull true",                       // false
+            "isNull false",                      // false
+            "isNull @1.hobbies && @1.age == 26", // true
         ];
         let expected: Vec<bool> = vec![false, true, true, false, false, false, true];
 
@@ -996,8 +973,14 @@ mod tests {
         // So use gen_regex_expression() to help generate expression
         let cases: Vec<(&str, &str)> = vec![
             ("@0.name", r"^J"),                          // startWith, true
+            ("@0.name", r"^J.*"),                        // startWith, true
+            ("@0.name", r"^j.*"),                        // startWith, false
+            ("@0.name", r"^B.*"),                        // startWith, false
             ("@0.name", r"J.*"),                         // true
             ("@0.name", r"n$"),                          // endWith, true
+            ("@0.name", r".*n$"),                        // endWith, true
+            ("@0.name", r".*s$"),                        // endWith, false
+            ("@0.name", r".*N$"),                        // endWith, false
             ("@0.name", r".*n"),                         // true
             ("@0.name", r"oh"),                          // true
             ("@0.name", r"A.*"),                         // false
@@ -1006,7 +989,10 @@ mod tests {
             ("@0.name", r"John.+"),                      // false
             ("@0.str_birthday", r"^\d{4}-\d{2}-\d{2}$"), // true
         ];
-        let expected: Vec<bool> = vec![true, true, true, true, true, false, false, false, false, true];
+        let expected: Vec<bool> = vec![
+            true, true, false, false, true, true, true, false, false, true, true, false, false, false,
+            false, true,
+        ];
 
         for ((to_match, pattern), expected) in cases.into_iter().zip(expected.into_iter()) {
             let eval = PEvaluator::try_from(gen_regex_expression(to_match, pattern)).unwrap();

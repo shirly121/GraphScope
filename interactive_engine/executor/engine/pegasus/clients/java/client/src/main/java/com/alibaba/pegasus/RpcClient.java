@@ -24,6 +24,7 @@ import com.alibaba.pegasus.service.protocol.PegasusClient.JobResponse;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import io.opentelemetry.api.trace.Span;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,7 +85,11 @@ public class RpcClient {
             if (finished.get()) {
                 return;
             }
-            processor.process(jobResponse);
+            try {
+                processor.process(jobResponse);
+            } catch (Throwable t) {
+                onError(t);
+            }
         }
 
         @Override
@@ -93,16 +98,20 @@ public class RpcClient {
                 return;
             }
             Status status = Status.fromThrowable(throwable);
-            logger.error("get job response error: {}", status);
+            logger.debug("get job response error: {}", status);
             processor.error(status);
         }
 
         @Override
         public void onCompleted() {
-            logger.info("finish get job response from one server");
             if (counter.decrementAndGet() == 0) {
-                logger.info("finish get job response from all servers");
-                processor.finish();
+                String traceId = Span.current().getSpanContext().getTraceId();
+                logger.info("trace: {}, finish get job response from all servers", traceId);
+                try {
+                    processor.finish();
+                } catch (Throwable t) {
+                    onError(t);
+                }
             }
         }
     }

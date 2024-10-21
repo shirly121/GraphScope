@@ -54,7 +54,7 @@ GRIN_VERTEX_PROPERTY_LIST grin_get_vertex_properties_by_name(GRIN_GRAPH g,
   std::string prop_name(name);
   auto vps = new GRIN_VERTEX_PROPERTY_LIST_T();
   std::string _name = std::string(name);
-  for (auto idx = 0; idx < _g->g.vertex_label_num_; idx++) {
+  for (size_t idx = 0; idx < _g->g.vertex_label_num_; idx++) {
     auto& table = _g->g.get_vertex_table(static_cast<GRIN_VERTEX_TYPE>(idx));
 
     auto col = table.get_column(name);
@@ -203,7 +203,7 @@ const char* grin_get_vertex_property_value_of_string(GRIN_GRAPH g,
   auto pdt = (vp >> 16);
   auto pid = vp & (0xff);
 
-  if (label != plabel || pdt != GRIN_DATATYPE::String) {
+  if (label != plabel || pdt != GRIN_DATATYPE::StringView) {
     grin_error_code = INVALID_VALUE;
     return NULL;
   }
@@ -298,39 +298,83 @@ const void* grin_get_vertex_property_value(GRIN_GRAPH g, GRIN_VERTEX v,
   switch (type) {
   case GRIN_DATATYPE::Bool: {
     auto _col = static_cast<const gs::BoolColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   case GRIN_DATATYPE::Int32: {
     auto _col = static_cast<const gs::IntColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   case GRIN_DATATYPE::UInt32: {
     auto _col = static_cast<const gs::UIntColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   case GRIN_DATATYPE::Int64: {
     auto _col = static_cast<const gs::LongColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   case GRIN_DATATYPE::UInt64: {
     auto _col = static_cast<const gs::ULongColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
-  case GRIN_DATATYPE::String: {
+  case GRIN_DATATYPE::StringView: {
     auto _col = static_cast<const gs::StringColumn*>(col);
-    return _col->buffer()[vid].data();
+    auto s = _col->get_view(vid);
+    auto len = s.size() + 1;
+    char* out = new char[len];
+    snprintf(out, len, "%s", s.data());
+    return out;
   }
   case GRIN_DATATYPE::Timestamp64: {
     auto _col = static_cast<const gs::DateColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   case GRIN_DATATYPE::Double: {
     auto _col = static_cast<const gs::DoubleColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   case GRIN_DATATYPE::Float: {
     auto _col = static_cast<const gs::FloatColumn*>(col);
-    return _col->buffer().data() + vid;
+    auto basic_size = _col->basic_buffer_size();
+    if (vid < basic_size) {
+      return _col->basic_buffer().data() + vid;
+    } else {
+      return _col->extra_buffer().data() + vid - basic_size;
+    }
   }
   default:
     grin_error_code = UNKNOWN_DATATYPE;
@@ -431,7 +475,7 @@ const char* grin_get_edge_property_value_of_string(GRIN_GRAPH g, GRIN_EDGE e,
                                                    GRIN_EDGE_PROPERTY ep) {
   auto _e = static_cast<GRIN_EDGE_T*>(e);
   auto idx = ep >> 24;
-  if (idx > 0 || _get_data_type(_e->data.type) != GRIN_DATATYPE::String) {
+  if (idx > 0 || _get_data_type(_e->data.type) != GRIN_DATATYPE::StringView) {
     grin_error_code = INVALID_VALUE;
     return NULL;
   }

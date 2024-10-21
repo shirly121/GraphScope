@@ -14,7 +14,7 @@
 package com.alibaba.graphscope.groot.coordinator;
 
 import com.alibaba.graphscope.groot.CompletionCallback;
-import com.alibaba.graphscope.groot.schema.request.DdlException;
+import com.alibaba.graphscope.groot.common.exception.DdlException;
 import com.alibaba.graphscope.groot.schema.request.DdlRequestBatch;
 import com.alibaba.graphscope.proto.groot.SchemaGrpc;
 import com.alibaba.graphscope.proto.groot.SubmitBatchDdlRequest;
@@ -22,9 +22,13 @@ import com.alibaba.graphscope.proto.groot.SubmitBatchDdlResponse;
 
 import io.grpc.stub.StreamObserver;
 
-public class SchemaService extends SchemaGrpc.SchemaImplBase {
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-    private SchemaManager schemaManager;
+public class SchemaService extends SchemaGrpc.SchemaImplBase {
+    private static final Logger logger = LoggerFactory.getLogger(SchemaService.class);
+
+    private final SchemaManager schemaManager;
 
     public SchemaService(SchemaManager schemaManager) {
         this.schemaManager = schemaManager;
@@ -37,6 +41,7 @@ public class SchemaService extends SchemaGrpc.SchemaImplBase {
         String requestId = request.getRequestId();
         String sessionId = request.getSessionId();
         DdlRequestBatch ddlRequestBatch = DdlRequestBatch.parseProto(request.getDdlRequests());
+        logger.info("submitBatchDdl {}", ddlRequestBatch.toProto());
         this.schemaManager.submitBatchDdl(
                 requestId,
                 sessionId,

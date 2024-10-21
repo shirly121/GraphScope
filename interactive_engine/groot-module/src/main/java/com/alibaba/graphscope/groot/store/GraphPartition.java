@@ -14,8 +14,10 @@
 package com.alibaba.graphscope.groot.store;
 
 import com.alibaba.graphscope.groot.operation.OperationBatch;
+import com.alibaba.graphscope.groot.store.backup.GraphPartitionBackup;
 import com.alibaba.graphscope.groot.store.external.ExternalStorage;
 import com.alibaba.graphscope.proto.groot.GraphDefPb;
+import com.alibaba.graphscope.proto.groot.Statistics;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -30,9 +32,9 @@ public interface GraphPartition extends Closeable {
      */
     boolean writeBatch(long snapshotId, OperationBatch operationBatch) throws IOException;
 
-    long recover();
-
     GraphDefPb getGraphDefBlob() throws IOException;
+
+    Statistics getGraphStatisticsBlob(long si) throws IOException;
 
     void ingestExternalFile(ExternalStorage storage, String fullPath) throws IOException;
 
@@ -41,4 +43,10 @@ public interface GraphPartition extends Closeable {
     int getId();
 
     void garbageCollect(long snapshotId) throws IOException;
+
+    void tryCatchUpWithPrimary() throws IOException;
+
+    void reopenSecondary(long wait_sec) throws IOException;
+
+    void compact() throws IOException;
 }

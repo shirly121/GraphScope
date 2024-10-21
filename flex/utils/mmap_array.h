@@ -16,83 +16,303 @@
 #ifndef GRAPHSCOPE_UTILS_MMAP_ARRAY_H_
 #define GRAPHSCOPE_UTILS_MMAP_ARRAY_H_
 
-#include <fcntl.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <assert.h>
 
 #include <atomic>
 #include <filesystem>
 #include <string>
 #include <string_view>
 
+#include "flex/storages/rt_mutable_graph/file_names.h"
 #include "glog/logging.h"
+#include "grape/util.h"
+
+#ifdef __ia64__
+#define ADDR (void*) (0x8000000000000000UL)
+#define FLAGS (MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_FIXED)
+#else
+#define ADDR (void*) (0x0UL)
+#define FLAGS (MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB)
+#endif
+
+#define PROTECTION (PROT_READ | PROT_WRITE)
+
+#define HUGEPAGE_SIZE (2UL * 1024 * 1024)
+#define HUGEPAGE_MASK (2UL * 1024 * 1024 - 1UL)
+#define ROUND_UP(size) (((size) + HUGEPAGE_MASK) & (~HUGEPAGE_MASK))
+
+inline void* allocate_hugepages(size_t size) {
+  return mmap(ADDR, ROUND_UP(size), PROTECTION, FLAGS, -1, 0);
+}
+
+inline size_t hugepage_round_up(size_t size) { return ROUND_UP(size); }
+
+#undef ADDR
+#undef FLAGS
+#undef HUGEPAGE_SIZE
+#undef HUGEPAGE_MASK
+#undef ROUND_UP
 
 namespace gs {
+
+enum class MemoryStrategy {
+  kSyncToFile,
+  kMemoryOnly,
+  kHugepagePrefered,
+};
 
 template <typename T>
 class mmap_array {
  public:
-  mmap_array() : fd_(-1), data_(NULL), size_(0) {}
-  ~mmap_array() { release(); }
+  mmap_array()
+      : filename_(""),
+        fd_(-1),
+        data_(NULL),
+        size_(0),
+        mmap_size_(0),
+        sync_to_file_(false),
+        hugepage_prefered_(false) {}
 
-  void open_for_read(const std::string& filename) {
-    release();
+  mmap_array(const mmap_array<T>& rhs) : fd_(-1) {
+    resize(rhs.size_);
+    memcpy(data_, rhs.data_, size_ * sizeof(T));
+  }
 
-    size_t filesize = std::filesystem::file_size(filename);
-    fd_ = ::open(filename.c_str(), O_RDWR, 0640);
-    size_ = filesize / sizeof(T);
-    if (size_ != 0) {
-      size_t size_in_bytes = size_ * sizeof(T);
-      data_ = static_cast<T*>(mmap(NULL, size_in_bytes, PROT_READ | PROT_WRITE,
-                                   MAP_PRIVATE | MAP_NORESERVE, fd_, 0));
-      if (data_ == MAP_FAILED) {
-        LOG(FATAL) << "mmap failed...";
+  mmap_array(mmap_array&& rhs) : mmap_array() { swap(rhs); }
+  ~mmap_array() { reset(); }
+
+  void reset() {
+    if (data_ != NULL && mmap_size_ != 0) {
+      if (munmap(data_, mmap_size_) != 0) {
+        std::stringstream ss;
+        ss << "Failed to mummap file [ " << filename_ << " ] "
+           << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+    }
+    data_ = NULL;
+    size_ = 0;
+    mmap_size_ = 0;
+    if (fd_ != -1) {
+      if (close(fd_) != 0) {
+        std::stringstream ss;
+        ss << "Failed to close file [ " << filename_ << " ] "
+           << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      fd_ = -1;
+    }
+    filename_ = "";
+    sync_to_file_ = false;
+  }
+
+  void unlink() {
+    std::string old_filename = filename_;
+    reset();
+    if (old_filename != "" && std::filesystem::exists(old_filename)) {
+      if (std::filesystem::remove(old_filename) == 0) {
+        std::stringstream ss;
+        ss << "Failed to remove file [ " << old_filename << " ] "
+           << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
       }
     }
   }
 
-  void dump_to_file(const std::string& filename,
-                    size_t size = std::numeric_limits<size_t>::max()) const {
-    if (data_ == NULL || size_ == 0) {
-      return;
-    }
-    size_t size_in_bytes = std::min(size, size_) * sizeof(T);
-    if (size_in_bytes == 0) {
-      return;
-    }
-    int fd = ::open(filename.c_str(), O_RDWR | O_CREAT, 0640);
-    if (ftruncate(fd, size_ * sizeof(T)) != 0) {
-      LOG(FATAL) << "ftruncate file failed...";
-      return;
-    }
-    T* md = static_cast<T*>(
-        mmap(NULL, size_in_bytes, PROT_WRITE, MAP_SHARED, fd, 0));
-    if (md == MAP_FAILED) {
-      perror("mmap: ");
-      LOG(FATAL) << "mmap " << filename << ", with length " << size_in_bytes
-                 << " failed...";
-      return;
-    }
-    memcpy(md, data_, size_in_bytes);
-    munmap(md, size_in_bytes);
-    ::close(fd);
+  void set_hugepage_prefered(bool val) {
+    hugepage_prefered_ = (val && !sync_to_file_);
   }
 
-  void clear() { release(); }
+  void open(const std::string& filename, bool sync_to_file = false) {
+    reset();
+    filename_ = filename;
+    sync_to_file_ = sync_to_file;
+    hugepage_prefered_ = false;
+    if (sync_to_file_) {
+      bool creat = !std::filesystem::exists(filename_);
+      fd_ = ::open(filename_.c_str(), O_RDWR | O_CREAT, 0777);
+      if (fd_ == -1) {
+        std::stringstream ss;
+        ss << "Failed to open file [" << filename_ << "], " << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      if (creat) {
+        std::filesystem::perms readWritePermission =
+            std::filesystem::perms::owner_read |
+            std::filesystem::perms::owner_write;
+        std::error_code errorCode;
+        std::filesystem::permissions(filename, readWritePermission,
+                                     std::filesystem::perm_options::add,
+                                     errorCode);
+        if (errorCode) {
+          std::stringstream ss;
+          ss << "Failed to set read/write permission for file: " << filename
+             << " " << errorCode.message() << std::endl;
+          LOG(ERROR) << ss.str();
+          throw std::runtime_error(ss.str());
+        }
+      }
 
-  void release() {
-    if (data_ != NULL) {
-      munmap(data_, size_ * sizeof(T));
+      size_t file_size = std::filesystem::file_size(filename_);
+      size_ = file_size / sizeof(T);
+      mmap_size_ = file_size;
+      if (mmap_size_ == 0) {
+        data_ = NULL;
+      } else {
+        data_ = reinterpret_cast<T*>(
+            mmap(NULL, mmap_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+        if (data_ == MAP_FAILED) {
+          std::stringstream ss;
+          ss << "Failed to mmap file [" << filename_ << "], "
+             << strerror(errno);
+          LOG(ERROR) << ss.str();
+          throw std::runtime_error(ss.str());
+        }
+        int rt = madvise(data_, mmap_size_, MADV_RANDOM | MADV_WILLNEED);
+        if (rt != 0) {
+          std::stringstream ss;
+          ss << "Failed to madvise file [" << filename_ << "], "
+             << strerror(errno);
+          LOG(ERROR) << ss.str();
+          throw std::runtime_error(ss.str());
+        }
+      }
+    } else {
+      if (!filename_.empty() && std::filesystem::exists(filename_)) {
+        size_t file_size = std::filesystem::file_size(filename_);
+        fd_ = ::open(filename_.c_str(), O_RDWR, 0777);
+        if (fd_ == -1) {
+          std::stringstream ss;
+          ss << "Failed to open file [" << filename_ << "], "
+             << strerror(errno);
+          LOG(ERROR) << ss.str();
+          throw std::runtime_error(ss.str());
+        }
+        size_ = file_size / sizeof(T);
+        mmap_size_ = file_size;
+        if (mmap_size_ == 0) {
+          data_ = NULL;
+        } else {
+          data_ = reinterpret_cast<T*>(mmap(
+              NULL, mmap_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_, 0));
+          if (data_ == MAP_FAILED) {
+            std::stringstream ss;
+            ss << "Failed to mmap file [" << filename_ << "], "
+               << strerror(errno);
+            LOG(ERROR) << ss.str();
+            throw std::runtime_error(ss.str());
+          }
+        }
+      }
     }
-    data_ = NULL;
-    size_ = 0;
+  }
 
-    if (fd_ != -1) {
-      ::close(fd_);
-      fd_ = -1;
+  void open_with_hugepages(const std::string& filename, size_t capacity = 0) {
+    reset();
+    hugepage_prefered_ = true;
+    if (!filename.empty() && std::filesystem::exists(filename)) {
+      size_t file_size = std::filesystem::file_size(filename);
+      size_ = file_size / sizeof(T);
+      if (size_ != 0) {
+        capacity = std::max(capacity, size_);
+        mmap_size_ = hugepage_round_up(capacity * sizeof(T));
+        data_ = static_cast<T*>(allocate_hugepages(mmap_size_));
+        if (data_ != MAP_FAILED) {
+          FILE* fin = fopen(filename.c_str(), "rb");
+          if (fin == NULL) {
+            std::stringstream ss;
+            ss << "Failed to open file [ " << filename << " ], "
+               << strerror(errno);
+            LOG(ERROR) << ss.str();
+            throw std::runtime_error(ss.str());
+          }
+          if (fread(data_, sizeof(T), size_, fin) != size_) {
+            std::stringstream ss;
+            ss << "Failed to fread file [ " << filename << " ], "
+               << strerror(errno);
+            LOG(ERROR) << ss.str();
+            throw std::runtime_error(ss.str());
+          }
+          if (fclose(fin) != 0) {
+            std::stringstream ss;
+            ss << "Failed to fclose file [ " << filename << " ], "
+               << strerror(errno);
+            LOG(ERROR) << ss.str();
+            throw std::runtime_error(ss.str());
+          }
+        } else {
+          LOG(ERROR) << "allocating hugepage failed, " << strerror(errno)
+                     << ", try with normal pages";
+          data_ = NULL;
+          open(filename, false);
+        }
+      } else {
+        mmap_size_ = 0;
+      }
+    }
+  }
+
+  void dump(const std::string& filename) {
+    if (sync_to_file_) {
+      std::string old_filename = filename_;
+      reset();
+      std::error_code errorCode;
+      std::filesystem::rename(old_filename, filename, errorCode);
+      if (errorCode) {
+        std::stringstream ss;
+        ss << "Failed to rename file " << old_filename << " to " << filename
+           << " " << errorCode.message() << std::endl;
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+    } else {
+      FILE* fout = fopen(filename.c_str(), "wb");
+      if (fout == NULL) {
+        std::stringstream ss;
+        ss << "Failed to open file [ " << filename << " ], " << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      if (fwrite(data_, sizeof(T), size_, fout) != size_) {
+        std::stringstream ss;
+        ss << "Failed to fwrite file [ " << filename << " ], "
+           << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      if (fflush(fout) != 0) {
+        std::stringstream ss;
+        ss << "Failed to fflush file [ " << filename << " ], "
+           << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      if (fclose(fout) != 0) {
+        std::stringstream ss;
+        ss << "Failed to fclose file [ " << filename << " ], "
+           << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      reset();
+    }
+
+    std::filesystem::perms readPermission = std::filesystem::perms::owner_read;
+
+    std::error_code errorCode;
+    std::filesystem::permissions(filename, readPermission,
+                                 std::filesystem::perm_options::add, errorCode);
+
+    if (errorCode) {
+      std::stringstream ss;
+      ss << "Failed to set read permission for file: " << filename << " "
+         << errorCode.message() << std::endl;
+      LOG(ERROR) << ss.str();
+      throw std::runtime_error(ss.str());
     }
   }
 
@@ -100,54 +320,122 @@ class mmap_array {
     if (size == size_) {
       return;
     }
-    T* new_data = static_cast<T*>(
-        mmap(NULL, size * sizeof(T), PROT_READ | PROT_WRITE,
-             MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0));
-    if (data_ != NULL) {
-      size_t copy_size = std::min(size_, size);
-      if (copy_size > 0) {
-        memcpy(new_data, data_, copy_size * sizeof(T));
+
+    if (sync_to_file_) {
+      if (data_ != NULL && mmap_size_ != 0) {
+        if (munmap(data_, mmap_size_) != 0) {
+          std::stringstream ss;
+          ss << "Failed to mummap file [ " << filename_ << " ], "
+             << strerror(errno);
+          LOG(ERROR) << ss.str();
+          throw std::runtime_error(ss.str());
+        }
       }
-      munmap(data_, size_ * sizeof(T));
-    }
-    data_ = new_data;
-    size_ = size;
-    if (fd_ != 0) {
-      ::close(fd_);
-      fd_ = -1;
+      size_t new_mmap_size = size * sizeof(T);
+      int rt = ftruncate(fd_, new_mmap_size);
+      if (rt == -1) {
+        std::stringstream ss;
+        ss << "Failed to ftruncate " << rt << ", " << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      if (new_mmap_size == 0) {
+        data_ = NULL;
+      } else {
+        data_ = reinterpret_cast<T*>(mmap(
+            NULL, new_mmap_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+        if (data_ == MAP_FAILED) {
+          std::stringstream ss;
+          ss << "Failed to mmap, " << strerror(errno);
+          LOG(ERROR) << ss.str();
+          throw std::runtime_error(ss.str());
+        }
+      }
+      size_ = size;
+      mmap_size_ = new_mmap_size;
+    } else {
+      size_t target_mmap_size = size * sizeof(T);
+      if (target_mmap_size <= mmap_size_) {
+        size_ = size;
+      } else {
+        T* new_data = NULL;
+        size_t new_mmap_size = size * sizeof(T);
+        if (hugepage_prefered_) {
+          new_data = reinterpret_cast<T*>(allocate_hugepages(new_mmap_size));
+          if (new_data == MAP_FAILED) {
+            LOG(ERROR) << "mmap with hugepage failed, " << strerror(errno)
+                       << ", try with normal pages";
+            new_data = NULL;
+          } else {
+            new_mmap_size = hugepage_round_up(new_mmap_size);
+          }
+        }
+        if (new_data == NULL) {
+          new_data = reinterpret_cast<T*>(
+              mmap(NULL, new_mmap_size, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+          if (new_data == MAP_FAILED) {
+            std::stringstream ss;
+            ss << "mmap failed " << strerror(errno);
+            LOG(ERROR) << ss.str();
+            throw std::runtime_error(ss.str());
+          }
+        }
+
+        size_t copy_size = std::min(size, size_);
+        if (copy_size > 0 && data_ != NULL) {
+          memcpy(reinterpret_cast<void*>(new_data),
+                 reinterpret_cast<void*>(data_), copy_size * sizeof(T));
+        }
+
+        reset();
+
+        data_ = new_data;
+        size_ = size;
+        mmap_size_ = new_mmap_size;
+      }
     }
   }
 
-  void resize_fill(size_t new_size, const T& value) {
-    size_t old_size = size();
-    resize(new_size);
-    if (new_size > old_size) {
-      for (size_t i = old_size; i != new_size; ++i) {
-        data_[i] = value;
-      }
-    }
+  void touch(const std::string& filename) {
+    dump(filename);
+    open(filename, true);
   }
 
   T* data() { return data_; }
   const T* data() const { return data_; }
 
-  T& operator[](size_t index) { return data_[index]; }
-  const T& operator[](size_t index) const { return data_[index]; }
+  void set(size_t idx, const T& val) { data_[idx] = val; }
 
-  void insert(size_t index, const T& value) { data_[index] = value; }
+  const T& get(size_t idx) const { return data_[idx]; }
+
+  const T& operator[](size_t idx) const { return data_[idx]; }
+  T& operator[](size_t idx) { return data_[idx]; }
 
   size_t size() const { return size_; }
 
   void swap(mmap_array<T>& rhs) {
+    std::swap(filename_, rhs.filename_);
     std::swap(fd_, rhs.fd_);
     std::swap(data_, rhs.data_);
     std::swap(size_, rhs.size_);
+    std::swap(mmap_size_, rhs.mmap_size_);
+    std::swap(hugepage_prefered_, rhs.hugepage_prefered_);
+    std::swap(sync_to_file_, rhs.sync_to_file_);
   }
 
+  const std::string& filename() const { return filename_; }
+
  private:
+  std::string filename_;
   int fd_;
   T* data_;
   size_t size_;
+
+  size_t mmap_size_;
+
+  bool sync_to_file_;
+  bool hugepage_prefered_;
 };
 
 struct string_item {
@@ -158,149 +446,71 @@ struct string_item {
 template <>
 class mmap_array<std::string_view> {
  public:
-  mmap_array() : string_items_(), buffer_(), buffer_loc_(0) {}
-  ~mmap_array() { release(); }
+  mmap_array() {}
+  mmap_array(mmap_array&& rhs) : mmap_array() { swap(rhs); }
+  ~mmap_array() {}
 
-  void resize(size_t size) {
-    static constexpr size_t width = 64;
-    size_t old_size = string_items_.size();
-    if (old_size == size) {
-      return;
-    }
-    if (old_size == 0 && buffer_.size() == 0) {
-      string_items_.resize(size);
-      buffer_.resize(size * width);
-      buffer_loc_.store(0);
-    } else if (buffer_.size() >= (size * width)) {
-      mmap_array<string_item> new_string_items;
-      new_string_items.resize(size);
-      size_t accum_length = 0;
-      size_t valid_length = buffer_loc_.load();
-      for (size_t i = 0; i != old_size; ++i) {
-        if (accum_length >= valid_length) {
-          break;
-        }
-        new_string_items[i] = string_items_[i];
-        accum_length += string_items_[i].length;
-      }
-      new_string_items.swap(string_items_);
-      buffer_loc_.store(accum_length);
-    } else {
-      mmap_array<char> new_buffer;
-      new_buffer.resize(size * width);
-      memcpy(new_buffer.data(), buffer_.data(), buffer_loc_.load());
-
-      mmap_array<string_item> new_string_items;
-      new_string_items.resize(size);
-
-      size_t accum_length = 0;
-      size_t valid_length = buffer_loc_.load();
-      for (size_t i = 0; i != old_size; ++i) {
-        if (accum_length >= valid_length) {
-          break;
-        }
-
-        new_string_items[i] = string_items_[i];
-        accum_length += string_items_[i].length;
-      }
-      new_string_items.swap(string_items_);
-      buffer_loc_.store(accum_length);
-      buffer_.swap(new_buffer);
-    }
+  void reset() {
+    items_.reset();
+    data_.reset();
   }
 
-  void resize_fill(size_t new_size, const std::string_view& value) {
-    size_t old_size = size();
-    resize(new_size);
-
-    size_t loc =
-        buffer_loc_.fetch_add(value.length(), std::memory_order_relaxed);
-    char* ptr = buffer_.data() + loc;
-    memcpy(ptr, value.data(), value.length());
-
-    if (new_size > old_size) {
-      for (size_t i = old_size; i != new_size; ++i) {
-        string_items_[i].offset = loc;
-        string_items_[i].length = value.length();
-      }
-    }
+  void set_hugepage_prefered(bool val) {
+    items_.set_hugepage_prefered(val);
+    data_.set_hugepage_prefered(val);
   }
 
-  void insert(size_t index, const std::string_view& value) {
-    size_t loc =
-        buffer_loc_.fetch_add(value.length(), std::memory_order_relaxed);
-    char* ptr = buffer_.data() + loc;
-    memcpy(ptr, value.data(), value.length());
-    string_items_[index].offset = loc;
-    string_items_[index].length = value.length();
+  void open(const std::string& filename, bool sync_to_file) {
+    items_.open(filename + ".items", sync_to_file);
+    data_.open(filename + ".data", sync_to_file);
   }
 
-  void insert(size_t index, const std::string& value) {
-    size_t loc =
-        buffer_loc_.fetch_add(value.length(), std::memory_order_relaxed);
-    char* ptr = buffer_.data() + loc;
-    memcpy(ptr, value.data(), value.length());
-    string_items_[index].offset = loc;
-    string_items_[index].length = value.length();
+  void open_with_hugepages(const std::string& filename) {
+    items_.open_with_hugepages(filename + ".items");
+    data_.open_with_hugepages(filename + ".data");
   }
 
-  void open_for_read(const std::string& filename) {
-    release();
-
-    {
-      std::string meta_path = filename + ".meta";
-      FILE* fin = fopen(meta_path.c_str(), "r");
-      size_t buffer_loc;
-      CHECK_EQ(fread(&buffer_loc, sizeof(size_t), 1, fin), 1);
-      buffer_loc_.store(buffer_loc);
-      fclose(fin);
-    }
-    string_items_.open_for_read(filename + ".items");
-    buffer_.open_for_read(filename + ".data");
+  void touch(const std::string& filename) {
+    items_.touch(filename + ".items");
+    data_.touch(filename + ".data");
   }
 
-  void dump_to_file(const std::string& filename,
-                    size_t size = std::numeric_limits<size_t>::max()) {
-    size = std::min(size, string_items_.size());
-    size_t buffer_loc = buffer_loc_.load();
-    {
-      std::string meta_path = filename + ".meta";
-      FILE* fout = fopen(meta_path.c_str(), "wb");
-      CHECK_EQ(fwrite(&buffer_loc, sizeof(size_t), 1, fout), 1);
-      fflush(fout);
-      fclose(fout);
-    }
-    string_items_.dump_to_file(filename + ".items", size);
-    buffer_.dump_to_file(filename + ".data", buffer_loc);
+  void dump(const std::string& filename) {
+    items_.dump(filename + ".items");
+    data_.dump(filename + ".data");
   }
 
-  std::string_view operator[](size_t index) const {
-    return std::string_view(buffer_.data() + string_items_[index].offset,
-                            string_items_[index].length);
+  void resize(size_t size, size_t data_size) {
+    items_.resize(size);
+    data_.resize(data_size);
   }
 
-  size_t size() const { return string_items_.size(); }
-
-  void release() {
-    string_items_.release();
-    buffer_.release();
-    buffer_loc_.store(0);
+  void set(size_t idx, size_t offset, const std::string_view& val) {
+    items_.set(idx, {offset, static_cast<uint32_t>(val.size())});
+    memcpy(data_.data() + offset, val.data(), val.size());
   }
 
-  void clear() { release(); }
+  std::string_view get(size_t idx) const {
+    const string_item& item = items_.get(idx);
+    return std::string_view(data_.data() + item.offset, item.length);
+  }
 
-  void swap(mmap_array<std::string_view>& rhs) {
-    string_items_.swap(rhs.string_items_);
-    buffer_.swap(rhs.buffer_);
-    size_t tmp = buffer_loc_.load();
-    buffer_loc_.store(rhs.buffer_loc_.load());
-    rhs.buffer_loc_.store(tmp);
+  size_t size() const { return items_.size(); }
+
+  size_t data_size() const { return data_.size(); }
+
+  void swap(mmap_array& rhs) {
+    items_.swap(rhs.items_);
+    data_.swap(rhs.data_);
+  }
+  void unlink() {
+    items_.unlink();
+    data_.unlink();
   }
 
  private:
-  mmap_array<string_item> string_items_;
-  mmap_array<char> buffer_;
-  std::atomic<size_t> buffer_loc_;
+  mmap_array<string_item> items_;
+  mmap_array<char> data_;
 };
 
 }  // namespace gs

@@ -41,6 +41,8 @@ class KeyedRowVertexSetIter {
  public:
   using key_t = KEY_T;
   using lid_t = VID_T;
+  using set_t = KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, T...>;
+  using ele_tuple_t = typename set_t::ele_tuple_t;
   using data_tuple_t = typename std::tuple<T...>;
   using self_type_t = KeyedRowVertexSetIter<LabelT, KEY_T, VID_T, T...>;
   using index_ele_tuple_t = std::tuple<size_t, VID_T>;
@@ -63,7 +65,7 @@ class KeyedRowVertexSetIter {
         ind_(other.ind_) {}
   ~KeyedRowVertexSetIter() {}
 
-  lid_t GetElement() const { return vids_[ind_]; }
+  ele_tuple_t GetElement() const { return GlobalId(v_label_, vids_[ind_]); }
 
   index_ele_tuple_t GetIndexElement() const {
     return std::make_tuple(ind_, vids_[ind_]);
@@ -132,6 +134,8 @@ class KeyedRowVertexSetIter<LabelT, KEY_T, VID_T, grape::EmptyType> {
  public:
   using key_t = KEY_T;
   using lid_t = VID_T;
+  using set_t = KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, grape::EmptyType>;
+  using ele_tuple_t = typename set_t::ele_tuple_t;
   using data_tuple_t = typename std::tuple<grape::EmptyType>;
   using self_type_t =
       KeyedRowVertexSetIter<LabelT, KEY_T, VID_T, grape::EmptyType>;
@@ -154,7 +158,7 @@ class KeyedRowVertexSetIter<LabelT, KEY_T, VID_T, grape::EmptyType> {
         ind_(other.ind_) {}
   ~KeyedRowVertexSetIter() {}
 
-  lid_t GetElement() const { return vids_[ind_]; }
+  ele_tuple_t GetElement() const { return GlobalId(v_label_, vids_[ind_]); }
 
   index_ele_tuple_t GetIndexElement() const {
     return std::make_tuple(ind_, vids_[ind_]);
@@ -413,7 +417,7 @@ RES_T keyed_row_project_vertices_impl(
     label_ind = 0;  // neq -1
   } else {
     // FIXME: no repeated labels.
-    for (auto i = 0; i < num_labels; ++i) {
+    for (size_t i = 0; i < num_labels; ++i) {
       if (cur_label == labels[i])
         label_ind = i;
     }
@@ -422,12 +426,12 @@ RES_T keyed_row_project_vertices_impl(
     VLOG(10) << "No label found in query params";
     // for current set, we don't need.
     auto size = lids.size();
-    for (auto i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       offsets.emplace_back(cnt);
     }
   } else {
     VLOG(10) << "Found label in query params";
-    for (auto i = 0; i < lids.size(); ++i) {
+    for (size_t i = 0; i < lids.size(); ++i) {
       offsets.emplace_back(cnt);
       if (expr(eles[i])) {
         new_keys.emplace_back(keys[i]);
@@ -461,13 +465,13 @@ RES_T keyed_row_project_vertices_impl(
     label_ind = 0;  // neq -1
   } else {
     // FIXME: no repeated labels.
-    for (auto i = 0; i < num_labels; ++i) {
+    for (size_t i = 0; i < num_labels; ++i) {
       if (cur_label == labels[i])
         label_ind = i;
     }
   }
   // FIXME: no repeated labels.
-  for (auto i = 0; i < num_labels; ++i) {
+  for (size_t i = 0; i < num_labels; ++i) {
     if (cur_label == labels[i])
       label_ind = i;
   }
@@ -475,12 +479,12 @@ RES_T keyed_row_project_vertices_impl(
     VLOG(10) << "No label found in query params";
     // for current set, we don't need.
     auto size = lids.size();
-    for (auto i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       offsets.emplace_back(cnt);
     }
   } else {
     VLOG(10) << "Found label in query params";
-    for (auto i = 0; i < lids.size(); ++i) {
+    for (size_t i = 0; i < lids.size(); ++i) {
       offsets.emplace_back(cnt);
       if (expr(eles[i])) {
         new_keys.emplace_back(keys[i]);
@@ -507,6 +511,7 @@ class KeyedRowVertexSetImpl {
   using iterator = KeyedRowVertexSetIter<LabelT, KEY_T, VID_T, T...>;
   using filtered_vertex_set = self_type_t;
   using ground_vertex_set_t = RowVertexSet<LabelT, VID_T, T...>;
+  using ele_tuple_t = GlobalId;
   using index_ele_tuple_t = std::tuple<size_t, VID_T>;
   // from this tuple, we can reconstruct the partial set.
   using flat_ele_tuple_t = std::tuple<size_t, VID_T, std::tuple<T...>>;
@@ -573,7 +578,7 @@ class KeyedRowVertexSetImpl {
     std::vector<LabelKey> res;
     // fill res with vertex labels
     res.reserve(vids_.size());
-    for (auto i = 0; i < vids_.size(); ++i) {
+    for (size_t i = 0; i < vids_.size(); ++i) {
       res.emplace_back(v_label_);
     }
     return res;
@@ -676,8 +681,8 @@ class KeyedRowVertexSetImpl {
     std::vector<lid_t> new_vids;
     std::vector<data_tuple_t> new_datas;
 
-    for (auto i = 0; i < repeat_array.size(); ++i) {
-      for (auto j = 0; j < repeat_array[i]; ++j) {
+    for (size_t i = 0; i < repeat_array.size(); ++i) {
+      for (size_t j = 0; j < repeat_array[i]; ++j) {
         new_keys.push_back(keys_[i]);
         new_vids.push_back(vids_[i]);
         new_datas.push_back(datas_[i]);
@@ -727,6 +732,7 @@ class KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, grape::EmptyType> {
   using self_type_t =
       KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, grape::EmptyType>;
   using lid_t = VID_T;
+  using ele_tuple_t = GlobalId;
   using data_tuple_t = std::tuple<grape::EmptyType>;
   using flat_t = self_type_t;
 
@@ -753,6 +759,7 @@ class KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, grape::EmptyType> {
   static constexpr bool is_collection = false;
   static constexpr bool is_general_set = false;
   static constexpr bool is_two_label_set = false;
+  static constexpr bool is_row_vertex_set = true;
 
   explicit KeyedRowVertexSetImpl(std::vector<key_t>&& keys,
                                  std::vector<lid_t>&& vids, LabelT v_label)
@@ -782,7 +789,7 @@ class KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, grape::EmptyType> {
     std::vector<LabelKey> res;
     // fill res with vertex labels
     res.reserve(vids_.size());
-    for (auto i = 0; i < vids_.size(); ++i) {
+    for (size_t i = 0; i < vids_.size(); ++i) {
       res.emplace_back(v_label_);
     }
     return res;
@@ -871,8 +878,8 @@ class KeyedRowVertexSetImpl<LabelT, KEY_T, VID_T, grape::EmptyType> {
     std::vector<key_t> new_keys;
     std::vector<lid_t> new_vids;
 
-    for (auto i = 0; i < repeat_array.size(); ++i) {
-      for (auto j = 0; j < repeat_array[i]; ++j) {
+    for (size_t i = 0; i < repeat_array.size(); ++i) {
+      for (size_t j = 0; j < repeat_array[i]; ++j) {
         new_keys.push_back(keys_[i]);
         new_vids.push_back(vids_[i]);
       }
@@ -947,8 +954,11 @@ class KeyedRowVertexSetBuilderImpl {
         prop_names_(old_set.GetPropNames()),
         ind_(0) {}
 
-  size_t insert(std::tuple<size_t, VID_T> ele_tuple, data_tuple_t data_tuple) {
+  int32_t insert(std::tuple<size_t, VID_T> ele_tuple, data_tuple_t data_tuple) {
     auto key = std::get<1>(ele_tuple);
+    if (IsNull(key)) {
+      return -1;
+    }
     if (prop2ind_.find(key) != prop2ind_.end()) {
       return prop2ind_[key];
     } else {
@@ -960,7 +970,10 @@ class KeyedRowVertexSetBuilderImpl {
     }
   }
 
-  size_t insert(const VID_T& key, data_tuple_t data_tuple) {
+  int32_t insert(const VID_T& key, data_tuple_t data_tuple) {
+    if (IsNull(key)) {
+      return -1;
+    }
     if (prop2ind_.find(key) != prop2ind_.end()) {
       return prop2ind_[key];
     } else {
@@ -972,7 +985,7 @@ class KeyedRowVertexSetBuilderImpl {
     }
   }
 
-  size_t insert(const std::tuple<VID_T, data_tuple_t>& ele_tuple) {
+  int32_t insert(const std::tuple<VID_T, data_tuple_t>& ele_tuple) {
     return insert(std::get<0>(ele_tuple), std::get<1>(ele_tuple));
   }
 
@@ -1007,8 +1020,11 @@ class KeyedRowVertexSetBuilderImpl<LabelT, KEY_T, VID_T, grape::EmptyType> {
       const RowVertexSet<LabelT, VID_T, grape::EmptyType>& old_set)
       : label_(old_set.GetLabel()), ind_(0) {}
 
-  size_t insert(std::tuple<size_t, VID_T> ele_tuple) {
+  int32_t insert(std::tuple<size_t, VID_T> ele_tuple) {
     auto key = std::get<1>(ele_tuple);
+    if (IsNull(key)) {
+      return -1;
+    }
     if (prop2ind_.find(key) != prop2ind_.end()) {
       return prop2ind_[key];
     } else {
@@ -1019,7 +1035,10 @@ class KeyedRowVertexSetBuilderImpl<LabelT, KEY_T, VID_T, grape::EmptyType> {
     }
   }
 
-  size_t insert(const VID_T& key) {
+  int32_t insert(const VID_T& key) {
+    if (IsNull(key)) {
+      return -1;
+    }
     if (prop2ind_.find(key) != prop2ind_.end()) {
       return prop2ind_[key];
     } else {

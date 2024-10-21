@@ -112,9 +112,9 @@ message Join {
     // aka. Cartesian product
     TIMES = 6;
   }
-  // The key to perferm Join (on results output by left_plan)
+  // The key to perform Join (on results output by left_plan)
   repeated common.Variable left_keys = 1;
-  // The key to perferm Join (on results output by right_plan)
+  // The key to perform Join (on results output by right_plan)
   repeated common.Variable right_keys = 2;
   JoinKind join_kind = 3;
   PhysicalPlan left_plan = 4;
@@ -205,6 +205,8 @@ message EdgeExpand {
   google.protobuf.Int32Value alias = 4;
   // Expand option, i.e., expand vertices/edges/degree.
   ExpandOpt expand_opt = 5;
+  // Whether the expand is optional, if true, the expand will return a `None` if the edge does not exist
+  bool is_optional = 6;
 }
 
 message PathExpand {
@@ -219,6 +221,8 @@ message PathExpand {
     ARBITRARY = 0;
     // a path without vertex duplications
     SIMPLE = 1;
+    // a path without edge duplications
+    TRAIL = 2;
   }
   // Define what result is required for this path. We currently support `EndV` and `AllV`, while an option to
   // include all edges and vertices may be needed in the future.
@@ -245,6 +249,8 @@ message PathExpand {
   ResultOpt result_opt = 6;
   // A condition formulated as an expression predicate
   common.Expression condition = 7;
+  // Whether the path expand is optional, if true, the path expand will return a `None` if the path does not exist
+  bool is_optional = 8;
 }
 
 message Sink {

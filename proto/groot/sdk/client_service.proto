@@ -25,7 +25,7 @@ service Client {
   rpc getSchema(GetSchemaRequest) returns (GetSchemaResponse);
   rpc ingestData(IngestDataRequest) returns (IngestDataResponse);
   rpc getMetrics(GetMetricsRequest) returns (GetMetricsResponse);
-  rpc loadJsonSchema(LoadJsonSchemaRequest) returns (LoadJsonSchemaResponse);
+  rpc loadSchema(LoadSchemaRequest) returns (LoadSchemaResponse);
   rpc dropSchema(DropSchemaRequest) returns (DropSchemaResponse);
   rpc prepareDataLoad(PrepareDataLoadRequest) returns (PrepareDataLoadResponse);
   rpc commitDataLoad(CommitDataLoadRequest) returns (CommitDataLoadResponse);
@@ -33,6 +33,8 @@ service Client {
   rpc getLoggerInfo(GetLoggerInfoRequest) returns (GetLoggerInfoResponse);
   rpc clearIngest(ClearIngestRequest) returns (ClearIngestResponse);
   rpc getStoreState(GetStoreStateRequest) returns (GetStoreStateResponse);
+  rpc compactDB(CompactDBRequest) returns (CompactDBResponse);
+  rpc reopenSecondary(ReopenSecondaryRequest) returns (ReopenSecondaryResponse);
 }
 
 message GetSchemaRequest {
@@ -43,14 +45,6 @@ message GetSchemaResponse {
   GraphDefPb graphDef = 1;
 }
 
-message IngestDataRequest {
-  string dataPath = 1;
-  map<string, string> config = 2;
-}
-
-message IngestDataResponse {
-}
-
 message GetMetricsRequest {
   string roleNames = 1;
 }
@@ -59,11 +53,13 @@ message GetMetricsResponse {
   string metricsJson = 1;
 }
 
-message LoadJsonSchemaRequest {
-  string schemaJson = 1;
+message LoadSchemaRequest {
+  string schemaStr = 1;
+  // 0 for json, 1 for unified yaml
+  int32 schemaType = 2;
 }
 
-message LoadJsonSchemaResponse {
+message LoadSchemaResponse {
   GraphDefPb graphDef = 1;
 }
 
@@ -109,11 +105,3 @@ message GetLoggerInfoResponse {
   string loggerTopic = 2;
   int32 loggerQueueCount = 3;
 }
-
-message ClearIngestRequest {
-  string dataPath = 1;
-}
-
-message ClearIngestResponse {
-}
-

@@ -9,3 +9,4 @@
 [submodule "learning_engine/graphlearn-for-pytorch"]
 	path = learning_engine/graphlearn-for-pytorch
 	url = https://github.com/alibaba/graphlearn-for-pytorch.git
+

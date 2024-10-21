@@ -23,6 +23,7 @@ use crate::event::Event;
 use crate::schedule::operator::OperatorScheduler;
 use crate::schedule::state::inbound::InputEndNotify;
 use crate::schedule::state::outbound::OutputCancelState;
+use crate::WorkerId;
 
 pub(crate) mod operator;
 pub(crate) mod state;
@@ -59,10 +60,11 @@ impl Schedule {
     }
 
     pub fn add_schedule_op(
-        &mut self, index: usize, scope_level: u32, inputs_notify: Vec<Option<Box<dyn InputEndNotify>>>,
+        &mut self, worker_id: WorkerId, index: usize, scope_level: u32,
+        inputs_notify: Vec<Option<Box<dyn InputEndNotify>>>,
         outputs_cancel: Vec<Option<OutputCancelState>>,
     ) {
-        let op = OperatorScheduler::new(index, scope_level, inputs_notify, outputs_cancel);
+        let op = OperatorScheduler::new(worker_id, index, scope_level, inputs_notify, outputs_cancel);
         self.sch_ops.push(op);
     }
 
@@ -72,7 +74,13 @@ impl Schedule {
         if !updates.is_empty() {
             for event in updates.drain(..) {
                 let index = event.target_port.index;
-                assert!(index < self.sch_ops.len());
+                if index >= self.sch_ops.len() {
+                    return Err(JobExecError::panic(format!(
+                        "Schedule: index out of range, index {}, sch_ops size {}",
+                        index,
+                        self.sch_ops.len()
+                    )));
+                }
                 self.sch_ops[index].accept(event)?;
             }
         }

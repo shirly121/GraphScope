@@ -61,65 +61,14 @@ impl VertexTypeInfo {
     }
 }
 
-pub struct VertexTypeInfoRef {
-    info: &'static VertexTypeInfo,
-    _guard: Guard,
-}
-
-impl VertexTypeInfoRef {
-    pub fn get_label(&self) -> LabelId {
-        self.info.label
-    }
-
-    pub fn get_decoder(&self, si: SnapshotId, version: CodecVersion) -> GraphResult<Decoder> {
-        self.info.get_decoder(si, version)
-    }
-
-    pub fn online_table(&self, table: Table) -> GraphResult<()> {
-        self.info.online_table(table)
-    }
-
-    pub fn get_encoder(&self, si: SnapshotId) -> GraphResult<Encoder> {
-        self.info.get_encoder(si)
-    }
-
-    pub fn get_table(&self, si: SnapshotId) -> Option<Table> {
-        self.info.get_table(si)
-    }
-
-    fn new(info: &'static VertexTypeInfo, guard: Guard) -> Self {
-        VertexTypeInfoRef { info, _guard: guard }
-    }
-}
-
-pub struct VertexTypeInfoIter {
-    si: SnapshotId,
-    inner: Values<'static, LabelId, Arc<VertexTypeInfo>>,
-    _guard: Guard,
-}
-
-impl VertexTypeInfoIter {
-    pub fn next(&mut self) -> Option<VertexTypeInfoRef> {
-        loop {
-            let info = self.inner.next()?;
-            if info.lifetime.is_alive_at(self.si) {
-                let ret = VertexTypeInfoRef::new(info.as_ref(), epoch::pin());
-                return Some(ret);
-            }
+pub fn next_vertex_type_info<'a>(
+    si: SnapshotId, iter: &mut Values<'a, LabelId, Arc<VertexTypeInfo>>,
+) -> Option<Arc<VertexTypeInfo>> {
+    loop {
+        let info = iter.next()?;
+        if info.lifetime.is_alive_at(si) {
+            return Some(info.clone());
         }
-    }
-
-    pub fn next_info(&mut self) -> Option<Arc<VertexTypeInfo>> {
-        loop {
-            let info = self.inner.next()?;
-            if info.lifetime.is_alive_at(self.si) {
-                return Some(info.clone());
-            }
-        }
-    }
-
-    fn new(si: SnapshotId, values: Values<'static, LabelId, Arc<VertexTypeInfo>>, guard: Guard) -> Self {
-        VertexTypeInfoIter { si, inner: values, _guard: guard }
     }
 }
 
@@ -145,20 +94,34 @@ impl VertexTypeManager {
     pub fn contains_type(&self, _si: SnapshotId, label: LabelId) -> bool {
         let guard = &epoch::pin();
         let map = self.get_map(guard);
-        map.contains_key(&label)
+
+        if let Some(map_ref) = unsafe { map.as_ref() } {
+            map_ref.contains_key(&label)
+        } else {
+            // TODO(longbin): any better solution
+            false
+        }
     }
 
     pub fn create_type(
         &self, si: SnapshotId, label: LabelId, codec: Codec, table0: Table,
     ) -> GraphResult<()> {
-        assert_eq!(si, table0.start_si, "type start si must be equal to table0.start_si");
-
+        if si != table0.start_si {
+            let msg = format!("type si {} must be equal to table0.start_si {}", si, table0.start_si);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, create_type);
+            return Err(err);
+        }
         let guard = &epoch::pin();
-        let map = self.get_shared_map(guard);
-        let mut map_clone = unsafe { map.deref() }.clone();
+        let map = self.get_map(guard);
+        let mut map_clone = unsafe { map.as_ref() }
+            .ok_or_else(|| {
+                let msg = "get map reference return `None`".to_string();
+                gen_graph_err!(ErrorCode::INVALID_DATA, msg, get_map, si, label)
+            })?
+            .clone();
         if map_clone.contains_key(&label) {
             let msg = format!("vertex#{} already exists", label);
-            let err = gen_graph_err!(GraphErrorCode::InvalidOperation, msg, create_type);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, create_type);
             return Err(err);
         }
         let info = VertexTypeInfo::new(si, label);
@@ -166,55 +129,90 @@ impl VertexTypeManager {
         res_unwrap!(info.online_table(table0), create_type)?;
         map_clone.insert(label, Arc::new(info));
         self.map
-            .store(Owned::new(map_clone).into_shared(guard), Ordering::Relaxed);
+            .store(Owned::new(map_clone).into_shared(guard), Ordering::Release);
         unsafe { guard.defer_destroy(map) };
         Ok(())
     }
 
-    pub fn get_type(&self, si: SnapshotId, label: LabelId) -> GraphResult<VertexTypeInfoRef> {
+    pub fn update_type(
+        &self, si: SnapshotId, label: LabelId, codec: Codec, table0: Table,
+    ) -> GraphResult<()> {
+        if si != table0.start_si {
+            let msg = format!("type si {} must be equal to table0.start_si {}", si, table0.start_si);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, update_type);
+            return Err(err);
+        }
+        let guard = &epoch::pin();
+        let map = self.get_map(guard);
+        let map_clone = unsafe { map.as_ref() }
+            .ok_or_else(|| {
+                let msg = "get map reference return `None`".to_string();
+                gen_graph_err!(ErrorCode::INVALID_DATA, msg, get_map, si, label)
+            })?
+            .clone();
+        if !map_clone.contains_key(&label) {
+            let msg = format!("vertex#{} not found.", label);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, update_type);
+            return Err(err);
+        }
+        if let Some(info) = map_clone.get(&label) {
+            res_unwrap!(info.update_codec(si, codec), update_type)?;
+        }
+        self.map
+            .store(Owned::new(map_clone).into_shared(guard), Ordering::Release);
+        unsafe { guard.defer_destroy(map) };
+        Ok(())
+    }
+
+    pub fn get_type(&self, si: SnapshotId, label: LabelId) -> GraphResult<Arc<VertexTypeInfo>> {
         let guard = epoch::pin();
         let map = self.get_map(&guard);
-        if let Some(info) = map.get(&label) {
+        let map_ref = unsafe { map.as_ref() }.ok_or_else(|| {
+            let msg = "get map reference return `None`".to_string();
+            gen_graph_err!(ErrorCode::INVALID_DATA, msg, get_map, si, label)
+        })?;
+        if let Some(info) = map_ref.get(&label) {
             if info.is_alive_at(si) {
-                let ret = VertexTypeInfoRef::new(info.as_ref(), guard);
-                return Ok(ret);
+                return Ok(info.clone());
             }
             let msg = format!("vertex#{} is not visible at {}", label, si);
-            let err = gen_graph_err!(GraphErrorCode::TypeNotFound, msg, get, si, label);
+            let err = gen_graph_err!(ErrorCode::TYPE_NOT_FOUND, msg, get, si, label);
             return Err(err);
         }
         let msg = format!("vertex#{} not found", label);
-        let err = gen_graph_err!(GraphErrorCode::TypeNotFound, msg, get, si, label);
+        let err = gen_graph_err!(ErrorCode::TYPE_NOT_FOUND, msg, get, si, label);
         Err(err)
     }
 
     pub fn get_type_info(&self, si: SnapshotId, label: LabelId) -> GraphResult<Arc<VertexTypeInfo>> {
-        let guard = &epoch::pin();
-        let map = self.get_map(guard);
-        if let Some(info) = map.get(&label) {
+        let guard = epoch::pin();
+        let map = self.get_map(&guard);
+        let map_ref = unsafe { map.as_ref() }.ok_or_else(|| {
+            let msg = "get map reference return `None`".to_string();
+            gen_graph_err!(ErrorCode::INVALID_DATA, msg, get_map, si, label)
+        })?;
+        if let Some(info) = map_ref.get(&label) {
             if info.is_alive_at(si) {
                 let ret = info.clone();
                 return Ok(ret);
             }
             let msg = format!("vertex#{} is not visible at {}", label, si);
-            let err = gen_graph_err!(GraphErrorCode::TypeNotFound, msg, get, si, label);
+            let err = gen_graph_err!(ErrorCode::TYPE_NOT_FOUND, msg, get, si, label);
             return Err(err);
         }
         let msg = format!("vertex#{} not found", label);
-        let err = gen_graph_err!(GraphErrorCode::TypeNotFound, msg, get, si, label);
+        let err = gen_graph_err!(ErrorCode::TYPE_NOT_FOUND, msg, get, si, label);
         Err(err)
     }
 
-    pub fn get_all(&self, si: SnapshotId) -> VertexTypeInfoIter {
+    pub fn drop_type(&self, si: SnapshotId, label: LabelId) -> GraphResult<()> {
         let guard = epoch::pin();
         let map = self.get_map(&guard);
-        VertexTypeInfoIter::new(si, map.values(), guard)
-    }
-
-    pub fn drop_type(&self, si: SnapshotId, label: LabelId) -> GraphResult<()> {
-        let guard = &epoch::pin();
-        let map = self.get_map(guard);
-        if let Some(info) = map.get(&label) {
+        let map_ref = unsafe { map.as_ref() }.ok_or_else(|| {
+            let msg = "get map reference return `None`".to_string();
+            gen_graph_err!(ErrorCode::INVALID_DATA, msg, get_map, si, label)
+        })?;
+        if let Some(info) = map_ref.get(&label) {
             info.lifetime.set_end(si);
         }
         Ok(())
@@ -222,8 +220,11 @@ impl VertexTypeManager {
 
     pub fn gc(&self, si: SnapshotId) -> GraphResult<Vec<TableId>> {
         let guard = &epoch::pin();
-        let map = self.get_shared_map(guard);
-        let map_ref: &VertexMap = unsafe { map.deref() };
+        let map = self.get_map(guard);
+        let map_ref: &VertexMap = unsafe { map.as_ref() }.ok_or_else(|| {
+            let msg = "get map reference return `None`".to_string();
+            gen_graph_err!(ErrorCode::INVALID_DATA, msg, get_map, si)
+        })?;
         let mut b = Vec::new();
         let mut table_ids = Vec::new();
         for (label, info) in map_ref {
@@ -238,18 +239,14 @@ impl VertexTypeManager {
                 map_clone.remove(&label);
             }
             self.map
-                .store(Owned::new(map_clone).into_shared(guard), Ordering::Relaxed);
+                .store(Owned::new(map_clone).into_shared(guard), Ordering::Release);
             unsafe { guard.defer_destroy(map) };
         }
         Ok(table_ids)
     }
 
-    fn get_map(&self, guard: &Guard) -> &'static VertexMap {
-        unsafe { &*self.map.load(Ordering::Relaxed, guard).as_raw() }
-    }
-
-    fn get_shared_map<'g>(&self, guard: &'g Guard) -> Shared<'g, VertexMap> {
-        self.map.load(Ordering::Relaxed, guard)
+    pub fn get_map<'g>(&self, guard: &'g Guard) -> Shared<'g, VertexMap> {
+        self.map.load(Ordering::Acquire, guard)
     }
 }
 
@@ -265,14 +262,26 @@ impl VertexTypeManagerBuilder {
     pub fn create(&mut self, si: SnapshotId, label: LabelId, type_def: &TypeDef) -> GraphResult<()> {
         if self.map.contains_key(&label) {
             let msg = format!("vertex#{} already exists", label);
-            let err = gen_graph_err!(GraphErrorCode::InvalidOperation, msg, create, si, label, type_def);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, create, si, label, type_def);
             return Err(err);
         }
         let info = VertexTypeInfo::new(si, label);
         let codec = Codec::from(type_def);
-        let res = info.update_codec(si, codec);
-        res_unwrap!(res, create, si, label, type_def)?;
+        res_unwrap!(info.update_codec(si, codec), create, si, label, type_def)?;
         self.map.insert(label, Arc::new(info));
+        Ok(())
+    }
+
+    pub fn update_type(&mut self, si: SnapshotId, label: LabelId, type_def: &TypeDef) -> GraphResult<()> {
+        if !self.map.contains_key(&label) {
+            let msg = format!("vertex#{} not found.", label);
+            let err = gen_graph_err!(ErrorCode::INVALID_OPERATION, msg, create_type);
+            return Err(err);
+        }
+        if let Some(info) = self.map.get(&label) {
+            let codec = Codec::from(type_def);
+            res_unwrap!(info.update_codec(si, codec), create_type)?;
+        }
         Ok(())
     }
 
@@ -282,7 +291,7 @@ impl VertexTypeManagerBuilder {
             return Ok(());
         }
         let msg = format!("vertex#{} not found", label);
-        let err = gen_graph_err!(GraphErrorCode::TypeNotFound, msg, drop, si, label);
+        let err = gen_graph_err!(ErrorCode::TYPE_NOT_FOUND, msg, drop, si, label);
         Err(err)
     }
 
@@ -293,7 +302,7 @@ impl VertexTypeManagerBuilder {
             }
         }
         let msg = format!("vertex#{} not found", label);
-        let err = gen_graph_err!(GraphErrorCode::TypeNotFound, msg, get_info_mut, label);
+        let err = gen_graph_err!(ErrorCode::TYPE_NOT_FOUND, msg, get_info_mut, label);
         Err(err)
     }
 

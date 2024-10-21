@@ -15,6 +15,7 @@ package com.alibaba.graphscope.groot.store;
 
 import com.alibaba.graphscope.groot.common.config.Configs;
 import com.alibaba.graphscope.groot.common.config.StoreConfig;
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
 import com.alibaba.graphscope.groot.meta.MetaService;
 import com.alibaba.graphscope.groot.operation.StoreDataBatch;
 
@@ -65,7 +66,7 @@ public class SnapshotSortQueue {
     public boolean offerQueue(int queueId, StoreDataBatch entry) throws InterruptedException {
         BlockingQueue<StoreDataBatch> innerQueue = this.innerQueues.get(queueId);
         if (innerQueue == null) {
-            throw new IllegalArgumentException("invalid queueId [" + queueId + "]");
+            throw new InvalidArgumentException("invalid queueId [" + queueId + "]");
         }
         boolean res = innerQueue.offer(entry, this.queueWaitMs, TimeUnit.MILLISECONDS);
         if (res) {
@@ -88,25 +89,22 @@ public class SnapshotSortQueue {
                     }
                     this.queueHeads.set(i, entry);
                 }
-                long entrySnapshotId = entry.getSnapshotId();
-                if (entrySnapshotId < minSnapshotId) {
-                    minSnapshotId = entrySnapshotId;
-                }
+                minSnapshotId = Math.min(minSnapshotId, entry.getSnapshotId());
             }
             this.currentPollSnapshotId = minSnapshotId;
-            logger.info("currentPollSnapshotId initialize to [" + this.currentPollSnapshotId + "]");
+            logger.info("currentPollSnapshotId initialize to [{}]", currentPollSnapshotId);
         }
         while (true) {
             StoreDataBatch entry = this.queueHeads.get(this.currentPollQueueIdx);
             this.queueHeads.set(this.currentPollQueueIdx, null);
             if (entry == null) {
                 entry =
-                        this.innerQueues
-                                .get(this.currentPollQueueIdx)
-                                .poll(this.queueWaitMs, TimeUnit.MILLISECONDS);
-                if (entry == null) {
-                    return null;
-                }
+                        innerQueues
+                                .get(currentPollQueueIdx)
+                                .poll(queueWaitMs, TimeUnit.MILLISECONDS);
+            }
+            if (entry == null) {
+                return null;
             }
 
             long snapshotId = entry.getSnapshotId();
@@ -123,13 +121,11 @@ public class SnapshotSortQueue {
                 }
             } else {
                 logger.warn(
-                        "Illegal entry polled from queue ["
-                                + this.currentPollQueueIdx
-                                + "]. entrySnapshotId ["
-                                + snapshotId
-                                + "] < currentSnapshotId ["
-                                + this.currentPollSnapshotId
-                                + "]. Ignored entry.");
+                        "Illegal entry polled from queue, entrySnapshotId [{}] <"
+                                + " currentSnapshotId [{}]. Ignored entry {}",
+                        snapshotId,
+                        currentPollSnapshotId,
+                        entry.toProto());
             }
         }
     }

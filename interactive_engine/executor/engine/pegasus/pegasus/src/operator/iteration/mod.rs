@@ -1,3 +1,5 @@
+use std::cmp::max;
+
 use crate::api::{IterCondition, Iteration};
 use crate::macros::filter::*;
 use crate::stream::Stream;
@@ -53,7 +55,8 @@ where
     F: FnOnce(Stream<D>) -> Result<Stream<D>, BuildJobError>,
 {
     let max_iters = until.max_iters;
-    let (leave, enter) = stream
+    let worker_index = stream.get_worker_id().index;
+    let (mut leave, enter) = stream
         .enter()?
         .binary_branch_notify("switch", |info| {
             SwitchOperator::<D>::new(info.scope_level, emit_kind, until)
@@ -63,9 +66,12 @@ where
     let feedback: Stream<D> = after_body
         .sync_state()
         .transform_notify("feedback", move |info| {
-            FeedbackOperator::<D>::new(info.scope_level, max_iters)
+            FeedbackOperator::<D>::new(info.scope_level, max_iters, worker_index)
         })?;
+    let feedback_partitions = feedback.get_partitions();
     feedback.feedback_to(index)?;
+    let partition_update = max(feedback_partitions, leave.get_partitions());
+    leave.set_partitions(partition_update);
     leave.leave()
 }
 

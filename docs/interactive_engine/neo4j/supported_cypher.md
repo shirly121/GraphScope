@@ -73,7 +73,14 @@ Note that some Aggregator operators, such as `max()`, we listed here are impleme
 | Mathematical  | Multiplication | * | * | <input type="checkbox" disabled checked /> |  |
 | Mathematical  | Division  | /  | / | <input type="checkbox" disabled checked /> |  |
 | Mathematical  | Modulo division | %  | % |  <input type="checkbox" disabled checked /> |  |
-| Mathematical  | Exponentiation | ^ | ^^ |  <input type="checkbox" disabled checked /> |  |
+| Mathematical  | Exponentiation | ^ | power(a, b) |  <input type="checkbox" disabled checked /> |  |
+| Temporal Mathematical | Add a duration to a temporal type | \<temporal\> + \<duration\> | \<temporal\> + \<duration\> | <input type="checkbox" disabled checked /> |  |
+| Temporal Mathematical | Subtract a duration from a temporal type | \<temporal\> - \<duration\> | \<temporal\> - \<duration\> | <input type="checkbox" disabled checked /> |  |
+| Temporal Mathematical | Subtract two temporal types, returning a duration in milliseconds | \<temporal\> - \<temporal\> | \<temporal\> - \<temporal\> | <input type="checkbox" disabled checked /> |  |
+| Temporal Mathematical | Add two durations | \<duration\> + \<duration\> | \<duration\> + \<duration\> | <input type="checkbox" disabled checked /> |  |
+|Temporal Mathematical | Subtract two durations | \<duration\> - \<duration\> | \<duration\> - \<duration\> | <input type="checkbox" disabled checked /> |  |
+|Temporal Mathematical | Multiply a duration by a numeric value | \<duration\> * \<numeric\> | \<duration\> * \<numeric\> | <input type="checkbox" disabled checked /> |  |
+|Temporal Mathematical | Divide a duration by a numeric value | \<duration\> / \<numeric\> | \<duration\> / \<numeric\> | <input type="checkbox" disabled checked /> |  |
 | Comparison | Equality | = | = |  <input type="checkbox" disabled checked /> |  |
 | Comparison | Inequality| <> | <> |  <input type="checkbox" disabled checked /> |  |
 | Comparison | Less than | < | < |  <input type="checkbox" disabled checked /> |  |
@@ -82,30 +89,32 @@ Note that some Aggregator operators, such as `max()`, we listed here are impleme
 | Comparison | Greater than or equal | >= | >= |  <input type="checkbox" disabled checked /> |  |
 | Comparison | Verify as `NULL`| IS NULL | is null |  <input type="checkbox" disabled checked /> |  |
 | Comparison | Verify as `NOT NULL`| IS NOT NULL | is not null |  <input type="checkbox" disabled checked /> |  |
-| Comparison | String starts with | STARTS WITH | starts with  | <input type="checkbox" disabled  />|  planned |
-| Comparison | String ends with | ENDS WITH | ends with | <input type="checkbox" disabled  />|  planned |
-| Comparison | String contains | CONTAINS | contains | <input type="checkbox" disabled  />|  planned |
+| Comparison | Perform case-sensitive matching on the beginning of a string | STARTS WITH | starts with  | <input type="checkbox" disabled  checked />|  |
+| Comparison | Perform case-sensitive matching on the ending of a string | ENDS WITH | ends with | <input type="checkbox" disabled  checked />|  |
+| Comparison | Perform case-sensitive matching regardless of location within a string | CONTAINS | contains | <input type="checkbox" disabled  checked />|  |
 | Boolean | Conjunction | AND | and |  <input type="checkbox" disabled checked /> |   |
 | Boolean | Disjunction | OR | or |  <input type="checkbox" disabled checked /> |   |
 | Boolean | Exclusive Disjunction | XOR | xor |  <input type="checkbox" disabled /> | planned |
-| Boolean | Negation | NOT | not |  <input type="checkbox" disabled /> | planned  |
+| Boolean | Negation | NOT | not |  <input type="checkbox" disabled checked /> |  |
 | BitOpr  | Bit and | via function | & |  <input type="checkbox" disabled checked /> |  |
 | BitOpr  | Bit or | via function | \| |  <input type="checkbox" disabled checked /> |  |
 | Boolean | Bit xor | via function | ^ |  <input type="checkbox" disabled checked /> |   |
-| BitOpr  | Bit reverse | via function | ~ |  <input type="checkbox" disabled checked /> |  |
-| BitOpr  | Bit left shift | via function | << |  <input type="checkbox" disabled  />| planned |
-| BitOpr  | Bit right shift | via function | >> |  <input type="checkbox" disabled  />| planned |
+| BitOpr  | Bit reverse | via function | ~ |  <input type="checkbox" disabled /> | planned |
+| BitOpr  | Bit left shift | via function | << |  <input type="checkbox" disabled checked />|  |
+| BitOpr  | Bit right shift | via function | >> |  <input type="checkbox" disabled checked />|  |
 | Branch | Use with `Project` and `Return` | CASE WHEN  | CASE WHEN |  <input type="checkbox" disabled  />| planned |
 | Scalar | Returns the length of a path | length() | length() | <input type="checkbox" disabled checked /> | |
 | ListLiteral | Fold expressions into a single list | [] | [] | <input type="checkbox" disabled checked /> |   |
-| MapLiteral | Fold expressions with keys into a sinle map | {} | {} | <input type="checkbox" disabled checked /> |   |
+| MapLiteral | Fold expressions with keys into a single map | {} | {} | <input type="checkbox" disabled checked /> |   |
 | Labels | Get label name of a vertex type | labels() | labels() | <input type="checkbox" disabled checked /> |   |
+| elementId | Get a vertex or an edge identifier, unique by an object type and a database | elementId() | elementId() | <input type="checkbox" disabled checked /> |   |
 | Type | Get label name of an edge type | type() | type() | <input type="checkbox" disabled checked /> |   |
 | Extract | Get interval value from a temporal type | \<temporal\>.\<interval\> | \<temporal\>.\<interval\> | <input type="checkbox" disabled checked /> |   |
-| Starts With | Perform case-sensitive matching on the beginning of a string | STARTS WITH | STARTS WITH | <input type="checkbox" disabled checked /> | |
-| Ends With | Perform case-sensitive matching on the ending of a string | ENDS WITH | ENDS WITH | <input type="checkbox" disabled checked /> | |
-| Contains | Perform case-sensitive matching regardless of location within a string | CONTAINS | CONTAINS | <input type="checkbox" disabled checked /> | |
-
+| User Defined Functions | get all edges from a path | relationships(path) | gs.function.relationships(path) | <input type="checkbox" disabled checked /> |   |
+| User Defined Functions | get all nodes from a path | nodes(path) | gs.function.nodes(path) | <input type="checkbox" disabled checked /> |   |
+| User Defined Functions | get start node from an edge | startNode(edge) | gs.function.startNode(edge) | <input type="checkbox" disabled checked /> |   |
+| User Defined Functions | get end node from an edge | endNode(edge) | gs.function.endNode(edge) | <input type="checkbox" disabled checked /> |   |
+| User Defined Functions | convert integer value to datetime | datetime(1287230400000) | gs.function.datetime(1287230400000) | <input type="checkbox" disabled checked /> |   |
 
 ## Clause
 A notable limitation for now is that we do not
@@ -118,6 +127,14 @@ MATCH (a) -[]-> () -[]-> (b)  # second MATCH clause
 RETURN a, b;
 ```
 
+Besides, we support `OPTIONAL MATCH`. For example,
+the following query can be supported:
+```Cypher
+MATCH (a) -[]-> (b)
+Optional MATCH (b) -[]-> (c) 
+RETURN a, b, c;
+```
+
 | Keyword | Comments |  Supported  |  Todo
 |:---|---|:---:|:---|
 | MATCH | only one Match clause is allowed  | <input type="checkbox" disabled checked />  |
@@ -128,4 +145,14 @@ RETURN a, b;
 | WHERE NOT EXIST (an edge/path) | implements as anti join  |  <input type="checkbox" checked  />|  |
 | ORDER BY |  | <input type="checkbox" disabled checked />  |  |
 | LIMIT |  | <input type="checkbox" disabled checked />  |    |
+| UNFOLD | The operation is similar to SQL's 'UNSET', as it unfolds elements from a collection type | <input type="checkbox" disabled checked />  |    |
 
+Additionally, we support two types of procedure call invocations in Cypher:
+- We offer a set of built-in procedures that can be invoked directly within Cypher queries. These procedures are all prefixed with `gs.procedure.`.
+
+    | Keyword | Comments |  Example |
+    |:---|---|:---:|
+    | CALL | Retrieve schema information in a JSON format following the FLEX specification | `call gs.procedure.meta.schema();`  |
+    | CALL | Retrieve statistics information in a JSON format following the FLEX specification | `call gs.procedure.meta.statistics();`  |
+
+- User-defined procedures: Users can define custom procedures in GIE and invoke them within their Cypher queries.

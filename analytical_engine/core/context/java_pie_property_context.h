@@ -94,6 +94,7 @@ class JavaPIEPropertyContext : public JavaContextBase<FRAG_T> {
 
   std::shared_ptr<gs::IContextWrapper> CreateInnerCtxWrapper(
       const std::string& id, std::shared_ptr<IFragmentWrapper> frag_wrapper) {
+    JavaContextBase<FRAG_T>::WriteBackJVMHeapToCppContext();
     std::string java_ctx_type_name = getJavaCtxTypeName(this->context_object());
     VLOG(1) << "Java ctx type name" << java_ctx_type_name;
     if (java_ctx_type_name == "LabeledVertexDataContext") {
@@ -128,7 +129,7 @@ class JavaPIEPropertyContext : public JavaContextBase<FRAG_T> {
         return std::make_shared<inner_ctx_wrapper_type>(id, frag_wrapper,
                                                         inner_ctx_impl_shared);
       } else {
-        LOG(ERROR) << "Unregonizable data type: " << data_type;
+        LOG(ERROR) << "Unrecognizable data type: " << data_type;
       }
     } else if (java_ctx_type_name == "LabeledVertexPropertyContext") {
       using inner_ctx_type = LabeledVertexPropertyContext<FRAG_T>;

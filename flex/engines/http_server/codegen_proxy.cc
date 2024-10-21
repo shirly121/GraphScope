@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 #include "flex/engines/http_server/codegen_proxy.h"
+#include "flex/engines/http_server/graph_db_service.h"
+#include "flex/engines/http_server/workdir_manipulator.h"
 
 namespace server {
 CodegenProxy& CodegenProxy::get() {
@@ -21,7 +23,7 @@ CodegenProxy& CodegenProxy::get() {
 }
 
 StoredProcedureLibMeta::StoredProcedureLibMeta()
-    : status(CodegenStatus::UNINITALIZED), res_lib_path("") {}
+    : status(CodegenStatus::UNINITIALIZED), res_lib_path("") {}
 
 StoredProcedureLibMeta::StoredProcedureLibMeta(CodegenStatus status)
     : status(status), res_lib_path("") {}
@@ -43,16 +45,16 @@ bool CodegenProxy::Initialized() { return initialized_; }
 
 void CodegenProxy::Init(std::string working_dir, std::string codegen_bin,
                         std::string ir_compiler_prop,
-                        std::string compiler_graph_schema) {
+                        std::string default_graph_schema_path) {
   working_directory_ = working_dir;
   codegen_bin_ = codegen_bin;
   ir_compiler_prop_ = ir_compiler_prop;
-  compiler_graph_schema_ = compiler_graph_schema;
+  default_graph_schema_path_ = default_graph_schema_path;
   initialized_ = true;
   LOG(INFO) << "CodegenProxy working dir: " << working_directory_
             << ",codegen bin " << codegen_bin_ << ", ir compiler prop "
-            << ir_compiler_prop_ << ", compiler graph schema "
-            << compiler_graph_schema_;
+            << ir_compiler_prop_ << ", default graph schema "
+            << default_graph_schema_path_;
 }
 
 seastar::future<std::pair<int32_t, std::string>> CodegenProxy::DoGen(
@@ -66,28 +68,47 @@ seastar::future<std::pair<int32_t, std::string>> CodegenProxy::DoGen(
              [this, next_job_id] { return !check_job_running(next_job_id); });
   }
 
-  return call_codegen_cmd(plan).then_wrapped([this,
-                                              next_job_id](auto&& future) {
-    int return_code;
-    try {
-      return_code = future.get();
-    } catch (std::exception& e) {
-      LOG(ERROR) << "Compilation failed: " << e.what();
-      return seastar::make_ready_future<std::pair<int32_t, std::string>>(
-          std::make_pair(next_job_id,
-                         std::string("Compilation failed: ") + e.what()));
-    }
-    if (return_code != 0) {
-      LOG(ERROR) << "Codegen failed";
+  auto cur_graph_schema_path = default_graph_schema_path_;
+  if (cur_graph_schema_path.empty()) {
+    auto& graph_db_service = server::GraphDBService::get();
+    if (graph_db_service.get_metadata_store()) {
+      auto running_graph_res =
+          graph_db_service.get_metadata_store()->GetRunningGraph();
+      if (!running_graph_res.ok()) {
+        return seastar::make_exception_future<std::pair<int32_t, std::string>>(
+            std::runtime_error("Get running graph failed"));
+      }
+      cur_graph_schema_path =
+          WorkDirManipulator::GetGraphSchemaPath(running_graph_res.value());
+    } else {
+      LOG(ERROR) << "Graph schema path is empty";
       return seastar::make_exception_future<std::pair<int32_t, std::string>>(
-          std::runtime_error("Codegen failed"));
+          std::runtime_error("Graph schema path is empty"));
     }
-    return get_res_lib_path_from_cache(next_job_id);
-  });
+  }
+
+  if (cur_graph_schema_path.empty()) {
+    LOG(ERROR) << "Graph schema path is empty";
+    return seastar::make_exception_future<std::pair<int32_t, std::string>>(
+        std::runtime_error("Graph schema path is empty"));
+  }
+
+  return call_codegen_cmd(plan, cur_graph_schema_path)
+      .then([this, next_job_id](gs::Result<bool> codegen_res) {
+        if (!codegen_res.ok()) {
+          LOG(ERROR) << "Compilation failure: "
+                     << codegen_res.status().error_message();
+          return seastar::make_exception_future<
+              std::pair<int32_t, std::string>>(std::runtime_error(
+              "Compilation failure: " + codegen_res.status().error_message()));
+        }
+        return get_res_lib_path_from_cache(next_job_id);
+      });
 }
 
-seastar::future<int> CodegenProxy::call_codegen_cmd(
-    const physical::PhysicalPlan& plan) {
+seastar::future<gs::Result<bool>> CodegenProxy::call_codegen_cmd(
+    const physical::PhysicalPlan& plan,
+    const std::string& cur_graph_schema_path) {
   // if the desired query lib for next_job_id is in cache, just return 0
   // otherwise, call codegen cmd
   auto next_job_id = plan.plan_id();
@@ -97,7 +118,7 @@ seastar::future<int> CodegenProxy::call_codegen_cmd(
 
   if (job_id_2_procedures_.find(next_job_id) != job_id_2_procedures_.end() &&
       job_id_2_procedures_[next_job_id].status == CodegenStatus::SUCCESS) {
-    return seastar::make_ready_future<int>(0);
+    return seastar::make_ready_future<gs::Result<bool>>(true);
   }
 
   insert_or_update(next_job_id, CodegenStatus::RUNNING, "");
@@ -105,32 +126,40 @@ seastar::future<int> CodegenProxy::call_codegen_cmd(
   plan_path = prepare_next_job_dir(work_dir, query_name, plan);
   if (plan_path.empty()) {
     insert_or_update(next_job_id, CodegenStatus::FAILED, "");
-    return seastar::make_exception_future<int>(std::runtime_error(
-        "Fail to prepare next job dir for " + query_name + ", job id: " +
-        std::to_string(next_job_id) + ", plan path: " + plan_path));
+    return seastar::make_ready_future<gs::Result<bool>>(gs::Result<bool>(
+        gs::Status(gs::StatusCode::INTERNAL_ERROR,
+                   "Fail to prepare next job dir for " + query_name +
+                       ", job id: " + std::to_string(next_job_id) +
+                       ", plan path: " + plan_path),
+        false));
   }
 
   std::string expected_res_lib_path = work_dir + "/lib" + query_name + ".so";
-  return call_codegen_cmd_impl(plan_path, query_name, work_dir)
-      .then([this, next_job_id, expected_res_lib_path](int codegen_res) {
-        if (codegen_res != 0 ||
-            !std::filesystem::exists(expected_res_lib_path)) {
-          LOG(ERROR) << "Expected lib path " << expected_res_lib_path
-                     << " not exists, or compilation failure: " << codegen_res
-                     << " compilation failed";
-
+  return CallCodegenCmd(codegen_bin_, plan_path, query_name, work_dir, work_dir,
+                        cur_graph_schema_path, ir_compiler_prop_)
+      .then([this, next_job_id,
+             expected_res_lib_path](gs::Result<bool> codegen_res) {
+        if (!codegen_res.ok()) {
+          LOG(ERROR) << "Compilation failure: "
+                     << codegen_res.status().error_message();
+          insert_or_update(next_job_id, CodegenStatus::FAILED, "");
+          return seastar::make_ready_future<gs::Result<bool>>(codegen_res);
+        }
+        if (!std::filesystem::exists(expected_res_lib_path)) {
+          LOG(ERROR) << "Compilation success, but generated lib not exists: "
+                     << expected_res_lib_path;
           insert_or_update(next_job_id, CodegenStatus::FAILED, "");
           VLOG(10) << "Compilation failed, job id: " << next_job_id;
-        } else {
-          VLOG(10) << "Compilation success, job id: " << next_job_id;
-          insert_or_update(next_job_id, CodegenStatus::SUCCESS,
-                           expected_res_lib_path);
+          return seastar::make_ready_future<gs::Result<bool>>(codegen_res);
         }
+        VLOG(10) << "Compilation success, job id: " << next_job_id;
+        insert_or_update(next_job_id, CodegenStatus::SUCCESS,
+                         expected_res_lib_path);
         {
           std::lock_guard<std::mutex> lock(mutex_);
           cv_.notify_all();
         }
-        return seastar::make_ready_future<int>(codegen_res);
+        return seastar::make_ready_future<gs::Result<bool>>(true);
       });
 }
 
@@ -151,30 +180,74 @@ CodegenProxy::get_res_lib_path_from_cache(int32_t next_job_id) {
   }
 }
 
-seastar::future<int> CodegenProxy::call_codegen_cmd_impl(
-    const std::string& plan_path, const std::string& query_name,
-    const std::string& work_dir) {
+seastar::future<gs::Result<bool>> CodegenProxy::CallCodegenCmd(
+    const std::string& codegen_bin, const std::string& plan_path,
+    const std::string& query_name, const std::string& work_dir,
+    const std::string& output_dir, const std::string& graph_schema_path,
+    const std::string& engine_config, const std::string& procedure_desc) {
+  if (query_name.empty()) {
+    return seastar::make_exception_future<gs::Result<bool>>(
+        std::runtime_error("query_name is empty"));
+  }
+  // query_name can not start with number, and should only contains digits,
+  // letters and underscores
+  if (!std::isalpha(query_name[0])) {
+    return seastar::make_exception_future<gs::Result<bool>>(
+        std::runtime_error("query_name should start with alphabet"));
+  }
+  if (!std::all_of(query_name.begin(), query_name.end(), [](char c) {
+        return std::isalnum(c) || c == '_' || c == '-';
+      })) {
+    return seastar::make_exception_future<gs::Result<bool>>(
+        std::runtime_error("query_name should only contains digits, letters "
+                           "and underscores: " +
+                           query_name));
+  }
+
   // TODO: different suffix for different platform
-  std::string cmd = codegen_bin_ + " -e=hqps " + " -i=" + plan_path +
-                    " -w=" + work_dir + " --ir_conf=" + ir_compiler_prop_ +
-                    " --graph_schema_path=" + compiler_graph_schema_;
+  std::string cmd = codegen_bin + " -e=hqps " + " -i=" + plan_path +
+                    " -o=" + output_dir + " --procedure_name=" + query_name +
+                    " -w=" + work_dir + " --ir_conf=" + engine_config +
+                    " --graph_schema_path=" + graph_schema_path;
+  std::string desc_file = work_dir + "/" + query_name + ".desc";
+  if (!procedure_desc.empty()) {
+    std::ofstream ofs(desc_file);
+    ofs << procedure_desc;
+    ofs.close();
+    cmd += " --procedure_desc=" + desc_file;
+  }
   LOG(INFO) << "Start call codegen cmd: [" << cmd << "]";
 
-  return hiactor::thread_resource_pool::submit_work([this, cmd] {
-           auto res = std::system(cmd.c_str());
-           LOG(INFO) << "Codegen cmd: [" << cmd << "] return: " << res;
-           return res;
-         })
-      .then_wrapped([](auto fut) {
-        VLOG(10) << "try";
-        try {
-          VLOG(10) << "Got future ";
-          return seastar::make_ready_future<int>(fut.get0());
-        } catch (std::exception& e) {
-          LOG(ERROR) << "Compilation failed: " << e.what();
-          return seastar::make_ready_future<int>(-1);
-        }
-      });
+  return hiactor::thread_resource_pool::submit_work([cmd, desc_file] {
+    //  auto res = std::system(cmd.c_str());
+    boost::process::ipstream stdout_pipe;
+    boost::process::ipstream stderr_pipe;
+    boost::process::child codegen_process(
+        cmd, boost::process::std_out > stdout_pipe,
+        boost::process::std_err > stderr_pipe);
+
+    std::stringstream ss;
+    std::string stderr_res;
+    while (std::getline(stderr_pipe, stderr_res)) {
+      ss << stderr_res + "\n";
+    }
+
+    codegen_process.wait();
+    stderr_pipe.close();
+    stdout_pipe.close();
+    // remove the desc file if exists
+    if (std::filesystem::exists(desc_file)) {
+      std::filesystem::remove(desc_file);
+    }
+    int res = codegen_process.exit_code();
+    if (res != 0) {
+      return gs::Result<bool>(
+          gs::Status(gs::StatusCode::CODEGEN_ERROR, ss.str()), false);
+    }
+
+    LOG(INFO) << "Codegen cmd: [" << cmd << "] success! ";
+    return gs::Result<bool>(true);
+  });
 }
 
 std::string CodegenProxy::get_work_directory(int32_t job_id) {

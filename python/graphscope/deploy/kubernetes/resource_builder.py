@@ -65,7 +65,7 @@ class ResourceBuilder:
         role_ref = kube_client.V1RoleRef(
             kind="Role", name=role_name, api_group="rbac.authorization.k8s.io"
         )
-        subject = kube_client.V1Subject(
+        subject = kube_client.RbacV1Subject(
             kind="ServiceAccount", name=service_account_name, namespace=namespace
         )
         role_binding = kube_client.V1RoleBinding(
@@ -81,7 +81,7 @@ class ResourceBuilder:
         role_ref = kube_client.V1RoleRef(
             kind="ClusterRole", name=role_name, api_group="rbac.authorization.k8s.io"
         )
-        subject = kube_client.V1Subject(
+        subject = kube_client.RbacV1Subject(
             kind="ServiceAccount", name=service_account_name, namespace=namespace
         )
         role_binding = kube_client.V1ClusterRoleBinding(
@@ -126,7 +126,13 @@ class ResourceBuilder:
 
     @staticmethod
     def get_node_selector(node_selector):
-        return node_selector
+        import base64
+        import json
+
+        decoded_node_selector = base64.b64decode(node_selector).decode(
+            "utf-8", errors="ignore"
+        )
+        return json.loads(decoded_node_selector)
 
     @staticmethod
     def get_user_defined_volumes(udf_volumes):

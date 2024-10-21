@@ -92,7 +92,7 @@ class PegasusGenerator {
       // FIXME: ENable this line
       // the dynamic params can be duplicate.
       CHECK(vars[0].id == 0);
-      for (auto i = 0; i < vars.size(); ++i) {
+      for (size_t i = 0; i < vars.size(); ++i) {
         if (i > 0 && vars[i].id == vars[i - 1].id) {
           // found duplicate
           CHECK(vars[i] == vars[i - 1]);
@@ -158,9 +158,10 @@ class PegasusGenerator {
     ss << "let stream_0 = input.input_from(vec![0])?;\n";
 
     std::string plan_json;
-    google::protobuf::util::JsonOptions option;
+    google::protobuf::util::JsonPrintOptions option;
     option.always_print_primitive_fields = true;
-    google::protobuf::util::MessageToJsonString(plan_, &plan_json, option);
+    auto st =
+        google::protobuf::util::MessageToJsonString(plan_, &plan_json, option);
     for (auto i = 0; i < size; ++i) {
       auto op = plan_.plan(i);
       LOG(INFO) << "Start codegen for operator " << i;

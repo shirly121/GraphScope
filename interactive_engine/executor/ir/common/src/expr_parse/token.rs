@@ -89,18 +89,16 @@ impl ExprToken for Token {
     fn precedence(&self) -> i32 {
         use crate::expr_parse::token::Token::*;
         match self {
-            Plus | Minus => 95,
-            Star | Slash | Percent => 100,
-            Power => 120,
-
-            Eq | Ne | Gt | Lt | Ge | Le | Within | Without | StartsWith | EndsWith | IsNull => 80,
-            And => 75,
-            Or => 70,
-            Not => 110,
-            BitLShift | BitRShift => 130,
-            BitAnd | BitOr => 140,
-
-            LBrace | RBrace => 0,
+            Power => 120,                                                          // 1.
+            Star | Slash | Percent => 110,                                         // 2.
+            Plus | Minus | BitLShift | BitRShift | BitAnd | BitOr | BitXor => 100, // 3.
+            Within | Without | StartsWith | EndsWith => 90,                        // 4.
+            Eq | Ne | Gt | Lt | Ge | Le => 80,                                     // 5.
+            IsNull => 70,                                                          // 6
+            Not => 60,                                                             // 7
+            And => 50,                                                             // 8.
+            Or => 40,                                                              // 9.
+            LBrace | RBrace => 0,                                                  // 10.
             _ => 200,
         }
     }
@@ -404,7 +402,7 @@ fn partial_tokens_to_tokens(mut tokens: &[PartialToken]) -> ExprResult<Vec<Token
                     match &second {
                         // Be aware that minus can represent both subtraction or negative sign
                         // if it is a negative sign, it must be directly trailed by a number.
-                        // However, we can not actually tell whether the case "x -y", is actually
+                        // However, we cannot actually tell whether the case "x -y", is actually
                         // subtracting x by y, or -y must be treated as a number.
                         Some(PartialToken::Literal(literal)) => {
                             // Must check whether previous is what
@@ -582,9 +580,13 @@ mod tests {
         let expected_case4 = vec![Token::Int(1), Token::Plus, Token::Int(-2), Token::Plus, Token::Int(2)];
         assert_eq!(case4, expected_case4);
 
-        let case5 = tokenize("@a isNull");
-        let expected_case5 = vec![Token::Identifier("@a".to_string()), Token::IsNull];
+        let case5 = tokenize("isNull @a");
+        let expected_case5 = vec![Token::IsNull, Token::Identifier("@a".to_string())];
         assert_eq!(case5.unwrap(), expected_case5);
+
+        let case6 = tokenize("isNull @.age");
+        let expected_case6 = vec![Token::IsNull, Token::Identifier("@.age".to_string())];
+        assert_eq!(case6.unwrap(), expected_case6);
     }
 
     #[test]

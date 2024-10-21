@@ -16,13 +16,12 @@
 
 package com.alibaba.graphscope.cypher.service;
 
-import com.alibaba.graphscope.common.antlr4.Antlr4Parser;
 import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.QueryCache;
+import com.alibaba.graphscope.common.ir.tools.QueryIdGenerator;
 import com.alibaba.graphscope.common.manager.IrMetaQueryCallback;
-import com.alibaba.graphscope.cypher.antlr4.parser.CypherAntlr4Parser;
 import com.alibaba.graphscope.gremlin.Utils;
 
 import org.neo4j.collection.Dependencies;
@@ -54,27 +53,23 @@ public class CypherBootstrapper extends CommunityBootstrapper {
 
     public CypherBootstrapper(
             Configs graphConfig,
-            GraphPlanner graphPlanner,
+            QueryIdGenerator idGenerator,
             IrMetaQueryCallback queryCallback,
             ExecutionClient client,
-            QueryCache queryCache) {
+            QueryCache queryCache,
+            GraphPlanner graphPlanner) {
         this.client = client;
         this.externalDependencies =
                 createExternalDependencies(
-                        graphConfig,
-                        new CypherAntlr4Parser(),
-                        graphPlanner,
-                        queryCallback,
-                        client,
-                        queryCache);
+                        graphConfig, idGenerator, queryCallback, client, queryCache, graphPlanner);
         this.externalClassTypes =
                 Arrays.asList(
                         Configs.class,
-                        Antlr4Parser.class,
-                        GraphPlanner.class,
+                        QueryIdGenerator.class,
                         IrMetaQueryCallback.class,
                         ExecutionClient.class,
-                        QueryCache.class);
+                        QueryCache.class,
+                        GraphPlanner.class);
     }
 
     @Override
@@ -99,14 +94,14 @@ public class CypherBootstrapper extends CommunityBootstrapper {
 
     private Dependencies createExternalDependencies(
             Configs configs,
-            Antlr4Parser cypherParser,
-            GraphPlanner graphPlanner,
+            QueryIdGenerator idGenerator,
             IrMetaQueryCallback queryCallback,
             ExecutionClient client,
-            QueryCache queryCache) {
+            QueryCache queryCache,
+            GraphPlanner graphPlanner) {
         Dependencies dependencies = new Dependencies();
         dependencies.satisfyDependencies(
-                configs, cypherParser, graphPlanner, queryCallback, client, queryCache);
+                configs, idGenerator, queryCallback, client, queryCache, graphPlanner);
         return dependencies;
     }
 

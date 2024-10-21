@@ -34,6 +34,8 @@
 
 #include "boost/leaf/error.hpp"
 #include "boost/leaf/result.hpp"
+#include "grape/fragment/immutable_edgecut_fragment.h"
+// #include "grape/fragment/immutable_vertexcut_fragment.h"
 #include "grape/serialization/in_archive.h"
 #include "grape/worker/comm_spec.h"
 #include "vineyard/client/client.h"
@@ -93,6 +95,46 @@ gs::rpc::graph::DataTypePb PropertyTypeToPb(vineyard::PropertyType type) {
     return gs::rpc::graph::DataTypePb::STRING;
   } else if (arrow::large_utf8()->Equals(type)) {
     return gs::rpc::graph::DataTypePb::STRING;
+  } else if (arrow::date32()->Equals(type)) {
+    return gs::rpc::graph::DataTypePb::DATE32;
+  } else if (arrow::date64()->Equals(type)) {
+    return gs::rpc::graph::DataTypePb::DATE64;
+  } else if (type->id() == arrow::Type::TIME32) {
+    auto time32_type = std::dynamic_pointer_cast<arrow::Time32Type>(type);
+    switch (time32_type->unit()) {
+    case arrow::TimeUnit::SECOND:
+      return gs::rpc::graph::DataTypePb::TIME32_S;
+    case arrow::TimeUnit::MILLI:
+      return gs::rpc::graph::DataTypePb::TIME32_MS;
+    case arrow::TimeUnit::MICRO:
+      return gs::rpc::graph::DataTypePb::TIME32_US;
+    case arrow::TimeUnit::NANO:
+      return gs::rpc::graph::DataTypePb::TIME32_NS;
+    }
+  } else if (type->id() == arrow::Type::TIME64) {
+    auto time64_type = std::dynamic_pointer_cast<arrow::Time64Type>(type);
+    switch (time64_type->unit()) {
+    case arrow::TimeUnit::SECOND:
+      return gs::rpc::graph::DataTypePb::TIME64_S;
+    case arrow::TimeUnit::MILLI:
+      return gs::rpc::graph::DataTypePb::TIME64_MS;
+    case arrow::TimeUnit::MICRO:
+      return gs::rpc::graph::DataTypePb::TIME64_US;
+    case arrow::TimeUnit::NANO:
+      return gs::rpc::graph::DataTypePb::TIME64_NS;
+    }
+  } else if (type->id() == arrow::Type::TIMESTAMP) {
+    auto timestamp_type = std::dynamic_pointer_cast<arrow::TimestampType>(type);
+    switch (timestamp_type->unit()) {
+    case arrow::TimeUnit::SECOND:
+      return gs::rpc::graph::DataTypePb::TIMESTAMP_S;
+    case arrow::TimeUnit::MILLI:
+      return gs::rpc::graph::DataTypePb::TIMESTAMP_MS;
+    case arrow::TimeUnit::MICRO:
+      return gs::rpc::graph::DataTypePb::TIMESTAMP_US;
+    case arrow::TimeUnit::NANO:
+      return gs::rpc::graph::DataTypePb::TIMESTAMP_NS;
+    }
   } else if (arrow::large_list(arrow::int32())->Equals(type)) {
     return gs::rpc::graph::DataTypePb::INT_LIST;
   } else if (arrow::large_list(arrow::int64())->Equals(type)) {
@@ -138,6 +180,38 @@ gs::rpc::graph::DataTypePb PropertyTypeToPb(const std::string& type) {
     return gs::rpc::graph::DataTypePb::LONG_LIST;
   } else if (type == "float_list") {
     return gs::rpc::graph::DataTypePb::FLOAT_LIST;
+  } else if (type == "date32[day]") {
+    return gs::rpc::graph::DataTypePb::DATE32;
+  } else if (type == "date64[ms]") {
+    return gs::rpc::graph::DataTypePb::DATE64;
+  } else if (type == "time32[s]") {
+    return gs::rpc::graph::DataTypePb::TIME32_S;
+  } else if (type == "time32[ms]") {
+    return gs::rpc::graph::DataTypePb::TIME32_MS;
+  } else if (type == "time32[us]") {
+    return gs::rpc::graph::DataTypePb::TIME32_US;
+  } else if (type == "time32[ns]") {
+    return gs::rpc::graph::DataTypePb::TIME32_NS;
+  } else if (type == "time64[s]") {
+    return gs::rpc::graph::DataTypePb::TIME64_S;
+  } else if (type == "time64[ms]") {
+    return gs::rpc::graph::DataTypePb::TIME64_MS;
+  } else if (type == "time64[us]") {
+    return gs::rpc::graph::DataTypePb::TIME64_US;
+  } else if (type == "time64[ns]") {
+    return gs::rpc::graph::DataTypePb::TIME64_NS;
+  } else if (type.substr(0, std::string("timestamp[s]").length()) ==
+             "timestamp[s]") {
+    return gs::rpc::graph::DataTypePb::TIMESTAMP_S;
+  } else if (type.substr(0, std::string("timestamp[ms]").length()) ==
+             "timestamp[ms]") {
+    return gs::rpc::graph::DataTypePb::TIMESTAMP_MS;
+  } else if (type.substr(0, std::string("timestamp[us]").length()) ==
+             "timestamp[us]") {
+    return gs::rpc::graph::DataTypePb::TIMESTAMP_US;
+  } else if (type.substr(0, std::string("timestamp[ns]").length()) ==
+             "timestamp[ns]") {
+    return gs::rpc::graph::DataTypePb::TIMESTAMP_NS;
   } else if (type == "double_list") {
     return gs::rpc::graph::DataTypePb::DOUBLE_LIST;
   } else if (type == "string_list" || type == "str_list") {
@@ -949,6 +1023,145 @@ class FragmentWrapper<
   rpc::graph::GraphDefPb graph_def_;
   std::shared_ptr<fragment_t> fragment_;
 };
+
+/**
+ * @brief A specialized FragmentWrapper for ImmutableEdgecutFragment.
+ * @tparam OID_T OID type
+ * @tparam VID_T VID type
+ */
+template <typename OID_T, typename VID_T, typename VDATA_T, typename EDATA_T>
+class FragmentWrapper<
+    grape::ImmutableEdgecutFragment<OID_T, VID_T, VDATA_T, EDATA_T>>
+    : public IFragmentWrapper {
+  using fragment_t =
+      grape::ImmutableEdgecutFragment<OID_T, VID_T, VDATA_T, EDATA_T>;
+
+ public:
+  FragmentWrapper(const std::string& id, rpc::graph::GraphDefPb graph_def,
+                  std::shared_ptr<fragment_t> fragment)
+      : IFragmentWrapper(id),
+        graph_def_(std::move(graph_def)),
+        fragment_(std::move(fragment)) {
+    CHECK_EQ(graph_def_.graph_type(), rpc::graph::IMMUTABLE_EDGECUT);
+  }
+
+  std::shared_ptr<void> fragment() const override {
+    return std::static_pointer_cast<void>(fragment_);
+  }
+
+  const rpc::graph::GraphDefPb& graph_def() const override {
+    return graph_def_;
+  }
+
+  rpc::graph::GraphDefPb& mutable_graph_def() override { return graph_def_; }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> CopyGraph(
+      const grape::CommSpec& comm_spec, const std::string& dst_graph_name,
+      const std::string& copy_type) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Cannot copy the ArrowProjectedFragment");
+  }
+
+  bl::result<std::unique_ptr<grape::InArchive>> ReportGraph(
+      const grape::CommSpec& comm_spec, const rpc::GSParams& params) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Not implemented.");
+  }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> ToDirected(
+      const grape::CommSpec& comm_spec,
+      const std::string& dst_graph_name) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Cannot convert to the directed DynamicProjectedFragment");
+  }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> ToUndirected(
+      const grape::CommSpec& comm_spec,
+      const std::string& dst_graph_name) override {
+    RETURN_GS_ERROR(
+        vineyard::ErrorCode::kInvalidOperationError,
+        "Cannot convert to the undirected DynamicProjectedFragment");
+  }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> CreateGraphView(
+      const grape::CommSpec& comm_spec, const std::string& dst_graph_name,
+      const std::string& copy_type) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Cannot generate a view over the ArrowProjectedFragment");
+  }
+
+ private:
+  rpc::graph::GraphDefPb graph_def_;
+  std::shared_ptr<fragment_t> fragment_;
+};
+
+/*
+template <typename OID_T, typename VID_T, typename VDATA_T, typename EDATA_T>
+class FragmentWrapper<
+    grape::ImmutableVertexcutFragment<OID_T, VID_T, VDATA_T, EDATA_T>>
+    : public IFragmentWrapper {
+  using fragment_t =
+      grape::ImmutableVertexcutFragment<OID_T, VID_T, VDATA_T, EDATA_T>;
+
+ public:
+  FragmentWrapper(const std::string& id, rpc::graph::GraphDefPb graph_def,
+                  std::shared_ptr<fragment_t> fragment)
+      : IFragmentWrapper(id),
+        graph_def_(std::move(graph_def)),
+        fragment_(std::move(fragment)) {
+    CHECK_EQ(graph_def_.graph_type(), rpc::graph::IMMUTABLE_EDGECUT);
+  }
+
+  std::shared_ptr<void> fragment() const override {
+    return std::static_pointer_cast<void>(fragment_);
+  }
+
+  const rpc::graph::GraphDefPb& graph_def() const override {
+    return graph_def_;
+  }
+
+  rpc::graph::GraphDefPb& mutable_graph_def() override { return graph_def_; }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> CopyGraph(
+      const grape::CommSpec& comm_spec, const std::string& dst_graph_name,
+      const std::string& copy_type) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Cannot copy the ArrowProjectedFragment");
+  }
+
+  bl::result<std::unique_ptr<grape::InArchive>> ReportGraph(
+      const grape::CommSpec& comm_spec, const rpc::GSParams& params) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Not implemented.");
+  }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> ToDirected(
+      const grape::CommSpec& comm_spec,
+      const std::string& dst_graph_name) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Cannot convert to the directed DynamicProjectedFragment");
+  }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> ToUndirected(
+      const grape::CommSpec& comm_spec,
+      const std::string& dst_graph_name) override {
+    RETURN_GS_ERROR(
+        vineyard::ErrorCode::kInvalidOperationError,
+        "Cannot convert to the undirected DynamicProjectedFragment");
+  }
+
+  bl::result<std::shared_ptr<IFragmentWrapper>> CreateGraphView(
+      const grape::CommSpec& comm_spec, const std::string& dst_graph_name,
+      const std::string& copy_type) override {
+    RETURN_GS_ERROR(vineyard::ErrorCode::kInvalidOperationError,
+                    "Cannot generate a view over the ArrowProjectedFragment");
+  }
+
+ private:
+  rpc::graph::GraphDefPb graph_def_;
+  std::shared_ptr<fragment_t> fragment_;
+};
+*/
 
 #ifdef NETWORKX
 /**

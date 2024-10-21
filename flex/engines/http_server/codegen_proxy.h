@@ -15,6 +15,7 @@
 #ifndef ENGINES_HQPS_SERVER_CODEGEN_PROXY_H_
 #define ENGINES_HQPS_SERVER_CODEGEN_PROXY_H_
 
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -26,6 +27,7 @@
 
 #include "flex/proto_generated_gie/job_service.pb.h"
 #include "flex/proto_generated_gie/physical.pb.h"
+#include "flex/utils/result.h"
 
 #include <boost/program_options.hpp>
 #include <hiactor/core/thread_resource_pool.hh>
@@ -37,7 +39,7 @@ enum CodegenStatus {
   RUNNING = 0,
   FAILED = 1,
   SUCCESS = 2,
-  UNINITALIZED = 3,
+  UNINITIALIZED = 3,
 };
 
 struct StoredProcedureLibMeta {
@@ -57,16 +59,16 @@ struct StoredProcedureLibMeta {
 class CodegenProxy {
  public:
   static CodegenProxy& get();
+  static constexpr const char* DEFAULT_CODEGEN_DIR = "/tmp/codegen/";
   CodegenProxy();
 
   ~CodegenProxy();
 
   bool Initialized();
 
-  // the last two params are needed temporally, should be remove after all
-  // configuration are merged
   void Init(std::string working_dir, std::string codegen_bin,
-            std::string ir_compiler_prop, std::string compiler_graph_schema);
+            std::string ir_compiler_prop,
+            std::string default_graph_schema_path);
 
   // Do gen
   // A plan id is given along with the plan, we assume
@@ -77,15 +79,19 @@ class CodegenProxy {
   //
   // Consider the critical scenario: when two same plan arrived at the same
   // time, we need to ensure that only one codegen is running.
+  // if graph_schema_path is not prvoided, we will use the default graph schema
   seastar::future<std::pair<int32_t, std::string>> DoGen(
       const physical::PhysicalPlan& plan);
 
- private:
-  seastar::future<int> call_codegen_cmd(const physical::PhysicalPlan& plan);
+  static seastar::future<gs::Result<bool>> CallCodegenCmd(
+      const std::string& codegen_bin, const std::string& plan_path,
+      const std::string& query_name, const std::string& work_dir,
+      const std::string& output_dir, const std::string& graph_schema_path,
+      const std::string& engine_config, const std::string& description = "");
 
-  seastar::future<int> call_codegen_cmd_impl(const std::string& plan_path,
-                                             const std::string& query_name,
-                                             const std::string& work_dir);
+ private:
+  seastar::future<gs::Result<bool>> call_codegen_cmd(
+      const physical::PhysicalPlan& plan, const std::string& graph_schema_path);
 
   seastar::future<std::pair<int32_t, std::string>> get_res_lib_path_from_cache(
       int32_t job_id);
@@ -104,14 +110,14 @@ class CodegenProxy {
                                    const std::string& query_name,
                                    const physical::PhysicalPlan& plan);
 
+  bool initialized_;
   std::string working_directory_;
   std::string codegen_bin_;
   std::string ir_compiler_prop_;
-  std::string compiler_graph_schema_;
+  std::string default_graph_schema_path_;
   std::mutex mutex_;
   std::condition_variable cv_;
   std::unordered_map<int32_t, StoredProcedureLibMeta> job_id_2_procedures_;
-  bool initialized_;
 };
 
 }  // namespace server

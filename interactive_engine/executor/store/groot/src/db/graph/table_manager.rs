@@ -1,8 +1,8 @@
 #![allow(dead_code)]
+use super::version::MAX_SIZE;
 use super::version::*;
 use crate::db::api::*;
 use crate::db::common::bytes::util::{UnsafeBytesReader, UnsafeBytesWriter};
-
 pub type TableId = i64;
 
 /// Every type has a table manager to maintain the multi versions of bulk loading data
@@ -67,7 +67,7 @@ impl Table {
     pub fn from_bytes(bytes: &[u8]) -> GraphResult<Self> {
         if bytes.len() < 4 {
             let msg = format!("invalid bytes");
-            let err = gen_graph_err!(GraphErrorCode::InvalidData, msg, from_bytes);
+            let err = gen_graph_err!(ErrorCode::INVALID_DATA, msg, from_bytes);
             return Err(err);
         }
         let reader = UnsafeBytesReader::new(bytes);
@@ -81,12 +81,12 @@ impl Table {
                     return Ok(ret);
                 }
                 let msg = format!("invalid bytes");
-                let err = gen_graph_err!(GraphErrorCode::InvalidData, msg, from_bytes);
+                let err = gen_graph_err!(ErrorCode::INVALID_DATA, msg, from_bytes);
                 Err(err)
             }
             x => {
                 let msg = format!("unknown encoding version {}", x);
-                let err = gen_graph_err!(GraphErrorCode::InvalidData, msg, from_bytes);
+                let err = gen_graph_err!(ErrorCode::INVALID_DATA, msg, from_bytes);
                 return Err(err);
             }
         }
@@ -106,8 +106,6 @@ mod tests {
 
     use super::*;
     use crate::db::util::time;
-    const MAX_SIZE: usize = 128;
-
     #[test]
     fn test_simple_table_manager() {
         let manager = TableManager::new();

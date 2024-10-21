@@ -1,21 +1,23 @@
 package com.alibaba.graphscope.groot.frontend;
 
-import com.alibaba.graphscope.groot.SnapshotCache;
+import com.alibaba.graphscope.groot.common.exception.DdlException;
 import com.alibaba.graphscope.groot.common.schema.wrapper.GraphDef;
 import com.alibaba.graphscope.groot.common.util.UuidUtils;
+import com.alibaba.graphscope.groot.rpc.RoleClients;
 import com.alibaba.graphscope.groot.schema.ddl.DdlExecutors;
-import com.alibaba.graphscope.groot.schema.request.DdlException;
 import com.alibaba.graphscope.groot.schema.request.DdlRequestBatch;
 import com.google.protobuf.InvalidProtocolBufferException;
 
 public class BatchDdlClient {
 
-    private DdlExecutors ddlExecutors;
-    private SnapshotCache snapshotCache;
-    private SchemaWriter schemaWriter;
+    private final DdlExecutors ddlExecutors;
+    private final SnapshotCache snapshotCache;
+    private final RoleClients<SchemaClient> schemaWriter;
 
     public BatchDdlClient(
-            DdlExecutors ddlExecutors, SnapshotCache snapshotCache, SchemaWriter schemaWriter) {
+            DdlExecutors ddlExecutors,
+            SnapshotCache snapshotCache,
+            RoleClients<SchemaClient> schemaWriter) {
         this.ddlExecutors = ddlExecutors;
         this.snapshotCache = snapshotCache;
         this.schemaWriter = schemaWriter;
@@ -28,7 +30,8 @@ public class BatchDdlClient {
         } catch (InvalidProtocolBufferException e) {
             throw new DdlException(e);
         }
-        return this.schemaWriter.submitBatchDdl(
-                UuidUtils.getBase64UUIDString(), "ddl", ddlRequestBatch);
+        return this.schemaWriter
+                .getClient(0)
+                .submitBatchDdl(UuidUtils.getBase64UUIDString(), "ddl", ddlRequestBatch.toProto());
     }
 }

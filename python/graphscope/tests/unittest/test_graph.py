@@ -20,6 +20,7 @@ import logging
 import os
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import graphscope
@@ -46,54 +47,60 @@ def test_graph_schema(arrow_property_graph):
 
 def test_graph_schema_todict(p2p_property_graph):
     rlt = {
-        "vertices": [
+        "vertex_types": [
             {
-                "label": "person",
+                "type_name": "person",
                 "properties": [
                     {
-                        "name": "weight",
-                        "id": 0,
-                        "type": "LONG",
+                        "property_name": "weight",
+                        "property_id": 0,
+                        "property_type": {"primitive_type": "DT_SIGNED_INT64"},
                         "is_primary_key": False,
-                        "comment": "",
+                        "description": "",
                     },
                     {
-                        "name": "id",
-                        "id": 1,
-                        "type": "LONG",
+                        "property_name": "id",
+                        "property_id": 1,
+                        "property_type": {"primitive_type": "DT_SIGNED_INT64"},
                         "is_primary_key": False,
-                        "comment": "",
+                        "description": "",
                     },
                 ],
+                "primary_keys": [],
+                "description": "",
             }
         ],
-        "edges": [
+        "edge_types": [
             {
-                "label": "knows",
+                "type_name": "knows",
                 "properties": [
                     {
-                        "name": "src_label_id",
-                        "id": 0,
-                        "type": "LONG",
+                        "property_name": "src_label_id",
+                        "property_id": 0,
+                        "property_type": {"primitive_type": "DT_SIGNED_INT64"},
                         "is_primary_key": False,
-                        "comment": "",
+                        "description": "",
                     },
                     {
-                        "name": "dst_label_id",
-                        "id": 1,
-                        "type": "LONG",
+                        "property_name": "dst_label_id",
+                        "property_id": 1,
+                        "property_type": {"primitive_type": "DT_SIGNED_INT64"},
                         "is_primary_key": False,
-                        "comment": "",
+                        "description": "",
                     },
                     {
-                        "name": "dist",
-                        "id": 2,
-                        "type": "LONG",
+                        "property_name": "dist",
+                        "property_id": 2,
+                        "property_type": {"primitive_type": "DT_SIGNED_INT64"},
                         "is_primary_key": False,
-                        "comment": "",
+                        "description": "",
                     },
                 ],
-                "relations": [{"src_label": "person", "dst_label": "person"}],
+                "primary_keys": [],
+                "description": "",
+                "vertex_type_pair_relations": [
+                    {"source_vertex": "person", "destination_vertex": "person"}
+                ],
             }
         ],
     }
@@ -278,15 +285,6 @@ def test_add_vertices_edges(graphscope_session):
     graph = graph.add_vertices(
         Loader(f"{prefix}/software.csv", delimiter="|"), "software"
     )
-
-    with pytest.raises(ValueError, match="already existed in graph"):
-        graph = graph.add_edges(
-            Loader(f"{prefix}/knows.csv", delimiter="|"),
-            "knows",
-            src_label="software",
-            dst_label="software",
-        )
-
     graph = graph.add_edges(
         Loader(f"{prefix}/created.csv", delimiter="|"),
         "created",
@@ -296,6 +294,51 @@ def test_add_vertices_edges(graphscope_session):
 
     assert graph.schema.vertex_labels == ["person", "software"]
     assert graph.schema.edge_labels == ["knows", "created"]
+
+
+def test_extend_vertices_edges(graphscope_session):
+    prefix = os.path.expandvars("${GS_TEST_DIR}/")
+    verts = pd.read_csv(f"{prefix}/p2p_v.csv")
+    edges = pd.read_csv(f"{prefix}/p2p_e.csv")
+    test_list = ["v11308", "v50089", "v60129"]
+
+    g1 = graphscope_session.g(oid_type="std::string")
+    g1 = g1.add_vertices(Loader(verts), "person")
+    g1 = g1.add_edges(Loader(edges), "knows", src_label="person", dst_label="person")
+
+    g2 = graphscope_session.g(oid_type="std::string")
+    g2 = g2.add_vertices(Loader(verts[:12980]), "person")
+    g2 = g2.add_vertices(Loader(verts[12980:31530]), "person")
+    g2 = g2.add_vertices(Loader(verts[31530:]), "person")
+
+    g2 = g2.add_edges(
+        Loader(edges[:2302]), "knows", src_label="person", dst_label="person"
+    )
+    g2 = g2.add_edges(
+        Loader(edges[2302:40021]), "knows", src_label="person", dst_label="person"
+    )
+    g2 = g2.add_edges(
+        Loader(edges[40021:]), "knows", src_label="person", dst_label="person"
+    )
+
+    sg1 = g1.project(vertices={"person": ["id"]}, edges={"knows": ["dist"]})
+    sg2 = g2.project(vertices={"person": ["id"]}, edges={"knows": ["dist"]})
+    for src in test_list:
+        res1 = graphscope.sssp(sg1, src=src, weight="dist")
+        res2 = graphscope.sssp(sg2, src=src, weight="dist")
+        df1 = res1.to_dataframe(selector={"id": "v.id", "r": "r"}).sort_values(
+            by=["id"], ignore_index=True
+        )
+        df2 = res2.to_dataframe(selector={"id": "v.id", "r": "r"}).sort_values(
+            by=["id"], ignore_index=True
+        )
+        if not df1.equals(df2):
+            pytest.raises(
+                AssertionError, "different sssp result got after extending graph data"
+            )
+
+    del g1, g2, sg1, sg2
+    print("pass graph extending test")
 
 
 def test_complicated_add_edges(graphscope_session):
@@ -617,11 +660,11 @@ def test_add_column(ldbc_graph, arrow_modern_graph):
     g3 = sub_graph_2.add_column(ret, selector={"pr": "r"})
     assert g3.schema.get_vertex_properties("person")[8].id == 8
     assert g3.schema.get_vertex_properties("person")[8].name == "pr"
-    # the ret can not add to sub_graph_3
+    # the ret cannot add to sub_graph_3
     with pytest.raises(AnalyticalEngineInternalError):
         g4 = sub_graph_3.add_column(ret, selector={"pr": "r"})
         print(g4.schema)
-    # the ret can not add to sub_graph_4
+    # the ret cannot add to sub_graph_4
     with pytest.raises(AnalyticalEngineInternalError):
         g5 = sub_graph_4.add_column(ret, selector={"pr": "r"})
         print(g4.schema)

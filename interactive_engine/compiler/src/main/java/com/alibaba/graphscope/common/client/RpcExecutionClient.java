@@ -31,12 +31,16 @@ import com.google.protobuf.ByteString;
 
 import io.grpc.Status;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * rpc client to send request to pegasus engine service
  */
 public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
+    Logger logger = LoggerFactory.getLogger(RpcExecutionClient.class);
     private final Configs graphConfig;
     private final AtomicReference<RpcClient> rpcClientRef;
 
@@ -64,7 +68,7 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                         .build();
         PegasusClient.JobConfig jobConfig =
                 PegasusClient.JobConfig.newBuilder()
-                        .setJobId(request.getRequestId())
+                        .setJobId(request.getRequestId().longValue())
                         .setJobName(request.getRequestName())
                         .setWorkers(PegasusConfig.PEGASUS_WORKER_NUM.get(graphConfig))
                         .setBatchSize(PegasusConfig.PEGASUS_BATCH_SIZE.get(graphConfig))
@@ -93,6 +97,7 @@ public class RpcExecutionClient extends ExecutionClient<RpcChannel> {
                     @Override
                     public void finish() {
                         listener.onCompleted();
+                        logger.info("[compile]: received results from engine");
                     }
 
                     @Override

@@ -21,17 +21,58 @@
 #include <dlfcn.h>
 #include <string.h>
 
+#include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
+
 namespace gs {
 
+class GraphDBSession;
+class GraphDB;
 class AppBase {
  public:
-  AppBase() {}
-  virtual ~AppBase() {}
+  enum class AppType : uint8_t {
+    kCppProcedure = 0,
+    kCypherProcedure = 1,
+    kCypherAdhoc = 2,
+    kBuiltIn = 3,
+  };
 
-  virtual bool Query(Decoder& input, Encoder& output) = 0;
+  enum class AppMode : uint8_t {
+    kRead = 0,
+    kWrite = 1,
+  };
+
+  virtual AppType type() const = 0;
+  virtual AppMode mode() const = 0;
+  virtual bool run(GraphDBSession& db, Decoder& input, Encoder& output) = 0;
+  virtual ~AppBase() {}
+};
+
+class ReadAppBase : public AppBase {
+ public:
+  AppMode mode() const override;
+
+  AppType type() const override;
+
+  bool run(GraphDBSession& db, Decoder& input, Encoder& output) override;
+
+  virtual bool Query(const GraphDBSession& db, Decoder& input,
+                     Encoder& output) = 0;
+};
+
+class WriteAppBase : public AppBase {
+ public:
+  AppMode mode() const override;
+
+  AppType type() const override;
+
+  bool run(GraphDBSession& db, Decoder& input, Encoder& output) override;
+
+  virtual bool Query(GraphDBSession& db, Decoder& input, Encoder& output) = 0;
 };
 
 class AppWrapper {
@@ -76,7 +117,7 @@ class AppFactoryBase {
   AppFactoryBase() {}
   virtual ~AppFactoryBase() {}
 
-  virtual AppWrapper CreateApp(GraphDBSession& db) = 0;
+  virtual AppWrapper CreateApp(const GraphDB& db) = 0;
 };
 
 class SharedLibraryAppFactory : public AppFactoryBase {
@@ -85,16 +126,66 @@ class SharedLibraryAppFactory : public AppFactoryBase {
 
   ~SharedLibraryAppFactory();
 
-  AppWrapper CreateApp(GraphDBSession& db) override;
+  AppWrapper CreateApp(const GraphDB& db) override;
 
  private:
   std::string app_path_;
   void* app_handle_;
 
-  void* (*func_creator_)(GraphDBSession&);
+  void* (*func_creator_)(const GraphDB&);
   void (*func_deletor_)(void*);
 };
 
+struct AppMetric {
+  AppMetric()
+      : total_(0),
+        min_val_(std::numeric_limits<int64_t>::max()),
+        max_val_(0),
+        count_(0) {}
+  ~AppMetric() {}
+
+  void add_record(int64_t val) {
+    total_ += val;
+    min_val_ = std::min(min_val_, val);
+    max_val_ = std::max(max_val_, val);
+    ++count_;
+  }
+
+  bool empty() const { return (count_ == 0); }
+
+  AppMetric& operator+=(const AppMetric& rhs) {
+    total_ += rhs.total_;
+    min_val_ = std::min(min_val_, rhs.min_val_);
+    max_val_ = std::max(max_val_, rhs.max_val_);
+    count_ += rhs.count_;
+
+    return *this;
+  }
+
+  void output(const std::string& name) const {
+    LOG(INFO) << "Query - " << name << ":";
+    LOG(INFO) << "\tcount: " << count_;
+    LOG(INFO) << "\tmin: " << min_val_;
+    LOG(INFO) << "\tmax: " << max_val_;
+    LOG(INFO) << "\tavg: "
+              << static_cast<double>(total_) / static_cast<double>(count_);
+  }
+
+  int64_t total_;
+  int64_t min_val_;
+  int64_t max_val_;
+  int64_t count_;
+};
+
 }  // namespace gs
+
+namespace std {
+std::istream& operator>>(std::istream& in, gs::AppBase::AppType& type);
+std::ostream& operator<<(std::ostream& out, const gs::AppBase::AppType& type);
+
+std::istream& operator>>(std::istream& in, gs::AppBase::AppMode& mode);
+std::ostream& operator<<(std::ostream& out, const gs::AppBase::AppMode& mode);
+
+}  // namespace std
 
 #endif  // GRAPHSCOPE_APP_BASE_H_

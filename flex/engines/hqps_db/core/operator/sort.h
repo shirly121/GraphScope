@@ -331,15 +331,6 @@ class SortOp {
     return ctx.Flat(std::move(index_eles));
   }
 
-  template <size_t Is = 0, typename... IND_ELE, typename... GETTER>
-  static inline void update_prop_getter(std::tuple<GETTER...>& getters,
-                                        std::tuple<IND_ELE...>& ind_eles) {
-    std::get<Is>(getters).set_ind_ele(ind_eles);
-    if constexpr (Is + 1 < sizeof...(GETTER)) {
-      update_prop_getter<Is + 1>(getters, ind_eles);
-    }
-  }
-
   template <typename... ORDER_PAIR, typename CTX_HEAD_T, int cur_alias,
             int base_tag, typename... CTX_PREV, size_t... Is>
   static auto create_prop_getter_tuple(
@@ -401,9 +392,9 @@ class SortOp {
       const ORDER_PAIR& ordering_pair,
       const FlatEdgeSet<VID_T, LabelT, EDATA_T>& set,
       const GRAPH_INTERFACE& graph) {
-    return FlatEdgeSetPropGetter<
-        ORDER_PAIR::tag_id,
-        typename FlatEdgeSet<VID_T, LabelT, EDATA_T>::index_ele_tuple_t>();
+    return create_prop_getter_impl<ORDER_PAIR::tag_id,
+                                   typename ORDER_PAIR::prop_t>(
+        set, graph, ordering_pair.name);
   }
 
   template <typename ORDER_PAIR, size_t N, typename GI, typename VID_T,
@@ -412,17 +403,18 @@ class SortOp {
       const ORDER_PAIR& ordering_pair,
       const GeneralEdgeSet<N, GI, VID_T, LabelT, EDATA_T...>& set,
       const GRAPH_INTERFACE& graph) {
-    return GeneralEdgeSetPropGetter<
-        ORDER_PAIR::tag_id,
-        typename GeneralEdgeSet<N, GI, VID_T, LabelT,
-                                EDATA_T...>::index_ele_tuple_t>();
+    return create_prop_getter_impl<ORDER_PAIR::tag_id,
+                                   typename ORDER_PAIR::prop_t>(
+        set, graph, ordering_pair.name);
   }
 
   template <typename ORDER_PAIR, typename T>
   static auto create_prop_getter_impl_for_order_pair(
       const ORDER_PAIR& ordering_pair, const Collection<T>& set,
       const GRAPH_INTERFACE& graph) {
-    CHECK(ordering_pair.name == "None" || ordering_pair.name == "none");
+    if (ordering_pair.name != "None" || ordering_pair.name != "none") {
+      throw std::runtime_error("Expect None property getter for Collection.");
+    }
     return CollectionPropGetter<ORDER_PAIR::tag_id, T>();
   }
 };

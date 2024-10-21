@@ -16,33 +16,65 @@
 
 package com.alibaba.graphscope.gremlin.plugin;
 
-import com.alibaba.graphscope.gremlin.Utils;
 import com.codahale.metrics.Timer;
 
 import java.util.concurrent.TimeUnit;
 
 // collect metrics per gremlin query
-public class MetricsCollector {
-    private final Timer.Context timeContext;
-    private long startMillis;
-    private long elapsedMillis;
+public interface MetricsCollector {
+    long getStartMillis();
 
-    public MetricsCollector(Timer timer) {
-        this.timeContext = timer.time();
+    long getElapsedMillis();
+
+    void stop();
+
+    class Gremlin implements MetricsCollector {
+        private final Timer.Context timeContext;
+        private final long startMillis;
+        private long elapsedMillis;
+
+        public Gremlin(Timer timer) {
+            this.timeContext = timer.time();
+            this.startMillis = System.currentTimeMillis();
+        }
+
+        @Override
+        public long getStartMillis() {
+            return this.startMillis;
+        }
+
+        @Override
+        public long getElapsedMillis() {
+            return this.elapsedMillis;
+        }
+
+        @Override
+        public void stop() {
+            this.elapsedMillis = TimeUnit.NANOSECONDS.toMillis(timeContext.stop());
+        }
     }
 
-    public long getStartMillis() {
-        return this.startMillis;
-    }
+    class Cypher implements MetricsCollector {
+        private final long startMills;
+        private long endMills;
 
-    public long getElapsedMillis() {
-        return this.elapsedMillis;
-    }
+        public Cypher(long startMills) {
+            this.startMills = startMills;
+        }
 
-    public void stop() {
-        this.startMillis =
-                TimeUnit.NANOSECONDS.toMillis(
-                        Utils.getFieldValue(Timer.Context.class, timeContext, "startTime"));
-        this.elapsedMillis = TimeUnit.NANOSECONDS.toMillis(timeContext.stop());
+        @Override
+        public void stop() {
+            this.endMills = System.currentTimeMillis();
+        }
+
+        @Override
+        public long getStartMillis() {
+            return this.startMills;
+        }
+
+        @Override
+        public long getElapsedMillis() {
+            return this.endMills - this.startMills;
+        }
     }
 }

@@ -16,20 +16,21 @@
 
 package com.alibaba.graphscope.common.ir.rel.graph;
 
+import com.alibaba.graphscope.common.ir.rel.type.AliasNameWithId;
 import com.alibaba.graphscope.common.ir.rel.type.TableConfig;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.type.GraphSchemaType;
 import com.google.common.collect.ImmutableList;
 
-import org.apache.calcite.plan.GraphOptCluster;
-import org.apache.calcite.plan.RelOptTable;
-import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.plan.*;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.hint.RelHint;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.*;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.ImmutableIntList;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -55,12 +56,17 @@ public abstract class AbstractBindableTableScan extends TableScan {
 
     protected final int aliasId;
 
+    protected final AliasNameWithId startAlias;
+
+    protected @Nullable RelOptCost cachedCost = null;
+
     protected AbstractBindableTableScan(
             GraphOptCluster cluster,
             List<RelHint> hints,
             @Nullable RelNode input,
             TableConfig tableConfig,
-            @Nullable String aliasName) {
+            @Nullable String aliasName,
+            AliasNameWithId startAlias) {
         super(
                 cluster,
                 RelTraitSet.createEmpty(),
@@ -74,6 +80,7 @@ public abstract class AbstractBindableTableScan extends TableScan {
                 AliasInference.inferDefault(
                         aliasName, AliasInference.getUniqueAliasList(input, true));
         this.aliasId = cluster.getIdGenerator().generate(this.aliasName);
+        this.startAlias = Objects.requireNonNull(startAlias);
     }
 
     protected AbstractBindableTableScan(
@@ -81,7 +88,7 @@ public abstract class AbstractBindableTableScan extends TableScan {
             List<RelHint> hints,
             TableConfig tableConfig,
             String aliasName) {
-        this(cluster, hints, null, tableConfig, aliasName);
+        this(cluster, hints, null, tableConfig, aliasName, AliasNameWithId.DEFAULT);
     }
 
     @Override
@@ -95,10 +102,15 @@ public abstract class AbstractBindableTableScan extends TableScan {
             tableTypes.addAll(type.getSchemaTypeAsList());
         }
         ObjectUtils.requireNonEmpty(tableTypes);
+        boolean nullable = schemaTypeNullable();
         GraphSchemaType graphType =
                 (tableTypes.size() == 1)
-                        ? tableTypes.get(0)
-                        : GraphSchemaType.create(tableTypes, typeFactory);
+                        ? new GraphSchemaType(
+                                tableTypes.get(0).getScanOpt(),
+                                tableTypes.get(0).getLabelType(),
+                                tableTypes.get(0).getFieldList(),
+                                nullable)
+                        : GraphSchemaType.create(tableTypes, typeFactory, nullable);
         RelRecordType rowType =
                 new RelRecordType(
                         ImmutableList.of(
@@ -106,7 +118,20 @@ public abstract class AbstractBindableTableScan extends TableScan {
         return rowType;
     }
 
-    public void setRowType(GraphSchemaType graphType) {
+    private boolean schemaTypeNullable() {
+        if (this instanceof GraphLogicalExpand) {
+            return ((GraphLogicalExpand) this).isOptional();
+        } else if (input instanceof GraphLogicalExpand) {
+            return ((GraphLogicalExpand) input).isOptional();
+        } else if (input instanceof GraphPhysicalExpand) {
+            return ((GraphPhysicalExpand) input).isOptional();
+        } else if (input instanceof GraphLogicalPathExpand) {
+            return ((GraphLogicalPathExpand) input).isOptional();
+        }
+        return false;
+    }
+
+    public void setSchemaType(GraphSchemaType graphType) {
         rowType =
                 new RelRecordType(
                         ImmutableList.of(
@@ -130,10 +155,40 @@ public abstract class AbstractBindableTableScan extends TableScan {
     @Override
     public RelWriter explainTerms(RelWriter pw) {
         return pw.itemIf("input", input, !Objects.isNull(input))
-                .item("tableConfig", tableConfig)
+                .item("tableConfig", explainTableConfig())
                 .item("alias", AliasInference.SIMPLE_NAME(getAliasName()))
+                // print 'aliasId' if the explain level is digest, in that 'aliasId' can contribute
+                // to a rel's digest
+                .itemIf(
+                        "aliasId",
+                        getAliasId(),
+                        pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES)
+                .itemIf(
+                        "startAlias",
+                        startAlias.getAliasName(),
+                        startAlias.getAliasName() != AliasInference.DEFAULT_NAME)
+                .itemIf(
+                        "startAliasId",
+                        startAlias.getAliasId(),
+                        pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES)
                 .itemIf("fusedProject", project, !ObjectUtils.isEmpty(project))
                 .itemIf("fusedFilter", filters, !ObjectUtils.isEmpty(filters));
+    }
+
+    protected Object explainTableConfig() {
+        if (this instanceof GraphLogicalExpand) {
+            GraphSchemaType deriveSchema =
+                    (GraphSchemaType) deriveRowType().getFieldList().get(0).getType();
+            GraphSchemaType curSchema =
+                    (GraphSchemaType) getRowType().getFieldList().get(0).getType();
+            if (!curSchema
+                    .getLabelType()
+                    .getLabelsEntry()
+                    .equals(deriveSchema.getLabelType().getLabelsEntry())) {
+                return curSchema.getLabelType();
+            }
+        }
+        return tableConfig;
     }
 
     @Override
@@ -155,5 +210,30 @@ public abstract class AbstractBindableTableScan extends TableScan {
 
     public @Nullable ImmutableList<RexNode> getFilters() {
         return filters;
+    }
+
+    public AliasNameWithId getStartAlias() {
+        return startAlias;
+    }
+
+    public void setCachedCost(RelOptCost cost) {
+        this.cachedCost = cost;
+    }
+
+    public @Nullable RelOptCost getCachedCost() {
+        return this.cachedCost;
+    }
+
+    @Override
+    public double estimateRowCount(RelMetadataQuery mq) {
+        return cachedCost != null ? cachedCost.getRows() : mq.getRowCount(this);
+    }
+
+    @Override
+    public @Nullable RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+        double dRows = estimateRowCount(mq);
+        double dCpu = dRows + 1.0;
+        double dIo = 0.0;
+        return planner.getCostFactory().makeCost(dRows, dCpu, dIo);
     }
 }

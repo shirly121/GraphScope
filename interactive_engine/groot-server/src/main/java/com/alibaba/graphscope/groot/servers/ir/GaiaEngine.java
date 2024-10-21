@@ -19,7 +19,7 @@ package com.alibaba.graphscope.groot.servers.ir;
 import com.alibaba.graphscope.groot.common.RoleType;
 import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
-import com.alibaba.graphscope.groot.common.exception.GrootException;
+import com.alibaba.graphscope.groot.common.exception.GaiaInternalException;
 import com.alibaba.graphscope.groot.discovery.*;
 import com.alibaba.graphscope.groot.servers.jna.GaiaLibrary;
 import com.alibaba.graphscope.groot.servers.jna.GaiaPortsResponse;
@@ -37,15 +37,15 @@ import java.util.stream.Collectors;
 public class GaiaEngine implements ExecutorEngine {
     private static final Logger logger = LoggerFactory.getLogger(GaiaEngine.class);
 
-    private Configs configs;
+    private final Configs configs;
     private Pointer pointer;
-    private NodeDiscovery engineDiscovery;
-    private NodeDiscovery rpcDiscovery;
-    private LocalNodeProvider engineNodeProvider;
-    private LocalNodeProvider rpcNodeProvider;
-    private int nodeCount;
+    private final NodeDiscovery engineDiscovery;
+    private final NodeDiscovery rpcDiscovery;
+    private final LocalNodeProvider engineNodeProvider;
+    private final LocalNodeProvider rpcNodeProvider;
+    private final int nodeCount;
 
-    private Map<Integer, GrootNode> engineNodes = new ConcurrentHashMap<>();
+    private final Map<Integer, GrootNode> engineNodes = new ConcurrentHashMap<>();
 
     public GaiaEngine(Configs configs, DiscoveryFactory discoveryFactory) {
         this.configs = configs;
@@ -59,11 +59,7 @@ public class GaiaEngine implements ExecutorEngine {
     @Override
     public void init() {
         Configs engineConfigs =
-                Configs.newBuilder(this.configs)
-                        .put(
-                                "worker.num",
-                                String.valueOf(CommonConfig.STORE_NODE_COUNT.get(this.configs)))
-                        .build();
+                Configs.newBuilder(configs).put("worker.num", String.valueOf(nodeCount)).build();
         byte[] configBytes = engineConfigs.toProto().toByteArray();
         this.pointer = GaiaLibrary.INSTANCE.initialize(configBytes, configBytes.length);
     }
@@ -86,7 +82,7 @@ public class GaiaEngine implements ExecutorEngine {
     public void start() {
         try (GaiaPortsResponse gaiaPortsResponse = GaiaLibrary.INSTANCE.startEngine(this.pointer)) {
             if (!gaiaPortsResponse.success) {
-                throw new GrootException(gaiaPortsResponse.errMsg);
+                throw new GaiaInternalException(gaiaPortsResponse.errMsg);
             }
             engineNodeProvider.apply(gaiaPortsResponse.enginePort);
             rpcNodeProvider.apply(gaiaPortsResponse.rpcPort);
@@ -108,10 +104,17 @@ public class GaiaEngine implements ExecutorEngine {
     @Override
     public void nodesJoin(RoleType role, Map<Integer, GrootNode> nodes) {
         if (role == RoleType.GAIA_ENGINE) {
-            this.engineNodes.putAll(nodes);
+            for (Map.Entry<Integer, GrootNode> entry : nodes.entrySet()) {
+                GrootNode node = entry.getValue();
+                if (node.getRoleName().equals(RoleType.GAIA_ENGINE.getName())) {
+                    this.engineNodes.put(entry.getKey(), node);
+                } else {
+                    logger.warn("Unexpected node joined: {}", node);
+                }
+            }
             if (this.engineNodes.size() == this.nodeCount) {
                 String peerViewString =
-                        nodes.values().stream()
+                        engineNodes.values().stream()
                                 .map(
                                         n ->
                                                 String.format(
@@ -127,7 +130,7 @@ public class GaiaEngine implements ExecutorEngine {
     @Override
     public void nodesLeft(RoleType role, Map<Integer, GrootNode> nodes) {
         if (role == RoleType.GAIA_ENGINE) {
-            nodes.keySet().forEach(k -> this.engineNodes.remove(k));
+            nodes.keySet().forEach(this.engineNodes::remove);
         }
     }
 }

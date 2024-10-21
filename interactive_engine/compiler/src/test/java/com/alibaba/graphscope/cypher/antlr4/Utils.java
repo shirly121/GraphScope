@@ -16,6 +16,7 @@
 
 package com.alibaba.graphscope.cypher.antlr4;
 
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.cypher.antlr4.parser.CypherAntlr4Parser;
@@ -28,11 +29,23 @@ public abstract class Utils {
         return new GraphBuilderVisitor(graphBuilder).visit(new CypherAntlr4Parser().parse(query));
     }
 
+    public static final GraphBuilder eval(String query, GraphBuilder builder) {
+        return new GraphBuilderVisitor(builder).visit(new CypherAntlr4Parser().parse(query));
+    }
+
     public static LogicalPlan evalLogicalPlan(String query) {
         GraphBuilder graphBuilder = com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder();
         LogicalPlanVisitor logicalPlanVisitor =
                 new LogicalPlanVisitor(
                         graphBuilder, com.alibaba.graphscope.common.ir.Utils.schemaMeta);
+        return logicalPlanVisitor.visit(new CypherAntlr4Parser().parse(query));
+    }
+
+    public static LogicalPlan evalLogicalPlan(String query, String schemaPath) {
+        GraphBuilder graphBuilder =
+                com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder(schemaPath);
+        IrMeta irMeta = com.alibaba.graphscope.common.ir.Utils.mockSchemaMeta(schemaPath);
+        LogicalPlanVisitor logicalPlanVisitor = new LogicalPlanVisitor(graphBuilder, irMeta);
         return logicalPlanVisitor.visit(new CypherAntlr4Parser().parse(query));
     }
 }

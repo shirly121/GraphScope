@@ -26,6 +26,15 @@ public class CommonConfig {
 
     public static final Config<Integer> RPC_PORT = Config.intConfig("rpc.port", 0);
 
+    public static final Config<String> GAIA_RPC_PORT = Config.stringConfig("gaia.rpc.port", "");
+    public static final Config<String> GAIA_ENGINE_PORT =
+            Config.stringConfig("gaia.engine.port", "");
+    public static final Config<String> FRONTEND_RPC_PORT =
+            Config.stringConfig("frontend.rpc.port", "");
+    public static final Config<String> COORDINATOR_RPC_PORT =
+            Config.stringConfig("coordinator.rpc.port", "");
+    public static final Config<String> STORE_RPC_PORT = Config.stringConfig("store.rpc.port", "");
+
     public static final Config<Integer> RPC_THREAD_COUNT =
             Config.intConfig(
                     "rpc.thread.count",
@@ -44,28 +53,10 @@ public class CommonConfig {
     public static final Config<Integer> FRONTEND_NODE_COUNT =
             Config.intConfig(String.format(NODE_COUNT_FORMAT, RoleType.FRONTEND.getName()), 1);
 
-    public static final Config<Integer> INGESTOR_NODE_COUNT =
-            Config.intConfig(String.format(NODE_COUNT_FORMAT, RoleType.INGESTOR.getName()), 2);
-
     public static final Config<Integer> COORDINATOR_NODE_COUNT =
             Config.intConfig(String.format(NODE_COUNT_FORMAT, RoleType.COORDINATOR.getName()), 1);
 
-    public static final Config<Integer> INGESTOR_QUEUE_COUNT =
-            Config.intConfig("ingestor.queue.count", 2);
-
     public static final Config<Integer> PARTITION_COUNT = Config.intConfig("partition.count", 1);
-
-    public static final Config<String> GRAPH_NAME = Config.stringConfig("graph.name", "graphscope");
-
-    public static final Config<Long> METRIC_UPDATE_INTERVAL_MS =
-            Config.longConfig("metric.update.interval.ms", 5000L);
-
-    /**
-     * Get the engine type
-     *
-     * @return The engine type
-     */
-    public static final Config<String> ENGINE_TYPE = Config.stringConfig("engine.type", "gaia");
 
     public static final Config<String> LOG4RS_CONFIG = Config.stringConfig("log4rs.config", "");
 
@@ -77,4 +68,20 @@ public class CommonConfig {
     // Whether to create test kafka cluster on MaxNode
     public static final Config<Boolean> KAFKA_TEST_CLUSTER_ENABLE =
             Config.boolConfig("kafka.test.cluster.enable", true);
+
+    public static final Config<Boolean> SECONDARY_INSTANCE_ENABLED =
+            Config.boolConfig("secondary.instance.enabled", false);
+
+    // Create an extra store pod for each original store pod for backup.
+    // Only available in multi pod mode.
+    public static final Config<Boolean> WRITE_HA_ENABLED =
+            Config.boolConfig("write.ha.enabled", false);
+
+    public static final Config<Boolean> COLLECT_STATISTICS =
+            Config.boolConfig("collect.statistics", false);
+    public static final Config<Integer> COLLECT_STATISTICS_INITIAL_DELAY_MIN =
+            Config.intConfig("collect.statistics.initial.delay.min", 5);
+
+    public static final Config<Integer> COLLECT_STATISTICS_INTERVAL_MIN =
+            Config.intConfig("collect.statistics.interval.min", 60);
 }

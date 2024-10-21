@@ -83,7 +83,7 @@ pub trait Encode {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> io::Result<()>;
 }
 
-/// The deserialize interface used for decoding tryped structures from binary stream;
+/// The deserialize interface used for decoding typed structures from binary stream;
 ///
 /// # Examples
 /// ```
@@ -344,6 +344,7 @@ impl<T: Decode> Decode for Option<T> {
 
 mod shade;
 mod third_party;
+
 pub use shade::ShadeCodec;
 #[cfg(feature = "serde")]
 pub use third_party::serde_bin as serde;
