@@ -38,11 +38,14 @@ import com.alibaba.graphscope.common.ir.runtime.ffi.FfiPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.type.GraphTypeFactoryImpl;
 import com.alibaba.graphscope.common.utils.ClassUtils;
+import com.alibaba.graphscope.gremlin.Utils;
 import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
 import com.alibaba.graphscope.proto.frontend.Code;
 import com.google.common.collect.Maps;
 
 import org.apache.calcite.plan.GraphOptCluster;
+import org.apache.calcite.plan.RelOptSchema;
+import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexBuilder;
@@ -60,6 +63,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -107,7 +111,25 @@ public class GraphPlanner {
                         graphConfig, optCluster, new GraphOptSchema(optCluster, schema));
 
         LogicalPlan logicalPlan = logicalPlanFactory.create(graphBuilder, irMeta, query);
+        logSchema(irMeta);
         return new PlannerInstance(query, logicalPlan, graphBuilder, irMeta, queryLogger);
+    }
+
+    private void logSchema(IrMeta irMeta) {
+        VolcanoPlanner planner = (VolcanoPlanner) this.optimizer.getMatchPlanner();
+        if (planner != null) {
+            Set<RelOptSchema> registeredSchemas =
+                    Utils.getFieldValue(VolcanoPlanner.class, planner, "registeredSchemas");
+            if (registeredSchemas != null) {
+                logger.debug("register schema size: {}", registeredSchemas.size());
+            }
+        }
+        if (irMeta != null) {
+            logger.debug(
+                    "ir meta reference is {}, {}",
+                    System.identityHashCode(irMeta),
+                    System.identityHashCode(irMeta.getSchema()));
+        }
     }
 
     public class PlannerInstance {
