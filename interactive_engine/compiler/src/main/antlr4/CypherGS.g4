@@ -106,7 +106,7 @@ oC_RegularQuery
      ;
 
 oC_ReadQueryPart
-    :  oC_Match ( SP? ( oC_Match | oC_With | oC_Unwind ) )*
+    :  oC_Match ( SP? ( oC_Match | oC_With | oC_Unwind | oC_StandaloneCall ) )*
     ;
 
 oC_Match

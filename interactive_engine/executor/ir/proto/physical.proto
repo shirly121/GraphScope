@@ -24,6 +24,7 @@ import "expr.proto";
 import "schema.proto";
 import "type.proto";
 import "algebra.proto";
+import "stored_procedure.proto";
 import "google/protobuf/wrappers.proto";
 import "cypher_write.proto";
 
@@ -278,6 +279,11 @@ message Repartition {
 // A dummy node to delegate a source opr for multiple scan cases.
 message Root {}
 
+// denote an operator to call a registered procedure
+message ProcedureCall {
+  procedure.Query query = 1;
+}
+
 message PhysicalOpr {
   message Operator {
     oneof op_kind {
@@ -306,6 +312,7 @@ message PhysicalOpr {
       cypher.Set set = 33;
       cypher.Load load = 34;
       cypher.Delete delete = 35;
+      ProcedureCall procedure_call = 36;
     }
   }
   message MetaData {

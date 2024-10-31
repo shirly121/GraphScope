@@ -168,7 +168,7 @@ public class GraphPlanner {
                     }
                 }
             } else {
-                return new ProcedurePhysicalBuilder(logicalPlan).build();
+                return new ProcedurePhysicalBuilder(graphConfig, irMeta, logicalPlan).build();
             }
         }
     }
@@ -221,15 +221,16 @@ public class GraphPlanner {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4
+        if (args.length < 5
                 || args[0].isEmpty()
                 || args[1].isEmpty()
                 || args[2].isEmpty()
-                || args[3].isEmpty()) {
+                || args[3].isEmpty()
+                || args[4].isEmpty()){
             throw new IllegalArgumentException(
                     "usage: GraphPlanner '<path_to_config_file>' '<path_to_query_file>' "
                             + " '<path_to_physical_output_file>' '<path_to_procedure_file>'"
-                            + " 'optional <extra_key_value_config_file>'");
+                            + " '<whether_create_procedure_file>' 'optional <extra_key_value_config_file>'");
         }
         Configs configs = Configs.Factory.create(args[0]);
         GraphRelOptimizer optimizer = new GraphRelOptimizer(configs);
@@ -244,13 +245,16 @@ public class GraphPlanner {
         FileUtils.writeByteArrayToFile(new File(args[2]), physicalPlan.getContent());
         // write stored procedure meta to file
         LogicalPlan logicalPlan = summary.getLogicalPlan();
-        Configs extraConfigs = createExtraConfigs(args.length > 4 ? args[4] : null);
-        StoredProcedureMeta procedureMeta =
-                new StoredProcedureMeta(
-                        extraConfigs,
-                        query,
-                        logicalPlan.getOutputType(),
-                        logicalPlan.getDynamicParams());
-        StoredProcedureMeta.Serializer.perform(procedureMeta, new FileOutputStream(args[3]));
+        Configs extraConfigs = createExtraConfigs(args.length > 5 ? args[5] : null);
+        boolean write_yaml = Boolean.parseBoolean(args[4]);
+        if (write_yaml) {
+            StoredProcedureMeta procedureMeta =
+                    new StoredProcedureMeta(
+                            extraConfigs,
+                            query,
+                            logicalPlan.getOutputType(),
+                            logicalPlan.getDynamicParams());
+            StoredProcedureMeta.Serializer.perform(procedureMeta, new FileOutputStream(args[3]));
+        }
     }
 }

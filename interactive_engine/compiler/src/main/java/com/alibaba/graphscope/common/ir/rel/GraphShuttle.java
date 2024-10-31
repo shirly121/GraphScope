@@ -126,6 +126,10 @@ public abstract class GraphShuttle extends RelShuttleImpl {
         return visitChildren(unfold);
     }
 
+    public RelNode visit(GraphProcedureCall procedureCall) {
+        return visitChildren(procedureCall);
+    }
+
     @Override
     public RelNode visit(RelNode other) {
         if (other instanceof MultiJoin) {

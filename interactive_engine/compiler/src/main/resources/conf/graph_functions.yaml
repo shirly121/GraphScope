@@ -1,4 +1,14 @@
 graph_functions:
+  - name: gs.function.abs
+    description: ""
+    params:
+      - name: value
+        type:
+          primitive_type: DT_SIGNED_INT32
+    returns:
+      - name: abs_value
+        type:
+          primitive_type: DT_SIGNED_INT32
   - name: gs.function.datetime
     description: ""
     params:

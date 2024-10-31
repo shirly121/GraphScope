@@ -127,6 +127,30 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         return insert;
     }
 
+@Override
+    public RelNode visit(GraphProcedureCall procedureCall) {
+        visitChildren(procedureCall);
+        physicalBuilder.addPlan(
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder()
+                        .setOpr(
+                                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
+                                        .setProcedureCall(
+                                                GraphAlgebraPhysical.ProcedureCall.newBuilder()
+                                                        .setQuery(
+                                                                Utils.protoProcedure(
+                                                                        procedureCall
+                                                                                .getProcedure(),
+                                                                        new RexToProtoConverter(
+                                                                                true,
+                                                                                isColumnId,
+                                                                                this.rexBuilder))))
+                                        .build())
+                        .addAllMetaData(
+                                Utils.physicalProtoRowType(procedureCall.getRowType(), isColumnId))
+                        .build());
+        return procedureCall;
+    }
+
     @Override
     public RelNode visit(GraphTableModify.Update update) {
         visitChildren(update);
@@ -871,8 +895,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         GraphAlgebraPhysical.Join.Builder joinBuilder = GraphAlgebraPhysical.Join.newBuilder();
         joinBuilder.setJoinKind(Utils.protoJoinKind(join.getJoinType()));
         List<RexNode> conditions = RelOptUtil.conjunctions(join.getCondition());
-        Preconditions.checkArgument(
-                !conditions.isEmpty(), "join condition in physical should not be empty");
+//        Preconditions.checkArgument(
+//                !conditions.isEmpty(), "join condition in physical should not be empty");
         List<RexNode> leftKeys = Lists.newArrayList();
         List<RexNode> rightKeys = Lists.newArrayList();
         for (RexNode condition : conditions) {

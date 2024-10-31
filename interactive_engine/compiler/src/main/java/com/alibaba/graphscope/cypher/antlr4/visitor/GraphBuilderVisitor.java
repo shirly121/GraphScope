@@ -21,6 +21,7 @@ import com.alibaba.graphscope.common.antlr4.ExprVisitorResult;
 import com.alibaba.graphscope.common.ir.meta.schema.LoadCSVTable;
 import com.alibaba.graphscope.common.ir.rel.DataSourceTableScan;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalAggregate;
+import com.alibaba.graphscope.common.ir.rel.GraphProcedureCall;
 import com.alibaba.graphscope.common.ir.rel.LoadCSVTableScan;
 import com.alibaba.graphscope.common.ir.rel.ddl.GraphTableModify;
 import com.alibaba.graphscope.common.ir.rel.type.DataFormat;
@@ -36,12 +37,15 @@ import com.alibaba.graphscope.common.ir.tools.GraphRexBuilder;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.grammar.CypherGSBaseVisitor;
 import com.alibaba.graphscope.grammar.CypherGSParser;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableScan;
@@ -62,15 +66,40 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
     private final GraphBuilder builder;
     private final ExpressionVisitor expressionVisitor;
     private final ExprUniqueAliasInfer aliasInfer;
+    private final Supplier<ProcedureCallVisitor> procedureCallVisitorSupplier;
 
-    public GraphBuilderVisitor(GraphBuilder builder) {
-        this(builder, new ExprUniqueAliasInfer());
+    public GraphBuilderVisitor(
+                GraphBuilder builder, Supplier<ProcedureCallVisitor> procedureCallVisitorSupplier) {
+            this(builder, new ExprUniqueAliasInfer(), procedureCallVisitorSupplier);
     }
 
-    public GraphBuilderVisitor(GraphBuilder builder, ExprUniqueAliasInfer aliasInfer) {
+    public GraphBuilderVisitor(
+                GraphBuilder builder,
+                ExprUniqueAliasInfer aliasInfer,
+                Supplier<ProcedureCallVisitor> procedureCallVisitorSupplier) {
         this.builder = Objects.requireNonNull(builder);
         this.aliasInfer = Objects.requireNonNull(aliasInfer);
         this.expressionVisitor = new ExpressionVisitor(this);
+        this.procedureCallVisitorSupplier = Objects.requireNonNull(procedureCallVisitorSupplier);
+    }
+
+    @VisibleForTesting
+    public GraphBuilderVisitor(GraphBuilder builder) {
+        this(builder, new ExprUniqueAliasInfer(), () -> null);
+    }
+
+    public GraphBuilder visitOC_StandaloneCall(CypherGSParser.OC_StandaloneCallContext ctx) {
+            ProcedureCallVisitor procedureCallVisitor = procedureCallVisitorSupplier.get();
+            Preconditions.checkArgument(
+                    procedureCallVisitor != null,
+                    "cannot do procedure call without procedure call visitor");
+            RexNode procedure = procedureCallVisitor.visitOC_StandaloneCall(ctx);
+            return builder.push(
+                    new GraphProcedureCall(
+                            builder.getCluster(),
+                            RelTraitSet.createEmpty(),
+                            builder.build(),
+                            procedure));
     }
 
     @Override

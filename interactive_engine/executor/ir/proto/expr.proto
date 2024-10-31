@@ -252,6 +252,13 @@ message UserDefinedFunction {
   string name = 1;
   repeated Expression parameters = 2;
 }
+// denote a user-defined function call which is an expression type
+message FunctionCall {
+  // name of the function
+  string signature_name = 1;
+  // arguments to call the function
+  repeated Expression call_arguments = 2;
+}
 
 // An operator of expression is one of Logical, Arithmetic, Const and Variable.
 message ExprOpr {
@@ -278,6 +285,7 @@ message ExprOpr {
     PathConcat path_concat = 16;
     PathFunction path_func = 17;
     UserDefinedFunction udf_func = 18;
+    FunctionCall function_call = 19;
   }
   // The data of type of ExprOpr
   common.IrDataType node_type = 12;
