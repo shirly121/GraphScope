@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use ::crossbeam_epoch as epoch;
@@ -76,19 +76,25 @@ type VertexMap = HashMap<LabelId, Arc<VertexTypeInfo>>;
 
 pub struct VertexTypeManager {
     map: Atomic<VertexMap>,
+    is_dropping: AtomicBool,
 }
 
 impl Drop for VertexTypeManager {
     fn drop(&mut self) {
+        self.is_dropping.store(true, Ordering::SeqCst);
         unsafe {
-            drop(std::mem::replace(&mut self.map, Atomic::null()).into_owned());
+            drop(
+                self.map
+                    .load(Ordering::Acquire, &epoch::pin())
+                    .into_owned(),
+            );
         }
     }
 }
 
 impl VertexTypeManager {
     pub fn new() -> Self {
-        VertexTypeManager { map: Atomic::new(VertexMap::new()) }
+        VertexTypeManager { map: Atomic::new(VertexMap::new()), is_dropping: AtomicBool::new(false) }
     }
 
     pub fn contains_type(&self, _si: SnapshotId, label: LabelId) -> bool {
@@ -217,6 +223,10 @@ impl VertexTypeManager {
     }
 
     pub fn get_map<'g>(&self, guard: &'g Guard) -> GraphResult<Shared<'g, VertexMap>> {
+        if self.is_dropping.load(Ordering::SeqCst) {
+            let msg = "Access to map denied as it's in the process of dropping.".to_string();
+            return Err(gen_graph_err!(GraphErrorCode::InvalidData, msg, get_map));
+        }
         let map = self.map.load(Ordering::Acquire, guard);
         if map.is_null() {
             let msg = "get map return `null`".to_string();
@@ -272,7 +282,7 @@ impl VertexTypeManagerBuilder {
     }
 
     pub fn build(self) -> VertexTypeManager {
-        VertexTypeManager { map: Atomic::new(self.map) }
+        VertexTypeManager { map: Atomic::new(self.map), is_dropping: AtomicBool::new(false) }
     }
 }
 

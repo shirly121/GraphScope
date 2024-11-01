@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -201,20 +202,26 @@ type EdgeKindMap = HashMap<EdgeKind, Vec<Arc<EdgeKindInfo>>>;
 
 pub struct EdgeTypeManager {
     inner: Atomic<EdgeManagerInner>,
+    is_dropping: AtomicBool,
 }
 
 // https://docs.rs/crossbeam-epoch/0.7.2/crossbeam_epoch/struct.Atomic.html#method.into_owned
 impl Drop for EdgeTypeManager {
     fn drop(&mut self) {
+        self.is_dropping.store(true, Ordering::SeqCst);
         unsafe {
-            drop(std::mem::replace(&mut self.inner, Atomic::null()).into_owned());
+            drop(
+                self.inner
+                    .load(Ordering::Acquire, &epoch::pin())
+                    .into_owned(),
+            );
         }
     }
 }
 
 impl EdgeTypeManager {
     pub fn new() -> Self {
-        EdgeTypeManager { inner: Atomic::new(EdgeManagerInner::new()) }
+        EdgeTypeManager { inner: Atomic::new(EdgeManagerInner::new()), is_dropping: AtomicBool::new(false) }
     }
 
     pub fn get_edge_kind(&self, si: SnapshotId, kind: &EdgeKind) -> GraphResult<Arc<EdgeKindInfo>> {
@@ -306,6 +313,10 @@ impl EdgeTypeManager {
     }
 
     pub(crate) fn get_inner<'a>(&'a self, guard: &'a Guard) -> GraphResult<Shared<'a, EdgeManagerInner>> {
+        if self.is_dropping.load(Ordering::SeqCst) {
+            let msg = "Access to EdgeManagerInner denied as it's in the process of dropping.".to_string();
+            return Err(gen_graph_err!(GraphErrorCode::InvalidData, msg, get_inner));
+        }
         let inner = self.inner.load(Ordering::Relaxed, guard);
         if inner.is_null() {
             let msg = "get inner return `null`".to_string();
@@ -362,7 +373,7 @@ impl EdgeManagerBuilder {
     }
 
     pub fn build(self) -> EdgeTypeManager {
-        EdgeTypeManager { inner: Atomic::new(self.inner) }
+        EdgeTypeManager { inner: Atomic::new(self.inner), is_dropping: AtomicBool::new(false) }
     }
 }
 
