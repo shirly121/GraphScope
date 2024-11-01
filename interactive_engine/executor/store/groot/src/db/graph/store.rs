@@ -105,7 +105,7 @@ impl MultiVersionGraph for GraphStore {
             self.get_edge_from_relation(si, edge_id, relation, property_ids)
         } else {
             let guard = epoch::pin();
-            let inner = self.edge_manager.get_inner(&guard);
+            let inner = self.edge_manager.get_inner(&guard)?;
             let edge_mgr = unsafe { inner.deref() };
             let mut iter = edge_mgr.get_all_edges();
             while let Some(info) = next_edge_info(si, &mut iter) {
@@ -916,7 +916,7 @@ impl GraphStore {
             }
             None => {
                 let guard = epoch::pin();
-                let inner = self.edge_manager.get_inner(&guard);
+                let inner = self.edge_manager.get_inner(&guard)?;
                 let edge_mgr = unsafe { inner.deref() };
                 let mut iter = edge_mgr.get_all_edges();
                 let mut res: Records<RocksEdgeImpl> = Box::new(::std::iter::empty());

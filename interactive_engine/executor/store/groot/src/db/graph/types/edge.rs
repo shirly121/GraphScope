@@ -219,7 +219,7 @@ impl EdgeTypeManager {
 
     pub fn get_edge_kind(&self, si: SnapshotId, kind: &EdgeKind) -> GraphResult<Arc<EdgeKindInfo>> {
         let guard = epoch::pin();
-        let inner = self.get_inner(&guard);
+        let inner = self.get_inner(&guard)?;
         let edge_mgr = unsafe { inner.deref() };
         let ret = res_unwrap!(edge_mgr.get_edge_kind(si, kind), get_edge_kind, si, kind)?;
 
@@ -229,7 +229,7 @@ impl EdgeTypeManager {
     pub fn get_edge_info(&self, si: SnapshotId, label: LabelId) -> GraphResult<Arc<EdgeInfo>> {
         debug!("EdgeTypeManager::get_edge_info");
         let guard = epoch::pin();
-        let inner = self.get_inner(&guard);
+        let inner = self.get_inner(&guard)?;
         let edge_mgr = unsafe { inner.deref() };
         let ret = res_unwrap!(edge_mgr.get_edge_info(si, label), get_edge_info, si, label)?;
 
@@ -249,9 +249,13 @@ impl EdgeTypeManager {
 
     pub fn contains_edge(&self, label: LabelId) -> bool {
         let guard = &epoch::pin();
-        let inner = self.get_inner(guard);
-        if let Some(map) = unsafe { inner.as_ref() } {
-            map.contains_edge(label)
+
+        if let Ok(inner) = self.get_inner(guard) {
+            if let Some(map) = unsafe { inner.as_ref() } {
+                map.contains_edge(label)
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -259,10 +263,12 @@ impl EdgeTypeManager {
 
     pub fn contains_edge_kind(&self, si: SnapshotId, kind: &EdgeKind) -> bool {
         let guard = &epoch::pin();
-        let inner = self.get_inner(guard);
-        let edge_mgr = unsafe { inner.deref() };
-
-        edge_mgr.contains_edge_kind(si, kind)
+        if let Ok(inner) = self.get_inner(guard) {
+            let edge_mgr = unsafe { inner.deref() };
+            edge_mgr.contains_edge_kind(si, kind)
+        } else {
+            false
+        }
     }
 
     pub fn create_edge_type(&self, si: SnapshotId, label: LabelId, type_def: &TypeDef) -> GraphResult<()> {
@@ -299,8 +305,14 @@ impl EdgeTypeManager {
         Ok(res)
     }
 
-    pub(crate) fn get_inner<'a>(&'a self, guard: &'a Guard) -> Shared<'a, EdgeManagerInner> {
-        self.inner.load(Ordering::Relaxed, guard)
+    pub(crate) fn get_inner<'a>(&'a self, guard: &'a Guard) -> GraphResult<Shared<'a, EdgeManagerInner>> {
+        let inner = self.inner.load(Ordering::Relaxed, guard);
+        if inner.is_null() {
+            let msg = "get inner return `null`".to_string();
+            Err(gen_graph_err!(GraphErrorCode::InvalidData, msg, get_inner))
+        } else {
+            Ok(inner)
+        }
     }
 
     fn modify<E, F: Fn(&mut EdgeManagerInner) -> E>(&self, f: F) -> E {
