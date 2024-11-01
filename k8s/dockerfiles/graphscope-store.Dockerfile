@@ -1,6 +1,7 @@
+ARG ARCH=amd64
 ARG REGISTRY=registry.cn-hongkong.aliyuncs.com
-ARG BUILDER_VERSION=latest
-FROM $REGISTRY/graphscope/graphscope-dev:$BUILDER_VERSION as builder
+ARG VINEYARD_VERSION=latest
+FROM $REGISTRY/graphscope/graphscope-dev:$VINEYARD_VERSION-$ARCH as builder
 
 ARG CI=false
 ARG ENABLE_COORDINATOR=false
@@ -41,7 +42,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
 
 RUN apt-get update -y && \
     apt-get install -y sudo default-jdk dnsutils tzdata lsof \
-        libjemalloc-dev libunwind-dev binutils less && \
+        libjemalloc-dev libunwind-dev binutils less vim && \
     apt-get clean -y && \
     rm -rf /var/lib/apt/lists/*
 
@@ -64,9 +65,6 @@ RUN if [ "${ENABLE_COORDINATOR}" = "true" ]; then \
 
 USER graphscope
 WORKDIR /home/graphscope
-
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar /home/graphscope/
-RUN sudo chown $(id -u):$(id -g) /home/graphscope/opentelemetry-javaagent.jar
 
 ENV PATH=${PATH}:/home/graphscope/.local/bin
 ENV SOLUTION=GRAPHSCOPE_INSIGHT

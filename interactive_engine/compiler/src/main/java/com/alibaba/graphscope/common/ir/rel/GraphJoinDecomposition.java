@@ -17,6 +17,7 @@
 package com.alibaba.graphscope.common.ir.rel;
 
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
+import com.alibaba.graphscope.common.ir.rel.type.JoinVertexEntry;
 
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -27,6 +28,7 @@ import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.util.Pair;
 
 import java.util.Collections;
 import java.util.List;
@@ -35,6 +37,7 @@ import java.util.Map;
 public class GraphJoinDecomposition extends BiRel {
     private final List<JoinVertexPair> joinVertexPairs;
     private final OrderMappings orderMappings;
+    private final Pattern parentPatten;
     private final Pattern probePattern;
     private final Pattern buildPattern;
     private final JoinRelType joinType;
@@ -42,6 +45,7 @@ public class GraphJoinDecomposition extends BiRel {
     public GraphJoinDecomposition(
             RelOptCluster cluster,
             RelTraitSet traitSet,
+            Pattern parentPattern,
             Pattern probePattern,
             Pattern buildPattern,
             List<JoinVertexPair> joinVertexPairs,
@@ -49,6 +53,7 @@ public class GraphJoinDecomposition extends BiRel {
         this(
                 cluster,
                 traitSet,
+                parentPattern,
                 probePattern,
                 buildPattern,
                 joinVertexPairs,
@@ -59,6 +64,7 @@ public class GraphJoinDecomposition extends BiRel {
     public GraphJoinDecomposition(
             RelOptCluster cluster,
             RelTraitSet traitSet,
+            Pattern parentPattern,
             Pattern probePattern,
             Pattern buildPattern,
             List<JoinVertexPair> joinVertexPairs,
@@ -67,6 +73,7 @@ public class GraphJoinDecomposition extends BiRel {
         this(
                 cluster,
                 traitSet,
+                parentPattern,
                 new GraphPattern(cluster, traitSet, probePattern),
                 probePattern,
                 new GraphPattern(cluster, traitSet, buildPattern),
@@ -76,9 +83,10 @@ public class GraphJoinDecomposition extends BiRel {
                 joinType);
     }
 
-    protected GraphJoinDecomposition(
+    public GraphJoinDecomposition(
             RelOptCluster cluster,
             RelTraitSet traitSet,
+            Pattern parentPattern,
             RelNode left,
             Pattern leftPattern,
             RelNode right,
@@ -87,6 +95,7 @@ public class GraphJoinDecomposition extends BiRel {
             OrderMappings orderMappings,
             JoinRelType joinType) {
         super(cluster, traitSet, left, right);
+        this.parentPatten = parentPattern;
         this.joinVertexPairs = joinVertexPairs;
         this.orderMappings = orderMappings;
         this.probePattern = leftPattern;
@@ -102,6 +111,10 @@ public class GraphJoinDecomposition extends BiRel {
         return orderMappings;
     }
 
+    public Pattern getParentPatten() {
+        return parentPatten;
+    }
+
     public Pattern getProbePattern() {
         return probePattern;
     }
@@ -114,30 +127,37 @@ public class GraphJoinDecomposition extends BiRel {
         return joinType;
     }
 
-    public static class JoinVertexPair {
-        private final int leftOrderId;
-        private final int rightOrderId;
+    public static class JoinVertexPair
+            extends Pair<JoinVertexEntry<Integer>, JoinVertexEntry<Integer>> {
+        private final boolean isForeignKey;
 
-        public JoinVertexPair(int leftOrderId, int rightOrderId) {
-            this.leftOrderId = leftOrderId;
-            this.rightOrderId = rightOrderId;
+        public JoinVertexPair(
+                JoinVertexEntry<Integer> left,
+                JoinVertexEntry<Integer> right,
+                boolean isForeignKey) {
+            super(left, right);
+            this.isForeignKey = isForeignKey;
         }
 
         public int getLeftOrderId() {
-            return leftOrderId;
+            return left.getVertex();
         }
 
         public int getRightOrderId() {
-            return rightOrderId;
+            return right.getVertex();
+        }
+
+        public boolean isForeignKey() {
+            return isForeignKey;
         }
 
         @Override
         public String toString() {
             return "JoinVertexPair{"
                     + "leftOrderId="
-                    + leftOrderId
+                    + getLeftOrderId()
                     + ", rightOrderId="
-                    + rightOrderId
+                    + getRightOrderId()
                     + '}';
         }
     }
@@ -182,6 +202,7 @@ public class GraphJoinDecomposition extends BiRel {
         return new GraphJoinDecomposition(
                 getCluster(),
                 traitSet,
+                parentPatten,
                 inputs.get(0),
                 this.probePattern,
                 inputs.get(1),

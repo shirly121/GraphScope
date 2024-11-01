@@ -26,8 +26,8 @@
 #include "flex/utils/result.h"
 #include "flex/utils/service_utils.h"
 
+#include <rapidjson/document.h>
 #include <yaml-cpp/yaml.h>
-#include "nlohmann/json.hpp"
 
 namespace gs {
 
@@ -55,20 +55,26 @@ JobStatus parseFromString(const std::string& status_string);
 
 ////////////////// MetaData ///////////////////////
 struct PluginMeta;
+const std::vector<PluginMeta>& get_builtin_plugin_metas();
+
 struct GraphMeta {
   GraphId id;
+  std::string version;
   std::string name;
   std::string description;
   uint64_t creation_time;
   uint64_t data_update_time;
   std::string data_import_config;
   std::string schema;
+  std::string store_type{"mutable_csr"};
 
   std::vector<PluginMeta> plugin_metas;
 
   std::string ToJson() const;
+  void ToJson(rapidjson::Value& json,
+              rapidjson::Document::AllocatorType& allocator) const;
   static GraphMeta FromJson(const std::string& json_str);
-  static GraphMeta FromJson(const nlohmann::json& json);
+  static GraphMeta FromJson(const rapidjson::Value& json);
 };
 
 struct PluginMeta {
@@ -89,16 +95,18 @@ struct PluginMeta {
   uint64_t creation_time;
   uint64_t update_time;
 
-  void setParamsFromJsonString(const std::string& json_str);
+  void setParamsFromJsonString(const rapidjson::Value& json);
 
-  void setReturnsFromJsonString(const std::string& json_str);
+  void setReturnsFromJsonString(const rapidjson::Value& json);
 
   void setOptionFromJsonString(const std::string& json_str);
 
   std::string ToJson() const;
+  void ToJson(rapidjson::Value& json,
+              rapidjson::Document::AllocatorType& allocator) const;
 
   static PluginMeta FromJson(const std::string& json_str);
-  static PluginMeta FromJson(const nlohmann::json& json);
+  static PluginMeta FromJson(const rapidjson::Value& json);
 };
 
 struct JobMeta {
@@ -118,18 +126,21 @@ struct JobMeta {
    */
   std::string ToJson(bool print_log = true) const;
   static JobMeta FromJson(const std::string& json_str);
-  static JobMeta FromJson(const nlohmann::json& json_str);
+  static JobMeta FromJson(const rapidjson::Value& json_str);
 };
 
 ////////////////// CreateMetaRequest ///////////////////////
 struct CreateGraphMetaRequest {
+  std::string version;
   std::string name;
   std::string description;
   std::string schema;  // all in one string.
   std::optional<uint64_t> data_update_time;
   int64_t creation_time;
 
-  static CreateGraphMetaRequest FromJson(const std::string& json_str);
+  std::vector<PluginMeta> plugin_metas;
+
+  static Result<CreateGraphMetaRequest> FromJson(const std::string& json_str);
 
   std::string ToString() const;
 };
@@ -160,7 +171,7 @@ struct CreatePluginMetaRequest {
 
   static CreatePluginMetaRequest FromJson(const std::string& json_str);
 
-  static CreatePluginMetaRequest FromJson(const nlohmann::json& json_obj);
+  static CreatePluginMetaRequest FromJson(const rapidjson::Value& json_obj);
 };
 
 ////////////////// UpdateMetaRequest ///////////////////////
@@ -220,6 +231,28 @@ struct UpdateJobMetaRequest {
 
   static UpdateJobMetaRequest NewCancel();
   static UpdateJobMetaRequest NewFinished(int rc);
+};
+
+struct GraphStatistics {
+  // type_id, type_name, count
+  using vertex_type_statistic = std::tuple<int32_t, std::string, int32_t>;
+  // src_vertex_type_name, dst_vertex_type_name, count
+  using vertex_type_pair_statistic =
+      std::tuple<std::string, std::string, int32_t>;
+  // edge_type_id, edge_type_name, Vec<vertex_type_pair_statistics>
+  using edge_type_statistic =
+      std::tuple<int32_t, std::string, std::vector<vertex_type_pair_statistic>>;
+
+  GraphStatistics() : total_vertex_count(0), total_edge_count(0) {}
+
+  uint64_t total_vertex_count;
+  uint64_t total_edge_count;
+  std::vector<vertex_type_statistic> vertex_type_statistics;
+  std::vector<edge_type_statistic> edge_type_statistics;
+
+  std::string ToJson() const;
+  static Result<GraphStatistics> FromJson(const std::string& json_str);
+  static Result<GraphStatistics> FromJson(const rapidjson::Value& json);
 };
 
 /*

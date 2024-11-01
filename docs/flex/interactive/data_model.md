@@ -30,7 +30,7 @@ Within the `graph.yaml` file, vertices are delineated under the `vertex_types` s
 
 Note:
 - In the current version, only one single primary key can be specified, but we plan to support multiple primary keys in the future. 
-- The data type of primary key column must be one of `DT_SIGNED_INT32`, `DT_UNSIGNED_INT32`, `DT_SIGNED_INT64` or `DT_UNSIGNED_INT64`.
+- The data type of primary key column must be one of `DT_SIGNED_INT32`, `DT_UNSIGNED_INT32`, `DT_SIGNED_INT64`,`DT_UNSIGNED_INT64`, or string types `var_char`,`long_text`(`fixed_char` is currently not supported).
 
 Edges are defined within the `edge_types` section, characterized by the mandatory fields: `type_name`, `vertex_type_pair_relations`, and `properties`. The type_name and properties fields function similarly to those in vertices. However, the vertex_type_pair_relations field is exclusive to edges, specifying the permissible source and destination vertex types, as well as the relationship detailing how many source and destination vertices can be linked by this edge. Here's an illustrative example:
 ```yaml
@@ -47,6 +47,7 @@ Note:
 - A single edge type can have multiple `vertex_type_pair_relations`. For instance, a "knows" edge might connect one person to another, symbolizing their friendship. Alternatively, it could associate a person with a skill, indicating their proficiency in that skill.
 - The permissible relations include: `ONE_TO_ONE`, `ONE_TO_MANY`, `MANY_TO_ONE`, and `MANY_TO_MANY`. These relations can be utilized by the optimizer to generate more efficient execution plans.
 - Currently we only support at most one property for each edge triplet.
+- We currently only support `var_char` and `long_text` as the edge property among all string types.
 - All implementation related configuration are put under `x_csr_params`.
   - `max_vertex_num` limit the number of vertices of this type:
     - The limit number is used to `mmap` memory, so it only takes virtual memory before vertices are actually inserted.

@@ -20,25 +20,14 @@ DefaultGraphMetaStore::DefaultGraphMetaStore(
     std::unique_ptr<IMetaStore> base_store)
     : base_store_(std::move(base_store)) {
   // Clear previous context, in case of dirty data.
-  ClearRunningGraph();
   clear_locks();
 }
 
-DefaultGraphMetaStore::~DefaultGraphMetaStore() {
-  if (base_store_ != nullptr) {
-    base_store_->Close();
-  }
-  auto res = Close();
-  if (!res.ok()) {
-    LOG(ERROR) << "Fail to close DefaultGraphMetaStore: "
-               << res.status().error_message();
-  }
-}
+DefaultGraphMetaStore::~DefaultGraphMetaStore() { Close(); }
 
 Result<bool> DefaultGraphMetaStore::Open() { return base_store_->Open(); }
 
 Result<bool> DefaultGraphMetaStore::Close() {
-  RETURN_IF_NOT_OK(ClearRunningGraph());
   RETURN_IF_NOT_OK(clear_locks());
   return base_store_->Close();
 }
@@ -85,13 +74,13 @@ Result<bool> DefaultGraphMetaStore::UpdateGraphMeta(
     const GraphId& graph_id, const UpdateGraphMetaRequest& request) {
   return base_store_->UpdateMeta(
       GRAPH_META, graph_id, [graph_id, &request](const std::string& old_meta) {
-        nlohmann::json json;
-        try {
-          json = nlohmann::json::parse(old_meta);
-        } catch (const std::exception& e) {
-          LOG(ERROR) << "Fail to parse old graph meta:" << e.what();
-          return Result<std::string>(Status(StatusCode::InternalError,
-                                            "Fail to parse old graph meta"));
+        rapidjson::Document json;
+        if (json.Parse(old_meta.c_str()).HasParseError()) {
+          LOG(ERROR) << "Fail to parse old graph meta:" << json.GetParseError();
+          return Result<std::string>(
+              Status(StatusCode::INTERNAL_ERROR,
+                     std::string("Fail to parse old graph meta: ") +
+                         std::to_string(json.GetParseError())));
         }
         auto graph_meta = GraphMeta::FromJson(json);
         if (request.graph_name.has_value()) {
@@ -112,27 +101,37 @@ Result<bool> DefaultGraphMetaStore::UpdateGraphMeta(
 
 Result<PluginId> DefaultGraphMetaStore::CreatePluginMeta(
     const CreatePluginMetaRequest& request) {
-  PluginId plugin_id;
   if (request.id.has_value()) {
-    ASSIGN_AND_RETURN_IF_RESULT_NOT_OK(
-        plugin_id, base_store_->CreateMeta(PLUGIN_META, request.id.value(),
-                                           request.ToString()));
+    auto real_meta_key =
+        generate_real_plugin_meta_key(request.bound_graph, request.id.value());
+    RETURN_IF_NOT_OK(base_store_->CreateMeta(PLUGIN_META, real_meta_key,
+                                             request.ToString()));
+    return Result<PluginId>(request.id.value());
   } else {
-    ASSIGN_AND_RETURN_IF_RESULT_NOT_OK(
-        plugin_id, base_store_->CreateMeta(PLUGIN_META, request.ToString()));
+    LOG(ERROR) << "Can not create plugin meta without id";
+    return Result<PluginId>(Status(StatusCode::INVALID_ARGUMENT,
+                                   "Can not create plugin meta without id"));
   }
-  return Result<PluginId>(plugin_id);
 }
 
 Result<PluginMeta> DefaultGraphMetaStore::GetPluginMeta(
     const GraphId& graph_id, const PluginId& plugin_id) {
-  auto res = base_store_->GetMeta(PLUGIN_META, plugin_id);
+  auto real_meta_key = generate_real_plugin_meta_key(graph_id, plugin_id);
+  auto res = base_store_->GetMeta(PLUGIN_META, real_meta_key);
   if (!res.ok()) {
     return Result<PluginMeta>(res.status());
   }
   std::string meta_str = res.move_value();
   auto meta = PluginMeta::FromJson(meta_str);
-  meta.id = plugin_id;
+  if (meta.bound_graph != graph_id) {
+    return Result<PluginMeta>(Status(StatusCode::INVALID_ARGUMENT,
+                                     "Plugin not belongs to the graph"));
+  }
+  if (meta.id != plugin_id) {
+    return Result<PluginMeta>(
+        Status(StatusCode::INVALID_ARGUMENT,
+               "Plugin id not match: " + plugin_id + " vs " + meta.id));
+  }
   return Result<PluginMeta>(meta);
 }
 
@@ -143,23 +142,24 @@ Result<std::vector<PluginMeta>> DefaultGraphMetaStore::GetAllPluginMeta(
     return Result<std::vector<PluginMeta>>(res.status());
   }
   std::vector<PluginMeta> metas;
-  VLOG(10) << "Found plugin metas: " << res.move_value().size();
   for (auto& pair : res.move_value()) {
     auto plugin_meta = PluginMeta::FromJson(pair.second);
-    // the key is id.
-    plugin_meta.id = pair.first;
     if (plugin_meta.bound_graph == graph_id) {
       metas.push_back(plugin_meta);
     }
   }
-  VLOG(10) << "Found plugin metas belong to graph " << graph_id << ": "
-           << metas.size();
+  // Sort the plugin metas by create time.
+  std::sort(metas.begin(), metas.end(),
+            [](const PluginMeta& a, const PluginMeta& b) {
+              return a.creation_time < b.creation_time;
+            });
   return Result<std::vector<PluginMeta>>(metas);
 }
 
 Result<bool> DefaultGraphMetaStore::DeletePluginMeta(
     const GraphId& graph_id, const PluginId& plugin_id) {
-  return base_store_->DeleteMeta(PLUGIN_META, plugin_id);
+  auto real_meta_key = generate_real_plugin_meta_key(graph_id, plugin_id);
+  return base_store_->DeleteMeta(PLUGIN_META, real_meta_key);
 }
 
 Result<bool> DefaultGraphMetaStore::DeletePluginMetaByGraphId(
@@ -171,14 +171,14 @@ Result<bool> DefaultGraphMetaStore::DeletePluginMetaByGraphId(
   }
   std::vector<PluginId> plugin_ids;
   for (auto& meta_str : res.value()) {
-    auto plugin_meta = PluginMeta::FromJson(meta_str);
+    auto plugin_meta = PluginMeta::FromJson(meta_str.second);
     if (plugin_meta.bound_graph == graph_id) {
       plugin_ids.push_back(plugin_meta.id);
     }
   }
   VLOG(10) << "Found plugin_ids: " << plugin_ids.size();
   for (auto& plugin_id : plugin_ids) {
-    RETURN_IF_NOT_OK(base_store_->DeleteMeta(PLUGIN_META, plugin_id));
+    RETURN_IF_NOT_OK(DeletePluginMeta(graph_id, plugin_id));
   }
   return Result<bool>(true);
 }
@@ -186,26 +186,28 @@ Result<bool> DefaultGraphMetaStore::DeletePluginMetaByGraphId(
 Result<bool> DefaultGraphMetaStore::UpdatePluginMeta(
     const GraphId& graph_id, const PluginId& plugin_id,
     const UpdatePluginMetaRequest& update_request) {
+  auto real_meta_key = generate_real_plugin_meta_key(graph_id, plugin_id);
   return base_store_->UpdateMeta(
-      PLUGIN_META, plugin_id,
+      PLUGIN_META, real_meta_key,
       [graph_id, plugin_id, &update_request](const std::string& old_meta) {
-        nlohmann::json json;
-        try {
-          json = nlohmann::json::parse(old_meta);
-        } catch (const std::exception& e) {
-          LOG(ERROR) << "Fail to parse old plugin meta:" << e.what();
-          return Result<std::string>(Status(StatusCode::InternalError,
-                                            "Fail to parse old plugin meta"));
+        rapidjson::Document json;
+        if (json.Parse(old_meta.c_str()).HasParseError()) {
+          LOG(ERROR) << "Fail to parse old plugin meta:"
+                     << json.GetParseError();
+          return Result<std::string>(
+              Status(StatusCode::INTERNAL_ERROR,
+                     std::string("Fail to parse old plugin meta: ") +
+                         std::to_string(json.GetParseError())));
         }
         auto plugin_meta = PluginMeta::FromJson(json);
         if (plugin_meta.bound_graph != graph_id) {
-          return Result<std::string>(Status(gs::StatusCode::InternalError,
+          return Result<std::string>(Status(gs::StatusCode::INTERNAL_ERROR,
                                             "Plugin not belongs to the graph"));
         }
         if (update_request.bound_graph.has_value()) {
           if (update_request.bound_graph.value() != graph_id) {
             return Result<std::string>(
-                Status(gs::StatusCode::IllegalOperation,
+                Status(gs::StatusCode::ILLEGAL_OPERATION,
                        "The plugin_id in update payload is not "
                        "the same with original"));
           }
@@ -279,13 +281,13 @@ Result<bool> DefaultGraphMetaStore::UpdateJobMeta(
     const JobId& job_id, const UpdateJobMetaRequest& update_request) {
   return base_store_->UpdateMeta(
       JOB_META, job_id, [&update_request](const std::string& old_meta) {
-        nlohmann::json json;
-        try {
-          json = nlohmann::json::parse(old_meta);
-        } catch (const std::exception& e) {
-          LOG(ERROR) << "Fail to parse old job meta:" << e.what();
+        rapidjson::Document json;
+        if (json.Parse(old_meta.c_str()).HasParseError()) {
+          LOG(ERROR) << "Fail to parse old job meta:" << json.GetParseError();
           return Result<std::string>(
-              Status(StatusCode::InternalError, "Fail to parse old job meta"));
+              Status(StatusCode::INTERNAL_ERROR,
+                     std::string("Fail to parse old job meta: ") +
+                         std::to_string(json.GetParseError())));
         }
         auto job_meta = JobMeta::FromJson(json);
         if (update_request.status.has_value()) {
@@ -453,6 +455,11 @@ Result<bool> DefaultGraphMetaStore::clear_locks() {
   RETURN_IF_NOT_OK(base_store_->DeleteAllMeta(INDICES_LOCK));
   RETURN_IF_NOT_OK(base_store_->DeleteAllMeta(PLUGINS_LOCK));
   return Result<bool>(true);
+}
+
+std::string DefaultGraphMetaStore::generate_real_plugin_meta_key(
+    const GraphId& graph_id, const PluginId& plugin_id) {
+  return graph_id + "_" + plugin_id;
 }
 
 }  // namespace gs

@@ -19,6 +19,8 @@ package com.alibaba.graphscope.common.ir.meta.schema;
 import com.alibaba.graphscope.groot.common.schema.api.*;
 import com.alibaba.graphscope.groot.common.schema.impl.*;
 import com.alibaba.graphscope.groot.common.schema.wrapper.DataType;
+import com.alibaba.graphscope.groot.common.schema.wrapper.EdgeKind;
+import com.alibaba.graphscope.groot.common.schema.wrapper.LabelId;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
@@ -61,15 +63,18 @@ public abstract class Utils {
                 edgeMap,
                 propNameToIdMap,
                 typeConvertor);
-        builderGraphElementFromYaml(
-                (List)
-                        Objects.requireNonNull(
-                                schemaMap.get("edge_types"), "edge_types not exist in yaml config"),
-                "EDGE",
-                vertexMap,
-                edgeMap,
-                propNameToIdMap,
-                typeConvertor);
+        if (schemaMap.get("edge_types") != null) {
+            builderGraphElementFromYaml(
+                    (List)
+                            Objects.requireNonNull(
+                                    schemaMap.get("edge_types"),
+                                    "edge_types not exist in yaml config"),
+                    "EDGE",
+                    vertexMap,
+                    edgeMap,
+                    propNameToIdMap,
+                    typeConvertor);
+        }
         return new DefaultGraphSchema(vertexMap, edgeMap, propNameToIdMap);
     }
 
@@ -80,18 +85,46 @@ public abstract class Utils {
             Map<String, GraphEdge> edgeMap,
             Map<String, Integer> propNameToIdMap,
             GSDataTypeConvertor<DataType> typeConvertor) {
+        int curVertexTypeId = 0;
+        int curEdgeTypeId = 0;
         for (Object element : elementList) {
             if (element instanceof Map) {
                 Map<String, Object> elementMap = (Map<String, Object>) element;
                 String label = (String) elementMap.get("type_name");
-                int labelId =
-                        (int)
-                                Objects.requireNonNull(
-                                        elementMap.get("type_id"),
-                                        "type_id not exist in yaml config");
+                int labelId = 0;
+                if (elementMap.get("type_id") != null) {
+                    labelId = (int) elementMap.get("type_id");
+                    // Expect the id is continuous
+                    if (type.equals("VERTEX")) {
+                        if (labelId != curVertexTypeId) {
+                            throw new IllegalArgumentException(
+                                    "vertex type id is not continuous, expect "
+                                            + curVertexTypeId
+                                            + " but get "
+                                            + labelId);
+                        }
+                        curVertexTypeId++;
+                    } else {
+                        if (labelId != curEdgeTypeId) {
+                            throw new IllegalArgumentException(
+                                    "edge type id is not continuous, expect "
+                                            + curEdgeTypeId
+                                            + " but get "
+                                            + labelId);
+                        }
+                        curEdgeTypeId++;
+                    }
+                } else {
+                    if (type.equals("VERTEX")) {
+                        labelId = curVertexTypeId++;
+                    } else {
+                        labelId = curEdgeTypeId++;
+                    }
+                }
                 List<GraphProperty> propertyList = Lists.newArrayList();
                 List propertyNodes = (List) elementMap.get("properties");
                 if (propertyNodes != null) {
+                    int propertyId = 0;
                     for (Object property : propertyNodes) {
                         if (property instanceof Map) {
                             Map<String, Object> propertyMap = (Map<String, Object>) property;
@@ -100,15 +133,22 @@ public abstract class Utils {
                                             Objects.requireNonNull(
                                                     propertyMap.get("property_name"),
                                                     "property_name not exist in yaml config");
-                            int propertyId =
-                                    (int)
-                                            Objects.requireNonNull(
-                                                    propertyMap.get("property_id"),
-                                                    "property_id not exist in yaml config");
-                            propNameToIdMap.put(propertyName, propertyId);
+                            int curPropertyId = 0;
+                            if (propertyMap.get("property_id") != null) {
+                                int tmpId = (int) propertyMap.get("property_id");
+                                if (tmpId != propertyId) {
+                                    throw new IllegalArgumentException(
+                                            "property id is not continuous, expect "
+                                                    + propertyId
+                                                    + " but get "
+                                                    + tmpId);
+                                }
+                            }
+                            curPropertyId = propertyId++;
+                            propNameToIdMap.put(propertyName, curPropertyId);
                             propertyList.add(
                                     new DefaultGraphProperty(
-                                            propertyId,
+                                            curPropertyId,
                                             propertyName,
                                             toDataType(
                                                     propertyMap.get("property_type"),
@@ -259,6 +299,79 @@ public abstract class Utils {
             default:
                 throw new UnsupportedOperationException(
                         "convert from ir core type " + ordinal + " to DataType is unsupported yet");
+        }
+    }
+
+    /**
+     * build {@link GraphStatistics} from statistics json
+     * @param statisticsJson
+     * @return
+     */
+    public static final GraphStatistics buildStatisticsFromJson(String statisticsJson) {
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            JsonNode jsonNode = mapper.readTree(statisticsJson);
+            Map<LabelId, Long> vertexTypeCounts = Maps.newHashMap();
+            Map<EdgeKind, Long> edgeTypeCounts = Maps.newHashMap();
+            Map<String, Integer> vertexTypeNameIdMap = Maps.newHashMap();
+            Long num_vertices = jsonNode.get("total_vertex_count").asLong();
+            Long num_edges = jsonNode.get("total_edge_count").asLong();
+            JsonNode vertexTypeCountsNode = jsonNode.get("vertex_type_statistics");
+            JsonNode edgeTypeCountsNode = jsonNode.get("edge_type_statistics");
+            buildGraphElementStatisticsFromJson(
+                    vertexTypeCountsNode,
+                    "VERTEX",
+                    vertexTypeCounts,
+                    edgeTypeCounts,
+                    vertexTypeNameIdMap);
+            buildGraphElementStatisticsFromJson(
+                    edgeTypeCountsNode,
+                    "EDGE",
+                    vertexTypeCounts,
+                    edgeTypeCounts,
+                    vertexTypeNameIdMap);
+
+            return new DefaultGraphStatistics(
+                    vertexTypeCounts, edgeTypeCounts, num_vertices, num_edges);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static final void buildGraphElementStatisticsFromJson(
+            JsonNode typeCountsNode,
+            String type,
+            Map<LabelId, Long> vertexTypeCounts,
+            Map<EdgeKind, Long> edgeTypeCounts,
+            Map<String, Integer> vertexTypeNameIdMap) {
+        Iterator var1 = typeCountsNode.iterator();
+        while (var1.hasNext()) {
+            JsonNode typeStatisticJsonNode = (JsonNode) var1.next();
+            int typeId = typeStatisticJsonNode.get("type_id").asInt();
+            String typeName = typeStatisticJsonNode.get("type_name").asText();
+            if (type.equals("VERTEX")) {
+                Long typeCount = typeStatisticJsonNode.get("count").asLong();
+                vertexTypeCounts.put(new LabelId(typeId), typeCount);
+                vertexTypeNameIdMap.put(typeName, typeId);
+            } else {
+                JsonNode entityPairs = typeStatisticJsonNode.get("vertex_type_pair_statistics");
+                Iterator var2 = entityPairs.iterator();
+                while (var2.hasNext()) {
+                    JsonNode pair = (JsonNode) var2.next();
+                    String sourceLabel = pair.get("source_vertex").asText();
+                    String dstLabel = pair.get("destination_vertex").asText();
+                    Long typeCount = pair.get("count").asLong();
+                    EdgeKind edgeKind =
+                            EdgeKind.newBuilder()
+                                    .setEdgeLabelId(new LabelId(typeId))
+                                    .setSrcVertexLabelId(
+                                            new LabelId(vertexTypeNameIdMap.get(sourceLabel)))
+                                    .setDstVertexLabelId(
+                                            new LabelId(vertexTypeNameIdMap.get(dstLabel)))
+                                    .build();
+                    edgeTypeCounts.put(edgeKind, typeCount);
+                }
+            }
         }
     }
 }

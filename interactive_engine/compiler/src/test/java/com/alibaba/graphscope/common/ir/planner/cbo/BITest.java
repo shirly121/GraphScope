@@ -20,13 +20,14 @@ package com.alibaba.graphscope.common.ir.planner.cbo;
 
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.Utils;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
-import com.alibaba.graphscope.common.store.IrMeta;
 import com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.rel.RelNode;
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -47,11 +48,20 @@ public class BITest {
                                 "CBO",
                                 "graph.planner.rules",
                                 "FilterIntoJoinRule, FilterMatchRule,"
-                                        + " ExtendIntersectRule, ExpandGetVFusionRule",
-                                "graph.planner.cbo.glogue.schema",
-                                "target/test-classes/statistics/ldbc30_hierarchy_statistics.txt"));
+                                        + " ExtendIntersectRule, ExpandGetVFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
-        irMeta = Utils.mockSchemaMeta("schema/ldbc_schema_exp_hierarchy.json");
+        irMeta =
+                Utils.mockIrMeta(
+                        "schema/ldbc_schema_exp_hierarchy.json",
+                        "statistics/ldbc30_hierarchy_statistics.json",
+                        optimizer.getGlogueHolder());
+    }
+
+    @AfterClass
+    public static void afterClass() {
+        if (optimizer != null) {
+            optimizer.close();
+        }
     }
 
     @Test
@@ -180,14 +190,14 @@ public class BITest {
                     + "      GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASTYPE]}],"
                     + " alias=[_], startAlias=[PATTERN_VERTEX$11], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "        GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT, TAG)]],"
-                    + " alias=[PATTERN_VERTEX$11], startAlias=[message], opt=[OUT],"
-                    + " physicalOpt=[VERTEX])\n"
-                    + "          GraphLogicalGetV(tableConfig=[{isAll=false, tables=[COMMENT]}],"
-                    + " alias=[message], opt=[END])\n"
+                    + "        GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT, TAG),"
+                    + " EdgeLabel(HASTAG, POST, TAG)]], alias=[PATTERN_VERTEX$11],"
+                    + " startAlias=[message], opt=[OUT], physicalOpt=[VERTEX])\n"
+                    + "          GraphLogicalGetV(tableConfig=[{isAll=false, tables=[POST,"
+                    + " COMMENT]}], alias=[message], opt=[END])\n"
                     + "           "
-                    + " GraphLogicalPathExpand(fused=[GraphPhysicalExpand(tableConfig=[[EdgeLabel(REPLYOF,"
-                    + " COMMENT, POST)]], alias=[_], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " GraphLogicalPathExpand(fused=[GraphPhysicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[REPLYOF]}], alias=[_], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "], fetch=[6], path_opt=[ARBITRARY], result_opt=[END_V], alias=[_],"
                     + " start_alias=[post])\n"
                     + "              GraphPhysicalExpand(tableConfig=[{isAll=false,"
@@ -196,16 +206,68 @@ public class BITest {
                     + "                GraphPhysicalExpand(tableConfig=[{isAll=false,"
                     + " tables=[HASMODERATOR]}], alias=[forum], startAlias=[person], opt=[IN],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "                  GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISLOCATEDIN,"
-                    + " PERSON, CITY)]], alias=[person], startAlias=[PATTERN_VERTEX$1], opt=[IN],"
+                    + "                  GraphPhysicalGetV(tableConfig=[{isAll=false,"
+                    + " tables=[PERSON]}], alias=[person], opt=[START], physicalOpt=[ITSELF])\n"
+                    + "                    GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISLOCATEDIN,"
+                    + " PERSON, CITY)]], alias=[_], startAlias=[PATTERN_VERTEX$1], opt=[IN],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "                    GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISPARTOF,"
+                    + "                      GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISPARTOF,"
                     + " CITY, COUNTRY)]], alias=[PATTERN_VERTEX$1], startAlias=[country], opt=[IN],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "                      GraphLogicalSource(tableConfig=[{isAll=false,"
+                    + "                        GraphLogicalSource(tableConfig=[{isAll=false,"
                     + " tables=[COUNTRY]}], alias=[country], fusedFilter=[[=(_.name,"
                     + " _UTF-8'China')]], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
+    }
+
+    @Test
+    public void bi4_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH (forum:FORUM)\n"
+                                    + "WITH collect(forum) AS topForums\n"
+                                    + "UNWIND topForums AS topForums1\n"
+                                    + "MATCH"
+                                    + " (topForums1:FORUM)-[:CONTAINEROF]->(post:POST)<-[:REPLYOF*0..10]-(message:POST|COMMENT)-[:HASCREATOR]->(person:PERSON)<-[:HASMEMBER]-(topForums2:FORUM)\n"
+                                    + "WHERE topForums2 IN topForums\n"
+                                    + "RETURN\n"
+                                    + "  person.id AS personId\n"
+                                    + "  ORDER BY\n"
+                                    + "  personId ASC\n"
+                                    + "  LIMIT 100;",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        Assert.assertEquals(
+                "GraphLogicalSort(sort0=[personId], dir0=[ASC], fetch=[100])\n"
+                    + "  GraphLogicalProject(personId=[person.id], isAppend=[false])\n"
+                    + "    LogicalJoin(condition=[AND(=(topForums1, topForums1), IN(topForums2,"
+                    + " topForums))], joinType=[inner])\n"
+                    + "      GraphLogicalUnfold(key=[topForums], alias=[topForums1])\n"
+                    + "        GraphLogicalAggregate(keys=[{variables=[], aliases=[]}],"
+                    + " values=[[{operands=[forum], aggFunction=COLLECT, alias='topForums',"
+                    + " distinct=false}]])\n"
+                    + "          GraphLogicalSource(tableConfig=[{isAll=false, tables=[FORUM]}],"
+                    + " alias=[forum], opt=[VERTEX])\n"
+                    + "      GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASMEMBER]}],"
+                    + " alias=[topForums2], startAlias=[person], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + "        GraphPhysicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[HASCREATOR]}], alias=[person], startAlias=[message], opt=[OUT],"
+                    + " physicalOpt=[VERTEX])\n"
+                    + "          GraphLogicalGetV(tableConfig=[{isAll=false, tables=[POST,"
+                    + " COMMENT]}], alias=[message], opt=[END])\n"
+                    + "           "
+                    + " GraphLogicalPathExpand(fused=[GraphPhysicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[REPLYOF]}], alias=[_], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + "], fetch=[10], path_opt=[ARBITRARY], result_opt=[END_V], alias=[_],"
+                    + " start_alias=[post])\n"
+                    + "              GraphPhysicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[CONTAINEROF]}], alias=[post], startAlias=[topForums1], opt=[OUT],"
+                    + " physicalOpt=[VERTEX])\n"
+                    + "                GraphLogicalSource(tableConfig=[{isAll=false,"
+                    + " tables=[FORUM]}], alias=[topForums1], opt=[VERTEX])",
+                after.explain().trim());
     }
 
     @Test
@@ -258,10 +320,12 @@ public class BITest {
                     + "            GraphPhysicalExpand(tableConfig=[{isAll=false,"
                     + " tables=[HASCREATOR]}], alias=[person], startAlias=[message], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "              GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT,"
-                    + " TAG), EdgeLabel(HASTAG, POST, TAG)]], alias=[message], startAlias=[tag],"
+                    + "              GraphPhysicalGetV(tableConfig=[{isAll=false, tables=[POST,"
+                    + " COMMENT]}], alias=[message], opt=[START], physicalOpt=[ITSELF])\n"
+                    + "                GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT,"
+                    + " TAG), EdgeLabel(HASTAG, POST, TAG)]], alias=[_], startAlias=[tag],"
                     + " opt=[IN], physicalOpt=[VERTEX])\n"
-                    + "                GraphLogicalSource(tableConfig=[{isAll=false,"
+                    + "                  GraphLogicalSource(tableConfig=[{isAll=false,"
                     + " tables=[TAG]}], alias=[tag], fusedFilter=[[=(_.name, ?0)]], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
     }
@@ -306,10 +370,12 @@ public class BITest {
                     + "            GraphPhysicalExpand(tableConfig=[{isAll=false,"
                     + " tables=[HASCREATOR]}], alias=[person1], startAlias=[message1], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "              GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT,"
-                    + " TAG), EdgeLabel(HASTAG, POST, TAG)]], alias=[message1], startAlias=[tag],"
+                    + "              GraphPhysicalGetV(tableConfig=[{isAll=false, tables=[POST,"
+                    + " COMMENT]}], alias=[message1], opt=[START], physicalOpt=[ITSELF])\n"
+                    + "                GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT,"
+                    + " TAG), EdgeLabel(HASTAG, POST, TAG)]], alias=[_], startAlias=[tag],"
                     + " opt=[IN], physicalOpt=[VERTEX])\n"
-                    + "                GraphLogicalSource(tableConfig=[{isAll=false,"
+                    + "                  GraphLogicalSource(tableConfig=[{isAll=false,"
                     + " tables=[TAG]}], alias=[tag], fusedFilter=[[=(_.name, ?0)]], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
     }
@@ -348,14 +414,18 @@ public class BITest {
                     + " physicalOpt=[VERTEX])\n"
                     + "        GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[REPLYOF]}],"
                     + " alias=[comment], startAlias=[message], opt=[IN], physicalOpt=[VERTEX])\n"
-                    + "          GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT, TAG),"
-                    + " EdgeLabel(HASTAG, POST, TAG)]], alias=[message], startAlias=[tag],"
+                    + "          GraphPhysicalGetV(tableConfig=[{isAll=false, tables=[POST,"
+                    + " COMMENT]}], alias=[message], opt=[START], physicalOpt=[ITSELF])\n"
+                    + "            GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT,"
+                    + " TAG), EdgeLabel(HASTAG, POST, TAG)]], alias=[_], startAlias=[tag],"
                     + " opt=[IN], physicalOpt=[VERTEX])\n"
-                    + "            GraphLogicalSource(tableConfig=[{isAll=false, tables=[TAG]}],"
+                    + "              GraphLogicalSource(tableConfig=[{isAll=false, tables=[TAG]}],"
                     + " alias=[tag], fusedFilter=[[=(_.name, ?0)]], opt=[VERTEX])\n"
-                    + "      GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT, TAG)]],"
-                    + " alias=[comment], startAlias=[tag], opt=[IN], physicalOpt=[VERTEX])\n"
-                    + "        GraphLogicalSource(tableConfig=[{isAll=false, tables=[TAG]}],"
+                    + "      GraphPhysicalGetV(tableConfig=[{isAll=false, tables=[COMMENT]}],"
+                    + " alias=[comment], opt=[START], physicalOpt=[ITSELF])\n"
+                    + "        GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASTAG, COMMENT, TAG)]],"
+                    + " alias=[_], startAlias=[tag], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + "          GraphLogicalSource(tableConfig=[{isAll=false, tables=[TAG]}],"
                     + " alias=[tag], fusedFilter=[[=(_.name, ?0)]], opt=[VERTEX])",
                 after.explain().trim());
     }
@@ -398,22 +468,20 @@ public class BITest {
                     + " values=[[{operands=[post], aggFunction=COUNT, alias='threadCnt',"
                     + " distinct=true}, {operands=[msg], aggFunction=COUNT, alias='msgCnt',"
                     + " distinct=true}]])\n"
-                    + "      GraphLogicalGetV(tableConfig=[{isAll=false, tables=[COMMENT]}],"
+                    + "      GraphLogicalGetV(tableConfig=[{isAll=false, tables=[POST, COMMENT]}],"
                     + " alias=[msg], fusedFilter=[[AND(>=(_.creationDate, ?0), <=(_.creationDate,"
                     + " ?1))]], opt=[END])\n"
                     + "       "
-                    + " GraphLogicalPathExpand(fused=[GraphPhysicalExpand(tableConfig=[[EdgeLabel(REPLYOF,"
-                    + " COMMENT, POST)]], alias=[_], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + " GraphLogicalPathExpand(fused=[GraphPhysicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[REPLYOF]}], alias=[_], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "], fetch=[7], path_opt=[ARBITRARY], result_opt=[END_V], alias=[_],"
                     + " start_alias=[post])\n"
-                    + "          GraphPhysicalGetV(tableConfig=[{isAll=false, tables=[POST]}],"
-                    + " alias=[post], fusedFilter=[[AND(>=(_.creationDate, ?0), <=(_.creationDate,"
-                    + " ?1))]], opt=[START], physicalOpt=[ITSELF])\n"
-                    + "            GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASCREATOR, POST,"
-                    + " PERSON)]], alias=[_], startAlias=[person], opt=[IN],"
+                    + "          GraphPhysicalExpand(tableConfig=[[EdgeLabel(HASCREATOR, POST,"
+                    + " PERSON)]], alias=[person], startAlias=[post], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "              GraphLogicalSource(tableConfig=[{isAll=false,"
-                    + " tables=[PERSON]}], alias=[person], opt=[VERTEX])",
+                    + "            GraphLogicalSource(tableConfig=[{isAll=false, tables=[POST]}],"
+                    + " alias=[post], fusedFilter=[[AND(>=(_.creationDate, ?0), <=(_.creationDate,"
+                    + " ?1))]], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
     }
 
@@ -476,9 +544,11 @@ public class BITest {
                     + "                      GraphLogicalGetV(tableConfig=[{isAll=false,"
                     + " tables=[PERSON]}], alias=[expert], opt=[END])\n"
                     + "                       "
-                    + " GraphLogicalPathExpand(fused=[GraphPhysicalExpand(tableConfig=[{isAll=false,"
-                    + " tables=[KNOWS]}], alias=[_], opt=[BOTH], physicalOpt=[VERTEX])\n"
-                    + "], offset=[1], fetch=[9], path_opt=[ARBITRARY], result_opt=[END_V],"
+                    + " GraphLogicalPathExpand(expand=[GraphLogicalExpand(tableConfig=[{isAll=false,"
+                    + " tables=[KNOWS]}], alias=[_], opt=[BOTH])\n"
+                    + "], getV=[GraphLogicalGetV(tableConfig=[{isAll=false, tables=[PERSON]}],"
+                    + " alias=[_], opt=[OTHER])\n"
+                    + "], offset=[1], fetch=[9], path_opt=[ARBITRARY], result_opt=[ALL_V_E],"
                     + " alias=[k], start_alias=[p1])\n"
                     + "                          GraphLogicalSource(tableConfig=[{isAll=false,"
                     + " tables=[PERSON]}], alias=[p1], opt=[VERTEX], uniqueKeyFilters=[=(_.id,"
@@ -527,12 +597,12 @@ public class BITest {
                     + "        GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISLOCATEDIN, PERSON,"
                     + " CITY)]], alias=[PATTERN_VERTEX$1], startAlias=[a], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "          CommonTableScan(table=[[common#-1096947686]])\n"
+                    + "          CommonTableScan(table=[[common#-1227130258]])\n"
                     + "        GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISPARTOF, CITY,"
                     + " COUNTRY)]], alias=[PATTERN_VERTEX$1], startAlias=[s], opt=[IN],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "          CommonTableScan(table=[[common#-1096947686]])\n"
-                    + "common#-1096947686:\n"
+                    + "          CommonTableScan(table=[[common#-1227130258]])\n"
+                    + "common#-1227130258:\n"
                     + "MultiJoin(joinFilter=[=(a, a)], isFullOuterJoin=[false], joinTypes=[[INNER,"
                     + " INNER]], outerJoinConditions=[[NULL, NULL]], projFields=[[ALL, ALL]])\n"
                     + "  GraphLogicalGetV(tableConfig=[{isAll=false, tables=[PERSON]}], alias=[a],"
@@ -540,37 +610,39 @@ public class BITest {
                     + "    GraphLogicalExpand(tableConfig=[{isAll=false, tables=[KNOWS]}],"
                     + " alias=[k1], startAlias=[b], fusedFilter=[[AND(>=(_.creationDate, ?0),"
                     + " <=(_.creationDate, ?1))]], opt=[BOTH])\n"
-                    + "      CommonTableScan(table=[[common#1348927974]])\n"
+                    + "      CommonTableScan(table=[[common#174543014]])\n"
                     + "  GraphLogicalGetV(tableConfig=[{isAll=false, tables=[PERSON]}], alias=[a],"
                     + " opt=[OTHER])\n"
                     + "    GraphLogicalExpand(tableConfig=[{isAll=false, tables=[KNOWS]}],"
                     + " alias=[k2], startAlias=[c], fusedFilter=[[AND(>=(_.creationDate, ?0),"
                     + " <=(_.creationDate, ?1))]], opt=[BOTH])\n"
-                    + "      CommonTableScan(table=[[common#1348927974]])\n"
-                    + "common#1348927974:\n"
-                    + "MultiJoin(joinFilter=[=(PATTERN_VERTEX$5, PATTERN_VERTEX$5)],"
+                    + "      CommonTableScan(table=[[common#174543014]])\n"
+                    + "common#174543014:\n"
+                    + "MultiJoin(joinFilter=[=(PATTERN_VERTEX$9, PATTERN_VERTEX$9)],"
                     + " isFullOuterJoin=[false], joinTypes=[[INNER, INNER]],"
                     + " outerJoinConditions=[[NULL, NULL]], projFields=[[ALL, ALL]])\n"
                     + "  GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISLOCATEDIN, PERSON, CITY)]],"
-                    + " alias=[PATTERN_VERTEX$5], startAlias=[b], opt=[OUT],"
+                    + " alias=[PATTERN_VERTEX$9], startAlias=[b], opt=[OUT],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "    CommonTableScan(table=[[common#613791020]])\n"
+                    + "    CommonTableScan(table=[[common#-184198145]])\n"
                     + "  GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISPARTOF, CITY, COUNTRY)]],"
-                    + " alias=[PATTERN_VERTEX$5], startAlias=[s], opt=[IN], physicalOpt=[VERTEX])\n"
-                    + "    CommonTableScan(table=[[common#613791020]])\n"
-                    + "common#613791020:\n"
+                    + " alias=[PATTERN_VERTEX$9], startAlias=[s], opt=[IN], physicalOpt=[VERTEX])\n"
+                    + "    CommonTableScan(table=[[common#-184198145]])\n"
+                    + "common#-184198145:\n"
                     + "GraphLogicalGetV(tableConfig=[{isAll=false, tables=[PERSON]}], alias=[b],"
                     + " opt=[OTHER])\n"
                     + "  GraphLogicalExpand(tableConfig=[{isAll=false, tables=[KNOWS]}],"
                     + " alias=[k3], startAlias=[c], fusedFilter=[[AND(>=(_.creationDate, ?0),"
                     + " <=(_.creationDate, ?1))]], opt=[BOTH])\n"
-                    + "    GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISLOCATEDIN, PERSON,"
-                    + " CITY)]], alias=[c], startAlias=[PATTERN_VERTEX$9], opt=[IN],"
+                    + "    GraphPhysicalGetV(tableConfig=[{isAll=false, tables=[PERSON]}],"
+                    + " alias=[c], opt=[START], physicalOpt=[ITSELF])\n"
+                    + "      GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISLOCATEDIN, PERSON,"
+                    + " CITY)]], alias=[_], startAlias=[PATTERN_VERTEX$5], opt=[IN],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "      GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISPARTOF, CITY,"
-                    + " COUNTRY)]], alias=[PATTERN_VERTEX$9], startAlias=[s], opt=[IN],"
+                    + "        GraphPhysicalExpand(tableConfig=[[EdgeLabel(ISPARTOF, CITY,"
+                    + " COUNTRY)]], alias=[PATTERN_VERTEX$5], startAlias=[s], opt=[IN],"
                     + " physicalOpt=[VERTEX])\n"
-                    + "        GraphLogicalSource(tableConfig=[{isAll=false, tables=[COUNTRY]}],"
+                    + "          GraphLogicalSource(tableConfig=[{isAll=false, tables=[COUNTRY]}],"
                     + " alias=[s], fusedFilter=[[=(_.name, _UTF-8'India')]], opt=[VERTEX])",
                 com.alibaba.graphscope.common.ir.tools.Utils.toString(after).trim());
     }

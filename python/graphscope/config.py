@@ -39,7 +39,8 @@ registry = "registry.cn-hongkong.aliyuncs.com"
 class ResourceSpec:
     """Resource requirements for a container in kubernetes."""
 
-    cpu: Union[str, float, None] = None  # CPU cores of container.
+    # CPU cores of container.
+    cpu: Union[str, float, None] = None
     # Memory of container, suffix with ['Mi', 'Gi', 'Ti'].
     memory: Union[str, None] = None
 
@@ -234,6 +235,8 @@ class CoordinatorConfig:
     If address is set, all other coordinator configurations are ignored.
     """
     service_port: int = 63800  # Coordinator service port that will be listening on.
+
+    http_port: int = 8080  # Coordinator HTTP service port
 
     monitor: bool = False  # Enable or disable prometheus exporter.
     monitor_port: int = 9090  # Coordinator prometheus exporter service port.

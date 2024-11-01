@@ -94,10 +94,10 @@ class BuildProto(Command):
 
 class GenerateFlexSDK(Command):
     description = "generate flex client sdk from openapi specification file"
-    user_options = []
+    user_options = [("with-doc", None, "Include documentation")]
 
     def initialize_options(self):
-        pass
+        self.with_doc = False
 
     def finalize_options(self):
         pass
@@ -115,7 +115,7 @@ class GenerateFlexSDK(Command):
             pkg_root, "..", "flex", "openapi", "openapi_coordinator.yaml"
         )
         cmd = [
-            "openapi-generator-cli",
+            "openapi-generator",
             "generate",
             "-g",
             "python",
@@ -137,6 +137,20 @@ class GenerateFlexSDK(Command):
         subprocess.run(
             ["cp", "-r", os.path.join(tempdir, "graphscope", "flex", "rest"), targetdir]
         )
+        if self.with_doc:
+            targetdir = os.path.join(
+                pkg_root, "..", "docs", "flex", "coordinator", "development", "python"
+            )
+            subprocess.run(
+                [
+                    "sed",
+                    "-i",
+                    "s/# graphscope.flex.rest/# Coordinator Python SDK Reference/",
+                    os.path.join(tempdir, "README.md"),
+                ]
+            )
+            subprocess.run(["cp", os.path.join(tempdir, "README.md"), targetdir])
+            subprocess.run(["cp", "-r", os.path.join(tempdir, "docs"), targetdir])
 
 
 class FormatAndLint(Command):
@@ -223,7 +237,10 @@ class BuildGLTorchExt(torch.utils.cpp_extension.BuildExtension if torch else bui
             else str(int(torch._C._GLIBCXX_USE_CXX11_ABI))
         )
         print(f"GCC_USE_CXX11_ABI for {extension.name}: {gcc_use_cxx_abi}")
-        self._add_compile_flag(extension, "-D_GLIBCXX_USE_CXX11_ABI=" + gcc_use_cxx_abi)
+        if gcc_use_cxx_abi is not None:
+            self._add_compile_flag(
+                extension, "-D_GLIBCXX_USE_CXX11_ABI=" + gcc_use_cxx_abi
+            )
 
 
 class CustomDevelop(develop):
@@ -248,19 +265,20 @@ class CustomBDistWheel(bdist_wheel):
             graphlearn_shared_lib = "libgraphlearn_shared.dylib"
         else:
             graphlearn_shared_lib = "libgraphlearn_shared.so"
-        if not os.path.isfile(
-            os.path.join(
-                pkg_root,
-                "..",
-                "learning_engine",
-                "graph-learn",
-                "graphlearn",
-                "built",
-                "lib",
-                graphlearn_shared_lib,
-            )
-        ):
-            raise ValueError("You must build the graphlearn library at first")
+        if os.environ.get("WITHOUT_LEARNING_ENGINE", None) is None:
+            if not os.path.isfile(
+                os.path.join(
+                    pkg_root,
+                    "..",
+                    "learning_engine",
+                    "graph-learn",
+                    "graphlearn",
+                    "built",
+                    "lib",
+                    graphlearn_shared_lib,
+                )
+            ):
+                raise ValueError("You must build the graphlearn library at first")
         self.run_command("build_proto")
         bdist_wheel.run(self)
 
@@ -285,7 +303,9 @@ def find_graphscope_packages():
     packages = []
 
     # add graphscope
-    for pkg in find_packages(".", exclude=["graphscope.flex.*"]):
+    for pkg in find_packages(
+        ".", exclude=["graphscope.flex.*", "graphscope.gsctl", "graphscope.gsctl.*"]
+    ):
         packages.append(pkg)
 
     return packages
@@ -303,13 +323,14 @@ def parsed_package_data():
         "graphscope": [
             "VERSION",
             "proto/*.pyi",
-            "gsctl/scripts/*.sh",
-            "gsctl/scripts/lib/*.sh",
         ],
     }
 
 
 def build_learning_engine():
+    if os.environ.get("WITHOUT_LEARNING_ENGINE", None) is not None:
+        return []
+
     ext_modules = [graphlearn_ext()]
     if torch and os.path.exists(os.path.join(glt_root_path, "graphlearn_torch")):
         sys.path.insert(
@@ -472,11 +493,6 @@ setup(
         "Documentation": "https://graphscope.io/docs",
         "Source": "https://github.com/alibaba/GraphScope",
         "Tracker": "https://github.com/alibaba/GraphScope/issues",
-    },
-    entry_points={
-        "console_scripts": [
-            "gsctl = graphscope.gsctl.gsctl:cli",
-        ],
     },
 )
 

@@ -14,9 +14,9 @@
 //! limitations under the License.
 
 use graph_proxy::apis::GraphPath;
-use ir_common::generated::algebra::path_expand::PathOpt;
-use ir_common::generated::algebra::path_expand::ResultOpt;
 use ir_common::generated::physical as pb;
+use ir_common::generated::physical::path_expand::PathOpt;
+use ir_common::generated::physical::path_expand::ResultOpt;
 use ir_common::KeyId;
 use pegasus::api::function::{FilterMapFunction, FnResult};
 
@@ -41,7 +41,8 @@ impl FilterMapFunction<Record, Record> for PathStartOperator {
                     self.start_tag, input
                 ))
             })?;
-            let graph_path = GraphPath::new(v.clone(), self.path_opt, self.result_opt);
+            let graph_path = GraphPath::new(v.clone(), self.path_opt, self.result_opt)
+                .map_or_else(|e| Err(FnExecError::unsupported_error(&format!("{}", e))), |p| Ok(p))?;
             input.append(graph_path, None);
             Ok(Some(input))
         } else {

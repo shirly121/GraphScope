@@ -16,9 +16,11 @@
 
 package com.alibaba.graphscope.common.ir.runtime.proto;
 
+import com.alibaba.graphscope.common.ir.meta.function.GraphFunctions;
 import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
 import com.alibaba.graphscope.common.ir.tools.AliasInference;
 import com.alibaba.graphscope.common.ir.tools.GraphStdOperatorTable;
+import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.gaia.proto.Common;
 import com.alibaba.graphscope.gaia.proto.DataType;
 import com.alibaba.graphscope.gaia.proto.OuterExpression;
@@ -29,9 +31,13 @@ import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.type.IntervalSqlType;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Sarg;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * convert an expression in calcite to logical expression in ir_core
@@ -58,15 +64,140 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
             return visitArrayValueConstructor(call);
         } else if (operator.getKind() == SqlKind.MAP_VALUE_CONSTRUCTOR) {
             return visitMapValueConstructor(call);
+        } else if (operator.getKind() == SqlKind.OTHER
+                && operator.getName().equals("PATH_CONCAT")) {
+            return visitPathConcat(call);
+        } else if (operator.getKind() == SqlKind.OTHER
+                && operator.getName().equals("PATH_FUNCTION")) {
+            return visitPathFunction(call);
         } else if (operator.getKind() == SqlKind.EXTRACT) {
             return visitExtract(call);
         } else if (operator.getKind() == SqlKind.OTHER
                 && operator.getName().equals("DATETIME_MINUS")) {
             return visitDateMinus(call);
+        } else if (operator.getKind() == SqlKind.OTHER
+                && operator.getName().startsWith(GraphFunctions.FUNCTION_PREFIX)) {
+            return visitUserDefinedFunction(call);
         } else if (call.getOperands().size() == 1) {
             return visitUnaryOperator(call);
         } else {
             return visitBinaryOperator(call);
+        }
+    }
+
+    private OuterExpression.Expression visitUserDefinedFunction(RexCall call) {
+        List<RexNode> operands = call.getOperands();
+        List<OuterExpression.Expression> parameters =
+                operands.stream().map(operand -> operand.accept(this)).collect(Collectors.toList());
+        return OuterExpression.Expression.newBuilder()
+                .addOperators(
+                        OuterExpression.ExprOpr.newBuilder()
+                                .setUdfFunc(
+                                        OuterExpression.UserDefinedFunction.newBuilder()
+                                                .setName(call.op.getName())
+                                                .addAllParameters(parameters)
+                                                .build())
+                                .setNodeType(Utils.protoIrDataType(call.getType(), isColumnId)))
+                .build();
+    }
+
+    private OuterExpression.Expression visitPathFunction(RexCall call) {
+        List<RexNode> operands = call.getOperands();
+        RexGraphVariable variable = (RexGraphVariable) operands.get(0);
+        OuterExpression.PathFunction.Builder builder = OuterExpression.PathFunction.newBuilder();
+        if (variable.getAliasId() != AliasInference.DEFAULT_ID) {
+            builder.setTag(Common.NameOrId.newBuilder().setId(variable.getAliasId()).build());
+        }
+        GraphOpt.PathExpandFunction funcOpt =
+                ((RexLiteral) operands.get(1)).getValueAs(GraphOpt.PathExpandFunction.class);
+        builder.setOpt(OuterExpression.PathFunction.FuncOpt.valueOf(funcOpt.name()));
+        setPathFunctionProjection(builder, operands.get(2));
+        return OuterExpression.Expression.newBuilder()
+                .addOperators(
+                        OuterExpression.ExprOpr.newBuilder()
+                                .setPathFunc(builder)
+                                .setNodeType(Utils.protoIrDataType(call.getType(), isColumnId)))
+                .build();
+    }
+
+    private void setPathFunctionProjection(
+            OuterExpression.PathFunction.Builder builder, RexNode projection) {
+        switch (projection.getKind()) {
+            case MAP_VALUE_CONSTRUCTOR:
+                List<RexNode> operands = ((RexCall) projection).getOperands();
+                OuterExpression.PathFunction.PathElementKeyValues.Builder keyValuesBuilder =
+                        OuterExpression.PathFunction.PathElementKeyValues.newBuilder();
+                for (int i = 0; i < operands.size(); i += 2) {
+                    keyValuesBuilder.addKeyVals(
+                            OuterExpression.PathFunction.PathElementKeyValues.PathElementKeyValue
+                                    .newBuilder()
+                                    .setKey(operands.get(i).accept(this).getOperators(0).getConst())
+                                    .setVal(visitPathFunctionProperty(operands.get(i + 1))));
+                }
+                builder.setMap(keyValuesBuilder);
+                break;
+            case ARRAY_VALUE_CONSTRUCTOR:
+                OuterExpression.PathFunction.PathElementKeys.Builder valuesBuilder =
+                        OuterExpression.PathFunction.PathElementKeys.newBuilder();
+                ((RexCall) projection)
+                        .getOperands()
+                        .forEach(
+                                operand ->
+                                        valuesBuilder.addKeys(visitPathFunctionProperty(operand)));
+                builder.setVars(valuesBuilder);
+                break;
+            default:
+                builder.setProperty(visitPathFunctionProperty(projection));
+        }
+    }
+
+    private OuterExpression.Property visitPathFunctionProperty(RexNode variable) {
+        Preconditions.checkArgument(
+                variable instanceof RexGraphVariable
+                        && ((RexGraphVariable) variable).getProperty() != null,
+                "cannot get path function property from variable [" + variable + "]");
+        return Utils.protoProperty(((RexGraphVariable) variable).getProperty());
+    }
+
+    private OuterExpression.Expression visitPathConcat(RexCall call) {
+        List<RexNode> operands = call.getOperands();
+        return OuterExpression.Expression.newBuilder()
+                .addOperators(
+                        OuterExpression.ExprOpr.newBuilder()
+                                .setPathConcat(
+                                        OuterExpression.PathConcat.newBuilder()
+                                                .setLeft(convertPathInfo(operands))
+                                                .setRight(
+                                                        convertPathInfo(
+                                                                operands.subList(
+                                                                        2, operands.size())))))
+                .build();
+    }
+
+    private OuterExpression.PathConcat.ConcatPathInfo convertPathInfo(List<RexNode> operands) {
+        Preconditions.checkArgument(
+                operands.size() >= 2
+                        && operands.get(0) instanceof RexGraphVariable
+                        && operands.get(1) instanceof RexLiteral);
+        OuterExpression.Variable variable = operands.get(0).accept(this).getOperators(0).getVar();
+        GraphOpt.GetV direction = ((RexLiteral) operands.get(1)).getValueAs(GraphOpt.GetV.class);
+        return OuterExpression.PathConcat.ConcatPathInfo.newBuilder()
+                .setPathTag(variable)
+                .setEndpoint(convertPathDirection(direction))
+                .build();
+    }
+
+    private OuterExpression.PathConcat.Endpoint convertPathDirection(GraphOpt.GetV direction) {
+        switch (direction) {
+            case START:
+                return OuterExpression.PathConcat.Endpoint.START;
+            case END:
+                return OuterExpression.PathConcat.Endpoint.END;
+            default:
+                throw new IllegalArgumentException(
+                        "invalid path concat direction ["
+                                + direction.name()
+                                + "], cannot convert to any physical expression");
         }
     }
 
@@ -153,15 +284,27 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
                     key instanceof RexLiteral,
                     "key type of 'MAP_VALUE_CONSTRUCTOR' should be 'literal', but is "
                             + key.getClass());
-            Preconditions.checkArgument(
-                    value instanceof RexGraphVariable,
-                    "value type of 'MAP_VALUE_CONSTRUCTOR' should be 'variable', but is "
-                            + value.getClass());
-            varMapBuilder.addKeyVals(
+            OuterExpression.ExprOpr valueOpr = value.accept(this).getOperators(0);
+            OuterExpression.VariableKeyValue.Builder keyValueBuilder =
                     OuterExpression.VariableKeyValue.newBuilder()
-                            .setKey(key.accept(this).getOperators(0).getConst())
-                            .setValue(value.accept(this).getOperators(0).getVar())
-                            .build());
+                            .setKey(key.accept(this).getOperators(0).getConst());
+            switch (valueOpr.getItemCase()) {
+                case VAR:
+                    keyValueBuilder.setVal(valueOpr.getVar());
+                    break;
+                case MAP:
+                    keyValueBuilder.setNested(valueOpr.getMap());
+                    break;
+                case PATH_FUNC:
+                    keyValueBuilder.setPathFunc(valueOpr.getPathFunc());
+                    break;
+                default:
+                    throw new IllegalArgumentException(
+                            "can not convert value ["
+                                    + value
+                                    + "] of 'MAP_VALUE_CONSTRUCTOR' to physical plan");
+            }
+            varMapBuilder.addKeyVals(keyValueBuilder);
         }
         return OuterExpression.Expression.newBuilder()
                 .addOperators(
@@ -225,6 +368,88 @@ public class RexToProtoConverter extends RexVisitorImpl<OuterExpression.Expressi
                                 OuterExpression.ExprOpr.newBuilder()
                                         .setBrace(OuterExpression.ExprOpr.Brace.RIGHT_BRACE))
                         .build();
+                // if the operand of MINUS_PREFIX is a literal, we can convert it to a negative
+                // value
+            case MINUS_PREFIX:
+                if (operand.getKind() == SqlKind.LITERAL) {
+                    RexLiteral literal = (RexLiteral) operand;
+                    switch (literal.getType().getSqlTypeName()) {
+                        case INTEGER:
+                            BigInteger negative =
+                                    BigInteger.valueOf(literal.getValueAs(Number.class).intValue())
+                                            .negate();
+                            if (negative.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) >= 0
+                                    && negative.compareTo(BigInteger.valueOf(Integer.MAX_VALUE))
+                                            <= 0) {
+                                return OuterExpression.Expression.newBuilder()
+                                        .addOperators(
+                                                OuterExpression.ExprOpr.newBuilder()
+                                                        .setConst(
+                                                                Common.Value.newBuilder()
+                                                                        .setI32(
+                                                                                negative
+                                                                                        .intValue()))
+                                                        .setNodeType(
+                                                                Utils.protoIrDataType(
+                                                                        call.getType(),
+                                                                        isColumnId)))
+                                        .build();
+                            }
+                        case BIGINT:
+                            BigInteger negative2 =
+                                    BigInteger.valueOf(literal.getValueAs(Number.class).longValue())
+                                            .negate();
+                            if (negative2.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) >= 0
+                                    && negative2.compareTo(BigInteger.valueOf(Long.MAX_VALUE))
+                                            <= 0) {
+                                return OuterExpression.Expression.newBuilder()
+                                        .addOperators(
+                                                OuterExpression.ExprOpr.newBuilder()
+                                                        .setConst(
+                                                                Common.Value.newBuilder()
+                                                                        .setI64(
+                                                                                negative2
+                                                                                        .longValue()))
+                                                        .setNodeType(
+                                                                Utils.protoIrDataType(
+                                                                        rexBuilder
+                                                                                .getTypeFactory()
+                                                                                .createSqlType(
+                                                                                        SqlTypeName
+                                                                                                .BIGINT),
+                                                                        isColumnId)))
+                                        .build();
+                            } else {
+                                throw new IllegalArgumentException(
+                                        "negation of value ["
+                                                + negative2
+                                                + "] is out of range of BIGINT");
+                            }
+                        case FLOAT:
+                        case DOUBLE:
+                            BigDecimal negative3 =
+                                    BigDecimal.valueOf(
+                                                    literal.getValueAs(Number.class).doubleValue())
+                                            .negate();
+                            return OuterExpression.Expression.newBuilder()
+                                    .addOperators(
+                                            OuterExpression.ExprOpr.newBuilder()
+                                                    .setConst(
+                                                            Common.Value.newBuilder()
+                                                                    .setF64(
+                                                                            negative3
+                                                                                    .doubleValue()))
+                                                    .setNodeType(
+                                                            Utils.protoIrDataType(
+                                                                    rexBuilder
+                                                                            .getTypeFactory()
+                                                                            .createSqlType(
+                                                                                    SqlTypeName
+                                                                                            .DOUBLE),
+                                                                    isColumnId)))
+                                    .build();
+                    }
+                }
             case IS_NULL:
             case NOT:
             default:

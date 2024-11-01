@@ -16,14 +16,15 @@
 
 package org.apache.calcite.sql.type;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
 import org.apache.calcite.linq4j.function.Functions;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rel.type.RelDataTypeFamily;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlUtil;
+import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Collection;
@@ -40,26 +41,31 @@ public class GraphOperandMetaDataImpl extends GraphFamilyOperandTypeChecker
     private final IntFunction<String> paramNameFn;
 
     GraphOperandMetaDataImpl(
-            List<SqlTypeFamily> families,
+            List<RelDataTypeFamily> expectedFamilies,
             Function<@Nullable RelDataTypeFactory, List<RelDataType>> paramTypesFactory,
             IntFunction<String> paramNameFn,
             Predicate<Integer> optional) {
-        super(families, optional);
+        super(expectedFamilies, optional);
         this.paramTypesFactory = Objects.requireNonNull(paramTypesFactory, "paramTypesFactory");
         this.paramNameFn = paramNameFn;
     }
 
     @Override
     protected Collection<SqlTypeName> getAllowedTypeNames(
-            SqlTypeFamily family, int iFormalOperand) {
-        List<RelDataType> paramsAllowedTypes = paramTypes(null);
-        Preconditions.checkArgument(
-                paramsAllowedTypes.size() > iFormalOperand,
+            RelDataTypeFactory typeFactory, SqlTypeFamily family, int iFormalOperand) {
+        List<RelDataType> paramsAllowedTypes = paramTypes(typeFactory);
+        if (paramsAllowedTypes.size() > iFormalOperand) {
+            return ImmutableList.of(paramsAllowedTypes.get(iFormalOperand).getSqlTypeName());
+        } else if (expectedFamilies.get(iFormalOperand) instanceof SqlTypeFamily) {
+            return ((SqlTypeFamily) expectedFamilies.get(iFormalOperand)).getTypeNames();
+        }
+        throw new IllegalArgumentException(
                 "cannot find allowed type for type index="
                         + iFormalOperand
                         + " from the allowed types list="
-                        + paramsAllowedTypes);
-        return ImmutableList.of(paramsAllowedTypes.get(iFormalOperand).getSqlTypeName());
+                        + paramsAllowedTypes
+                        + " or expected families="
+                        + expectedFamilies);
     }
 
     @Override
@@ -74,16 +80,18 @@ public class GraphOperandMetaDataImpl extends GraphFamilyOperandTypeChecker
 
     @Override
     public List<String> paramNames() {
-        return Functions.generate(this.families.size(), this.paramNameFn);
+        return Functions.generate(this.expectedFamilies.size(), this.paramNameFn);
     }
 
     @Override
     public String getAllowedSignatures(SqlOperator op, String opName) {
-        return SqlUtil.getAliasedSignature(
-                op,
-                opName,
-                paramTypes(null).stream()
-                        .map(k -> k.getSqlTypeName())
-                        .collect(Collectors.toList()));
+        List<RelDataType> paramTypes = paramTypes(null);
+        List<?> signatureTypes =
+                ObjectUtils.isEmpty(paramTypes)
+                        ? this.expectedFamilies
+                        : paramTypes.stream()
+                                .map(k -> k.getSqlTypeName())
+                                .collect(Collectors.toList());
+        return SqlUtil.getAliasedSignature(op, opName, signatureTypes);
     }
 }

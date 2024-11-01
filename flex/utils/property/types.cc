@@ -14,7 +14,7 @@
  */
 
 #include "flex/utils/property/types.h"
-
+#include "flex/utils/property/table.h"
 #include "grape/serialization/in_archive.h"
 #include "grape/serialization/out_archive.h"
 
@@ -33,7 +33,7 @@ std::string PrimitivePropertyTypeToString(PropertyType type) {
     return DT_DATE;
   } else if (type == PropertyType::kDay) {
     return DT_DAY;
-  } else if (type == PropertyType::kString) {
+  } else if (type == PropertyType::kStringView) {
     return DT_STRING;
   } else if (type == PropertyType::kStringMap) {
     return DT_STRINGMAP;
@@ -61,7 +61,7 @@ PropertyType StringToPrimitivePropertyType(const std::string& str) {
     return PropertyType::kBool;
   } else if (str == "Date" || str == DT_DATE) {
     return PropertyType::kDate;
-  } else if (str == "Day" || str == DT_DAY) {
+  } else if (str == "Day" || str == DT_DAY || str == "day") {
     return PropertyType::kDay;
   } else if (str == "String" || str == "STRING" || str == DT_STRING) {
     // DT_STRING is a alias for VARCHAR(STRING_DEFAULT_MAX_LENGTH);
@@ -83,6 +83,78 @@ PropertyType StringToPrimitivePropertyType(const std::string& str) {
   }
 }
 }  // namespace config_parsing
+
+size_t RecordView::size() const { return table->col_num(); }
+
+Any RecordView::operator[](size_t col_id) const {
+  return table->get_column_by_id(col_id)->get(offset);
+}
+
+Record::Record(size_t len) : len(len) { props = new Any[len]; }
+
+Record::Record(const Record& record) {
+  len = record.len;
+  props = new Any[len];
+  for (size_t i = 0; i < len; ++i) {
+    props[i] = record.props[i];
+  }
+}
+
+Record::Record(Record&& record) {
+  len = record.len;
+  props = record.props;
+  record.len = 0;
+  record.props = nullptr;
+}
+
+Record& Record::operator=(const Record& record) {
+  if (this == &record) {
+    return *this;
+  }
+  if (props) {
+    delete[] props;
+  }
+  len = record.len;
+  props = new Any[len];
+  for (size_t i = 0; i < len; ++i) {
+    props[i] = record.props[i];
+  }
+  return *this;
+}
+
+Record::Record(const std::initializer_list<Any>& list) {
+  len = list.size();
+  props = new Any[len];
+  size_t i = 0;
+  for (auto& item : list) {
+    props[i++] = item;
+  }
+}
+
+Record::Record(const std::vector<Any>& vec) {
+  len = vec.size();
+  props = new Any[len];
+  for (size_t i = 0; i < len; ++i) {
+    props[i] = vec[i];
+  }
+}
+
+Any Record::operator[](size_t idx) const {
+  if (idx >= len) {
+    return Any();
+  }
+  return props[idx];
+}
+
+Any* Record::begin() const { return props; }
+Any* Record::end() const { return props + len; }
+
+Record::~Record() {
+  if (props) {
+    delete[] props;
+  }
+  props = nullptr;
+}
 
 const PropertyType PropertyType::kEmpty =
     PropertyType(impl::PropertyTypeImpl::kEmpty);
@@ -108,14 +180,20 @@ const PropertyType PropertyType::kDate =
     PropertyType(impl::PropertyTypeImpl::kDate);
 const PropertyType PropertyType::kDay =
     PropertyType(impl::PropertyTypeImpl::kDay);
-const PropertyType PropertyType::kString =
-    PropertyType(impl::PropertyTypeImpl::kString);
+const PropertyType PropertyType::kStringView =
+    PropertyType(impl::PropertyTypeImpl::kStringView);
 const PropertyType PropertyType::kStringMap =
     PropertyType(impl::PropertyTypeImpl::kStringMap);
 const PropertyType PropertyType::kVertexGlobalId =
     PropertyType(impl::PropertyTypeImpl::kVertexGlobalId);
 const PropertyType PropertyType::kLabel =
     PropertyType(impl::PropertyTypeImpl::kLabel);
+const PropertyType PropertyType::kRecordView =
+    PropertyType(impl::PropertyTypeImpl::kRecordView);
+const PropertyType PropertyType::kRecord =
+    PropertyType(impl::PropertyTypeImpl::kRecord);
+const PropertyType PropertyType::kString =
+    PropertyType(impl::PropertyTypeImpl::kString);
 
 bool PropertyType::operator==(const PropertyType& other) const {
   if (type_enum == impl::PropertyTypeImpl::kVarChar &&
@@ -123,10 +201,18 @@ bool PropertyType::operator==(const PropertyType& other) const {
     return additional_type_info.max_length ==
            other.additional_type_info.max_length;
   }
-  if ((type_enum == impl::PropertyTypeImpl::kString &&
+  if ((type_enum == impl::PropertyTypeImpl::kStringView &&
        other.type_enum == impl::PropertyTypeImpl::kVarChar) ||
       (type_enum == impl::PropertyTypeImpl::kVarChar &&
-       other.type_enum == impl::PropertyTypeImpl::kString)) {
+       other.type_enum == impl::PropertyTypeImpl::kStringView)) {
+    return true;
+  }
+  if ((type_enum == impl::PropertyTypeImpl::kString &&
+       (other.type_enum == impl::PropertyTypeImpl::kStringView ||
+        other.type_enum == impl::PropertyTypeImpl::kVarChar)) ||
+      (other.type_enum == impl::PropertyTypeImpl::kString &&
+       (type_enum == impl::PropertyTypeImpl::kStringView ||
+        type_enum == impl::PropertyTypeImpl::kVarChar))) {
     return true;
   }
   return type_enum == other.type_enum;
@@ -140,55 +226,50 @@ bool PropertyType::IsVarchar() const {
   return type_enum == impl::PropertyTypeImpl::kVarChar;
 }
 
-void to_json(nlohmann::json& j, const PropertyType& p) {
-  if (p == PropertyType::Empty()) {
-    j = "empty";
-  } else if (p == PropertyType::Bool() || p == PropertyType::UInt8() ||
-             p == PropertyType::UInt16() || p == PropertyType::Int32() ||
-             p == PropertyType::UInt32() || p == PropertyType::Float() ||
-             p == PropertyType::Int64() || p == PropertyType::UInt64() ||
-             p == PropertyType::Double()) {
-    j["primitive_type"] = config_parsing::PrimitivePropertyTypeToString(p);
-  } else if (p == PropertyType::Date()) {
-    j["temporal"]["timestamp"] = {};
-  } else if (p == PropertyType::Day()) {
-    j["temporal"]["date32"] = {};
-  } else if (p == PropertyType::String() || p == PropertyType::StringMap()) {
-    j["string"]["long_text"] = {};
-  } else if (p.IsVarchar()) {
-    j["string"]["var_char"]["max_length"] = p.additional_type_info.max_length;
-  } else {
-    LOG(ERROR) << "Unknown property type";
-  }
-}
-
-void from_json(const nlohmann::json& j, PropertyType& p) {
-  if (j.contains("primitive_type")) {
-    p = config_parsing::StringToPrimitivePropertyType(
-        j["primitive_type"].get<std::string>());
-  } else if (j.contains("string")) {
-    if (j["string"].contains("long_text")) {
-      p = PropertyType::String();
-    } else if (j.contains("string") && j["string"].contains("var_char")) {
-      if (j["string"]["var_char"].contains("max_length")) {
-        p = PropertyType::Varchar(
-            j["string"]["var_char"]["max_length"].get<int32_t>());
-      } else {
-        p = PropertyType::Varchar(PropertyType::STRING_DEFAULT_MAX_LENGTH);
-      }
-    } else {
-      throw std::invalid_argument("Unknown string type");
-    }
-  } else if (j.contains("temporal")) {
-    if (j["temporal"].contains("timestamp")) {
-      p = PropertyType::Date();
-    } else if (j["temporal"].contains("date32")) {
-      p = PropertyType::Day();
-    } else {
-      throw std::invalid_argument("Unknown temporal type");
-    }
-  } else {
-    LOG(ERROR) << "Unknown property type";
+std::string PropertyType::ToString() const {
+  switch (type_enum) {
+  case impl::PropertyTypeImpl::kEmpty:
+    return "Empty";
+  case impl::PropertyTypeImpl::kBool:
+    return "Bool";
+  case impl::PropertyTypeImpl::kUInt8:
+    return "UInt8";
+  case impl::PropertyTypeImpl::kUInt16:
+    return "UInt16";
+  case impl::PropertyTypeImpl::kInt32:
+    return "Int32";
+  case impl::PropertyTypeImpl::kUInt32:
+    return "UInt32";
+  case impl::PropertyTypeImpl::kFloat:
+    return "Float";
+  case impl::PropertyTypeImpl::kInt64:
+    return "Int64";
+  case impl::PropertyTypeImpl::kUInt64:
+    return "UInt64";
+  case impl::PropertyTypeImpl::kDouble:
+    return "Double";
+  case impl::PropertyTypeImpl::kDate:
+    return "Date";
+  case impl::PropertyTypeImpl::kDay:
+    return "Day";
+  case impl::PropertyTypeImpl::kString:
+    return "String";
+  case impl::PropertyTypeImpl::kStringView:
+    return "StringView";
+  case impl::PropertyTypeImpl::kStringMap:
+    return "StringMap";
+  case impl::PropertyTypeImpl::kVertexGlobalId:
+    return "VertexGlobalId";
+  case impl::PropertyTypeImpl::kLabel:
+    return "Label";
+  case impl::PropertyTypeImpl::kRecordView:
+    return "RecordView";
+  case impl::PropertyTypeImpl::kRecord:
+    return "Record";
+  case impl::PropertyTypeImpl::kVarChar:
+    return "VarChar";
+  default:
+    return "Unknown";
   }
 }
 
@@ -233,6 +314,9 @@ PropertyType PropertyType::Day() {
 PropertyType PropertyType::String() {
   return PropertyType(impl::PropertyTypeImpl::kString);
 }
+PropertyType PropertyType::StringView() {
+  return PropertyType(impl::PropertyTypeImpl::kStringView);
+}
 PropertyType PropertyType::StringMap() {
   return PropertyType(impl::PropertyTypeImpl::kStringMap);
 }
@@ -246,6 +330,14 @@ PropertyType PropertyType::VertexGlobalId() {
 
 PropertyType PropertyType::Label() {
   return PropertyType(impl::PropertyTypeImpl::kLabel);
+}
+
+PropertyType PropertyType::RecordView() {
+  return PropertyType(impl::PropertyTypeImpl::kRecordView);
+}
+
+PropertyType PropertyType::Record() {
+  return PropertyType(impl::PropertyTypeImpl::kRecord);
 }
 
 grape::InArchive& operator<<(grape::InArchive& in_archive,
@@ -290,12 +382,24 @@ grape::InArchive& operator<<(grape::InArchive& in_archive, const Any& value) {
     in_archive << value.type << value.value.d.milli_second;
   } else if (value.type == PropertyType::Day()) {
     in_archive << value.type << value.value.day.to_u32();
-  } else if (value.type == PropertyType::String()) {
+  } else if (value.type == impl::PropertyTypeImpl::kString) {
+    // serialize as string_view
+    auto s = *value.value.s_ptr;
+    auto type = PropertyType::StringView();
+    in_archive << type << s;
+  } else if (value.type == PropertyType::StringView()) {
     in_archive << value.type << value.value.s;
   } else if (value.type == PropertyType::VertexGlobalId()) {
     in_archive << value.type << value.value.vertex_gid;
   } else if (value.type == PropertyType::Label()) {
     in_archive << value.type << value.value.label_key;
+  } else if (value.type == PropertyType::RecordView()) {
+    LOG(FATAL) << "Not supported";
+  } else if (value.type == PropertyType::Record()) {
+    in_archive << value.type << value.value.record.len;
+    for (size_t i = 0; i < value.value.record.len; ++i) {
+      in_archive << value.value.record.props[i];
+    }
   } else {
     in_archive << PropertyType::kEmpty;
   }
@@ -332,12 +436,25 @@ grape::OutArchive& operator>>(grape::OutArchive& out_archive, Any& value) {
     uint32_t val;
     out_archive >> val;
     value.value.day.from_u32(val);
-  } else if (value.type == PropertyType::String()) {
+  } else if (value.type.type_enum == impl::PropertyTypeImpl::kString) {
+    LOG(FATAL) << "Not supported";
+  } else if (value.type == PropertyType::StringView()) {
     out_archive >> value.value.s;
   } else if (value.type == PropertyType::VertexGlobalId()) {
     out_archive >> value.value.vertex_gid;
   } else if (value.type == PropertyType::Label()) {
     out_archive >> value.value.label_key;
+  } else if (value.type == PropertyType::RecordView()) {
+    LOG(FATAL) << "Not supported";
+  } else if (value.type == PropertyType::Record()) {
+    size_t len;
+    out_archive >> len;
+    Record r;
+    r.props = new Any[len];
+    for (size_t i = 0; i < len; ++i) {
+      out_archive >> r.props[i];
+    }
+    value.set_record(r);
   } else {
     value.type = PropertyType::kEmpty;
   }
@@ -430,5 +547,54 @@ int Day::month() const { return value.internal.month; }
 int Day::day() const { return value.internal.day; }
 
 int Day::hour() const { return value.internal.hour; }
+
+Any ConvertStringToAny(const std::string& value, const gs::PropertyType& type) {
+  if (type == gs::PropertyType::Int32()) {
+    return gs::Any(static_cast<int32_t>(std::stoi(value)));
+  } else if (type == gs::PropertyType::Date()) {
+    return gs::Any(gs::Date(static_cast<int64_t>(std::stoll(value))));
+  } else if (type == gs::PropertyType::Day()) {
+    return gs::Any(gs::Day(static_cast<int64_t>(std::stoll(value))));
+  } else if (type == gs::PropertyType::String() ||
+             type == gs::PropertyType::StringMap()) {
+    return gs::Any(std::string(value));
+  } else if (type == gs::PropertyType::Int64()) {
+    return gs::Any(static_cast<int64_t>(std::stoll(value)));
+  } else if (type == gs::PropertyType::Double()) {
+    return gs::Any(std::stod(value));
+  } else if (type == gs::PropertyType::UInt32()) {
+    return gs::Any(static_cast<uint32_t>(std::stoul(value)));
+  } else if (type == gs::PropertyType::UInt64()) {
+    return gs::Any(static_cast<uint64_t>(std::stoull(value)));
+  } else if (type == gs::PropertyType::Bool()) {
+    auto lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (lower == "true") {
+      return gs::Any(true);
+    } else if (lower == "false") {
+      return gs::Any(false);
+    } else {
+      LOG(FATAL) << "Invalid bool value: " << value;
+    }
+  } else if (type == gs::PropertyType::Float()) {
+    return gs::Any(std::stof(value));
+  } else if (type == gs::PropertyType::UInt8()) {
+    return gs::Any(static_cast<uint8_t>(std::stoul(value)));
+  } else if (type == gs::PropertyType::UInt16()) {
+    return gs::Any(static_cast<uint16_t>(std::stoul(value)));
+  } else if (type == gs::PropertyType::VertexGlobalId()) {
+    return gs::Any(gs::GlobalId(static_cast<uint64_t>(std::stoull(value))));
+  } else if (type == gs::PropertyType::Label()) {
+    return gs::Any(gs::LabelKey(static_cast<uint8_t>(std::stoul(value))));
+  } else if (type == gs::PropertyType::Empty()) {
+    return gs::Any();
+  } else if (type == gs::PropertyType::StringView()) {
+    return gs::Any(std::string_view(value));
+  } else {
+    LOG(FATAL) << "Unsupported type: " << type;
+  }
+  return gs::Any();
+}
 
 }  // namespace gs

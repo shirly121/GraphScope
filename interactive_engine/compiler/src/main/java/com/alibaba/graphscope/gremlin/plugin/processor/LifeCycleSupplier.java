@@ -20,9 +20,9 @@ import com.alibaba.graphscope.common.client.ExecutionClient;
 import com.alibaba.graphscope.common.client.type.ExecutionRequest;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.QueryTimeoutConfig;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.QueryCache;
-import com.alibaba.graphscope.common.store.IrMeta;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.graphscope.gremlin.plugin.QueryStatusCallback;
 import com.alibaba.graphscope.gremlin.resultx.GremlinRecordParser;
@@ -40,6 +40,7 @@ import java.util.function.Supplier;
 public class LifeCycleSupplier implements Supplier<GremlinExecutor.LifeCycle> {
     private final Configs configs;
     private final QueryCache queryCache;
+    private final GraphPlanner graphPlanner;
     private final ExecutionClient client;
     private final Context ctx;
     private final BigInteger queryId;
@@ -52,6 +53,7 @@ public class LifeCycleSupplier implements Supplier<GremlinExecutor.LifeCycle> {
             Configs configs,
             Context ctx,
             QueryCache queryCache,
+            GraphPlanner graphPlanner,
             ExecutionClient client,
             BigInteger queryId,
             String queryName,
@@ -61,6 +63,7 @@ public class LifeCycleSupplier implements Supplier<GremlinExecutor.LifeCycle> {
         this.configs = configs;
         this.ctx = ctx;
         this.queryCache = queryCache;
+        this.graphPlanner = graphPlanner;
         this.client = client;
         this.queryId = queryId;
         this.queryName = queryName;
@@ -76,6 +79,7 @@ public class LifeCycleSupplier implements Supplier<GremlinExecutor.LifeCycle> {
                 .beforeEval(
                         b -> {
                             b.put("graph.query.cache", queryCache);
+                            b.put("graph.planner", graphPlanner);
                             b.put("graph.meta", meta);
                         })
                 .withResult(
@@ -91,7 +95,7 @@ public class LifeCycleSupplier implements Supplier<GremlinExecutor.LifeCycle> {
                                 GraphPlanner.Summary summary = value.summary;
                                 statusCallback
                                         .getQueryLogger()
-                                        .info("ir plan {}", summary.getPhysicalPlan().explain());
+                                        .debug("ir plan {}", summary.getPhysicalPlan().explain());
                                 ResultSchema resultSchema =
                                         new ResultSchema(summary.getLogicalPlan());
                                 GremlinResultProcessor listener =

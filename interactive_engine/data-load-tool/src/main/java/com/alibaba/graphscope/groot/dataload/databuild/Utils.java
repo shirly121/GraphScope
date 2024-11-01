@@ -1,6 +1,7 @@
 package com.alibaba.graphscope.groot.dataload.databuild;
 
-import com.alibaba.graphscope.groot.common.exception.PropertyDefNotFoundException;
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
+import com.alibaba.graphscope.groot.common.exception.NotFoundException;
 import com.alibaba.graphscope.groot.common.schema.api.*;
 import com.alibaba.graphscope.groot.common.schema.wrapper.PropertyValue;
 import com.alibaba.graphscope.groot.dataload.unified.*;
@@ -18,6 +19,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -199,12 +202,12 @@ public class Utils {
                     String msg = "Label [" + label + "]: ";
                     if (prop == null) {
                         msg += "propertyId [" + propertyId + "] not found";
-                        throw new PropertyDefNotFoundException(msg);
+                        throw new NotFoundException(msg);
                     }
                     if (colIdx >= items.length) {
                         msg += "Invalid mapping [" + colIdx + "]->[" + propertyId + "]";
                         msg += "Data: " + Arrays.toString(items);
-                        throw new IllegalArgumentException(msg);
+                        throw new InvalidArgumentException(msg);
                     }
                     PropertyValue propertyValue = null;
                     if (items[colIdx] != null) {
@@ -264,7 +267,7 @@ public class Utils {
         try {
             return DST_FMT.format(SRC_FMT.parse(input));
         } catch (ParseException e) {
-            throw new RuntimeException(e);
+            throw new InvalidArgumentException(e);
         }
     }
 
@@ -313,5 +316,11 @@ public class Utils {
         } catch (java.text.ParseException e) {
             return null;
         }
+    }
+
+    public static String readFileAsString(String fileName) throws Exception {
+        String data = "";
+        data = new String(Files.readAllBytes(Paths.get(fileName)));
+        return data;
     }
 }

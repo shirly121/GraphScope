@@ -18,6 +18,7 @@ import com.alibaba.graphscope.groot.common.config.CommonConfig;
 import com.alibaba.graphscope.groot.common.config.Configs;
 import com.alibaba.graphscope.groot.common.config.DiscoveryConfig;
 import com.alibaba.graphscope.groot.common.config.StoreConfig;
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
 import com.alibaba.graphscope.groot.operation.OperationBatch;
 import com.alibaba.graphscope.groot.operation.OperationBlob;
 import com.alibaba.graphscope.groot.operation.OperationType;
@@ -41,6 +42,9 @@ public class Utils {
 
     public static String getHostTemplate(Configs configs, RoleType role) {
         String releaseName = DiscoveryConfig.RELEASE_FULL_NAME.get(configs);
+        if (releaseName.equals("localhost") || releaseName.equals("127.0.0.1")) {
+            return releaseName;
+        }
         // template = "{releaseName}-{role}-{}.{releaseName}-{role}-headless";
         // i.e. demo-graphscope-store-frontend-0.demo-graphscope-store-frontend-headless
         String svcTemplate = "%s-%s";
@@ -58,7 +62,7 @@ public class Utils {
                 svcName = String.format(svcTemplate, releaseName, "store");
                 break;
             default:
-                throw new IllegalArgumentException("invalid role [" + role + "]");
+                throw new InvalidArgumentException("invalid role [" + role + "]");
         }
         String dnsTemplate = "%s-{}.%s-headless";
         return String.format(dnsTemplate, svcName, svcName);
@@ -94,18 +98,18 @@ public class Utils {
                 s = CommonConfig.GAIA_ENGINE_PORT.get(configs);
                 break;
             default:
-                throw new IllegalArgumentException("invalid role [" + role + "]");
+                throw new InvalidArgumentException("invalid role [" + role + "]");
         }
         if (s.isEmpty()) { // For backward compatibility
             return CommonConfig.RPC_PORT.get(configs);
         } else {
             String[] array = s.split(",");
             if (idx >= array.length) {
-                // throw new IllegalArgumentException("Invalid index " + idx + " of " + s);
+                // throw new InvalidArgumentException("Invalid index " + idx + " of " + s);
                 idx = 0; // Just use the first one. In this case, assume they are in different pods.
             }
             if (array[idx].isEmpty()) {
-                throw new IllegalArgumentException("Invalid port " + array[idx] + " of " + role);
+                throw new InvalidArgumentException("Invalid port " + array[idx] + " of " + role);
             }
             return Integer.parseInt(array[idx]);
         }
@@ -170,6 +174,18 @@ public class Utils {
             logger.warn("LOCK {} is unavailable", LOCK);
             return false;
         }
+        return true;
+    }
+
+    public static boolean isMetaFreshEnough(Configs configs, long delta) {
+        String dataRoot = StoreConfig.STORE_DATA_PATH.get(configs);
+        File metaDir = Paths.get(dataRoot, "meta").toAbsolutePath().toFile();
+        if (metaDir.exists()) {
+            long lastModified = metaDir.lastModified();
+            long ts = System.currentTimeMillis();
+            return ts - lastModified < delta;
+        }
+        // not exists also means fresh enough
         return true;
     }
 }

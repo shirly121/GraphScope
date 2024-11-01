@@ -16,13 +16,12 @@
 package com.alibaba.graphscope.interactive.client;
 
 import com.alibaba.graphscope.interactive.client.common.Result;
-import com.alibaba.graphscope.interactive.openapi.model.*;
+import com.alibaba.graphscope.interactive.models.*;
 
 import java.util.List;
 
 /**
  * All APIs about procedure management.
- * TODO(zhanglei): differ between ProcedureRequest and Procedure
  */
 public interface ProcedureInterface {
     Result<CreateProcedureResponse> createProcedure(
@@ -36,6 +35,4 @@ public interface ProcedureInterface {
 
     Result<String> updateProcedure(
             String graphId, String procedureId, UpdateProcedureRequest procedure);
-
-    Result<CollectiveResults> callProcedure(String graphId, QueryRequest request);
 }

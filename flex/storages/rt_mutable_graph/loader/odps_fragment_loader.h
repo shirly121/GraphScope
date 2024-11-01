@@ -36,7 +36,6 @@
 #include "flex/storages/rt_mutable_graph/mutable_property_fragment.h"
 #include "flex/third_party/httplib.h"
 #include "grape/util.h"
-#include "nlohmann/json.hpp"
 #include "storage_api.hpp"
 #include "storage_api_arrow.hpp"
 
@@ -61,6 +60,7 @@ class ODPSReadClient {
  public:
   static constexpr const int CONNECTION_TIMEOUT = 5;
   static constexpr const int READ_WRITE_TIMEOUT = 10;
+  static constexpr const size_t MAX_RETRY = 10;
   ODPSReadClient();
 
   ~ODPSReadClient();
@@ -112,7 +112,6 @@ class ODPSReadClient {
   std::string output_directory_;
   std::shared_ptr<ArrowClient> arrow_client_ptr_;
   size_t MAX_PRODUCER_NUM = 8;
-  size_t MAX_RETRY = 5;
 };
 
 class ODPSStreamRecordBatchSupplier : public IRecordBatchSupplier {
@@ -120,7 +119,8 @@ class ODPSStreamRecordBatchSupplier : public IRecordBatchSupplier {
   ODPSStreamRecordBatchSupplier(label_t label_id, const std::string& file_path,
                                 const ODPSReadClient& odps_table_reader,
                                 const std::string& session_id, int split_count,
-                                TableIdentifier table_identifier);
+                                TableIdentifier table_identifier, int worker_id,
+                                int worker_num);
 
   std::shared_ptr<arrow::RecordBatch> GetNextBatch() override;
 
@@ -129,9 +129,11 @@ class ODPSStreamRecordBatchSupplier : public IRecordBatchSupplier {
   const ODPSReadClient& odps_read_client_;
   std::string session_id_;
   int split_count_;
+
   TableIdentifier table_identifier_;
 
   int32_t cur_split_index_;
+  int worker_num_;
   ReadRowsReq read_rows_req_;
   std::shared_ptr<Reader> cur_batch_reader_;
 };
@@ -168,17 +170,16 @@ class ODPSTableRecordBatchSupplier : public IRecordBatchSupplier {
 class ODPSFragmentLoader : public AbstractArrowFragmentLoader {
  public:
   ODPSFragmentLoader(const std::string& work_dir, const Schema& schema,
-                     const LoadingConfig& loading_config, int32_t thread_num)
-      : AbstractArrowFragmentLoader(work_dir, schema, loading_config,
-                                    thread_num) {}
+                     const LoadingConfig& loading_config)
+      : AbstractArrowFragmentLoader(work_dir, schema, loading_config) {}
 
   static std::shared_ptr<IFragmentLoader> Make(
       const std::string& work_dir, const Schema& schema,
-      const LoadingConfig& loading_config, int32_t thread_num);
+      const LoadingConfig& loading_config);
 
   ~ODPSFragmentLoader() {}
 
-  void LoadFragment() override;
+  Result<bool> LoadFragment() override;
 
  private:
   void init();

@@ -19,6 +19,8 @@ SERVER_BIN=${FLEX_HOME}/build/bin/interactive_server
 GIE_HOME=${FLEX_HOME}/../interactive_engine/
 ADMIN_PORT=7777
 QUERY_PORT=10000
+CYPHER_PORT=7687
+GREMLIN_PORT=8182
 
 # 
 if [ ! $# -eq 3 ]; then
@@ -83,7 +85,7 @@ start_engine_service(){
 
     echo "Start engine service with command: ${cmd}"
     eval ${cmd} 
-    sleep 5
+    sleep 10
     #check interactive_server is running, if not, exit
     ps -ef | grep "interactive_server" | grep -v grep
 
@@ -102,18 +104,23 @@ run_java_sdk_test(){
 
 run_python_sdk_test(){
   echo "run python sdk test"
-  pushd ${FLEX_HOME}/interactive/sdk/python/
-  pip3 install -r requirements.txt 
-  pip3 install -r test-requirements.txt
-  cmd="python3 -m pytest -s test/test_driver.py"
-  echo "Start python sdk test: ${cmd}"
-  eval ${cmd} || (err "java python test failed" &&  exit 1)
+  pushd ${FLEX_HOME}/interactive/sdk/python/gs_interactive
+  cmd="python3 -m pytest -s tests/test_driver.py"
+  echo "Run python sdk test: ${cmd}"
+  eval ${cmd} || (err "test_driver failed" &&  exit 1)
+  cmd="python3 -m pytest -s tests/test_utils.py"
+  echo "Run python sdk test: ${cmd}"
+  eval ${cmd} || (err "test_utils failed" &&  exit 1)
   info "Finish python sdk test"
   popd
 }
 
 kill_service
 start_engine_service
+export INTERACTIVE_ADMIN_ENDPOINT=http://localhost:${ADMIN_PORT}
+export INTERACTIVE_STORED_PROC_ENDPOINT=http://localhost:${QUERY_PORT}
+export INTERACTIVE_CYPHER_ENDPOINT=neo4j://localhost:${CYPHER_PORT}
+export INTERACTIVE_GREMLIN_ENDPOINT=ws://localhost:${GREMLIN_PORT}/gremlin
 if [ ${SDK_TYPE} == "java" ]; then
   run_java_sdk_test
 elif [ ${SDK_TYPE} == "python" ]; then

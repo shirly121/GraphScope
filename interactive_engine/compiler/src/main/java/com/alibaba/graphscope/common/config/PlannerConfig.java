@@ -1,10 +1,5 @@
 package com.alibaba.graphscope.common.config;
 
-import com.alibaba.graphscope.common.ir.rel.metadata.schema.GlogueSchema;
-
-import org.checkerframework.checker.nullness.qual.Nullable;
-
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
@@ -14,33 +9,42 @@ public class PlannerConfig {
     public static final Config<String> GRAPH_PLANNER_OPT =
             Config.stringConfig("graph.planner.opt", "RBO");
     public static final Config<String> GRAPH_PLANNER_RULES =
-            Config.stringConfig("graph.planner.rules", "");
+            Config.stringConfig(
+                    "graph.planner.rules",
+                    "FilterIntoJoinRule,FilterMatchRule,ExtendIntersectRule,ExpandGetVFusionRule");
     public static final Config<Integer> GRAPH_PLANNER_CBO_GLOGUE_SIZE =
             Config.intConfig("graph.planner.cbo.glogue.size", 3);
-    public static final Config<String> GRAPH_PLANNER_CBO_GLOGUE_SCHEMA =
-            Config.stringConfig("graph.planner.cbo.glogue.schema", ".");
     public static final Config<Integer> JOIN_MIN_PATTERN_SIZE =
             Config.intConfig("graph.planner.join.min.pattern.size", 5);
     public static final Config<Integer> JOIN_COST_FACTOR_1 =
             Config.intConfig("graph.planner.join.cost.factor.1", 1);
     public static final Config<Integer> JOIN_COST_FACTOR_2 =
             Config.intConfig("graph.planner.join.cost.factor.2", 1);
+    // if enabled, the cost estimation of expand will take the intermediate count of <src, edge>
+    // into consideration
+    public static final Config<Boolean> LABEL_CONSTRAINTS_ENABLED =
+            Config.boolConfig("graph.planner.label.constraints.enabled", false);
+    // the cost factor of ExtendIntersect operator
+    public static final Config<Integer> INTERSECT_COST_FACTOR =
+            Config.intConfig("graph.planner.intersect.cost.factor", 1);
+    // control the output plan space after applying `JoinDecomposition` each time
+    public static final Config<Integer> JOIN_QUEUE_CAPACITY =
+            Config.intConfig("graph.planner.join.queue.capacity", 3);
+    // if enabled, the triangle pattern will be converted to `JoinByEdge`, to support optimizations
+    // in Neo4j
+    public static final Config<Boolean> JOIN_BY_EDGE_ENABLED =
+            Config.boolConfig("graph.planner.join.by.edge.enabled", false);
+    public static final Config<Integer> GRAPH_PLANNER_GROUP_SIZE =
+            Config.intConfig("graph.planner.group.size", 8);
+    public static final Config<Integer> GRAPH_PLANNER_GROUP_CLEAR_INTERVAL_MINUTES =
+            Config.intConfig("graph.planner.group.clear.interval.minutes", 30);
 
     private final Configs configs;
     private final List<String> rules;
-    private final @Nullable GlogueSchema glogueSchema;
 
     public PlannerConfig(Configs configs) {
         this.configs = configs;
         this.rules = Utils.convertDotString(GRAPH_PLANNER_RULES.get(configs));
-        try {
-            this.glogueSchema =
-                    (isOn() && getOpt() == Opt.CBO)
-                            ? GlogueSchema.fromFile(GRAPH_PLANNER_CBO_GLOGUE_SCHEMA.get(configs))
-                            : null;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public enum Opt {
@@ -64,10 +68,6 @@ public class PlannerConfig {
         return GRAPH_PLANNER_CBO_GLOGUE_SIZE.get(configs);
     }
 
-    public @Nullable GlogueSchema getGlogueSchema() {
-        return glogueSchema;
-    }
-
     public int getJoinMinPatternSize() {
         return JOIN_MIN_PATTERN_SIZE.get(configs);
     }
@@ -78,6 +78,34 @@ public class PlannerConfig {
 
     public int getJoinCostFactor2() {
         return JOIN_COST_FACTOR_2.get(configs);
+    }
+
+    public boolean labelConstraintsEnabled() {
+        return LABEL_CONSTRAINTS_ENABLED.get(configs);
+    }
+
+    public int getIntersectCostFactor() {
+        return INTERSECT_COST_FACTOR.get(configs);
+    }
+
+    public boolean isJoinByEdgeEnabled() {
+        return JOIN_BY_EDGE_ENABLED.get(configs);
+    }
+
+    public int getJoinQueueCapacity() {
+        return JOIN_QUEUE_CAPACITY.get(configs);
+    }
+
+    public String getJoinByForeignKeyUri() {
+        return GraphConfig.GRAPH_FOREIGN_KEY_URI.get(configs);
+    }
+
+    public int getPlannerGroupSize() {
+        return GRAPH_PLANNER_GROUP_SIZE.get(configs);
+    }
+
+    public int getPlannerGroupClearIntervalMinutes() {
+        return GRAPH_PLANNER_GROUP_CLEAR_INTERVAL_MINUTES.get(configs);
     }
 
     @Override

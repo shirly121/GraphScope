@@ -14,6 +14,7 @@
 package com.alibaba.graphscope.groot.dataload.databuild;
 
 import com.alibaba.graphscope.groot.common.config.DataLoadConfig;
+import com.alibaba.graphscope.groot.common.exception.InvalidArgumentException;
 import com.alibaba.graphscope.groot.common.schema.api.GraphSchema;
 import com.alibaba.graphscope.groot.common.schema.mapper.GraphSchemaMapper;
 import com.alibaba.graphscope.groot.common.schema.wrapper.GraphDef;
@@ -37,7 +38,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.*;
 
 public class OfflineBuildOdps {
@@ -50,6 +50,9 @@ public class OfflineBuildOdps {
         }
 
         String configFile = args[0];
+
+        System.out.println("Config is:");
+        System.out.println(Utils.readFileAsString(configFile));
         UniConfig properties = UniConfig.fromFile(configFile);
 
         odps = SessionState.get().getOdps();
@@ -158,9 +161,9 @@ public class OfflineBuildOdps {
             String outputTable = properties.getProperty(DataLoadConfig.OUTPUT_TABLE);
             OutputUtils.addTable(Utils.parseTableURL(odps, outputTable), job);
         } else if (dataSinkType.equalsIgnoreCase("HDFS")) {
-            throw new IOException("HDFS as a data sink is not supported in ODPS");
+            throw new InvalidArgumentException("HDFS as a data sink is not supported in ODPS");
         } else {
-            throw new IOException("Unsupported data sink: " + dataSinkType);
+            throw new InvalidArgumentException("Unsupported data sink: " + dataSinkType);
         }
 
         String schemaJson = GraphSchemaMapper.parseFromSchema(schema).toJsonString();
@@ -180,10 +183,10 @@ public class OfflineBuildOdps {
         try {
             JobClient.runJob(job);
         } catch (Exception e) {
-            throw new IOException(e);
+            throw new InvalidArgumentException(e);
         }
 
-        String _tmp = properties.getProperty(DataLoadConfig.LOAD_AFTER_BUILD, "false");
+        String _tmp = properties.getProperty(DataLoadConfig.LOAD_AFTER_BUILD, "true");
         boolean loadAfterBuild = Utils.parseBoolean(_tmp);
         if (loadAfterBuild) {
             fullQualifiedDataPath = fullQualifiedDataPath + uniquePath;

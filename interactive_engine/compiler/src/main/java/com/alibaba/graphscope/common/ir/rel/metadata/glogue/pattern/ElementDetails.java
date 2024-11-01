@@ -16,14 +16,23 @@
 
 package com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern;
 
+import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
+import com.google.common.collect.ImmutableList;
+
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 public class ElementDetails implements Comparable<ElementDetails> {
     private final double selectivity;
     // the range is not null if and only if the element denotes a path expand operator
     private final @Nullable PathExpandRange range;
+    // record inner getV types of path expand
+    private final List<Integer> pxdInnerGetVTypes;
+    private final GraphOpt.PathExpandResult resultOpt;
+    private final GraphOpt.PathExpandPath pathOpt;
     private boolean optional;
 
     public ElementDetails() {
@@ -31,21 +40,35 @@ public class ElementDetails implements Comparable<ElementDetails> {
     }
 
     public ElementDetails(double selectivity) {
-        this(selectivity, null);
+        this(selectivity, null, ImmutableList.of(), null, null);
     }
 
-    public ElementDetails(double selectivity, @Nullable PathExpandRange range) {
-        this(selectivity, range, false);
+    public ElementDetails(
+            double selectivity,
+            @Nullable PathExpandRange range,
+            List<Integer> pxdInnerGetVTypes,
+            GraphOpt.PathExpandResult resultOpt,
+            GraphOpt.PathExpandPath pathOpt) {
+        this(selectivity, range, pxdInnerGetVTypes, resultOpt, pathOpt, false);
     }
 
     public ElementDetails(double selectivity, boolean optional) {
-        this(selectivity, null, optional);
+        this(selectivity, null, ImmutableList.of(), null, null, optional);
     }
 
-    public ElementDetails(double selectivity, @Nullable PathExpandRange range, boolean optional) {
+    public ElementDetails(
+            double selectivity,
+            @Nullable PathExpandRange range,
+            List<Integer> pxdInnerVertexTypes,
+            GraphOpt.PathExpandResult resultOpt,
+            GraphOpt.PathExpandPath pathOpt,
+            boolean optional) {
         this.selectivity = selectivity;
         this.range = range;
+        this.pxdInnerGetVTypes = pxdInnerVertexTypes;
         this.optional = optional;
+        this.resultOpt = resultOpt;
+        this.pathOpt = pathOpt;
     }
 
     @Override
@@ -55,12 +78,15 @@ public class ElementDetails implements Comparable<ElementDetails> {
         ElementDetails details = (ElementDetails) o;
         return Double.compare(details.selectivity, selectivity) == 0
                 && Objects.equals(range, details.range)
-                && optional == details.optional;
+                && Objects.equals(pxdInnerGetVTypes, details.pxdInnerGetVTypes)
+                && optional == details.optional
+                && Objects.equals(resultOpt, details.resultOpt)
+                && Objects.equals(pathOpt, details.pathOpt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(selectivity, range, optional);
+        return Objects.hash(selectivity, range, optional, pxdInnerGetVTypes, resultOpt, pathOpt);
     }
 
     public double getSelectivity() {
@@ -79,19 +105,20 @@ public class ElementDetails implements Comparable<ElementDetails> {
         this.optional = optional;
     }
 
+    public List<Integer> getPxdInnerGetVTypes() {
+        return Collections.unmodifiableList(this.pxdInnerGetVTypes);
+    }
+
+    public GraphOpt.PathExpandResult getResultOpt() {
+        return resultOpt;
+    }
+
+    public GraphOpt.PathExpandPath getPathOpt() {
+        return pathOpt;
+    }
+
     @Override
     public int compareTo(ElementDetails o) {
-        int compare = Double.compare(this.selectivity, o.selectivity);
-        if (compare != 0) {
-            return compare;
-        }
-        compare = Boolean.compare(this.optional, o.optional);
-        if (compare != 0) {
-            return compare;
-        }
-        if (this.range != null && o.range != null) {
-            return this.range.compareTo(o.range);
-        }
-        return this.range == null && o.range == null ? 0 : this.range == null ? -1 : 1;
+        return o == null ? -1 : this.hashCode() - o.hashCode();
     }
 }

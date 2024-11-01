@@ -18,7 +18,7 @@
 #include "stdlib.h"
 
 #include "flex/engines/http_server/codegen_proxy.h"
-#include "flex/engines/http_server/service/hqps_service.h"
+#include "flex/engines/http_server/graph_db_service.h"
 #include "flex/engines/http_server/workdir_manipulator.h"
 #include "flex/otel/otel.h"
 #include "flex/storages/rt_mutable_graph/loading_config.h"
@@ -54,8 +54,17 @@ std::string parse_codegen_dir(const bpo::variables_map& vm) {
   return codegen_dir;
 }
 
+void blockSignal(int sig) {
+  sigset_t set;
+  sigemptyset(&set);
+  sigaddset(&set, sig);
+  if (pthread_sigmask(SIG_BLOCK, &set, NULL) != 0) {
+    perror("pthread_sigmask");
+  }
+}
+
 // When graph_schema is not specified, codegen proxy will use the running graph
-// schema in hqps_service
+// schema in graph_db_service
 void init_codegen_proxy(const bpo::variables_map& vm,
                         const std::string& engine_config_file,
                         const std::string& graph_schema_file = "") {
@@ -75,61 +84,44 @@ void init_codegen_proxy(const bpo::variables_map& vm,
                                    graph_schema_file);
 }
 
-void openDefaultGraph(const std::string workspace, int32_t thread_num,
-                      const std::string& default_graph) {
-  if (!std::filesystem::exists(workspace)) {
-    LOG(ERROR) << "Workspace directory not exists: " << workspace;
-  }
-  auto data_dir_path =
-      workspace + "/" + server::WorkDirManipulator::DATA_DIR_NAME;
-  if (!std::filesystem::exists(data_dir_path)) {
-    LOG(ERROR) << "Data directory not exists: " << data_dir_path;
-    return;
-  }
-
-  // Get current executable path
-
-  server::WorkDirManipulator::SetWorkspace(workspace);
-
-  VLOG(1) << "Finish init workspace";
-
-  if (default_graph.empty()) {
-    LOG(FATAL) << "No Default graph is specified";
-    return;
+void config_log_level(int log_level, int verbose_level) {
+  if (getenv("GLOG_minloglevel") != nullptr) {
+    FLAGS_stderrthreshold = atoi(getenv("GLOG_minloglevel"));
+  } else {
+    if (log_level == 0) {
+      FLAGS_minloglevel = 0;
+    } else if (log_level == 1) {
+      FLAGS_minloglevel = 1;
+    } else if (log_level == 2) {
+      FLAGS_minloglevel = 2;
+    } else if (log_level == 3) {
+      FLAGS_minloglevel = 3;
+    } else {
+      LOG(ERROR) << "Unsupported log level: " << log_level;
+    }
   }
 
-  auto& db = gs::GraphDB::get();
-  auto schema_path =
-      server::WorkDirManipulator::GetGraphSchemaPath(default_graph);
-  auto schema_res = gs::Schema::LoadFromYaml(schema_path);
-  if (!schema_res.ok()) {
-    LOG(FATAL) << "Fail to load graph schema from yaml file: " << schema_path;
+  // If environment variable is set, we will use it
+  if (getenv("GLOG_v") != nullptr) {
+    FLAGS_v = atoi(getenv("GLOG_v"));
+  } else {
+    if (verbose_level >= 0) {
+      FLAGS_v = verbose_level;
+    } else {
+      LOG(ERROR) << "Unsupported verbose level: " << verbose_level;
+    }
   }
-  auto data_dir_res =
-      server::WorkDirManipulator::GetDataDirectory(default_graph);
-  if (!data_dir_res.ok()) {
-    LOG(FATAL) << "Fail to get data directory for default graph: "
-               << data_dir_res.status().error_message();
-  }
-  std::string data_dir = data_dir_res.value();
-  if (!std::filesystem::exists(data_dir)) {
-    LOG(FATAL) << "Data directory not exists: " << data_dir
-               << ", for graph: " << default_graph;
-  }
-  db.Close();
-  if (!db.Open(schema_res.value(), data_dir, thread_num).ok()) {
-    LOG(FATAL) << "Fail to load graph from data directory: " << data_dir;
-  }
-  LOG(INFO) << "Successfully init graph db for default graph: "
-            << default_graph;
 }
-
 }  // namespace gs
 
 /**
  * The main entrance for InteractiveServer.
  */
 int main(int argc, char** argv) {
+  // block sigint and sigterm in main thread, let seastar handle it
+  gs::blockSignal(SIGINT);
+  gs::blockSignal(SIGTERM);
+
   bpo::options_description desc("Usage:");
   desc.add_options()("help,h", "Display help messages")(
       "enable-admin-service,e", bpo::value<bool>()->default_value(false),
@@ -151,7 +143,11 @@ int main(int argc, char** argv) {
       "enable-trace", bpo::value<bool>()->default_value(false),
       "whether to enable opentelemetry tracing")(
       "start-compiler", bpo::value<bool>()->default_value(false),
-      "whether or not to start compiler");
+      "whether or not to start compiler")(
+      "memory-level,m", bpo::value<unsigned>()->default_value(1),
+      "memory allocation strategy")("enable-adhoc-handler",
+                                    bpo::value<bool>()->default_value(false),
+                                    "whether to enable adhoc handler");
 
   setenv("TZ", "Asia/Shanghai", 1);
   tzset();
@@ -170,6 +166,7 @@ int main(int argc, char** argv) {
   if (vm.count("workspace")) {
     workspace = vm["workspace"].as<std::string>();
   }
+  server::WorkDirManipulator::SetWorkspace(workspace);
 
   if (!vm.count("server-config")) {
     LOG(FATAL) << "server-config is needed";
@@ -182,6 +179,11 @@ int main(int argc, char** argv) {
   service_config.engine_config_path = engine_config_file;
   service_config.start_admin_service = vm["enable-admin-service"].as<bool>();
   service_config.start_compiler = vm["start-compiler"].as<bool>();
+  service_config.memory_level = vm["memory-level"].as<unsigned>();
+  service_config.enable_adhoc_handler = vm["enable-adhoc-handler"].as<bool>();
+
+  // Config log level
+  gs::config_log_level(service_config.log_level, service_config.verbose_level);
 
   auto& db = gs::GraphDB::get();
 
@@ -204,13 +206,13 @@ int main(int argc, char** argv) {
                     "data-path should NOT be specified";
     }
 
-    gs::openDefaultGraph(workspace, service_config.shard_num,
-                         service_config.default_graph);
     // Suppose the default_graph is already loaded.
     LOG(INFO) << "Finish init workspace";
     auto schema_file = server::WorkDirManipulator::GetGraphSchemaPath(
         service_config.default_graph);
-    gs::init_codegen_proxy(vm, engine_config_file);
+    if (service_config.enable_adhoc_handler) {
+      gs::init_codegen_proxy(vm, engine_config_file);
+    }
   } else {
     LOG(INFO) << "Start query service only";
     std::string graph_schema_path, data_path;
@@ -234,7 +236,9 @@ int main(int argc, char** argv) {
     }
 
     // The schema is loaded just to get the plugin dir and plugin list
-    gs::init_codegen_proxy(vm, engine_config_file, graph_schema_path);
+    if (service_config.enable_adhoc_handler) {
+      gs::init_codegen_proxy(vm, engine_config_file, graph_schema_path);
+    }
     db.Close();
     auto load_res =
         db.Open(schema_res.value(), data_path, service_config.shard_num);
@@ -244,8 +248,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  server::HQPSService::get().init(service_config);
-  server::HQPSService::get().run_and_wait_for_exit();
+  server::GraphDBService::get().init(service_config);
+  server::GraphDBService::get().run_and_wait_for_exit();
+
+#ifdef HAVE_OPENTELEMETRY_CPP
+  otel::cleanUpTracer();
+#endif
 
   return 0;
 }

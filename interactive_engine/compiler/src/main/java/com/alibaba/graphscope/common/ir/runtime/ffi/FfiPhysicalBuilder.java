@@ -19,6 +19,8 @@ package com.alibaba.graphscope.common.ir.runtime.ffi;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.config.FrontendConfig;
 import com.alibaba.graphscope.common.config.PegasusConfig;
+import com.alibaba.graphscope.common.ir.meta.IrMeta;
+import com.alibaba.graphscope.common.ir.meta.schema.SchemaSpec.Type;
 import com.alibaba.graphscope.common.ir.rel.*;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalAggregate;
 import com.alibaba.graphscope.common.ir.rel.GraphLogicalProject;
@@ -39,7 +41,6 @@ import com.alibaba.graphscope.common.jna.IrCoreLibrary;
 import com.alibaba.graphscope.common.jna.type.FfiData;
 import com.alibaba.graphscope.common.jna.type.FfiResult;
 import com.alibaba.graphscope.common.jna.type.ResultCode;
-import com.alibaba.graphscope.common.store.IrMeta;
 import com.google.common.base.Preconditions;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.IntByReference;
@@ -80,7 +81,7 @@ public class FfiPhysicalBuilder extends RegularPhysicalBuilder<Pointer> {
     }
 
     private static PlanPointer createDefaultPlanPointer(IrMeta irMeta) {
-        checkFfiResult(LIB.setSchema(irMeta.getSchema().schemaJson()));
+        checkFfiResult(LIB.setSchema(irMeta.getSchema().getSchemaSpec(Type.IR_CORE_IN_JSON)));
         return new PlanPointer(LIB.initLogicalPlan());
     }
 
