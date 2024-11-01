@@ -82,7 +82,7 @@ impl MultiVersionGraph for GraphStore {
             self.get_vertex_from_label(si, vertex_id, label_id, property_ids)
         } else {
             let guard = epoch::pin();
-            let map = self.vertex_manager.get_map(&guard);
+            let map = self.vertex_manager.get_map(&guard)?;
             let map_ref = unsafe { map.deref() };
             let mut iter = map_ref.values();
             while let Some(info) = next_vertex_type_info(si, &mut iter) {
@@ -156,7 +156,7 @@ impl MultiVersionGraph for GraphStore {
             }
             None => {
                 let guard = epoch::pin();
-                let map = self.vertex_manager.get_map(&guard);
+                let map = self.vertex_manager.get_map(&guard)?;
                 let map_ref = unsafe { map.deref() };
                 let mut iter = map_ref.values();
                 let mut res: Records<Self::V> = Box::new(::std::iter::empty());

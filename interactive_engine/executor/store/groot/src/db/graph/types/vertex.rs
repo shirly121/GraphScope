@@ -93,12 +93,16 @@ impl VertexTypeManager {
 
     pub fn contains_type(&self, _si: SnapshotId, label: LabelId) -> bool {
         let guard = &epoch::pin();
-        let map = self.get_map(guard);
+        let _map = self.get_map(guard);
 
-        if let Some(map_ref) = unsafe { map.as_ref() } {
-            map_ref.contains_key(&label)
+        if let Ok(map) = _map {
+            if let Some(map_ref) = unsafe { map.as_ref() } {
+                map_ref.contains_key(&label)
+            } else {
+                // TODO(longbin): any better solution
+                false
+            }
         } else {
-            // TODO(longbin): any better solution
             false
         }
     }
@@ -109,7 +113,7 @@ impl VertexTypeManager {
         assert_eq!(si, table0.start_si, "type start si must be equal to table0.start_si");
 
         let guard = &epoch::pin();
-        let map = self.get_map(guard);
+        let map = self.get_map(guard)?;
         let mut map_clone = unsafe { map.as_ref() }
             .ok_or_else(|| {
                 let msg = "get map reference return `None`".to_string();
@@ -133,7 +137,7 @@ impl VertexTypeManager {
 
     pub fn get_type(&self, si: SnapshotId, label: LabelId) -> GraphResult<Arc<VertexTypeInfo>> {
         let guard = epoch::pin();
-        let map = self.get_map(&guard);
+        let map = self.get_map(&guard)?;
         let map_ref = unsafe { map.as_ref() }.ok_or_else(|| {
             let msg = "get map reference return `None`".to_string();
             gen_graph_err!(GraphErrorCode::InvalidData, msg, get_map, si, label)
@@ -153,7 +157,7 @@ impl VertexTypeManager {
 
     pub fn get_type_info(&self, si: SnapshotId, label: LabelId) -> GraphResult<Arc<VertexTypeInfo>> {
         let guard = epoch::pin();
-        let map = self.get_map(&guard);
+        let map = self.get_map(&guard)?;
         let map_ref = unsafe { map.as_ref() }.ok_or_else(|| {
             let msg = "get map reference return `None`".to_string();
             gen_graph_err!(GraphErrorCode::InvalidData, msg, get_map, si, label)
@@ -174,7 +178,7 @@ impl VertexTypeManager {
 
     pub fn drop_type(&self, si: SnapshotId, label: LabelId) -> GraphResult<()> {
         let guard = epoch::pin();
-        let map = self.get_map(&guard);
+        let map = self.get_map(&guard)?;
         let map_ref = unsafe { map.as_ref() }.ok_or_else(|| {
             let msg = "get map reference return `None`".to_string();
             gen_graph_err!(GraphErrorCode::InvalidData, msg, get_map, si, label)
@@ -187,7 +191,7 @@ impl VertexTypeManager {
 
     pub fn gc(&self, si: SnapshotId) -> GraphResult<Vec<TableId>> {
         let guard = &epoch::pin();
-        let map = self.get_map(guard);
+        let map = self.get_map(guard)?;
         let map_ref: &VertexMap = unsafe { map.as_ref() }.ok_or_else(|| {
             let msg = "get map reference return `None`".to_string();
             gen_graph_err!(GraphErrorCode::InvalidData, msg, get_map, si)
@@ -212,8 +216,14 @@ impl VertexTypeManager {
         Ok(table_ids)
     }
 
-    pub fn get_map<'g>(&self, guard: &'g Guard) -> Shared<'g, VertexMap> {
-        self.map.load(Ordering::Acquire, guard)
+    pub fn get_map<'g>(&self, guard: &'g Guard) -> GraphResult<Shared<'g, VertexMap>> {
+        let map = self.map.load(Ordering::Acquire, guard);
+        if map.is_null() {
+            let msg = "get map return `null`".to_string();
+            Err(gen_graph_err!(GraphErrorCode::InvalidData, msg, get_map))
+        } else {
+            Ok(map)
+        }
     }
 }
 
