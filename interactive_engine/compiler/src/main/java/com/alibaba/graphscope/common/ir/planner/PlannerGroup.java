@@ -155,7 +155,11 @@ public class PlannerGroup {
             config.getRules()
                     .forEach(
                             k -> {
-                                if (k.equals(ExpandGetVFusionRule.class.getSimpleName())) {
+                                if (k.equals(DegreeFusionRule.class.getSimpleName())) {
+                                    ruleConfigs.add(
+                                            DegreeFusionRule.ExpandGetVDegreeFusionRule2.Config
+                                                    .DEFAULT);
+                                } else if (k.equals(ExpandGetVFusionRule.class.getSimpleName())) {
                                     ruleConfigs.add(
                                             ExpandGetVFusionRule.BasicExpandGetVFusionRule.Config
                                                     .DEFAULT);
