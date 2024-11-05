@@ -114,7 +114,7 @@ oC_ReadingClause
     ;
 
 oC_SubQuery
-     : ( ( oC_Match | oC_With | oC_Unwind ) SP? )* ( SP? oC_Return ) ;
+     : ( ( oC_Match | oC_With | oC_Unwind | oC_UnionCallSubQuery ) SP? )* ( SP? oC_Return ) ;
 
 oC_CallSubQuery
      :  CALL SP? '{' SP? oC_SubQuery SP? '}';

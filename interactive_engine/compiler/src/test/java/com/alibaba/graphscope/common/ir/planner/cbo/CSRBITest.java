@@ -23,7 +23,9 @@ import com.alibaba.graphscope.common.ir.Utils;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
+import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.rel.RelNode;
 import org.junit.BeforeClass;
@@ -45,8 +47,7 @@ public class CSRBITest {
                                 "CBO",
                                 "graph.planner.rules",
                                 "FilterIntoJoinRule, FilterMatchRule, FlatJoinToExpandRule,"
-                                    + " ExtendIntersectRule, DegreeFusionRule,"
-                                    + " ExpandGetVFusionRule"));
+                                    + " ExtendIntersectRule, DegreeFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
@@ -297,5 +298,208 @@ public class CSRBITest {
                         .build();
         RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
         System.out.println(after.explain());
+    }
+
+    @Test
+    public void bi7_1_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH\n" +
+                                        "  (tag:TAG {name: $tag})<-[:HASTAG]-(message:POST|COMMENT),\n" +
+                                        "  (message)<-[:REPLYOF]-(comment:COMMENT)\n" +
+                                        "WHERE NOT (comment:COMMENT)-[:HASTAG]->(tag:TAG {name: $tag})\n" +
+                                        "MATCH (comment:COMMENT)-[:HASTAG]->(relatedTag:TAG)\n" +
+                                        "RETURN\n" +
+                                        "  relatedTag.name as name,\n" +
+                                        "  count(DISTINCT comment) AS count\n" +
+                                        "ORDER BY\n" +
+                                        "  count DESC,\n" +
+                                        "  name ASC\n" +
+                                        "LIMIT 100",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after.explain());
+    }
+
+    @Test
+    public void bi7_2_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH\n" +
+                                        "  (tag:TAG {name: $tag})<-[:HASTAG]-(message:POST|COMMENT),\n" +
+                                        "  (message)<-[:REPLYOF]-(comment:COMMENT)-[:HASTAG]->(relatedTag:TAG)\n" +
+                                        "WITH tag, comment, collect(relatedTag) as tags\n" +
+                                        "WHERE NOT tag IN tags\n" +
+                                        "UNWIND tags as relatedTag\n" +
+                                        "RETURN\n" +
+                                        "  relatedTag.name as name,\n" +
+                                        "  count(DISTINCT comment) AS count\n" +
+                                        "ORDER BY\n" +
+                                        "  count DESC,\n" +
+                                        "  name ASC\n" +
+                                        "LIMIT 100",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after.explain());
+    }
+
+    @Test
+    public void bi8_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH (tag:TAG {name: $tag})\n" +
+                                        "CALL {\n" +
+                                        "  OPTIONAL MATCH (tag)<-[interest:HASINTEREST]-(person:PERSON)\n" +
+                                        "  RETURN person, count(tag) as cnt1, 0 as cnt2\n" +
+                                        "}\n" +
+                                        "UNION\n" +
+                                        "CALL {\n" +
+                                        "  MATCH (tag)<-[:HASTAG]-(message:POST|COMMENT)\n" +
+                                        "  OPTIONAL MATCH (message)-[:HASCREATOR]->(person:PERSON)\n" +
+                                        "  WHERE $startDate < message.creationDate AND message.creationDate < $endDate\n" +
+                                        "  RETURN person, 0 as cnt1, count(tag) as cnt2                                                                  \n" +
+                                        "}\n" +
+                                        "WITH person, sum(cnt1) * 100 + sum(cnt2) as score\n" +
+                                        "CALL {\n" +
+                                        "  MATCH (person)-[:KNOWS]-(person2:PERSON)\n" +
+                                        "  RETURN person2 as person, 0 as score, sum(score) as friendScore\n" +
+                                        "}\n" +
+                                        "UNION \n" +
+                                        "CALL {\n" +
+                                        "  RETURN person, score, 0 as friendScore\n" +
+                                        "}\n" +
+                                        "RETURN person.id as id, sum(score) as score, sum(friendScore) as friendScore\n" +
+                                        "ORDER BY\n" +
+                                        "  score + friendScore DESC,\n" +
+                                        "  id ASC\n" +
+                                        "LIMIT 100",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+    }
+
+    @Test
+    public void bi9_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH\n" +
+                                        "  (person:PERSON)<-[:HASCREATOR]-(post:POST)<-[:REPLYOF*0..7]-(message)\n" +
+                                        "  WHERE\n" +
+                                        "  post.creationDate >= $startDate AND post.creationDate <= $endDate AND\n" +
+                                        "  message.creationDate >= $startDate AND message.creationDate <= $endDate\n" +
+                                        "WITH\n" +
+                                        "  person,\n" +
+                                        "  count(distinct post) as threadCnt,\n" +
+                                        "  count(message) as msgCnt\n" +
+                                        "RETURN\n" +
+                                        "  person.id as id,\n" +
+                                        "  person.firstName,\n" +
+                                        "  person.lastName,\n" +
+                                        "  threadCnt,\n" +
+                                        "  msgCnt\n" +
+                                        "  ORDER BY\n" +
+                                        "  msgCnt DESC,\n" +
+                                        "  id ASC\n" +
+                                        "  LIMIT 100",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after.explain());
+    }
+
+    @Test
+    public void bi10_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH shortestPath((p1:PERSON {id : $personId})-[:KNOWS*1..4]-(expert:PERSON))\n" +
+                                        "MATCH (expert)-[:ISLOCATEDIN]->(:PLACE)-[:ISPARTOF]->(country:PLACE {name: $country}),\n" +
+                                        "      (expert)<-[:HASCREATOR]-(message)-[:HASTAG]->(:TAG)-[:HASTYPE]->(:TAGCLASS {name: $tagClass})\n" +
+                                        "WITH DISTINCT expert, message\n" +
+                                        "MATCH (message)-[:HASTAG]->(tag:TAG)\n" +
+                                        "RETURN\n" +
+                                        "  expert.id as id,\n" +
+                                        "  tag.name as name,\n" +
+                                        "  count(message) AS messageCount\n" +
+                                        "ORDER BY\n" +
+                                        "  messageCount DESC,\n" +
+                                        "  name ASC,\n" +
+                                        "  id ASC\n" +
+                                        "LIMIT 100",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after.explain());
+    }
+
+    @Test
+    public void bi11_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "MATCH shortestPath((p1:PERSON {id : $personId})-[:KNOWS*1..4]-(expert:PERSON))\n" +
+                                        "MATCH (expert)-[:ISLOCATEDIN]->(:PLACE)-[:ISPARTOF]->(country:PLACE {name: $country}),\n" +
+                                        "      (expert)<-[:HASCREATOR]-(message)-[:HASTAG]->(:TAG)-[:HASTYPE]->(:TAGCLASS {name: $tagClass})\n" +
+                                        "WITH DISTINCT expert, message\n" +
+                                        "MATCH (message)-[:HASTAG]->(tag:TAG)\n" +
+                                        "RETURN\n" +
+                                        "  expert.id as id,\n" +
+                                        "  tag.name as name,\n" +
+                                        "  count(message) AS messageCount\n" +
+                                        "ORDER BY\n" +
+                                        "  messageCount DESC,\n" +
+                                        "  name ASC,\n" +
+                                        "  id ASC\n" +
+                                        "LIMIT 100",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(after.explain());
+    }
+
+    @Test
+    public void bi12_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "CALL {\n" +
+                                        "  MATCH (p2:PERSON)\n" +
+                                        "  WITH count(p2) as personCnt\n" +
+                                        "  RETURN 0 as msgCnt, personCnt\n" +
+                                        "}\n" +
+                                        "UNION\n" +
+                                        "CALL {\n" +
+                                        "  MATCH (person:PERSON)<-[:HASCREATOR]-(message:COMMENT|POST),\n" +
+                                        "        (message)-[:REPLYOF * 0..30]->(post:POST)\n" +
+                                        "  WHERE message.length > $lengthThreshold AND message.creationDate > $startDate\n" +
+                                        "        AND post.language IN [\"a\", \"b\"]\n" +
+                                        "  WITH person, count(message) as msgCnt\n" +
+                                        "  WITH msgCnt, count(person) as personCnt\n" +
+                                        "  CALL {\n" +
+                                        "    RETURN msgCnt, personCnt\n" +
+                                        "  }\n" +
+                                        "  UNION \n" +
+                                        "  CALL {\n" +
+                                        "    RETURN 0 as msgCnt, -1 * sum(personCnt) as personCnt\n" +
+                                        "  }\n" +
+                                        "  RETURN msgCnt, personCnt\n" +
+                                        "}\n" +
+                                        "RETURN msgCnt, sum(personCnt) as personCnt\n" +
+                                        "ORDER BY\n" +
+                                        "  personCnt DESC,\n" +
+                                        "  msgCnt DESC",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
+        GraphRelProtoPhysicalBuilder builder1 = new GraphRelProtoPhysicalBuilder(configs, irMeta, new LogicalPlan(after));
+        System.out.println(builder1.build().explain());
     }
 }

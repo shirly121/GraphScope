@@ -51,6 +51,7 @@ import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Sarg;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -116,7 +117,42 @@ public class GraphSelectivityHandler extends RelMdSelectivity
                 return 1.0d / maxCountForUniqueKeys;
             }
         }
-        return Math.max(RelMdUtil.guessSelectivity(condition), relax(1.0d / maxCount));
+        return Math.max(guessSelectivity(condition), relax(1.0d / maxCount));
+    }
+
+    public static double guessSelectivity(@Nullable RexNode predicate) {
+        return guessSelectivity(predicate, false);
+    }
+
+    public static double guessSelectivity(@Nullable RexNode predicate, boolean artificialOnly) {
+        double sel = 1.0;
+        if (predicate != null && !predicate.isAlwaysTrue()) {
+            double artificialSel = 1.0;
+            Iterator var6 = RelOptUtil.conjunctions(predicate).iterator();
+
+            while(true) {
+                while(var6.hasNext()) {
+                    RexNode pred = (RexNode)var6.next();
+                    if (pred.getKind() == SqlKind.IS_NOT_NULL) {
+                        sel *= 0.9;
+                    } else if (pred.isA(SqlKind.EQUALS)) {
+                        sel *= 0.15;
+                    } else if (pred.isA(SqlKind.COMPARISON)) {
+                        sel *= 0.6;
+                    } else {
+                        sel *= 0.25;
+                    }
+                }
+
+                if (artificialOnly) {
+                    return artificialSel;
+                }
+
+                return sel * artificialSel;
+            }
+        } else {
+            return sel;
+        }
     }
 
     private double relax(double value) {

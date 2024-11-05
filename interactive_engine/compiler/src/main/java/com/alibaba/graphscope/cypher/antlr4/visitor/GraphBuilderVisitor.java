@@ -118,7 +118,9 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
         }
         Preconditions.checkArgument(
                 branches.size() > 1, "union should have at least two branches in cypher queries");
-        builder.build();
+        if (builder.size() > 0) {
+            builder.build();
+        }
         for (RelNode branch : branches) {
             builder.push(branch);
         }
