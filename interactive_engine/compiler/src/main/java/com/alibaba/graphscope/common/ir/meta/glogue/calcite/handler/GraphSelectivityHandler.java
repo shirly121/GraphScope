@@ -130,9 +130,9 @@ public class GraphSelectivityHandler extends RelMdSelectivity
             double artificialSel = 1.0;
             Iterator var6 = RelOptUtil.conjunctions(predicate).iterator();
 
-            while(true) {
-                while(var6.hasNext()) {
-                    RexNode pred = (RexNode)var6.next();
+            while (true) {
+                while (var6.hasNext()) {
+                    RexNode pred = (RexNode) var6.next();
                     if (pred.getKind() == SqlKind.IS_NOT_NULL) {
                         sel *= 0.9;
                     } else if (pred.isA(SqlKind.EQUALS)) {
