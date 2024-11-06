@@ -47,8 +47,8 @@ public class CSRBITest {
                                 "CBO",
                                 "graph.planner.rules",
                                 "FilterIntoJoinRule, FilterMatchRule, FlatJoinToExpandRule,"
-                                    + " FlatJoinToCommonRule, ExtendIntersectRule,"
-                                    + " DegreeFusionRule, ExpandGetVFusionRule"));
+                                        + " FlatJoinToCommonRule, ExtendIntersectRule,"
+                                        + " DegreeFusionRule, ExpandGetVFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
@@ -1103,17 +1103,16 @@ public class CSRBITest {
                     + " isAppend=[true])\n"
                     + "            LogicalJoin(condition=[AND(=(person1, person1), =(person2,"
                     + " person2))], joinType=[left])\n"
-                    + "              CommonTableScan(table=[[common#-883215245]])\n"
+                    + "              CommonTableScan(table=[[common#1306725341]])\n"
                     + "              GraphPhysicalExpand(tableConfig=[{isAll=false,"
-                    + " tables=[LIKES]}], alias=[person2], opt=[IN], physicalOpt=[VERTEX],"
-                    + " optional=[true])\n"
+                    + " tables=[LIKES]}], alias=[person2], opt=[IN], physicalOpt=[VERTEX])\n"
                     + "                GraphPhysicalExpand(tableConfig=[{isAll=false,"
                     + " tables=[HASCREATOR]}], alias=[m], startAlias=[person1], opt=[IN],"
-                    + " physicalOpt=[VERTEX], optional=[true])\n"
+                    + " physicalOpt=[VERTEX])\n"
                     + "                  GraphLogicalAggregate(keys=[{variables=[person1],"
                     + " aliases=[person1]}], values=[[]])\n"
-                    + "                    CommonTableScan(table=[[common#-883215245]])\n"
-                    + "common#-883215245:\n"
+                    + "                    CommonTableScan(table=[[common#1306725341]])\n"
+                    + "common#1306725341:\n"
                     + "GraphLogicalAggregate(keys=[{variables=[person1, person2, city1, $f0],"
                     + " aliases=[person1, person2, city1, score]}], values=[[]])\n"
                     + "  GraphLogicalProject($f0=[+(score, CASE(IS NULL(m), 0, 10))],"
@@ -1122,10 +1121,9 @@ public class CSRBITest {
                     + " joinType=[left])\n"
                     + "      CommonTableScan(table=[[common#-1994418361]])\n"
                     + "      GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[HASCREATOR]}],"
-                    + " alias=[person2], opt=[OUT], physicalOpt=[VERTEX], optional=[true])\n"
+                    + " alias=[person2], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "        GraphPhysicalExpand(tableConfig=[{isAll=false, tables=[LIKES]}],"
-                    + " alias=[m], startAlias=[person1], opt=[OUT], physicalOpt=[VERTEX],"
-                    + " optional=[true])\n"
+                    + " alias=[m], startAlias=[person1], opt=[OUT], physicalOpt=[VERTEX])\n"
                     + "          GraphLogicalAggregate(keys=[{variables=[person1],"
                     + " aliases=[person1]}], values=[[]])\n"
                     + "            CommonTableScan(table=[[common#-1994418361]])\n"
@@ -1426,25 +1424,25 @@ public class CSRBITest {
         RelNode before =
                 com.alibaba.graphscope.cypher.antlr4.Utils.eval(
                                 "MATCH\n"
-                                    + "  (person1:PERSON)-[:ISLOCATEDIN]->(city1Id:PLACE {id:"
-                                    + " $city1Id})\n"
-                                    + "WITH person1 AS person1\n"
-                                    + "MATCH\n"
-                                    + "  (person2:PERSON)-[:ISLOCATEDIN]->(city2Id:PLACE {id:"
-                                    + " $city2Id})\n"
-                                    + "CALL shortestPath.dijkstra.stream(\n"
-                                    + "'(personA:PERSON)-[knows:KNOWS]-(personB:PERSON)',\n"
-                                    + "person1,\n"
-                                    + "person2,\n"
-                                    + "'max(round(40 - sqrt(knows.interaction1_count +"
-                                    + " knows.interaction2_count)), 1)'\n"
-                                    + ")\n"
-                                    + "WITH person1.id AS person1Id, person2.id AS person2Id,"
-                                    + " totalCost AS totalWeight \n"
-                                    + "RETURN totalWeight, collect(person1Id, person2Id) AS"
-                                    + " personIds\n"
-                                    + "ORDER BY totalWeight ASC\n"
-                                    + "LIMIT 1",
+                                        + "  (person1:PERSON)-[:ISLOCATEDIN]->(city1Id:PLACE {id:"
+                                        + " $city1Id})\n"
+                                        + "WITH person1 AS person1\n"
+                                        + "MATCH\n"
+                                        + "  (person2:PERSON)-[:ISLOCATEDIN]->(city2Id:PLACE {id:"
+                                        + " $city2Id})\n"
+                                        + "CALL shortestPath.dijkstra.stream(\n"
+                                        + "'(personA:PERSON)-[knows:KNOWS]-(personB:PERSON)',\n"
+                                        + "person1,\n"
+                                        + "person2,\n"
+                                        + "'max(round(40 - sqrt(knows.interaction1_count +"
+                                        + " knows.interaction2_count)), 1)'\n"
+                                        + ")\n"
+                                        + "WITH person1.id AS person1Id, person2.id AS person2Id,"
+                                        + " totalCost AS totalWeight \n"
+                                        + "RETURN totalWeight, collect(person1Id, person2Id) AS"
+                                        + " personIds\n"
+                                        + "ORDER BY totalWeight ASC\n"
+                                        + "LIMIT 1",
                                 builder,
                                 irMeta)
                         .getRegularQuery();

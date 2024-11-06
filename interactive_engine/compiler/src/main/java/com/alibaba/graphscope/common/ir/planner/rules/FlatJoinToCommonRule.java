@@ -26,6 +26,7 @@ import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalJoin;
