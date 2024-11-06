@@ -26,10 +26,8 @@ import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-
 import org.apache.calcite.plan.GraphOptCluster;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rex.RexNode;
 
@@ -76,7 +74,7 @@ public class FlatJoinToCommonRule extends FlatJoinRule {
                         expandSource,
                         new AliasNameWithId(
                                 joinKey0.getName().split("\\.")[0], joinKey0.getAliasId()),
-                        join.getJoinType() == JoinRelType.LEFT,
+                        false,
                         others);
         return true;
     }
