@@ -65,6 +65,13 @@ public class ExpressionVisitor extends CypherGSBaseVisitor<ExprVisitorResult> {
         this.paramManager = new ParamManager();
     }
 
+    public ExpressionVisitor(GraphBuilderVisitor parent, ParamManager paramManager) {
+        this.parent = Objects.requireNonNull(parent);
+        this.aliasInfer = Objects.requireNonNull(parent.getAliasInfer());
+        this.builder = parent.getGraphBuilder();
+        this.paramManager = Objects.requireNonNull(paramManager);
+    }
+
     @Override
     public ExprVisitorResult visitOC_OrExpression(CypherGSParser.OC_OrExpressionContext ctx) {
         if (ObjectUtils.isEmpty(ctx.oC_AndExpression())) {
@@ -595,7 +602,7 @@ public class ExpressionVisitor extends CypherGSBaseVisitor<ExprVisitorResult> {
         return new ExprVisitorResult(builder.field(alias, fieldIdx));
     }
 
-    private class ParamManager {
+    public static class ParamManager {
         private final AtomicInteger idGenerator;
         private Map<String, Integer> paramNameToIdMap;
         private Map<Integer, String> paramIdToNameMap;

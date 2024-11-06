@@ -31,14 +31,17 @@ import org.apache.calcite.rel.RelNode;
 public class CallSubQueryVisitor extends CypherGSBaseVisitor<RelNode> {
     private final GraphBuilder parentBuilder;
     private final GraphBuilder nestedBuilder;
+    private final ExpressionVisitor.ParamManager paramManager;
 
-    public CallSubQueryVisitor(GraphBuilder parentBuilder) {
+    public CallSubQueryVisitor(
+            GraphBuilder parentBuilder, ExpressionVisitor.ParamManager paramManager) {
         this.parentBuilder = parentBuilder;
         this.nestedBuilder =
                 GraphBuilder.create(
                         this.parentBuilder.getContext(),
                         (GraphOptCluster) this.parentBuilder.getCluster(),
                         this.parentBuilder.getRelOptSchema());
+        this.paramManager = paramManager;
     }
 
     @Override
@@ -51,6 +54,8 @@ public class CallSubQueryVisitor extends CypherGSBaseVisitor<RelNode> {
                             commonRel.getCluster(), commonRel.getTraitSet(), commonTable);
             nestedBuilder.push(commonRel);
         }
-        return new GraphBuilderVisitor(nestedBuilder).visit(ctx.oC_SubQuery()).build();
+        return new GraphBuilderVisitor(nestedBuilder, () -> null, paramManager)
+                .visit(ctx.oC_SubQuery())
+                .build();
     }
 }

@@ -79,6 +79,16 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
 
     public GraphBuilderVisitor(
             GraphBuilder builder,
+            Supplier<ProcedureCallVisitor> procedureCallVisitorSupplier,
+            ExpressionVisitor.ParamManager paramManager) {
+        this.builder = Objects.requireNonNull(builder);
+        this.aliasInfer = new ExprUniqueAliasInfer();
+        this.expressionVisitor = new ExpressionVisitor(this, paramManager);
+        this.procedureCallVisitorSupplier = Objects.requireNonNull(procedureCallVisitorSupplier);
+    }
+
+    public GraphBuilderVisitor(
+            GraphBuilder builder,
             ExprUniqueAliasInfer aliasInfer,
             Supplier<ProcedureCallVisitor> procedureCallVisitorSupplier) {
         this.builder = Objects.requireNonNull(builder);
@@ -110,10 +120,12 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
     @Override
     public GraphBuilder visitOC_UnionCallSubQuery(CypherGSParser.OC_UnionCallSubQueryContext ctx) {
         List<RelNode> branches = Lists.newArrayList();
+        ExpressionVisitor.ParamManager paramManager = new ExpressionVisitor.ParamManager();
         for (int i = 0; i < ctx.oC_CallSubQuery().size(); ++i) {
             CypherGSParser.OC_CallSubQueryContext callSubQuery = ctx.oC_CallSubQuery(i);
             if (callSubQuery != null) {
-                branches.add(new CallSubQueryVisitor(this.builder).visit(callSubQuery));
+                branches.add(
+                        new CallSubQueryVisitor(this.builder, paramManager).visit(callSubQuery));
             }
         }
         Preconditions.checkArgument(

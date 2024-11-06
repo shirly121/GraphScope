@@ -53,6 +53,7 @@ import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.*;
+import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.type.*;
 import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlAggFunction;
@@ -1010,6 +1011,28 @@ public class GraphBuilder extends RelBuilder {
                         replaceTop(match);
                     } else {
                         replaceTop(builder.push(match).filter(extraFilters).build());
+                    }
+                }
+            } else if (input instanceof LogicalJoin) {
+                LogicalJoin join = (LogicalJoin) input;
+                if (join.getJoinType() == JoinRelType.LEFT
+                        && join.getRight() instanceof AbstractLogicalMatch) {
+                    List<Integer> conditionAliasIds =
+                            condition.accept(
+                                    new RexVariableAliasCollector<>(
+                                            true, RexGraphVariable::getAliasId));
+                    if (conditionAliasIds.size() == 1) {
+                        List<Integer> leftAliasIds =
+                                join.getLeft().getRowType().getFieldList().stream()
+                                        .map(RelDataTypeField::getIndex)
+                                        .collect(Collectors.toList());
+                        if (!leftAliasIds.contains(conditionAliasIds.get(0))) {
+                            PushFilterVisitor visitor = new PushFilterVisitor(builder, condition);
+                            join.getRight().accept(visitor);
+                            if (visitor.isPushed()) {
+                                replaceTop(join);
+                            }
+                        }
                     }
                 }
             }

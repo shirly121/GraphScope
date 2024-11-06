@@ -33,6 +33,10 @@ public abstract class Utils {
         return new GraphBuilderVisitor(builder).visit(new CypherAntlr4Parser().parse(query));
     }
 
+    public static final LogicalPlan eval(String query, GraphBuilder builder, IrMeta irMeta) {
+        return new LogicalPlanVisitor(builder, irMeta).visit(new CypherAntlr4Parser().parse(query));
+    }
+
     public static LogicalPlan evalLogicalPlan(String query) {
         GraphBuilder graphBuilder = com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder();
         LogicalPlanVisitor logicalPlanVisitor =
