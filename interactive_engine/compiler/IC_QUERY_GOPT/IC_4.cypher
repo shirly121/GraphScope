@@ -1,6 +1,8 @@
 :param personId => 933;
-:param startDate => 1275350400000;
-:param endDate => 1277856000000;
+:param startDate => 20100601000000000;
+:param endDate => 20100630000000000;
+// :param startDate => 1275350400000;
+// :param endDate => 1277856000000;
 
 MATCH (person:PERSON {id: $personId})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(post:POST)-[:HASTAG]->(tag: TAG)
 WITH DISTINCT tag, post
