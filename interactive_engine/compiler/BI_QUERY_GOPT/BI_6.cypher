@@ -1,4 +1,4 @@
-:param tag => 'Augustine_of_Hippo';
+:param tag => "Augustine_of_Hippo";
 
 MATCH (tag:TAG {name: $tag})<-[:HASTAG]-(message1)-[:HASCREATOR]->(person1:PERSON),
       (message1)<-[:LIKES]-(person2:PERSON),

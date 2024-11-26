@@ -1,4 +1,4 @@
-:param country => 'India';
+:param country => "India";
 :param endDate => 1277812800000;
 
 MATCH (country:PLACE {name: $country})<-[:ISPARTOF]-(:PLACE)<-[:ISLOCATEDIN]-(zombie:PERSON)

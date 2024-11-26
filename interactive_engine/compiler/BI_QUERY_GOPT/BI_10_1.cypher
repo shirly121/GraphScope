@@ -1,6 +1,6 @@
 :param personId => 933;
-:param country => 'India';
-:param tagClass => 'Person';
+:param country => "India";
+:param tagClass => "Person";
 
 MATCH (p1:PERSON {id : $personId})-[:KNOWS*1..4]-(expert:PERSON)
 WITH expert

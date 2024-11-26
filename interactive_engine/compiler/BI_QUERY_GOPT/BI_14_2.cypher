@@ -1,5 +1,5 @@
-:param country1 => 'Laos';
-:param country2 => 'India';
+:param country1 => "Laos";
+:param country2 => "India";
 
 MATCH
    (country1:PLACE {name: $country1})<-[:ISPARTOF]-(city1:PLACE)<-[:ISLOCATEDIN]-(person1:PERSON),

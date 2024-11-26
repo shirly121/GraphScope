@@ -1,5 +1,5 @@
-:param startDate => 1275393600000;
-:param endDate => 1277812800000;
+:param startDate => 20100601000000000;
+:param endDate => 20100630000000000;
 
 MATCH
   (person:PERSON)<-[:HASCREATOR]-(post:POST)<-[:REPLYOF*0..7]-(message)

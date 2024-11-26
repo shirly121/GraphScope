@@ -1,5 +1,5 @@
-:param country => 'India';
-:param endDate => 1277812800000;
+:param country => "India";
+:param endDate => 20100630000000000;
 
 MATCH (country:PLACE {name: $country})<-[:ISPARTOF]-(:PLACE)<-[:ISLOCATEDIN]-(zombie:PERSON)
 WHERE zombie.creationDate < $endDate
@@ -8,14 +8,14 @@ WHERE message.creationDate < $endDate
 WITH
   country,
   zombie,
-  date(datetime({epochMillis: $endDate})) as idate,
-  date(datetime({epochMillis: zombie.creationDate})) as zdate,
+  $endDate as idate,
+  zombie.creationDate as zdate,
   count(message) AS messageCount
 WITH
   country,
   zombie,
-  12 * (idate.year  - zdate.year )
-  + (idate.month - zdate.month)
+  12 * ( idate / 10000000000000  - zdate / 10000000000000 )
+  + ( idate / 100000000000 % 100 ) - ( zdate / 100000000000 % 100 )
   + 1 AS months,
   messageCount
 WHERE messageCount / months < 1

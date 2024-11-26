@@ -1,5 +1,5 @@
-:param country => 'Laos';
-:param tagClass => 'Person';
+:param country => "Laos";
+:param tagClass => "Person";
 
 MATCH
   (country:PLACE {name: $country})<-[:ISPARTOF]-()<-[:ISLOCATEDIN]-

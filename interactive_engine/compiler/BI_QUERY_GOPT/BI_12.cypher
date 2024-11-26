@@ -1,9 +1,9 @@
 :param languages => ['ar', 'hu'];
 :param lengthThreshold => 20;
-:param startDate => 1277812800000;
+:param startDate => 20100630000000000;
 
 MATCH (person:PERSON)<-[:HASCREATOR]-(message),
-      (message)-[:REPLYOF * 0..30]->(post:POST)
+      (message)-[:REPLYOF * 0..6]->(post:POST)
 WHERE message.length < $lengthThreshold
       AND message.creationDate > $startDate
       AND post.language IN $languages

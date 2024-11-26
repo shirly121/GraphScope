@@ -1,6 +1,6 @@
 :param tag => "Che_Guevara";
-:param startDate => 1275393600000;
-:param endDate => 1277812800000;
+:param startDate => 20100601000000000;
+:param endDate => 20100630000000000;
 
 CALL {
   MATCH (tag:TAG {name: $tag})<-[interest:HASINTEREST]-(person:PERSON)

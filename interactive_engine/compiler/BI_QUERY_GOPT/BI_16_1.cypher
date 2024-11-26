@@ -1,5 +1,5 @@
-:param tagName => 'Meryl_Streep';
-:param date => 1325653431095;
+:param tagName => "Meryl_Streep";
+:param date => 20111204001031095;
 
 MATCH (person1:PERSON)<-[:HASCREATOR]-(message1)-[:HASTAG]->(tag:TAG {name: $tagName})
 WHERE message1.creationDate > $date
