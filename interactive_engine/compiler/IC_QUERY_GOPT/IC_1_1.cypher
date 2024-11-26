@@ -8,7 +8,6 @@ WHERE
   p <> f
 
 OPTIONAL MATCH (f: PERSON)-[workAt:WORKAT]->(company:ORGANISATION)-[:ISLOCATEDIN]->(country:PLACE)
-// append one new column <companies>
 WITH 
   f, k, locationCity,
   CASE
@@ -19,7 +18,6 @@ WITH
 WITH f, k, locationCity, collect(companies) as company_info
 
 OPTIONAL MATCH (f: PERSON)-[studyAt:STUDYAT]->(university)-[:ISLOCATEDIN]->(universityCity:PLACE)
-// append one new column <universities>
 WITH f, k, locationCity, company_info,
   CASE 
     WHEN university is null Then null
@@ -28,7 +26,6 @@ WITH f, k, locationCity, company_info,
 
 WITH f, k, locationCity, company_info, collect(universities) as university_info
 
-// apend one new column <distance>
 WITH 
   f,
   k,

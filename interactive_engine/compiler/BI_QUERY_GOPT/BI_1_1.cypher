@@ -6,9 +6,10 @@ WHERE message.creationDate < $datetime
 AND message.length > 0
 WITH
   message,
-  date(datetime({epochMillis: message.creationDate})) AS date
-WITH
-  date.year AS year,
+  message.creationDate / 10000000000000 as year
+  // date(datetime({epochMillis: message.creationDate})) AS date
+RETURN
+  year,
   CASE
     WHEN 'POST' in labels(message)  THEN 0
     ELSE                                 1
@@ -21,23 +22,4 @@ WITH
     END AS lengthCategory,
   count(message) AS messageCount,
   sum(message.length) / count(message) AS averageMessageLength,
-  count(message.length) AS sumMessageLength
-
-CALL {
-  MATCH (message:COMMENT)
-  WHERE message.creationDate < $datetime
-  Return count(message) AS totalMessageCount
-}
-
-RETURN
-  year,
-  isComment,
-  lengthCategory,
-  messageCount,
-  averageMessageLength,
-  sumMessageLength,
-  messageCount / totalMessageCount AS percentageOfMessages
-  ORDER BY
-  year DESC,
-  isComment ASC,
-  lengthCategory ASC;
+  count(message.length) AS sumMessageLength;

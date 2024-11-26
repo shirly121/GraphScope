@@ -1,6 +1,5 @@
 :param personId => 17229;
 :param maxDate => 20101117120000000;
-// :param maxDate => 1289908800000;
 
 MATCH (p:PERSON {id: $personId})-[:KNOWS*1..3]-(friend:PERSON)
 WITH distinct friend

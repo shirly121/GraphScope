@@ -1,7 +1,5 @@
 :param personId => 933;
 :param minDate => 20101101080000000;
-// :param minDate => 1288612800000;
-// :param minDate => "2011-01-02T06:43:51.955+0000";
 
 MATCH (person:PERSON { id: $personId })-[:KNOWS*1..3]-(friend),
       (friend)<-[membership:HASMEMBER]-(forum),

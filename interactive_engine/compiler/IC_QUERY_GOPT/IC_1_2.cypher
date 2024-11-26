@@ -2,16 +2,13 @@
 :param firstName => "Mikhail";
 
 MATCH (p: PERSON {id : $personId}) -[k:KNOWS*1..4]-(f:PERSON {firstName : $firstName})
-// FilterPushDown
 where f <> p
 
-// TopKPushDown
 WITH f, length(k) as distance
 ORDER  BY distance ASC, f.lastName ASC, f.id ASC
 LIMIT 20
 
 OPTIONAL MATCH (f: PERSON)-[workAt:WORKAT]->(company:ORGANISATION)-[:ISLOCATEDIN]->(country:PLACE)
-// Project+Aggregate PushDown
 WITH
     f, distance,
     CASE
@@ -21,7 +18,6 @@ WITH
 WITH f, collect(companies) as company_info, distance
 
 OPTIONAL MATCH (f: PERSON)-[studyAt:STUDYAT]->(university)-[:ISLOCATEDIN]->(universityCity:PLACE)
-// Project+Aggregate PushDown
 WITH
   f, company_info, distance,
     CASE

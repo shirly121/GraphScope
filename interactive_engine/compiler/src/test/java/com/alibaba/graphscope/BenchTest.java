@@ -20,28 +20,34 @@ package com.alibaba.graphscope;
 
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
+
 import org.junit.Test;
 
 import java.io.File;
-import java.nio.file.Path;
 
-public class BIBenchTest1 {
+public class BenchTest {
+    @Test
+    public void IC_Bench_Test() throws Exception {
+        File queryDir = new File(System.getProperty("dir", "IC_QUERY_GOPT"));
+        Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
+        ICBenchTest test = new ICBenchTest(configs, queryDir);
+        test.executeQueries();
+    }
+
     @Test
     public void BI_Bench_Test() throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
-        File queryLog = new File(Path.of(queryDir.getAbsolutePath(), "query.log").toString());
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        ICBenchTest test = new ICBenchTest(configs, queryDir, queryLog);
+        ICBenchTest test = new ICBenchTest(configs, queryDir);
         test.executeQueries();
     }
 
     @Test
     public void execute_one_query() throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
-        File queryLog = new File(Path.of(queryDir.getAbsolutePath(), "query.log").toString());
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        String queryPath = "IC_QUERY_GOPT/IC_13.cypher";
-        ICBenchTest benchTest = new ICBenchTest(configs, queryDir, queryLog);
+        String queryPath = "BI_QUERY_GOPT/BI_1_1.cypher";
+        ICBenchTest benchTest = new ICBenchTest(configs, queryDir);
         GraphPlanner.Summary summary = benchTest.planOneQuery(new File(queryPath));
         System.out.println(summary.getLogicalPlan().explain());
         System.out.println(summary.getPhysicalPlan().explain());

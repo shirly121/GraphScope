@@ -3,8 +3,6 @@
 :param countryYName => 'United_States';
 :param startDate => 20100601120000000;
 :param endDate => 20100629120000000;
-// :param startDate => 1275393600000;
-// :param endDate => 1277812800000;
 
 MATCH
     (p:PERSON {id: $personId})-[:KNOWS*1..3]-(otherP:PERSON)

@@ -42,9 +42,7 @@ import java.io.File;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -55,9 +53,10 @@ public class ICBenchTest {
     private final GraphPlanner planner;
     private final File queryDir;
     private final File queryLog;
+    private final File errorLog;
     private final ExecutionClient client;
 
-    public ICBenchTest(Configs configs, File queryDir, File queryLog) throws Exception {
+    public ICBenchTest(Configs configs, File queryDir) throws Exception {
         this.configs = configs;
         this.optimizer = new GraphRelOptimizer(configs);
         this.planner = new GraphPlanner(configs, new LogicalPlanFactory.Cypher(), optimizer);
@@ -67,7 +66,14 @@ public class ICBenchTest {
                         .get();
         this.client = new RpcExecutionClient(configs, new HostsRpcChannelFetcher(configs));
         this.queryDir = queryDir;
-        this.queryLog = queryLog;
+        this.queryLog = new File(Path.of(queryDir.getAbsolutePath(), "query.log").toString());
+        if (queryLog.exists()) {
+            queryLog.delete();
+        }
+        this.errorLog = new File(Path.of(queryDir.getAbsolutePath(), "query.error").toString());
+        if (errorLog.exists()) {
+            errorLog.delete();
+        }
     }
 
     public GraphPlanner.Summary planOneQuery(File path) throws Exception {
@@ -84,7 +90,9 @@ public class ICBenchTest {
                 StandardCharsets.UTF_8,
                 true);
         long timeout = FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs);
-        for (File file : queryDir.listFiles()) {
+        File[] listFiles = queryDir.listFiles();
+        Arrays.sort(listFiles, Comparator.comparing(File::getName));
+        for (File file : listFiles) {
             String fileName = file.getName();
             if (fileName.endsWith(".cypher")) {
                 String queryName = fileName.substring(0, fileName.length() - 7);
@@ -146,7 +154,7 @@ public class ICBenchTest {
                             true);
                 } catch (Exception e) {
                     FileUtils.writeStringToFile(
-                            queryLog,
+                            errorLog,
                             queryName + "\t\t" + e.getMessage() + "\n\n",
                             StandardCharsets.UTF_8,
                             true);
@@ -219,9 +227,8 @@ public class ICBenchTest {
 
     public static void main(String[] args) throws Exception {
         File queryDir = new File(System.getProperty("dir", "IC_QUERY_GOPT"));
-        File queryLog = new File(Path.of(queryDir.getAbsolutePath(), "query.log").toString());
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        ICBenchTest test = new ICBenchTest(configs, queryDir, queryLog);
+        ICBenchTest test = new ICBenchTest(configs, queryDir);
         test.executeQueries();
     }
 }

@@ -21,14 +21,12 @@ package com.alibaba.graphscope;
 import com.alibaba.graphscope.common.config.Configs;
 
 import java.io.File;
-import java.nio.file.Path;
 
 public class BIBenchTest {
     public static void main(String[] args) throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
-        File queryLog = new File(Path.of(queryDir.getAbsolutePath(), "query.log").toString());
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        ICBenchTest test = new ICBenchTest(configs, queryDir, queryLog);
+        ICBenchTest test = new ICBenchTest(configs, queryDir);
         test.executeQueries();
     }
 }
