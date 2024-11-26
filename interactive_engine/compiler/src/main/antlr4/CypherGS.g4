@@ -125,11 +125,13 @@ oC_UnionCallSubQuery
 UNION : ( 'U' | 'u' ) ( 'N' | 'n' ) ( 'I' | 'i' ) ( 'O' | 'o' ) ( 'N' | 'n' ) ;
 
 oC_Match
-     :  ( OPTIONAL SP )? MATCH SP? oC_Pattern ( SP? oC_Where )? ;
+     :  ( (OPTIONAL | EXPAND) SP )? MATCH SP? oC_Pattern ( SP? oC_Where )? ;
 
 MATCH : ( 'M' | 'm' ) ( 'A' | 'a' ) ( 'T' | 't' ) ( 'C' | 'c' ) ( 'H' | 'h' ) ;
 
 OPTIONAL : ( 'O' | 'o' ) ( 'P' | 'p' ) ( 'T' | 't' ) ( 'I' | 'i' ) ( 'O' | 'o' ) ( 'N' | 'n' ) ( 'A' | 'a' ) ( 'L' | 'l' ) ;
+
+EXPAND : ( 'E' | 'e' ) ( 'X' | 'x' ) ( 'P' | 'p' ) ( 'A' | 'a' ) ( 'N' | 'n' ) ( 'D' | 'd' );
 
 oC_Unwind
       :  UNWIND SP? oC_Expression SP AS SP oC_Variable ;

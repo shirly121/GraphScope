@@ -1,5 +1,4 @@
 :param datetime => 20100601000000000;
-// :param datetime => '2011-12-01T00:00:00.000';
 
 MATCH (message:COMMENT)
 WHERE message.creationDate < $datetime

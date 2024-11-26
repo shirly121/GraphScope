@@ -291,9 +291,15 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
             sentences.add(visitOC_PatternPart(partCtx).build());
         }
         if (sentences.size() == 1) {
-            builder.match(
-                    sentences.get(0),
-                    (ctx.OPTIONAL() != null) ? GraphOpt.Match.OPTIONAL : GraphOpt.Match.INNER);
+            GraphOpt.Match opt;
+            if (ctx.OPTIONAL() != null) {
+                opt = GraphOpt.Match.OPTIONAL;
+            } else if (ctx.EXPAND() != null) {
+                opt = GraphOpt.Match.EXPAND;
+            } else {
+                opt = GraphOpt.Match.INNER;
+            }
+            builder.match(sentences.get(0), opt);
         } else if (sentences.size() > 1) {
             Preconditions.checkArgument(
                     ctx.OPTIONAL() == null, "multiple sentences in match should not be optional");

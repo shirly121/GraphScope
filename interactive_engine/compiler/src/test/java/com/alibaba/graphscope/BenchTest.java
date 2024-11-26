@@ -20,6 +20,7 @@ package com.alibaba.graphscope;
 
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
+import com.alibaba.graphscope.common.ir.tools.Utils;
 
 import org.junit.Test;
 
@@ -27,7 +28,7 @@ import java.io.File;
 
 public class BenchTest {
     @Test
-    public void IC_Bench_Test() throws Exception {
+    public void ic_bench_test() throws Exception {
         File queryDir = new File(System.getProperty("dir", "IC_QUERY_GOPT"));
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
         ICBenchTest test = new ICBenchTest(configs, queryDir);
@@ -35,7 +36,7 @@ public class BenchTest {
     }
 
     @Test
-    public void BI_Bench_Test() throws Exception {
+    public void bi_bench_test() throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
         ICBenchTest test = new ICBenchTest(configs, queryDir);
@@ -46,10 +47,10 @@ public class BenchTest {
     public void execute_one_query() throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        String queryPath = "BI_QUERY_GOPT/BI_1_1.cypher";
+        String queryPath = "BI_QUERY_GOPT/BI_10_1.cypher";
         ICBenchTest benchTest = new ICBenchTest(configs, queryDir);
         GraphPlanner.Summary summary = benchTest.planOneQuery(new File(queryPath));
-        System.out.println(summary.getLogicalPlan().explain());
+        System.out.println(Utils.toString(summary.getLogicalPlan().getRegularQuery()));
         System.out.println(summary.getPhysicalPlan().explain());
     }
 }

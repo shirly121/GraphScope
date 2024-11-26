@@ -7,5 +7,4 @@ OPTIONAL MATCH (person1)-[:KNOWS]-(person2:PERSON)<-[:HASCREATOR]-(message2)-[:H
 WHERE message2.creationDate = $date
 WITH person1, count(DISTINCT message1) AS cm, count(DISTINCT person2) AS cp2
 WHERE cp2 <= 4
-// return count
 RETURN person1, cm;

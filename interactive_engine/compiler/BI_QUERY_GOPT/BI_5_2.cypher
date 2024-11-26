@@ -1,6 +1,6 @@
 :param tag => 'Augustine_of_Hippo';
 
-Match (tag:TAG {name: $tag})<-[:HASTAG]-(message)
+Match (tag:TAG {name: $tag})<-[:HASTAG]-(message:POST|COMMENT)
 WITH DISTINCT message
 OPTIONAL MATCH (message)<-[:LIKES]-(liker:PERSON)
 WITH message, count(liker) as likeCount

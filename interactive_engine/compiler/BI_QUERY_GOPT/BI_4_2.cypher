@@ -1,5 +1,4 @@
 :param date => 20100601000000000;
-// :param date => 1275393600000;
 
 MATCH (country:PLACE)<-[:ISPARTOF]-(:PLACE)<-[:ISLOCATEDIN]-(person:PERSON)<-[:HASMEMBER]-(forum:FORUM)
 WHERE forum.creationDate > $date
@@ -11,8 +10,7 @@ LIMIT 100
 WITH collect(topForum) AS topForums
 
 UNWIND topForums AS topForum1
-MATCH (topForum1)-[:CONTAINEROF]->(post:POST)<-[:REPLYOF*0..30]-(message)-[:HASCREATOR]->(person:PERSON)<-[:HASMEMBER]-(topForum2:FORUM)
-WITH person, message, topForum2
+MATCH (topForum1)-[:CONTAINEROF]->(post:POST)<-[:REPLYOF*0..6]-(message)-[:HASCREATOR]->(person:PERSON)<-[:HASMEMBER]-(topForum2:FORUM)
 WHERE topForum2 IN topForums
 WITH person, count(DISTINCT message) AS messageCount
 
@@ -24,5 +22,5 @@ RETURN
   sum(messageCount) AS messageCount
 ORDER BY
   messageCount DESC,
-  person.id ASC
+  personId ASC
 LIMIT 100;

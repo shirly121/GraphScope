@@ -21,6 +21,7 @@ import com.alibaba.graphscope.common.ir.rel.graph.GraphLogicalSource;
 import com.alibaba.graphscope.common.ir.rel.graph.match.GraphLogicalSingleMatch;
 import com.alibaba.graphscope.common.ir.rel.type.AliasNameWithId;
 import com.alibaba.graphscope.common.ir.rex.RexGraphVariable;
+import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.google.common.collect.Lists;
 
 import org.apache.calcite.rel.RelNode;
@@ -42,9 +43,12 @@ public class FlatJoinToExpandRule extends FlatJoinRule {
         List<GraphLogicalSingleMatch> matches = Lists.newArrayList();
         getMatchBeforeJoin(join.getRight(), matches);
         if (matches.size() != 1) return false;
-        RelNode sentence = matches.get(0).getSentence();
-        if (hasPxdWithUntil(sentence)) return false;
-        if (hasNodeEqualFilter(sentence)) return false;
+        GraphLogicalSingleMatch singleMatch = matches.get(0);
+        RelNode sentence = singleMatch.getSentence();
+        if (singleMatch.getMatchOpt() != GraphOpt.Match.EXPAND) {
+            if (hasPxdWithUntil(sentence)) return false;
+            if (hasNodeEqualFilter(sentence)) return false;
+        }
         GraphLogicalSource source = getSource(sentence);
         List<Integer> startEndAliasIds =
                 Lists.newArrayList(getAliasId(source), getAliasId(sentence));
