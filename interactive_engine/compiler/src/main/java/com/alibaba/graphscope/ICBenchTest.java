@@ -70,6 +70,13 @@ public class ICBenchTest {
         this.queryLog = queryLog;
     }
 
+    public GraphPlanner.Summary planOneQuery(File path) throws Exception {
+        String query = readQuery(path);
+        GraphPlanner.PlannerInstance instance = planner.instance(query, irMeta);
+        GraphPlanner.Summary summary = instance.plan();
+        return summary;
+    }
+
     public void executeQueries() throws Exception {
         FileUtils.writeStringToFile(
                 queryLog,
@@ -81,10 +88,8 @@ public class ICBenchTest {
             String fileName = file.getName();
             if (fileName.endsWith(".cypher")) {
                 String queryName = fileName.substring(0, fileName.length() - 7);
-                String query = readQuery(file.getAbsolutePath());
                 try {
-                    GraphPlanner.PlannerInstance instance = planner.instance(query, irMeta);
-                    GraphPlanner.Summary summary = instance.plan();
+                    GraphPlanner.Summary summary = planOneQuery(file);
                     BigInteger queryId = BigInteger.valueOf(UUID.randomUUID().hashCode());
                     ExecutionRequest request =
                             new ExecutionRequest(
@@ -121,7 +126,7 @@ public class ICBenchTest {
                                 }
                             },
                             new QueryTimeoutConfig(timeout),
-                            new QueryLogger(query, queryId));
+                            new QueryLogger("", queryId));
                     StringBuilder resultBuilder = new StringBuilder();
                     while (resultIterator.hasNext()) {
                         resultBuilder.append(resultIterator.next());
@@ -150,8 +155,8 @@ public class ICBenchTest {
         }
     }
 
-    public String readQuery(String path) throws Exception {
-        String content = FileUtils.readFileToString(new File(path), StandardCharsets.UTF_8);
+    public String readQuery(File path) throws Exception {
+        String content = FileUtils.readFileToString(path, StandardCharsets.UTF_8);
         // Parse parameters
         Map<String, String> parameters = parseParameters(content);
 
