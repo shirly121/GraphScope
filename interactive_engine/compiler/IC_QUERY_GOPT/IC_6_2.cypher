@@ -3,7 +3,7 @@
 
 MATCH (p_:PERSON {id: $personId})-[:KNOWS*1..3]-(other:PERSON)
 WITH distinct other
-WHERE other.id <> $personId
+WHERE other <> p_
 
 MATCH (other)<-[:HASCREATOR]-(p:POST)-[:HASTAG]->(t:TAG {name: $tagName})
 

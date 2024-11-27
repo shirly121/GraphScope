@@ -3,7 +3,7 @@
 
 MATCH (p:PERSON {id: $personId})-[:KNOWS*1..3]-(friend:PERSON)
 WITH distinct friend
-where friend.id <> $personId
+where friend <> p
 
 MATCH  (message)-[:HASCREATOR]->(friend:PERSON)
 where message.creationDate < $maxDate

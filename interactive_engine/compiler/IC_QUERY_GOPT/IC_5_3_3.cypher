@@ -5,7 +5,7 @@ MATCH (person:PERSON { id: $personId })-[:KNOWS*1..3]-(friend),
       (friend)<-[membership:HASMEMBER]-(forum),
       (post)<-[:CONTAINEROF]-(forum)
 WHERE
-    NOT friend.id = $personId
+    friend <> person
     AND membership.joinDate > $minDate
 WITH forum, friend, post
 MATCH (friend)<-[:HASCREATOR]-(post1)

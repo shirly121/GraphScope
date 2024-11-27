@@ -9,7 +9,7 @@ MATCH
 WITH DISTINCT otherP
 MATCH (country:PLACE)<-[:ISLOCATEDIN]-(message)-[:HASCREATOR]->(otherP:PERSON)-[ISLOCATEDIN]->(city:PLACE)
 WHERE
-     otherP.id<> $personId
+     otherP <> p
      AND (country.name = $countryXName OR country.name = $countryYName)
      AND message.creationDate >= $startDate
      AND message.creationDate < $endDate
