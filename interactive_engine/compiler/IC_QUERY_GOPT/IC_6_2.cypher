@@ -2,8 +2,8 @@
 :param tagName => "North_German_Confederation";
 
 MATCH (p_:PERSON {id: $personId})-[:KNOWS*1..3]-(other:PERSON)
-WITH distinct other
 WHERE other <> p_
+WITH distinct other
 
 MATCH (other)<-[:HASCREATOR]-(p:POST)-[:HASTAG]->(t:TAG {name: $tagName})
 
