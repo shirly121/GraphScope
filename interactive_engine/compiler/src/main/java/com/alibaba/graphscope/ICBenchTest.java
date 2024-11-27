@@ -152,7 +152,7 @@ public class ICBenchTest {
                                     + "\n",
                             StandardCharsets.UTF_8,
                             true);
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     FileUtils.writeStringToFile(
                             errorLog,
                             queryName + "\t\t" + e.getMessage() + "\n\n",
@@ -161,6 +161,7 @@ public class ICBenchTest {
                 }
             }
         }
+        this.client.close();
     }
 
     public String readQuery(File path) throws Exception {
