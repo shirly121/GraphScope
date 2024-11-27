@@ -55,6 +55,7 @@ public class ICBenchTest {
     private final File queryLog;
     private final File errorLog;
     private final ExecutionClient client;
+    private final int personLimit;
 
     public ICBenchTest(Configs configs, File queryDir) throws Exception {
         this.configs = configs;
@@ -74,6 +75,7 @@ public class ICBenchTest {
         if (errorLog.exists()) {
             errorLog.delete();
         }
+        this.personLimit = Integer.valueOf(System.getProperty("limit", "2"));
     }
 
     public GraphPlanner.Summary planOneQuery(File path) throws Exception {
@@ -98,46 +100,11 @@ public class ICBenchTest {
                 String queryName = fileName.substring(0, fileName.length() - 7);
                 try {
                     GraphPlanner.Summary summary = planOneQuery(file);
-                    BigInteger queryId = BigInteger.valueOf(UUID.randomUUID().hashCode());
-                    ExecutionRequest request =
-                            new ExecutionRequest(
-                                    queryId,
-                                    "ir_plan_" + queryId,
-                                    summary.getLogicalPlan(),
-                                    summary.getPhysicalPlan());
                     long startTime = System.currentTimeMillis();
-                    StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
-                    client.submit(
-                            request,
-                            new ExecutionResponseListener() {
-                                @Override
-                                public void onNext(IrResult.Record record) {
-                                    try {
-                                        resultIterator.putData(record);
-                                    } catch (Exception e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                }
-
-                                @Override
-                                public void onCompleted() {
-                                    try {
-                                        resultIterator.finish();
-                                    } catch (Exception e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                }
-
-                                @Override
-                                public void onError(Throwable t) {
-                                    resultIterator.fail(t);
-                                }
-                            },
-                            new QueryTimeoutConfig(timeout),
-                            new QueryLogger("", queryId));
+                    StreamIterator<IrResult.Record> results = submitQuery(summary, timeout);
                     StringBuilder resultBuilder = new StringBuilder();
-                    while (resultIterator.hasNext()) {
-                        resultBuilder.append(resultIterator.next());
+                    while(results.hasNext()) {
+                        resultBuilder.append(results.next());
                     }
                     long elapsed = System.currentTimeMillis() - startTime;
                     FileUtils.writeStringToFile(
@@ -164,6 +131,46 @@ public class ICBenchTest {
         this.client.close();
     }
 
+    private StreamIterator<IrResult.Record> submitQuery(GraphPlanner.Summary summary, long timeout) throws Exception {
+        BigInteger queryId = BigInteger.valueOf(UUID.randomUUID().hashCode());
+        ExecutionRequest request =
+                new ExecutionRequest(
+                        queryId,
+                        "ir_plan_" + queryId,
+                        summary.getLogicalPlan(),
+                        summary.getPhysicalPlan());
+        StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+        client.submit(
+                request,
+                new ExecutionResponseListener() {
+                    @Override
+                    public void onNext(IrResult.Record record) {
+                        try {
+                            resultIterator.putData(record);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        try {
+                            resultIterator.finish();
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        resultIterator.fail(t);
+                    }
+                },
+                new QueryTimeoutConfig(timeout),
+                new QueryLogger("", request.getRequestId()));
+        return resultIterator;
+    }
+
     public String readQuery(File path) throws Exception {
         String content = FileUtils.readFileToString(path, StandardCharsets.UTF_8);
         // Parse parameters
@@ -181,26 +188,44 @@ public class ICBenchTest {
     }
 
     // Parses :param declarations into a Map
-    public Map<String, String> parseParameters(String content) {
+    public Map<String, String> parseParameters(String content) throws Exception {
         Map<String, String> parameters = new HashMap<>();
         Pattern pattern = Pattern.compile(":param (\\w+) => (.+?);");
         Matcher matcher = pattern.matcher(content);
 
+        Pattern personId = Pattern.compile("^person\\d*Id$");
+
         while (matcher.find()) {
             String key = matcher.group(1).trim();
             String value = matcher.group(2).trim();
-
-            // Handle numeric values and quoted strings
-            if (value.matches("^\\d+$")) {
-                parameters.put(key, value); // Numeric
-            } else if (value.startsWith("\"") && value.endsWith("\"")) {
-                parameters.put(key, value.substring(1, value.length() - 1)); // Quoted string
-            } else {
-                parameters.put(key, value); // Default
+            if (personId.matcher(key).find()) {
+                value = limitPersonIds(personLimit).toString();
             }
+            parameters.put(key, value);
+//            // Handle numeric values and quoted strings
+//            if (value.matches("^\\d+$")) {
+//                parameters.put(key, value); // Numeric
+//            } else if (value.startsWith("\"") && value.endsWith("\"")) {
+//                parameters.put(key, value.substring(1, value.length() - 1)); // Quoted string
+//            } else {
+//                parameters.put(key, value); // Default
+//            }
         }
 
         return parameters;
+    }
+
+    private List<Long> limitPersonIds(int batch) throws Exception {
+        String query = String.format("MATCH (n:PERSON) RETURN n.id LIMIT %d;", batch);
+        GraphPlanner.PlannerInstance instance = planner.instance(query, irMeta);
+        GraphPlanner.Summary summary = instance.plan();
+        StreamIterator<IrResult.Record> records = submitQuery(summary, 10000);
+        List<Long> ids = new ArrayList<>();
+        while(records.hasNext()) {
+            IrResult.Record record = records.next();
+            ids.add(record.getColumns(0).getEntry().getElement().getObject().getI64());
+        }
+        return ids;
     }
 
     // Extracts the Cypher query template from the file content
@@ -215,10 +240,10 @@ public class ICBenchTest {
             String parameterPlaceholder = "\\$" + entry.getKey();
             String value = entry.getValue();
 
-            // Check if the value should be treated as a string
-            if (!value.matches("^\\d+(\\.\\d+)?$")) { // Not numeric
-                value = "\"" + value + "\""; // Wrap in double quotes
-            }
+//            // Check if the value should be treated as a string
+//            if (!value.matches("^\\d+(\\.\\d+)?$")) { // Not numeric
+//                value = "\"" + value + "\""; // Wrap in double quotes
+//            }
 
             // Replace the placeholder with the value
             query = query.replaceAll(parameterPlaceholder, Matcher.quoteReplacement(value));

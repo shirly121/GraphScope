@@ -47,7 +47,6 @@ import com.alibaba.graphscope.gaia.proto.OuterExpression;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
@@ -61,14 +60,11 @@ import org.apache.calcite.rel.type.RelRecordType;
 import org.apache.calcite.rel.type.StructKind;
 import org.apache.calcite.rex.*;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class GraphRelToProtoConverter extends GraphShuttle {
@@ -269,11 +265,18 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Scan.Builder scanBuilder = GraphAlgebraPhysical.Scan.newBuilder();
         RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
+        boolean isIdPredicate = true;
         if (uniqueKeyFilters != null) {
-            GraphAlgebra.IndexPredicate indexPredicate = buildIndexPredicates(uniqueKeyFilters);
-            scanBuilder.setIdxPredicate(indexPredicate);
+            isIdPredicate = isIdPredicate(uniqueKeyFilters);
+            if (isIdPredicate) {
+                GraphAlgebra.IndexPredicate indexPredicate = buildIndexPredicates(uniqueKeyFilters);
+                scanBuilder.setIdxPredicate(indexPredicate);
+            }
         }
         GraphAlgebra.QueryParams.Builder queryParamsBuilder = buildQueryParams(source);
+        if (!isIdPredicate) {
+            addQueryFilters(queryParamsBuilder, ImmutableList.of(uniqueKeyFilters));
+        }
         if (preCacheEdgeProps && GraphOpt.Source.EDGE.equals(source.getOpt())) {
             addQueryColumns(
                     queryParamsBuilder,
@@ -289,6 +292,16 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(source.getRowType(), isColumnId));
         physicalBuilder.addPlan(oprBuilder.build());
         return source;
+    }
+
+    private boolean isIdPredicate(RexNode rex) {
+        if (rex instanceof RexCall) {
+            RexNode operand0 = ((RexCall) rex).getOperands().get(0);
+            if (operand0.getType().getSqlTypeName() == SqlTypeName.CHAR) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
