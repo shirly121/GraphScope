@@ -44,6 +44,7 @@ public class FlatJoinToExpandRule extends FlatJoinRule {
         getMatchBeforeJoin(join.getRight(), matches);
         if (matches.size() != 1) return false;
         GraphLogicalSingleMatch singleMatch = matches.get(0);
+        if (singleMatch.getMatchOpt() == GraphOpt.Match.JOIN) return false;
         RelNode sentence = singleMatch.getSentence();
         if (singleMatch.getMatchOpt() != GraphOpt.Match.EXPAND) {
             if (hasPxdWithUntil(sentence)) return false;

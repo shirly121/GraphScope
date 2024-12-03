@@ -296,7 +296,9 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
                 opt = GraphOpt.Match.OPTIONAL;
             } else if (ctx.EXPAND() != null) {
                 opt = GraphOpt.Match.EXPAND;
-            } else {
+            } else if (ctx.JOIN() != null) {
+                opt = GraphOpt.Match.JOIN;
+            }else {
                 opt = GraphOpt.Match.INNER;
             }
             builder.match(sentences.get(0), opt);

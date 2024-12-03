@@ -1,0 +1,6 @@
+g.V().match(
+     __.as('person1').hasLabel('PERSON').in('HASCREATOR').hasLabel('COMMENT').as('comment'),
+     __.as('comment').out('REPLYOF').hasLabel('POST').as('post'),
+     __.as('post').in('CONTAINEROF').hasLabel('FORUM').as('forum'),
+     __.as('forum').out('HASMEMBER').hasLabel('PERSON').as('person2')
+ ).count()

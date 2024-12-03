@@ -30,6 +30,7 @@ import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
 import com.alibaba.graphscope.common.ir.meta.reader.LocalIrMetaReader;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
+import com.alibaba.graphscope.common.ir.planner.PlannerGroupManager;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlanFactory;
 import com.alibaba.graphscope.gaia.proto.IrResult;
@@ -59,7 +60,7 @@ public class ICBenchTest {
 
     public ICBenchTest(Configs configs, File queryDir) throws Exception {
         this.configs = configs;
-        this.optimizer = new GraphRelOptimizer(configs);
+        this.optimizer = new GraphRelOptimizer(configs, PlannerGroupManager.Static.class);
         this.planner = new GraphPlanner(configs, new LogicalPlanFactory.Cypher(), optimizer);
         this.irMeta =
                 new StaticIrMetaFetcher(new LocalIrMetaReader(configs), optimizer.getGlogueHolder())

@@ -59,14 +59,12 @@ import com.alibaba.pegasus.RpcClient;
 import com.alibaba.pegasus.service.protocol.PegasusClient;
 import com.google.common.collect.Maps;
 import com.google.protobuf.ByteString;
-
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.*;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.trace.IdGenerator;
-
 import org.apache.tinkerpop.gremlin.driver.message.RequestMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseMessage;
 import org.apache.tinkerpop.gremlin.driver.message.ResponseStatusCode;
@@ -86,6 +84,7 @@ import org.apache.tinkerpop.gremlin.server.op.standard.StandardOpProcessor;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 
+import javax.script.SimpleBindings;
 import java.math.BigInteger;
 import java.util.Iterator;
 import java.util.Map;
@@ -95,8 +94,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
-
-import javax.script.SimpleBindings;
 
 public class IrStandardOpProcessor extends StandardOpProcessor {
     protected final Graph graph;
@@ -416,9 +413,10 @@ public class IrStandardOpProcessor extends StandardOpProcessor {
                             queryLogger.info("Submitted query");
                             // Too verbose, since all identical queries produce identical plans,
                             // it's no need to print
-                            // every plan in production.de
-                            irPlanStr.append(irPlan.getPlanAsJson());
-                            queryLogger.debug("ir plan {}", irPlanStr.toString());
+//                            // every plan in production.de
+//                            irPlanStr.append(irPlan.getPlanAsJson());
+//                            queryLogger.debug("ir plan {}", irPlanStr.toString());
+                            queryLogger.info("ir plan \n{}", irPlan.getPlanAsJson());
                             queryLogger.setIrPlan(irPlanStr.toString());
                             byte[] physicalPlanBytes = irPlan.toPhysicalBytes(queryConfigs);
                             irPlan.close();

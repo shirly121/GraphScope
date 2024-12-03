@@ -1,0 +1,4 @@
+g.V().match(
+  __.as('p1').hasLabel('PERSON').out('KNOWS').as('p2'),
+  __.as('p2').out('LIKES').hasLabel('COMMENT').as('c1')).
+select('p1').has('id', 97376).select('p2').has('id', 173696).select('c1').has('length', 10).count()

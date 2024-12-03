@@ -1,0 +1,8 @@
+g.V().match(
+     __.as('forum').hasLabel('FORUM').out('HASTAG').hasLabel('TAG').as('post'),
+     __.as('forum').out('HASMODERATOR').hasLabel('PERSON').as('person1'),
+     __.as('forum').out('HASMODERATOR', 'CONTAINEROF').hasLabel('PERSON', 'POST').as('person2'),
+     __.as('person1').out('KNOWS', 'LIKES').hasLabel('PERSON', 'POST').as('person2'),
+     __.as('person1').out('HASINTEREST').hasLabel('TAG').as('post'),
+     __.as('person2').out('HASINTEREST', 'HASTAG').hasLabel('TAG').as('post')
+ ).count()

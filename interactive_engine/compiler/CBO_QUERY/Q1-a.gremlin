@@ -1,0 +1,6 @@
+g.V().match(
+     __.as('message').hasLabel('COMMENT', 'POST'),          
+     __.as('message').out('HASCREATOR').hasLabel('PERSON').as('person'), 
+     __.as('message').out('HASTAG').hasLabel('TAG').as('tag'),         
+     __.as('person').out('HASINTEREST').as('tag')        
+ ).count()

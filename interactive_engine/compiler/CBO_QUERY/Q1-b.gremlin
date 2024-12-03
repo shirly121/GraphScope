@@ -1,0 +1,6 @@
+g.V().match(
+     __.as('message').hasLabel('PERSON', 'FORUM'),
+     __.as('message').out('KNOWS', 'HASMODERATOR').hasLabel('PERSON').as('person'),
+     __.as('message').out('HASINTEREST', 'HASTAG').hasLabel('TAG').as('tag'),
+     __.as('person').out('HASINTEREST').as('tag')
+ ).count()

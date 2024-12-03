@@ -55,7 +55,8 @@ public abstract class GraphOpt {
         OPTIONAL, // the sentence is optional, still keep the sentence even though it is not joined
         // by
         // any others
-        EXPAND
+        EXPAND,
+        JOIN
     }
 
     public enum PathExpandPath {

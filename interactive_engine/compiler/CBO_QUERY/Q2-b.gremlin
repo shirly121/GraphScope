@@ -1,0 +1,6 @@
+g.V().match(
+     __.as('person1').hasLabel('PERSON').out('LIKES').hasLabel('POST').as('message'),
+     __.as('message').in('CONTAINEROF').hasLabel('FORUM').as('person2'),
+     __.as('person1').out('KNOWS', 'HASINTEREST').hasLabel('PERSON', 'TAG').as('place1'),
+     __.as('person2').out('HASMODERATOR', 'HASTAG').hasLabel('PERSON', 'TAG').as('place2')
+ ).count()

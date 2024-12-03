@@ -1,0 +1,5 @@
+g.V().match(
+     __.as('p').hasLabel('COMMENT').out('HASCREATOR').hasLabel('PERSON').out('ISLOCATEDIN').hasLabel('PLACE').as('city'),
+     __.as('p').in('LIKES', 'REPLYOF').as('message'),
+     __.as('message').out('HASTAG', 'HASINTEREST').hasLabel('TAG').as('tag')
+ ).count()
