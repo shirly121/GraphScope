@@ -55,7 +55,6 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                     .addDecompositions();
         }
         if (config.isJoinByEdgeEnabled()) {
-            System.out.println("enable join by edge");
             (new JoinByEdge(graphPattern, mq, decompositionQueue, queueCapacity))
                     .addDecompositions();
         }
@@ -291,7 +290,6 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                                         Lists.newArrayList(
                                                 new JoinVertex(srcVertex),
                                                 new JoinVertex(dstVertex)));
-                        System.out.println("add join by edge into queue");
                         addDecompositionToQueue(decomposition);
                     }
                 }

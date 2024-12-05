@@ -48,7 +48,7 @@ public class BITest {
                                 "CBO",
                                 "graph.planner.rules",
                                 "FilterIntoJoinRule, FilterMatchRule,"
-                                        + " ExtendIntersectRule, ExpandGetVFusionRule"));
+                                        + " ExtendIntersectRule, JoinDecompositionRule, ExpandGetVFusionRule"));
         optimizer = new GraphRelOptimizer(configs);
         irMeta =
                 Utils.mockIrMeta(
@@ -62,6 +62,26 @@ public class BITest {
         if (optimizer != null) {
             optimizer.close();
         }
+    }
+
+    @Test
+    public void high_order_test() {
+        GraphBuilder builder = Utils.mockGraphBuilder(optimizer, irMeta);
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "Match (p1:PERSON)-[:ISLOCATEDIN]->(c:CITY),\n" +
+                                        "            (p2:PERSON)-[:ISLOCATEDIN]->(c:CITY),\n" +
+                                        "            (p1:PERSON)-[:LIKES]->(m1:COMMENT),\n" +
+                                        "            (p2:PERSON)<-[:HASCREATOR]-(m1:COMMENT),\n" +
+                                        "            (p3:PERSON)-[:ISLOCATEDIN]->(c:CITY),\n" +
+                                        "            (p4:PERSON)-[:ISLOCATEDIN]->(c:CITY),\n" +
+                                        "            (p3:PERSON)-[:LIKES]->(m2:COMMENT),\n" +
+                                        "            (p4:PERSON)<-[:HASCREATOR]-(m2:COMMENT)\n" +
+                                        "        RETURN count(p1);",
+                                builder)
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        System.out.println(com.alibaba.graphscope.common.ir.tools.Utils.toString(after));
     }
 
     @Test

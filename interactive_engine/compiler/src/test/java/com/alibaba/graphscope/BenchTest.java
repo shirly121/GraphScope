@@ -46,7 +46,7 @@ public class BenchTest {
     public void execute_one_query() throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        String queryPath = "CBO_QUERY/PATTERN_CSV_ORDER/Qc2-b_2.cypher";
+        String queryPath = "HIGH_ORDER_1/Qc4-a_4.cypher";
         ICBenchTest benchTest = new ICBenchTest(configs, queryDir);
         GraphPlanner.Summary summary = benchTest.planOneQuery(new File(queryPath));
         System.out.println(Utils.toString(summary.getLogicalPlan().getRegularQuery()));

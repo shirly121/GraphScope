@@ -15,7 +15,7 @@ public class PlannerConfig {
     public static final Config<Integer> GRAPH_PLANNER_CBO_GLOGUE_SIZE =
             Config.intConfig("graph.planner.cbo.glogue.size", 3);
     public static final Config<Integer> JOIN_MIN_PATTERN_SIZE =
-            Config.intConfig("graph.planner.join.min.pattern.size", 5);
+            Config.intConfig("graph.planner.join.min.pattern.size", 7);
     public static final Config<Integer> JOIN_COST_FACTOR_1 =
             Config.intConfig("graph.planner.join.cost.factor.1", 1);
     public static final Config<Integer> JOIN_COST_FACTOR_2 =
