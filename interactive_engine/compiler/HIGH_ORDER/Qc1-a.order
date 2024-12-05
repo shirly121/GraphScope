@@ -1,0 +1,16 @@
+ID: 0, Node { opr: Some(Operator { opr: Some(Scan(Scan { scan_opt: Vertex, alias: None, params: Some(QueryParams { tables: [NameOrId { item: Some(Id(PERSON)) }], columns: [], is_all_columns: false, limit: None, predicate: None, sample_ratio: 1.0, extra: {} }), idx_predicate: None })) }), children: [1] }
+ID: 1, Node { opr: Some(Operator { opr: Some(As(As { alias: Some(NameOrId { item: Some(Id(1)) }) })) }), children: [2] }
+ID: 2, Node { opr: Some(Operator { opr: Some(Edge(EdgeExpand { v_tag: Some(NameOrId { item: Some(Id(1)) }), direction: In, params: Some(QueryParams { tables: [NameOrId { item: Some(Id(HASCREATOR)) }], columns: [], is_all_columns: false, limit: None, predicate: None, sample_ratio: 1.0, extra: {} }), alias: Some(NameOrId { item: Some(Id(0)) }), expand_opt: Vertex })) }), children: [3] }
+ID: 3, Node { opr: Some(Operator { opr: Some(Select(Select { predicate: Some(Expression { operators: [ExprOpr { item: Some(Var(Variable { tag: None, property: Some(Property { item: Some(Label(LabelKey)) }) })) }, ExprOpr { item: Some(Logical(Eq)) }, ExprOpr { item: Some(Const(Value { item: Some(I64(2)) })) }] }) })) }), children: [4] }
+ID: 4, Node { opr: Some(Operator { opr: Some(ExpandIntersect(ExpandAndIntersect { edge_expands: [
+    EdgeExpand { v_tag: Some(NameOrId { item: Some(Id(0)) }), direction: Out, params: Some(QueryParams { tables: [NameOrId { item: Some(Id(HASTAG)) }], columns: [], is_all_columns: false, limit: None, predicate: None, sample_ratio: 1.0, extra: {} }), alias: Some(NameOrId { item: Some(Id(2)) }), expand_opt: Vertex },
+    EdgeExpand { v_tag: Some(NameOrId { item: Some(Id(1)) }), direction: Out, params: Some(QueryParams { tables: [NameOrId { item: Some(Id(HASINTEREST)) }], columns: [], is_all_columns: false, limit: None, predicate: None, sample_ratio: 1.0, extra: {} }), alias: Some(NameOrId { item: Some(Id(2)) }), expand_opt: Vertex }] })) }), children: [5] }
+ID: 5, Node { opr: Some(Operator { opr: Some(GroupBy(GroupBy { mappings: [], functions: [AggFunc { vars: [], aggregate: Count, alias: Some(NameOrId { item: Some(Id(0)) }) }] })) }), children: [6] }
+ID: 6, Node { opr: Some(Operator { opr: Some(Sink(Sink { tags: [NameOrIdKey { key: Some(NameOrId { item: Some(Id(0)) }) }], sink_target: Some(SinkTarget { inner: Some(SinkDefault(SinkDefault { id_name_mappings: [] })) }) })) }), children: [] }
+ID: 7, Node { opr: Some(Operator { opr: Some(GroupBy(GroupBy { mappings: [], functions: [AggFunc { vars: [], aggregate: Count, alias: Some(NameOrId { item: Some(Id(0)) }) }] })) }), children: [8] }
+ID: 8, Node { opr: Some(Operator { opr: Some(Sink(Sink { tags: [NameOrIdKey { key: Some(NameOrId { item: Some(Id(0)) }) }], sink_target: Some(SinkTarget { inner: Some(SinkDefault(SinkDefault { id_name_mappings: [] })) }) })) }), children: [] }
+Roots: [0]
+
+PERSON
+HASCREATOR
+HASTAG, HASINTEREST

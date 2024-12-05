@@ -65,6 +65,10 @@ public class PlannerGroup {
                 relOptimized =
                         relOptimized.accept(new FlatJoinToCommonRule(ioProcessor.getBuilder()));
             }
+            if (config.getRules().contains(FlatJoinToIntersectRule.class.getSimpleName())) {
+                relOptimized =
+                        relOptimized.accept(new FlatJoinToIntersectRule(ioProcessor.getBuilder()));
+            }
             if (config.getOpt() == PlannerConfig.Opt.CBO) {
                 relOptimized =
                         relOptimized.accept(

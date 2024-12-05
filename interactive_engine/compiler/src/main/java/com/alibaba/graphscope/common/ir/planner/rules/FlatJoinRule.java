@@ -85,6 +85,12 @@ public abstract class FlatJoinRule extends GraphShuttle {
         return joinVars.size() == 1 ? joinVars.get(0) : null;
     }
 
+    static List<RexGraphVariable> joinByTwoColumns(RexNode condition, List<RexNode> others) {
+        List<RexGraphVariable> joinVars = Lists.newArrayList();
+        classifyJoinCondition(condition, joinVars, others);
+        return joinVars.size() == 2 ? joinVars : ImmutableList.of();
+    }
+
     /**
      * analyze the join condition, separate the join condition by the same tag and other conditions
      * @param joinVars
@@ -113,6 +119,19 @@ public abstract class FlatJoinRule extends GraphShuttle {
                         others.add(c);
                     }
                 });
+    }
+
+    static boolean hasNodeFilter(RelNode top) {
+        if (top instanceof GraphLogicalSource) {
+            GraphLogicalSource source = (GraphLogicalSource) top;
+            if (source.getUniqueKeyFilters() != null || ObjectUtils.isNotEmpty(source.getFilters()))
+                return true;
+        }
+        if (top instanceof GraphLogicalGetV) {
+            GraphLogicalGetV getV = (GraphLogicalGetV) top;
+            if (ObjectUtils.isNotEmpty(getV.getFilters())) return true;
+        }
+        return top.getInputs().stream().anyMatch(k -> hasNodeFilter(k));
     }
 
     static boolean hasNodeEqualFilter(RelNode top) {
@@ -191,6 +210,61 @@ public abstract class FlatJoinRule extends GraphShuttle {
                     getV.getFilters());
         }
         logger.warn("unable to set start alias of the rel = [" + top + "]");
+        return top;
+    }
+
+    static RelNode setAlias(RelNode top, String aliasName) {
+        if (top instanceof GraphLogicalSource) {
+            return GraphLogicalSource.create(
+                    (GraphOptCluster) top.getCluster(),
+                    ((GraphLogicalSource) top).getHints(),
+                    ((GraphLogicalSource) top).getOpt(),
+                    ((GraphLogicalSource) top).getTableConfig(),
+                    aliasName,
+                    ((GraphLogicalSource) top).getUniqueKeyFilters(),
+                    ((GraphLogicalSource) top).getFilters());
+        } else if (top instanceof GraphLogicalExpand) {
+            GraphLogicalExpand expand = (GraphLogicalExpand) top;
+            return GraphLogicalExpand.create(
+                    (GraphOptCluster) expand.getCluster(),
+                    expand.getHints(),
+                    expand.getInput(0),
+                    expand.getOpt(),
+                    expand.getTableConfig(),
+                    aliasName,
+                    expand.getStartAlias(),
+                    expand.isOptional(),
+                    expand.getFilters(),
+                    (GraphSchemaType) expand.getRowType().getFieldList().get(0).getType());
+        } else if (top instanceof GraphLogicalPathExpand) {
+            GraphLogicalPathExpand pxd = (GraphLogicalPathExpand) top;
+            return GraphLogicalPathExpand.create(
+                    (GraphOptCluster) pxd.getCluster(),
+                    ImmutableList.of(),
+                    pxd.getInput(),
+                    pxd.getExpand(),
+                    pxd.getGetV(),
+                    pxd.getOffset(),
+                    pxd.getFetch(),
+                    pxd.getResultOpt(),
+                    pxd.getPathOpt(),
+                    pxd.getUntilCondition(),
+                    aliasName,
+                    pxd.getStartAlias(),
+                    pxd.isOptional());
+        } else if (top instanceof GraphLogicalGetV) {
+            GraphLogicalGetV getV = (GraphLogicalGetV) top;
+            return GraphLogicalGetV.create(
+                    (GraphOptCluster) getV.getCluster(),
+                    getV.getHints(),
+                    getV.getInput(0),
+                    getV.getOpt(),
+                    getV.getTableConfig(),
+                    aliasName,
+                    getV.getStartAlias(),
+                    getV.getFilters());
+        }
+        logger.warn("unable to set alias of the rel = [" + top + "]");
         return top;
     }
 
@@ -357,6 +431,12 @@ public abstract class FlatJoinRule extends GraphShuttle {
             return ((GraphLogicalPathExpand) rel).getAliasName();
         }
         return null;
+    }
+
+    static int getExpandCount(RelNode top) {
+        int childCnt = top.getInputs().stream().mapToInt(k -> getExpandCount(k)).sum();
+        if (top instanceof GraphLogicalExpand) ++childCnt;
+        return childCnt;
     }
 
     static class SetOptional extends GraphShuttle {

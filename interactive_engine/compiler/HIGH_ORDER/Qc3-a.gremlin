@@ -1,0 +1,1 @@
+g.V().hasLabel('PERSON').in('HASCREATOR').hasLabel('COMMENT').out('REPLYOF').in('CONTAINEROF').out('HASMEMBER').count()

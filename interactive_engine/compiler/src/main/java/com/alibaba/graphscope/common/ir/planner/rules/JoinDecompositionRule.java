@@ -49,12 +49,13 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
         // specific optimization for relational DB scenario.
         // 3. `JoinByEdge`: Split the pattern by edge, convert a triangle pattern to `JoinByEdge` to
         // support optimizations in Neo4j.
-        (new JoinByVertex(graphPattern, mq, decompositionQueue, queueCapacity)).addDecompositions();
+//        (new JoinByVertex(graphPattern, mq, decompositionQueue, queueCapacity)).addDecompositions();
         if (config.getForeignKeyMeta() != null) {
             (new JoinByForeignKey(graphPattern, mq, decompositionQueue, queueCapacity))
                     .addDecompositions();
         }
         if (config.isJoinByEdgeEnabled()) {
+            System.out.println("enable join by edge");
             (new JoinByEdge(graphPattern, mq, decompositionQueue, queueCapacity))
                     .addDecompositions();
         }
@@ -290,6 +291,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
                                         Lists.newArrayList(
                                                 new JoinVertex(srcVertex),
                                                 new JoinVertex(dstVertex)));
+                        System.out.println("add join by edge into queue");
                         addDecompositionToQueue(decomposition);
                     }
                 }

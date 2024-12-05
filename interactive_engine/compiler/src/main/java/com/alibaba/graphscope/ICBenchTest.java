@@ -33,6 +33,7 @@ import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
 import com.alibaba.graphscope.common.ir.planner.PlannerGroupManager;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlanFactory;
+import com.alibaba.graphscope.common.ir.tools.Utils;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
 import com.alibaba.pegasus.common.StreamIterator;
@@ -101,6 +102,7 @@ public class ICBenchTest {
                 String queryName = fileName.substring(0, fileName.length() - 7);
                 try {
                     GraphPlanner.Summary summary = planOneQuery(file);
+                    System.out.println(Utils.toString(summary.getLogicalPlan().getRegularQuery()));
                     long startTime = System.currentTimeMillis();
                     StreamIterator<IrResult.Record> results = submitQuery(summary, timeout);
                     StringBuilder resultBuilder = new StringBuilder();
