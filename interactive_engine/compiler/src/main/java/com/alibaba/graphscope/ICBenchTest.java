@@ -37,7 +37,6 @@ import com.alibaba.graphscope.common.ir.tools.Utils;
 import com.alibaba.graphscope.gaia.proto.IrResult;
 import com.alibaba.graphscope.gremlin.plugin.QueryLogger;
 import com.alibaba.pegasus.common.StreamIterator;
-
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -45,6 +44,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -81,7 +81,13 @@ public class ICBenchTest {
     }
 
     public GraphPlanner.Summary planOneQuery(File path) throws Exception {
-        String query = readQuery(path);
+        String query = readQuery(path, content -> {
+            try {
+                return parseParameters(content);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
         GraphPlanner.PlannerInstance instance = planner.instance(query, irMeta);
         GraphPlanner.Summary summary = instance.plan();
         return summary;
@@ -174,10 +180,10 @@ public class ICBenchTest {
         return resultIterator;
     }
 
-    public String readQuery(File path) throws Exception {
+    public static String readQuery(File path, Function<String, Map<String, String>> parametersSupplier) throws Exception {
         String content = FileUtils.readFileToString(path, StandardCharsets.UTF_8);
         // Parse parameters
-        Map<String, String> parameters = parseParameters(content);
+        Map<String, String> parameters = parametersSupplier.apply(content);
 
         // Extract query template (excluding parameter declarations)
         String queryTemplate = extractQueryTemplate(content);
@@ -232,13 +238,13 @@ public class ICBenchTest {
     }
 
     // Extracts the Cypher query template from the file content
-    public String extractQueryTemplate(String content) {
+    private static  String extractQueryTemplate(String content) {
         // Remove lines starting with ':param'
         return content.replaceAll("(?m)^:param .*?;\\s*$", "").trim();
     }
 
     // Replaces $parameterName with actual values in the query, wrapping strings in double quotes
-    public String replaceParametersInQuery(String query, Map<String, String> parameters) {
+    private static String replaceParametersInQuery(String query, Map<String, String> parameters) {
         for (Map.Entry<String, String> entry : parameters.entrySet()) {
             String parameterPlaceholder = "\\$" + entry.getKey();
             String value = entry.getValue();

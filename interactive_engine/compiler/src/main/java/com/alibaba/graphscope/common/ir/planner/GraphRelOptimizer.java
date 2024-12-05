@@ -87,6 +87,16 @@ public class GraphRelOptimizer implements Closeable {
         return currentGroup.getMatchPlanner();
     }
 
+    public RelOptPlanner getRelPlanner() {
+        PlannerGroup currentGroup = this.plannerGroupManager.getCurrentGroup();
+        return currentGroup.getRelPlanner();
+    }
+
+    public RelOptPlanner getPhysicalPlanner() {
+        PlannerGroup currentGroup = this.plannerGroupManager.getCurrentGroup();
+        return currentGroup.getPhysicalPlanner();
+    }
+
     public RelNode optimize(RelNode before, GraphIOProcessor ioProcessor) {
         PlannerGroup currentGroup = this.plannerGroupManager.getCurrentGroup();
         return currentGroup.optimize(before, ioProcessor);

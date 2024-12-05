@@ -206,4 +206,12 @@ public class PlannerGroup {
     public RelOptPlanner getMatchPlanner() {
         return this.matchPlanner;
     }
+
+    public RelOptPlanner getRelPlanner() {
+        return this.relPlanner;
+    }
+
+    public RelOptPlanner getPhysicalPlanner() {
+        return this.physicalPlanner;
+    }
 }
