@@ -1,10 +1,8 @@
 :param date => 20100601000000000;
 
-MATCH (country:PLACE)<-[:ISPARTOF]-(:PLACE)<-[:ISLOCATEDIN]-(person:PERSON)<-[:HASMEMBER]-(forum:FORUM)
-WHERE forum.creationDate > $date
-WITH country, forum, count(person) AS numberOfMembers
-ORDER BY numberOfMembers DESC, forum.id ASC, country.id
-WITH DISTINCT forum AS topForum
+MATCH (topForum:FORUM)
+WHERE topForum.creationDate > $date
+WITH topForum
 LIMIT 100
 
 WITH collect(topForum) AS topForums

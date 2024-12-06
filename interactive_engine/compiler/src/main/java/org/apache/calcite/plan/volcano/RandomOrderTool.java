@@ -357,15 +357,7 @@ public class RandomOrderTool {
                     randomPickN(
                             pickCount,
                             best,
-                            new OrderRule() {
-                                @Override
-                                public boolean matched() {
-                                    return true;
-                                }
-
-                                @Override
-                                public void reset() {}
-                            }));
+                            new SourceHasFilter()));
 //            String mode = System.getProperty("mode", "best");
 //            switch (mode) {
 //                case "neo4j":

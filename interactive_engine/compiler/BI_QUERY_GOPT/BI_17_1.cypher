@@ -1,12 +1,10 @@
-:param tag => "Meryl_Streep";
+:param tag => 'Wendy_Turnbull';
 
-MATCH
-  (comment)-[:HASTAG]->(tag:TAG {name: $tag}),
-  (message2)-[:HASTAG]->(tag),
-  (comment)-[:REPLYOF]->(message2)
+MATCH (comment:COMMENT)-[:REPLYOF]->(message2:COMMENT)-[:HASTAG]->(tag:TAG {name: $tag})
+WITH comment, tag, message2
+EXPAND MATCH (comment:COMMENT)-[:HASTAG]->(tag3:TAG)
+WHERE tag3 = tag
 WITH tag, message2
-EXPAND MATCH (person3:PERSON)<-[:HASCREATOR]-(message2)
-WITH tag, person3
-EXPAND MATCH (tag)<-[:HASTAG]-(message1)-[:REPLYOF*0..10]->(post1:POST)<-[:CONTAINEROF]-(forum1:FORUM)-[:HASMEMBER]->(person32)
-WHERE person32 = person3
+EXPAND MATCH (tag2:TAG)<-[:HASTAG]-(message1)-[:REPLYOF]->(post1:POST)<-[:CONTAINEROF]-(forum1:FORUM)-[:HASMEMBER]->(person3:PERSON)<-[:HASCREATOR]-(message2:COMMENT)
+WHERE tag2 = tag
 RETURN count(*);

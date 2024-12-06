@@ -93,6 +93,7 @@ public abstract class FlatJoinRule extends GraphShuttle {
 
     /**
      * analyze the join condition, separate the join condition by the same tag and other conditions
+     *
      * @param joinVars
      * @param others
      */
@@ -375,21 +376,36 @@ public abstract class FlatJoinRule extends GraphShuttle {
                     ((GraphLogicalPathExpand) top).isOptional());
         }
         if (top instanceof GraphLogicalGetV) {
-            GraphLogicalGetV getV = (GraphLogicalGetV) top;
             GraphOpt.GetV reversedOpt;
-            switch (getV.getOpt()) {
-                case OTHER:
-                    reversedOpt = GraphOpt.GetV.OTHER;
-                    break;
-                case BOTH:
-                    reversedOpt = GraphOpt.GetV.BOTH;
-                    break;
-                case END:
-                    reversedOpt = GraphOpt.GetV.START;
-                    break;
-                case START:
-                default:
-                    reversedOpt = GraphOpt.GetV.END;
+            if (reversed != null) {
+                GraphOpt.Expand expandOpt = getExpandOpt(reversed);
+                switch (expandOpt) {
+                    case BOTH:
+                        reversedOpt = GraphOpt.GetV.OTHER;
+                        break;
+                    case OUT:
+                        reversedOpt = GraphOpt.GetV.END;
+                        break;
+                    case IN:
+                    default:
+                        reversedOpt = GraphOpt.GetV.START;
+                }
+            } else {
+                GraphLogicalGetV getV = (GraphLogicalGetV) top;
+                switch (getV.getOpt()) {
+                    case OTHER:
+                        reversedOpt = GraphOpt.GetV.OTHER;
+                        break;
+                    case BOTH:
+                        reversedOpt = GraphOpt.GetV.BOTH;
+                        break;
+                    case END:
+                        reversedOpt = GraphOpt.GetV.START;
+                        break;
+                    case START:
+                    default:
+                        reversedOpt = GraphOpt.GetV.END;
+                }
             }
             return GraphLogicalGetV.create(
                     (GraphOptCluster) top.getCluster(),
