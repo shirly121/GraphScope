@@ -124,7 +124,7 @@ public class ICBenchTest {
                                     + "\t\t"
                                     + "success\t\t"
                                     + resultBuilder.substring(
-                                            0, Math.min(resultBuilder.length(), 50))
+                                            0, Math.min(resultBuilder.length(), 150))
                                     + "\n",
                             StandardCharsets.UTF_8,
                             true);

@@ -11,8 +11,6 @@ WHERE (country.name = $countryXName OR country.name = $countryYName)
 WITH DISTINCT otherP
 JOIN MATCH
     (p:PERSON {id: $personId})-[:KNOWS*1..3]-(otherP:PERSON)
-WHERE
-     otherP <> p
 WITH otherP
 Limit 20000
 RETURN count(otherP);
