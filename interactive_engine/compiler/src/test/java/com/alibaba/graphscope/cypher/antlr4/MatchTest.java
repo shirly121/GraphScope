@@ -607,4 +607,22 @@ public class MatchTest {
                         + " alias=[s], opt=[VERTEX])",
                 node2.explain().trim());
     }
+
+    // test the type inference of dynamic parameters
+    @Test
+    public void dynamic_param_type_infer_test() {
+        GraphBuilder builder =
+                com.alibaba.graphscope.common.ir.Utils.mockGraphBuilder(optimizer, irMeta);
+        // the type of $id is inferred by FIRST_KNOWN strategy of the mod operator
+        RelNode before =
+                com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                "Match (n) Where n.id = $id % 12 Return n")
+                        .build();
+        RelNode after = optimizer.optimize(before, new GraphIOProcessor(builder, irMeta));
+        Assert.assertEquals(
+                "GraphLogicalProject(n=[n], isAppend=[false])\n"
+                    + "  GraphLogicalSource(tableConfig=[{isAll=true, tables=[software, person]}],"
+                    + " alias=[n], fusedFilter=[[=(_.id, MOD(?0, 12))]], opt=[VERTEX])",
+                after.explain().trim());
+    }
 }

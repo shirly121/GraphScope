@@ -126,7 +126,7 @@ public class GraphStdOperatorTable extends SqlStdOperatorTable {
                     "MOD",
                     SqlKind.MOD,
                     ReturnTypes.NULLABLE_MOD,
-                    null,
+                    GraphInferTypes.FIRST_KNOWN,
                     GraphOperandTypes.EXACT_NUMERIC_EXACT_NUMERIC,
                     SqlFunctionCategory.NUMERIC);
 
