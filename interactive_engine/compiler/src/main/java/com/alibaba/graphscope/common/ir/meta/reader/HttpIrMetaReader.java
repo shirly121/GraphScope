@@ -70,6 +70,7 @@ public class HttpIrMetaReader implements IrMetaReader {
                     metaPair.getValue0(),
                     SnapshotId.createEmpty(), // todo: return snapshot id from http service
                     new IrGraphSchema(
+                            configs,
                             new SchemaInputStream(
                                     new ByteArrayInputStream(
                                             metaInYaml.getBytes(StandardCharsets.UTF_8)),

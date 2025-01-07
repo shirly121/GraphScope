@@ -28,7 +28,6 @@ import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuild
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.google.common.collect.ImmutableMap;
-
 import org.apache.calcite.rel.RelNode;
 import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
@@ -72,6 +71,7 @@ public class CSRBITest {
     public void run_test() throws Exception {
         String cypherDir = System.getProperty("queries", "/tmp/queries");
         String outDir = System.getProperty("physical", "/tmp/physical");
+        boolean toJson = Boolean.valueOf(System.getProperty("json", "false"));
         try (Stream<Path> paths = Files.walk(Paths.get(cypherDir))) {
             paths.filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".cypher"))
                     .forEach(
@@ -97,10 +97,17 @@ public class CSRBITest {
                                     String baseName =
                                             path.getFileName().toString().replace(".cypher", "");
 
-                                    Path outJson = Paths.get(outDir, baseName + ".bytes");
-                                    FileUtils.writeByteArrayToFile(
-                                            new File(outJson.toString()),
-                                            physicalPlan.getContent());
+                                    if (toJson) {
+                                        Path outJson = Paths.get(outDir, baseName + ".json");
+                                        FileUtils.writeStringToFile(
+                                                new File(outJson.toString()),
+                                                physicalPlan.explain(), StandardCharsets.UTF_8);
+                                    } else {
+                                        Path outJson = Paths.get(outDir, baseName + ".bytes");
+                                        FileUtils.writeByteArrayToFile(
+                                                new File(outJson.toString()),
+                                                physicalPlan.getContent());
+                                    }
 
                                     System.out.println("Processed: " + path.getFileName());
                                 } catch (Exception e) {
