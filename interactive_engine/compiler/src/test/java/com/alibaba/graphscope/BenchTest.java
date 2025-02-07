@@ -21,6 +21,7 @@ package com.alibaba.graphscope;
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.Utils;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.junit.Test;
 
 import java.io.File;
@@ -46,10 +47,10 @@ public class BenchTest {
     public void execute_one_query() throws Exception {
         File queryDir = new File(System.getProperty("dir", "BI_QUERY_GOPT"));
         Configs configs = new Configs(System.getProperty("config", "conf/ir.compiler.properties"));
-        String queryPath = "IC_QUERY_GOPT/IC_3_3_3.cypher";
+        String queryPath = "HIGH_ORDER_1/Qc4-b_1.cypher";
         ICBenchTest benchTest = new ICBenchTest(configs, queryDir);
         GraphPlanner.Summary summary = benchTest.planOneQuery(new File(queryPath));
-        System.out.println(Utils.toString(summary.getLogicalPlan().getRegularQuery()));
+        System.out.println(Utils.toString(summary.getLogicalPlan().getRegularQuery(), SqlExplainLevel.ALL_ATTRIBUTES));
 //        System.out.println(summary.getPhysicalPlan().explain());
     }
 }
