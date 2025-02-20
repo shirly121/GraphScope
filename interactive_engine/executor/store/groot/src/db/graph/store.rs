@@ -249,7 +249,7 @@ impl MultiVersionGraph for GraphStore {
     fn create_vertex_type(
         &self, si: i64, schema_version: i64, label_id: LabelId, type_def: &TypeDef, table_id: i64,
     ) -> GraphResult<bool> {
-        info!("create_vertex_type");
+        info!("create_vertex_type {:?}", label_id);
         let _guard = res_unwrap!(self.lock.lock(), create_vertex_type)?;
         self.check_si_guard(si)?;
         if let Err(_) = self.meta.check_version(schema_version) {
@@ -299,7 +299,7 @@ impl MultiVersionGraph for GraphStore {
     fn create_edge_type(
         &self, si: i64, schema_version: i64, label_id: LabelId, type_def: &TypeDef,
     ) -> GraphResult<bool> {
-        info!("create_edge_type");
+        info!("create_edge_type {:?}", label_id);
         let _guard = res_unwrap!(self.lock.lock(), create_edge_type)?;
         self.check_si_guard(si)?;
         if let Err(_) = self.meta.check_version(schema_version) {
@@ -347,7 +347,7 @@ impl MultiVersionGraph for GraphStore {
     fn add_edge_kind(
         &self, si: i64, schema_version: i64, edge_kind: &EdgeKind, table_id: i64,
     ) -> GraphResult<bool> {
-        info!("add_edge_kind");
+        info!("add_edge_kind {:?}", edge_kind);
         let _guard = res_unwrap!(self.lock.lock(), add_edge_kind)?;
         self.check_si_guard(si)?;
         if let Err(_) = self.meta.check_version(schema_version) {
@@ -373,7 +373,7 @@ impl MultiVersionGraph for GraphStore {
     }
 
     fn drop_vertex_type(&self, si: i64, schema_version: i64, label_id: LabelId) -> GraphResult<bool> {
-        info!("drop_vertex_type");
+        info!("drop_vertex_type {:?}", label_id);
         let _guard = res_unwrap!(self.lock.lock(), drop_vertex_type, si, label_id)?;
         self.check_si_guard(si)?;
         if let Err(_) = self.meta.check_version(schema_version) {
@@ -387,7 +387,7 @@ impl MultiVersionGraph for GraphStore {
     }
 
     fn drop_edge_type(&self, si: i64, schema_version: i64, label_id: LabelId) -> GraphResult<bool> {
-        info!("drop_edge_type");
+        info!("drop_edge_type {:?}", label_id);
         let _guard = res_unwrap!(self.lock.lock(), drop_edge_type, si, label_id)?;
         self.check_si_guard(si)?;
         if let Err(_) = self.meta.check_version(schema_version) {
@@ -401,7 +401,7 @@ impl MultiVersionGraph for GraphStore {
     }
 
     fn remove_edge_kind(&self, si: i64, schema_version: i64, edge_kind: &EdgeKind) -> GraphResult<bool> {
-        info!("remove_edge_kind");
+        info!("remove_edge_kind {:?}", edge_kind);
         let _guard = res_unwrap!(self.lock.lock(), remove_edge_kind, si, edge_kind)?;
         self.check_si_guard(si)?;
         if let Err(_) = self.meta.check_version(schema_version) {

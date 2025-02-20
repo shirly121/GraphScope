@@ -600,7 +600,9 @@ impl Property {
             Property::Char(_) => *data_type == DataType::Char,
             Property::Short(_) => *data_type == DataType::Short,
             Property::Int(_) => *data_type == DataType::Int,
+            Property::UInt(_) => *data_type == DataType::UInt,
             Property::Long(_) => *data_type == DataType::Long,
+            Property::ULong(_) => *data_type == DataType::ULong,
             Property::Float(_) => *data_type == DataType::Float,
             Property::Double(_) => *data_type == DataType::Double,
             Property::String(_) => *data_type == DataType::String,
@@ -763,8 +765,16 @@ pub fn parse_property(data: &str, data_type: DataType) -> Property {
             Ok(x) => Property::Int(x),
             _ => Property::Unknown,
         },
+        DataType::UInt => match data.parse::<u32>() {
+            Ok(x) => Property::UInt(x),
+            _ => Property::Unknown,
+        },
         DataType::Long => match data.parse::<i64>() {
             Ok(x) => Property::Long(x),
+            _ => Property::Unknown,
+        },
+        DataType::ULong => match data.parse::<u64>() {
+            Ok(x) => Property::ULong(x),
             _ => Property::Unknown,
         },
         DataType::Float => match data.parse::<f32>() {

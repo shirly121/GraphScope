@@ -17,6 +17,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
+use std::panic;
 
 use dyn_type::arith::{BitOperand, Exp};
 use dyn_type::object;
@@ -207,11 +208,41 @@ fn apply_arith<'a>(
     if a.eq(&Object::None) || b.eq(&Object::None) {
         return Ok(Object::None);
     }
+    let primitive_a = a.as_primitive()?;
+    let primitive_b = b.as_primitive()?;
     Ok(match arith {
-        Add => Object::Primitive(a.as_primitive()? + b.as_primitive()?),
-        Sub => Object::Primitive(a.as_primitive()? - b.as_primitive()?),
-        Mul => Object::Primitive(a.as_primitive()? * b.as_primitive()?),
-        Div => Object::Primitive(a.as_primitive()? / b.as_primitive()?),
+        Add => {
+            let res = panic::catch_unwind(|| primitive_a + primitive_b).map_err(|_| {
+                ExprEvalError::OtherErr(
+                    format!("overflow error: {:?} + {:?}", primitive_a, primitive_b).to_string(),
+                )
+            })?;
+            Object::Primitive(res)
+        }
+        Sub => {
+            let res = panic::catch_unwind(|| primitive_a - primitive_b).map_err(|_| {
+                ExprEvalError::OtherErr(
+                    format!("overflow error: {:?} - {:?}", primitive_a, primitive_b).to_string(),
+                )
+            })?;
+            Object::Primitive(res)
+        }
+        Mul => {
+            let res = panic::catch_unwind(|| primitive_a * primitive_b).map_err(|_| {
+                ExprEvalError::OtherErr(
+                    format!("overflow error: {:?} * {:?}", primitive_a, primitive_b).to_string(),
+                )
+            })?;
+            Object::Primitive(res)
+        }
+        Div => {
+            let res = panic::catch_unwind(|| primitive_a / primitive_b).map_err(|_| {
+                ExprEvalError::OtherErr(
+                    format!("overflow error: {:?} / {:?}", primitive_a, primitive_b).to_string(),
+                )
+            })?;
+            Object::Primitive(res)
+        }
         Mod => Object::Primitive(a.as_primitive()? % b.as_primitive()?),
         Exp => Object::Primitive(a.as_primitive()?.exp(b.as_primitive()?)),
         Bitand => Object::Primitive(a.as_primitive()?.bit_and(b.as_primitive()?)),
