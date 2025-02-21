@@ -66,6 +66,16 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
         this(graphConfig, irMeta, logicalPlan, false);
     }
 
+    public GraphRelProtoPhysicalBuilder(
+            Configs graphConfig,
+            IrMeta irMeta,
+            LogicalPlan logicalPlan,
+            boolean skipSinkColumns,
+            boolean prefetch) {
+        this(graphConfig, irMeta, logicalPlan, false);
+        ((GraphRelToProtoConverter) relShuttle).setPrefetch(prefetch);
+    }
+
     @VisibleForTesting
     public GraphRelProtoPhysicalBuilder(
             Configs graphConfig, IrMeta irMeta, LogicalPlan logicalPlan, boolean skipSinkColumns) {

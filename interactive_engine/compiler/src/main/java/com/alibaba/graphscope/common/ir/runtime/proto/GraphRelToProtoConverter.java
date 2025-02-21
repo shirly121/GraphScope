@@ -56,11 +56,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class GraphRelToProtoConverter extends GraphShuttle {
@@ -74,6 +70,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     private final int depth;
     private final HashMap<String, String> extraParams = new HashMap<>();
 
+    private boolean prefetch = false;
+
     public GraphRelToProtoConverter(
             boolean isColumnId,
             Configs configs,
@@ -81,6 +79,10 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             IdentityHashMap<RelNode, List<CommonTableScan>> relToCommons,
             HashMap<String, String> extraParams) {
         this(isColumnId, configs, physicalBuilder, relToCommons, extraParams, 0);
+    }
+
+    public void setPrefetch(boolean prefetch) {
+        this.prefetch = prefetch;
     }
 
     public GraphRelToProtoConverter(
@@ -145,6 +147,13 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                     queryParamsBuilder,
                     Utils.extractColumnsFromRelDataType(source.getRowType(), isColumnId));
         }
+        if (source.getAliasId() != AliasInference.DEFAULT_ID
+                && prefetch
+                && GraphOpt.Source.VERTEX.equals(source.getOpt())) {
+            addQueryColumns(
+                    queryParamsBuilder,
+                    Utils.extractColumnsFromRelDataType(source.getRowType(), isColumnId));
+        }
         scanBuilder.setParams(queryParamsBuilder);
         if (source.getAliasId() != AliasInference.DEFAULT_ID) {
             scanBuilder.setAlias(Utils.asAliasId(source.getAliasId()));
@@ -187,6 +196,9 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                     GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(getVertex));
             oprBuilder.addAllMetaData(Utils.physicalProtoRowType(getV.getRowType(), isColumnId));
             physicalBuilder.addPlan(oprBuilder.build());
+            if (getV.getAliasId() != AliasInference.DEFAULT_ID && prefetch) {
+                prefetchProperties(getV.getRowType());
+            }
             return getV;
         } else {
             // build getV(adj) + auxilia(filter) if there is a filter in getV
@@ -235,6 +247,19 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             physicalBuilder.addPlan(auxiliaOprBuilder.build());
             return getV;
         }
+    }
+
+    private void prefetchProperties(RelDataType rowType) {
+        GraphAlgebraPhysical.GetV.Builder vertexBuilder = GraphAlgebraPhysical.GetV.newBuilder();
+        vertexBuilder.setOpt(Utils.protoGetVOpt(PhysicalGetVOpt.ITSELF));
+        GraphAlgebra.QueryParams.Builder paramsBuilder = GraphAlgebra.QueryParams.newBuilder();
+        addQueryColumns(paramsBuilder, Utils.extractColumnsFromRelDataType(rowType, isColumnId));
+        physicalBuilder.addPlan(
+                GraphAlgebraPhysical.PhysicalOpr.newBuilder()
+                        .setOpr(
+                                GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
+                                        .setVertex(vertexBuilder.setParams(paramsBuilder))
+                                        .build()));
     }
 
     @Override
@@ -374,6 +399,9 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             addRepartitionToAnother(physicalExpand.getStartAlias().getAliasId());
         }
         physicalBuilder.addPlan(oprBuilder.build());
+        if (physicalExpand.getPhysicalOpt() == GraphOpt.PhysicalExpandOpt.VERTEX && prefetch) {
+            prefetchProperties(physicalExpand.getRowType());
+        }
         return physicalExpand;
     }
 
@@ -383,6 +411,13 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.GetV.Builder auxilia = buildAuxilia(physicalGetV);
+        if (physicalGetV.getAliasId() != AliasInference.DEFAULT_ID && prefetch) {
+            GraphAlgebra.QueryParams.Builder paramBuilder = GraphAlgebra.QueryParams.newBuilder();
+            addQueryColumns(
+                    paramBuilder,
+                    Utils.extractColumnsFromRelDataType(physicalGetV.getRowType(), isColumnId));
+            auxilia.setParams(paramBuilder);
+        }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(auxilia));
         oprBuilder.addAllMetaData(
@@ -1224,6 +1259,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder,
             Map<Integer, Set<GraphNameOrId>> tagColumns,
             boolean optimizedNoCaching) {
+        if (prefetch) return;
         if (tagColumns.isEmpty()) {
             return;
         } else if (tagColumns.size() == 1 && optimizedNoCaching) {

@@ -57,6 +57,10 @@ public class Configs implements Context {
         }
     }
 
+    public void set(String key, String value) {
+        this.properties.setProperty(key, value);
+    }
+
     public String get(String name) {
         String value;
         if ((value = System.getenv(name)) != null) {
