@@ -33,6 +33,7 @@ import com.alibaba.graphscope.common.ir.tools.config.GraphOpt;
 import com.alibaba.graphscope.common.ir.tools.config.GraphOpt.PhysicalGetVOpt;
 import com.alibaba.graphscope.common.ir.type.GraphLabelType;
 import com.alibaba.graphscope.common.ir.type.GraphNameOrId;
+import com.alibaba.graphscope.common.ir.type.GraphProperty;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebra;
 import com.alibaba.graphscope.gaia.proto.GraphAlgebraPhysical;
 import com.alibaba.graphscope.gaia.proto.OuterExpression;
@@ -137,11 +138,23 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Scan.Builder scanBuilder = GraphAlgebraPhysical.Scan.newBuilder();
         RexNode uniqueKeyFilters = source.getUniqueKeyFilters();
-        if (uniqueKeyFilters != null) {
-            GraphAlgebra.IndexPredicate indexPredicate = buildIndexPredicates(uniqueKeyFilters);
-            scanBuilder.setIdxPredicate(indexPredicate);
-        }
+        //        if (uniqueKeyFilters != null) {
+        //            GraphAlgebra.IndexPredicate indexPredicate =
+        // buildIndexPredicates(uniqueKeyFilters);
+        //            scanBuilder.setIdxPredicate(indexPredicate);
+        //        }
         GraphAlgebra.QueryParams.Builder queryParamsBuilder = buildQueryParams(source);
+        if (uniqueKeyFilters != null) {
+            RexNode left = ((RexCall) uniqueKeyFilters).getOperands().get(0);
+            if (left instanceof RexGraphVariable
+                    && ((RexGraphVariable) left).getProperty() != null
+                    && ((RexGraphVariable) left).getProperty().getOpt() == GraphProperty.Opt.ID) {
+                GraphAlgebra.IndexPredicate indexPredicate = buildIndexPredicates(uniqueKeyFilters);
+                scanBuilder.setIdxPredicate(indexPredicate);
+            } else {
+                addQueryFilters(queryParamsBuilder, ImmutableList.of(uniqueKeyFilters));
+            }
+        }
         if (preCacheEdgeProps && GraphOpt.Source.EDGE.equals(source.getOpt())) {
             addQueryColumns(
                     queryParamsBuilder,
@@ -254,6 +267,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         vertexBuilder.setOpt(Utils.protoGetVOpt(PhysicalGetVOpt.ITSELF));
         GraphAlgebra.QueryParams.Builder paramsBuilder = GraphAlgebra.QueryParams.newBuilder();
         addQueryColumns(paramsBuilder, Utils.extractColumnsFromRelDataType(rowType, isColumnId));
+        paramsBuilder.setSampleRatio(1.0d);
         physicalBuilder.addPlan(
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder()
                         .setOpr(

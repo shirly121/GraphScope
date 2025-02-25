@@ -52,7 +52,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
-public class AblationTest {
+public class ProfileTest {
     private GraphRelOptimizer optimizer;
     private Configs configs;
     private IrMeta irMeta;
@@ -62,11 +62,11 @@ public class AblationTest {
 
     @BeforeClass
     public static void setup() throws Exception {
-        logFile = new File(System.getProperty("log", "tech.log"));
+        logFile = new File(System.getProperty("log", "profile.log"));
         if (logFile.exists()) {
             logFile.delete();
         }
-        Configs configs1 = new Configs(System.getProperty("conf", "conf/ir.compiler.properties"));
+        Configs configs1 = new Configs(System.getProperty("conf", "conf/ir.compiler.2.properties"));
         client =
                 new RpcExecutionClient(
                         configs1, new HostsRpcChannelFetcher(configs1), new MetricsTool(configs1));
@@ -239,13 +239,13 @@ public class AblationTest {
                 "************************Run BI 5 Query************************\n\n\n",
                 StandardCharsets.UTF_8,
                 true);
-//        String template =
-//                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)\n"
-//                        + "Where tag.name = $1\n"
-//                        + "WITH DISTINCT message\n"
-//                        + "OPTIONAL MATCH (message)<-[:LIKES]-(liker:PERSON)\n"
-//                        + "WITH message, count(liker) as likeCount\n"
-//                        + "OPTIONAL MATCH (message)<-[:REPLYOF]-(comment:COMMENT)\n"
+        String template =
+                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)\n"
+                        + "Where tag.name = $1\n"
+                        + "WITH DISTINCT message\n"
+                        + "MATCH (message)<-[:LIKES]-(liker:PERSON)\n"
+                        + "WITH message, count(liker) as likeCount\n"
+//                        + "MATCH (message)<-[:REPLYOF]-(comment:COMMENT)\n"
 //                        + "WITH message, likeCount, count(comment) as replyCount\n"
 //                        + "MATCH (message)-[:HASCREATOR]->(person:PERSON)\n"
 //                        + "Return \n"
@@ -253,29 +253,34 @@ public class AblationTest {
 //                        + "  sum(replyCount) as replyCount,\n"
 //                        + "  sum(likeCount) as likeCount,\n"
 //                        + "  count(message) as messageCount\n";
-//
-//        GraphPlanner.Summary all_plan =
-//                buildPhysical(
-//                        "all_plan",
-//                        template,
-//                        params,
-//                        false,
-//                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
-//                                + " ExpandGetVFusionRule, DegreeFusionRule");
-//        executePhysical(all_plan);
-//
-//        // remove DegreeFusionRule
-//        GraphPlanner.Summary no_degree_plan =
-//                buildPhysical(
-//                        "no_degree_plan",
-//                        template,
-//                        params,
-//                        false,
-//                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
-//                                + " ExpandGetVFusionRule");
-//        executePhysical(no_degree_plan);
-//
-//        // remove ExpandGetVFusionRule
+        + "Return count(message)\n";
+
+        GraphPlanner.Summary all_plan =
+                buildPhysical(
+                        "all_plan",
+                        template,
+                        params,
+                        false,
+                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
+                                + " ExpandGetVFusionRule, DegreeFusionRule");
+        System.out.println(all_plan.getLogicalPlan().explain());
+//        System.out.println(all_plan.getPhysicalPlan().explain());
+        executePhysical(all_plan);
+
+        // remove DegreeFusionRule
+        GraphPlanner.Summary no_degree_plan =
+                buildPhysical(
+                        "no_degree_plan",
+                        template,
+                        params,
+                        false,
+                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
+                                + " ExpandGetVFusionRule");
+        System.out.println(no_degree_plan.getLogicalPlan().explain());
+//        System.out.println(no_degree_plan.getPhysicalPlan().explain());
+        executePhysical(no_degree_plan);
+
+        // remove ExpandGetVFusionRule
 //        GraphPlanner.Summary no_fusion_plan =
 //                buildPhysical(
 //                        "no_fusion_plan",
@@ -295,46 +300,48 @@ public class AblationTest {
 //                        "FilterMatchRule, ExtendIntersectRule");
 //        executePhysical(no_flat_plan);
 
-        String join_twice =
-                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)<-[:LIKES]-(liker:PERSON)\n"
-                        + "Where tag.name = $1\n"
-                        + "WITH message, count(liker) as likeCount\n"
-                        + "OPTIONAL MATCH (message)<-[:REPLYOF]-(comment:COMMENT)\n"
-                        + "WITH message, likeCount, count(comment) as replyCount\n"
-                        + "MATCH (message)-[:HASCREATOR]->(person:PERSON)\n"
-                        + "Return \n"
-                        + "  person.id AS id,\n"
-                        + "  sum(replyCount) as replyCount,\n"
-                        + "  sum(likeCount) as likeCount,\n"
-                        + "  count(message) as messageCount\n";
-        GraphPlanner.Summary join_twice_plan =
-                buildPhysical(
-                        "join_twice_plan",
-                        join_twice,
-                        params,
-                        false,
-                        "FilterMatchRule, ExtendIntersectRule");
-        executePhysical(join_twice_plan);
-
-        String join_once =
-                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)<-[:LIKES]-(liker:PERSON), (message)<-[:REPLYOF]-(comment:COMMENT)\n"
-                        + "Where tag.name = $1\n"
-                        + "WITH message, count(liker) as likeCount\n"
-                        + "WITH message, likeCount, count(comment) as replyCount\n"
-                        + "MATCH (message)-[:HASCREATOR]->(person:PERSON)\n"
-                        + "Return \n"
-                        + "  person.id AS id,\n"
-                        + "  sum(replyCount) as replyCount,\n"
-                        + "  sum(likeCount) as likeCount,\n"
-                        + "  count(message) as messageCount\n";
-        GraphPlanner.Summary join_once_plan =
-                buildPhysical(
-                        "join_once_plan",
-                        join_once,
-                        params,
-                        false,
-                        "FilterMatchRule, ExtendIntersectRule");
-        executePhysical(join_once_plan);
+//        String join_twice =
+//                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)<-[:LIKES]-(liker:PERSON)\n"
+//                        + "Where tag.name = $1\n"
+//                        + "WITH DISTINCT message\n"
+//                        + "WITH message, count(liker) as likeCount\n"
+//                        + "OPTIONAL MATCH (message)<-[:REPLYOF]-(comment:COMMENT)\n"
+//                        + "WITH message, likeCount, count(comment) as replyCount\n"
+//                        + "MATCH (message)-[:HASCREATOR]->(person:PERSON)\n"
+//                        + "Return \n"
+//                        + "  person.id AS id,\n"
+//                        + "  sum(replyCount) as replyCount,\n"
+//                        + "  sum(likeCount) as likeCount,\n"
+//                        + "  count(message) as messageCount\n";
+//        GraphPlanner.Summary join_twice_plan =
+//                buildPhysical(
+//                        "join_twice_plan",
+//                        join_twice,
+//                        params,
+//                        false,
+//                        "FilterMatchRule, ExtendIntersectRule");
+//        executePhysical(join_twice_plan);
+//
+//        String join_once =
+//                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)<-[:LIKES]-(liker:PERSON), (message)<-[:REPLYOF]-(comment:COMMENT)\n"
+//                        + "Where tag.name = $1\n"
+//                        + "WITH DISTINCT message\n"
+//                        + "WITH message, count(liker) as likeCount\n"
+//                        + "WITH message, likeCount, count(comment) as replyCount\n"
+//                        + "MATCH (message)-[:HASCREATOR]->(person:PERSON)\n"
+//                        + "Return \n"
+//                        + "  person.id AS id,\n"
+//                        + "  sum(replyCount) as replyCount,\n"
+//                        + "  sum(likeCount) as likeCount,\n"
+//                        + "  count(message) as messageCount\n";
+//        GraphPlanner.Summary join_once_plan =
+//                buildPhysical(
+//                        "join_once_plan",
+//                        join_once,
+//                        params,
+//                        false,
+//                        "FilterMatchRule, ExtendIntersectRule");
+//        executePhysical(join_once_plan);
 
 //        // remove FilterIntoMatchRule
 //        GraphPlanner.Summary no_filter_plan =
@@ -348,92 +355,92 @@ public class AblationTest {
 //    @Test
 //    public void advanced_index_test() {}
 
-//    @Test
-//    public void path_join_test() throws Exception {
-//        // person.id, tagclass.name
-//        List<String> params = Lists.newArrayList("933", "\"Organisation\"");
-//        FileUtils.writeStringToFile(
-//                logFile,
-//                "************************Run Path Join Query************************\n\n\n",
-//                StandardCharsets.UTF_8,
-//                true);
-//        String rules = "FilterMatchRule, FieldTrimRule, ExtendIntersectRule, ExpandGetVFusionRule";
-//        String gopt =
-//                "MATCH \n"
-//                    + "    (unused:PERSON {id:"
-//                    + " $1})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comments:COMMENT)-[:REPLYOF]->(:POST)-[:HASTAG]->(tags:TAG)\n"
-//                    + "WITH friend, comments, tags\n"
-//                    + "MATCH (tags:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..10]->(:TAGCLASS"
-//                    + " {name: $2})\n"
-//                    + "WITH \n"
-//                    + "    friend AS friend, \n"
-//                    + "    collect(DISTINCT tags.name) AS tagNames, \n"
-//                    + "    count(DISTINCT comments) AS replyCount \n"
-//                    + "ORDER BY \n"
-//                    + "    replyCount DESC, \n"
-//                    + "    friend.id ASC \n"
-//                    + "LIMIT 20 \n"
-//                    + "RETURN \n"
-//                    + "    friend.id AS personId, \n"
-//                    + "    friend.firstName AS personFirstName, \n"
-//                    + "    friend.lastName AS personLastName, \n"
-//                    + "    tagNames, \n"
-//                    + "    replyCount";
-//        GraphPlanner.Summary goptPlan = buildPhysical("gopt_plan", gopt, params, false, rules);
-//        executePhysical(goptPlan);
-//
-//        String alter1 =
-//                "MATCH \n"
-//                    + "    (unused:PERSON {id:"
-//                    + " $1})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comments:COMMENT)-[:REPLYOF]->(p1:POST)-[:HASTAG]->(tags:TAG)-[:HASTYPE]->(t1:TAGCLASS)\n"
-//                    + "WITH friend, comments, t1, tags\n"
-//                    + "MATCH (t1:TAGCLASS)-[:ISSUBCLASSOF*0..10]->(:TAGCLASS {name: $2})\n"
-//                    + "WITH \n"
-//                    + "    friend AS friend, \n"
-//                    + "    collect(DISTINCT tags.name) AS tagNames, \n"
-//                    + "    count(DISTINCT comments) AS replyCount \n"
-//                    + "ORDER BY \n"
-//                    + "    replyCount DESC, \n"
-//                    + "    friend.id ASC \n"
-//                    + "LIMIT 20 \n"
-//                    + "RETURN \n"
-//                    + "    friend.id AS personId, \n"
-//                    + "    friend.firstName AS personFirstName, \n"
-//                    + "    friend.lastName AS personLastName, \n"
-//                    + "    tagNames, \n"
-//                    + "    replyCount";
-//        GraphPlanner.Summary alter1Plan =
-//                buildPhysical("alter1_plan", alter1, params, false, rules);
-//        executePhysical(alter1Plan);
-//
-//        String alter2 =
-//                "MATCH \n"
-//                    + "    (unused:PERSON {id:"
-//                    + " $1})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comments:COMMENT)-[:REPLYOF]->(p1:POST)\n"
-//                    + "WITH friend, comments, p1\n"
-//                    + "MATCH"
-//                    + " (p1:POST)-[:HASTAG]->(tags:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..10]->(:TAGCLASS"
-//                    + " {name: $2})\n"
-//                    + "WITH \n"
-//                    + "    friend AS friend, \n"
-//                    + "    collect(DISTINCT tags.name) AS tagNames, \n"
-//                    + "    count(DISTINCT comments) AS replyCount \n"
-//                    + "ORDER BY \n"
-//                    + "    replyCount DESC, \n"
-//                    + "    friend.id ASC \n"
-//                    + "LIMIT 20 \n"
-//                    + "RETURN \n"
-//                    + "    friend.id AS personId, \n"
-//                    + "    friend.firstName AS personFirstName, \n"
-//                    + "    friend.lastName AS personLastName, \n"
-//                    + "    tagNames, \n"
-//                    + "    replyCount";
-//        GraphPlanner.Summary alter2Plan =
-//                buildPhysical("alter2_plan", alter2, params, false, rules);
-//        executePhysical(alter2Plan);
-//
-//        FileUtils.writeStringToFile(logFile, "\n\n\n", StandardCharsets.UTF_8, true);
-//    }
+    @Test
+    public void path_join_test() throws Exception {
+        // person.id, tagclass.name
+        List<String> params = Lists.newArrayList("933", "\"Organisation\"");
+        FileUtils.writeStringToFile(
+                logFile,
+                "************************Run Path Join Query************************\n\n\n",
+                StandardCharsets.UTF_8,
+                true);
+        String rules = "FilterMatchRule, FieldTrimRule, ExtendIntersectRule, ExpandGetVFusionRule";
+        String gopt =
+                "MATCH \n"
+                    + "    (unused:PERSON {id:"
+                    + " $1})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comments:COMMENT)-[:REPLYOF]->(:POST)-[:HASTAG]->(tags:TAG)\n"
+                    + "WITH friend, comments, tags\n"
+                    + "MATCH (tags:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..10]->(:TAGCLASS"
+                    + " {name: $2})\n"
+                    + "WITH \n"
+                    + "    friend AS friend, \n"
+                    + "    collect(DISTINCT tags.name) AS tagNames, \n"
+                    + "    count(DISTINCT comments) AS replyCount \n"
+                    + "ORDER BY \n"
+                    + "    replyCount DESC, \n"
+                    + "    friend.id ASC \n"
+                    + "LIMIT 20 \n"
+                    + "RETURN \n"
+                    + "    friend.id AS personId, \n"
+                    + "    friend.firstName AS personFirstName, \n"
+                    + "    friend.lastName AS personLastName, \n"
+                    + "    tagNames, \n"
+                    + "    replyCount";
+        GraphPlanner.Summary goptPlan = buildPhysical("gopt_plan", gopt, params, false, rules);
+        executePhysical(goptPlan);
+
+        String alter1 =
+                "MATCH \n"
+                    + "    (unused:PERSON {id:"
+                    + " $1})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comments:COMMENT)-[:REPLYOF]->(p1:POST)-[:HASTAG]->(tags:TAG)-[:HASTYPE]->(t1:TAGCLASS)\n"
+                    + "WITH friend, comments, t1, tags\n"
+                    + "MATCH (t1:TAGCLASS)-[:ISSUBCLASSOF*0..10]->(:TAGCLASS {name: $2})\n"
+                    + "WITH \n"
+                    + "    friend AS friend, \n"
+                    + "    collect(DISTINCT tags.name) AS tagNames, \n"
+                    + "    count(DISTINCT comments) AS replyCount \n"
+                    + "ORDER BY \n"
+                    + "    replyCount DESC, \n"
+                    + "    friend.id ASC \n"
+                    + "LIMIT 20 \n"
+                    + "RETURN \n"
+                    + "    friend.id AS personId, \n"
+                    + "    friend.firstName AS personFirstName, \n"
+                    + "    friend.lastName AS personLastName, \n"
+                    + "    tagNames, \n"
+                    + "    replyCount";
+        GraphPlanner.Summary alter1Plan =
+                buildPhysical("alter1_plan", alter1, params, false, rules);
+        executePhysical(alter1Plan);
+
+        String alter2 =
+                "MATCH \n"
+                    + "    (unused:PERSON {id:"
+                    + " $1})-[:KNOWS]-(friend:PERSON)<-[:HASCREATOR]-(comments:COMMENT)-[:REPLYOF]->(p1:POST)\n"
+                    + "WITH friend, comments, p1\n"
+                    + "MATCH"
+                    + " (p1:POST)-[:HASTAG]->(tags:TAG)-[:HASTYPE]->(:TAGCLASS)-[:ISSUBCLASSOF*0..10]->(:TAGCLASS"
+                    + " {name: $2})\n"
+                    + "WITH \n"
+                    + "    friend AS friend, \n"
+                    + "    collect(DISTINCT tags.name) AS tagNames, \n"
+                    + "    count(DISTINCT comments) AS replyCount \n"
+                    + "ORDER BY \n"
+                    + "    replyCount DESC, \n"
+                    + "    friend.id ASC \n"
+                    + "LIMIT 20 \n"
+                    + "RETURN \n"
+                    + "    friend.id AS personId, \n"
+                    + "    friend.firstName AS personFirstName, \n"
+                    + "    friend.lastName AS personLastName, \n"
+                    + "    tagNames, \n"
+                    + "    replyCount";
+        GraphPlanner.Summary alter2Plan =
+                buildPhysical("alter2_plan", alter2, params, false, rules);
+        executePhysical(alter2Plan);
+
+        FileUtils.writeStringToFile(logFile, "\n\n\n", StandardCharsets.UTF_8, true);
+    }
 
     // FilterIntoJoin, FilterIntoMatch, AggregatePushDown, PatternOptimization(MatchFusion,
     // JoinElimination), ExpandGetVFusion
