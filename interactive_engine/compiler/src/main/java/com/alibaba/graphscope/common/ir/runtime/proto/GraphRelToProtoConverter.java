@@ -436,9 +436,9 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(auxilia));
         oprBuilder.addAllMetaData(
                 Utils.physicalProtoRowType(physicalGetV.getRowType(), isColumnId));
-        if (isPartitioned) {
-            addRepartitionToAnother(physicalGetV.getStartAlias().getAliasId());
-        }
+//        if (isPartitioned) {
+//            addRepartitionToAnother(physicalGetV.getStartAlias().getAliasId());
+//        }
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalGetV;
     }

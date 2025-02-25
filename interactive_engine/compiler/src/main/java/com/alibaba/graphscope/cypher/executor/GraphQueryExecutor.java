@@ -151,7 +151,7 @@ public class GraphQueryExecutor extends FabricExecutor {
             if (!returnEmpty) {
                 statusCallback
                         .getQueryLogger()
-                        .debug("physical IR plan {}", planSummary.getPhysicalPlan().explain());
+                        .info("physical IR plan {}", planSummary.getPhysicalPlan().explain());
             }
             QueryTimeoutConfig timeoutConfig = getQueryTimeoutConfig();
             GraphPlanExecutor executor;

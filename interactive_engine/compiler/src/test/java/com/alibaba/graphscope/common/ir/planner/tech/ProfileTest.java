@@ -240,11 +240,11 @@ public class ProfileTest {
                 StandardCharsets.UTF_8,
                 true);
         String template =
-                "Match (tag:TAG)<-[:HASTAG]-(message:POST|COMMENT)\n"
+                "Match (tag:TAG)<-[:HASTAG]-(message)\n"
                         + "Where tag.name = $1\n"
-                        + "WITH DISTINCT message\n"
-                        + "MATCH (message)<-[:LIKES]-(liker:PERSON)\n"
-                        + "WITH message, count(liker) as likeCount\n"
+//                        + "WITH DISTINCT message\n"
+//                        + "MATCH (message)<-[:LIKES]-(liker:PERSON)\n"
+//                        + "WITH message, count(liker) as likeCount\n"
 //                        + "MATCH (message)<-[:REPLYOF]-(comment:COMMENT)\n"
 //                        + "WITH message, likeCount, count(comment) as replyCount\n"
 //                        + "MATCH (message)-[:HASCREATOR]->(person:PERSON)\n"
@@ -255,17 +255,28 @@ public class ProfileTest {
 //                        + "  count(message) as messageCount\n";
         + "Return count(message)\n";
 
-        GraphPlanner.Summary all_plan =
-                buildPhysical(
-                        "all_plan",
-                        template,
-                        params,
-                        false,
-                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
-                                + " ExpandGetVFusionRule, DegreeFusionRule");
-        System.out.println(all_plan.getLogicalPlan().explain());
+//        GraphPlanner.Summary all_plan =
+//                buildPhysical(
+//                        "all_plan",
+//                        template,
+//                        params,
+//                        false,
+//                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
+//                                + " ExpandGetVFusionRule, DegreeFusionRule");
+//        System.out.println(all_plan.getLogicalPlan().explain());
 //        System.out.println(all_plan.getPhysicalPlan().explain());
-        executePhysical(all_plan);
+//        executePhysical(all_plan);
+
+//        // remove ExpandGetVFusionRule
+//        GraphPlanner.Summary no_fusion_plan =
+//                buildPhysical(
+//                        "no_fusion_plan",
+//                        template,
+//                        params,
+//                        false,
+//                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule");
+//        System.out.println(no_fusion_plan.getPhysicalPlan().explain());
+//        executePhysical(no_fusion_plan);
 
         // remove DegreeFusionRule
         GraphPlanner.Summary no_degree_plan =
@@ -276,19 +287,9 @@ public class ProfileTest {
                         false,
                         "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule,"
                                 + " ExpandGetVFusionRule");
-        System.out.println(no_degree_plan.getLogicalPlan().explain());
+        System.out.println(no_degree_plan.getPhysicalPlan().explain());
 //        System.out.println(no_degree_plan.getPhysicalPlan().explain());
         executePhysical(no_degree_plan);
-
-        // remove ExpandGetVFusionRule
-//        GraphPlanner.Summary no_fusion_plan =
-//                buildPhysical(
-//                        "no_fusion_plan",
-//                        template,
-//                        params,
-//                        false,
-//                        "FilterMatchRule, FlatJoinToExpandRule, ExtendIntersectRule");
-//        executePhysical(no_fusion_plan);
 
 //        // remove FlatJoinToExpandRule
 //        GraphPlanner.Summary no_flat_plan =
@@ -727,48 +728,52 @@ public class ProfileTest {
 
     private void executePhysical(GraphPlanner.Summary plan) throws Exception {
         try {
-            BigInteger queryId = new BigInteger(String.valueOf(UUID.randomUUID().hashCode()));
-            String queryName = "job" + queryId;
-            StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
             long starTime = System.currentTimeMillis();
-            client.submit(
-                    new ExecutionRequest(
-                            queryId, queryName, plan.getLogicalPlan(), plan.getPhysicalPlan()),
-                    new ExecutionResponseListener() {
-                        @Override
-                        public void onNext(IrResult.Record record) {
-                            try {
-                                resultIterator.putData(record);
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-
-                        @Override
-                        public void onCompleted() {
-                            try {
-                                resultIterator.finish();
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-
-                        @Override
-                        public void onError(Throwable t) {
-                            resultIterator.fail(t);
-                        }
-                    },
-                    new QueryTimeoutConfig(FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)),
-                    new QueryLogger("", queryId));
             StringBuilder resultBuilder = new StringBuilder();
-            while (resultIterator.hasNext()) {
-                resultBuilder.append(resultIterator.next());
+            for (int i = 0; i < 3; ++i) {
+                BigInteger queryId = new BigInteger(String.valueOf(UUID.randomUUID().hashCode()));
+                String queryName = "job" + queryId;
+                StreamIterator<IrResult.Record> resultIterator = new StreamIterator<>();
+                client.submit(
+                        new ExecutionRequest(
+                                queryId, queryName, plan.getLogicalPlan(), plan.getPhysicalPlan()),
+                        new ExecutionResponseListener() {
+                            @Override
+                            public void onNext(IrResult.Record record) {
+                                try {
+                                    resultIterator.putData(record);
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
+
+                            @Override
+                            public void onCompleted() {
+                                try {
+                                    resultIterator.finish();
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
+
+                            @Override
+                            public void onError(Throwable t) {
+                                resultIterator.fail(t);
+                            }
+                        },
+                        new QueryTimeoutConfig(FrontendConfig.QUERY_EXECUTION_TIMEOUT_MS.get(configs)),
+                        new QueryLogger("", queryId));
+                if (i == 2) {
+                    while (resultIterator.hasNext()) {
+                        resultBuilder.append(resultIterator.next());
+                    }
+                }
             }
             long elapsed = System.currentTimeMillis() - starTime;
             FileUtils.writeStringToFile(
                     logFile,
                     "execution time is ["
-                            + elapsed
+                            + elapsed / 3
                             + "] ms, results is ["
                             + resultBuilder.substring(0, Math.min(resultBuilder.length(), 100))
                             + "]\n\n",
