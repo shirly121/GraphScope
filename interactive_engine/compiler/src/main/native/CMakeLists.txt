@@ -70,8 +70,10 @@ target_link_libraries(graph_planner ${CMAKE_JNI_LINKER_FLAGS} ${JAVA_JVM_LIBRARY
 target_include_directories(graph_planner PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 
 if (BUILD_TEST)
-    add_executable(test_graph_planner test/test.cc)
-    target_link_libraries(test_graph_planner PRIVATE graph_planner)
+    # add_executable(test_graph_planner test/test.cc)
+    # target_link_libraries(test_graph_planner PRIVATE graph_planner)
+    add_executable(test_convert test/convert.cc)
+    target_link_libraries(test_convert PRIVATE graph_planner)
 endif()
 
 # Define where the output library will be installed
