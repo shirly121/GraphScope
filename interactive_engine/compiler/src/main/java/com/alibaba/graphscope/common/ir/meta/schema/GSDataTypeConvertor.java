@@ -108,8 +108,6 @@ public interface GSDataTypeConvertor<T> {
                         Object value;
                         if ((value = typeMap.get("primitive_type")) != null) {
                             switch (value.toString()) {
-                                case "DT_ANY":
-                                    return typeFactory.createSqlType(SqlTypeName.ANY);
                                 case "DT_SIGNED_INT32":
                                     return typeFactory.createSqlType(SqlTypeName.INTEGER);
                                 case "DT_SIGNED_INT64":
@@ -120,6 +118,8 @@ public interface GSDataTypeConvertor<T> {
                                     return typeFactory.createSqlType(SqlTypeName.FLOAT);
                                 case "DT_DOUBLE":
                                     return typeFactory.createSqlType(SqlTypeName.DOUBLE);
+                                case "DT_ANY":
+                                    return typeFactory.createSqlType(SqlTypeName.ANY);
                                 default:
                                     throw new UnsupportedOperationException(
                                             "can not convert GSDataTypeDesc ["

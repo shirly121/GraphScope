@@ -127,7 +127,11 @@ public class GraphTableModify extends TableModify {
 
         @Override
         public RelNode getExternalSource() {
-            return input;
+            RelNode externalSource = input;
+            while (externalSource instanceof Insert) {
+                externalSource = ((Insert) externalSource).getInput();
+            }
+            return externalSource;
         }
 
         @Override

@@ -25,6 +25,7 @@ import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.NlsString;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Objects;
 
@@ -34,35 +35,70 @@ import java.util.Objects;
 public interface DataSource {
     ImmutableList<String> getName();
 
-    class Location implements DataSource {
-        /**
-         * can be {@code RexLiteral} or {@code RexDynamicParams}, which value is a file path
-         */
-        private final RexNode location;
+    DataFormat getFormat();
 
-        public Location(RexNode location) {
-            this.location = Objects.requireNonNull(location);
+    class External implements DataSource {
+        private final String location;
+        private final DataFormat format;
+
+        /**
+         * can be {@code RexLiteral} or {@code RexDynamicParams}, which value is a file name
+         */
+        private final RexNode input;
+
+        public External(RexNode input, DataFormat format) {
+            this("", input, format);
         }
 
-        public RexNode getLocation() {
+        public External(String location, RexNode input, DataFormat format) {
+            this.location = Objects.requireNonNull(location);
+            this.input = Objects.requireNonNull(input);
+            this.format = Objects.requireNonNull(format);
+        }
+
+        public String getLocation() {
             return location;
+        }
+
+        public RexNode getInput() {
+            return input;
         }
 
         @Override
         public ImmutableList<String> getName() {
-            String name = null;
-            if (location instanceof RexLiteral) {
-                RexLiteral literal = (RexLiteral) location;
+            String inputName = getName(input);
+            return ImmutableList.of(
+                    location.isEmpty() ? inputName : String.format("%s:%s", location, inputName));
+        }
+
+        @Override
+        public DataFormat getFormat() {
+            return this.format;
+        }
+
+        private @Nullable String getName(RexNode rex) {
+            if (rex instanceof RexLiteral) {
+                RexLiteral literal = (RexLiteral) rex;
                 if (literal.getType().getSqlTypeName() == SqlTypeName.CHAR) {
-                    name = literal.getValueAs(NlsString.class).getValue();
+                    return literal.getValueAs(NlsString.class).getValue();
                 }
-            } else if (location instanceof RexGraphDynamicParam) {
-                name = ((RexGraphDynamicParam) location).getName();
             }
-            name = (name == null) ? location.toString() : name;
-            return ImmutableList.of(name);
+            if (rex instanceof RexGraphDynamicParam) {
+                return ((RexGraphDynamicParam) rex).getName();
+            }
+            throw new IllegalArgumentException("cannot derive table name from the rex=" + rex);
         }
     }
 
-    // todo: support Data Source from Schema
+    class Stream implements DataSource {
+        @Override
+        public ImmutableList<String> getName() {
+            return ImmutableList.of("stream");
+        }
+
+        @Override
+        public DataFormat getFormat() {
+            return new DataFormat();
+        }
+    }
 }

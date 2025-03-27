@@ -169,12 +169,11 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
 
     @Override
     public GraphBuilder visitOC_LoadCSV(CypherGSParser.OC_LoadCSVContext ctx) {
-        RexNode location = expressionVisitor.visitOC_Expression(ctx.oC_Expression()).getExpr();
-        if (location instanceof RexGraphDynamicParam
-                && location.getType().getSqlTypeName() == SqlTypeName.UNKNOWN) {
-            RexGraphDynamicParam param = (RexGraphDynamicParam) location;
-            ;
-            location =
+        RexNode input = expressionVisitor.visitOC_Expression(ctx.oC_Expression()).getExpr();
+        if (input instanceof RexGraphDynamicParam
+                && input.getType().getSqlTypeName() == SqlTypeName.UNKNOWN) {
+            RexGraphDynamicParam param = (RexGraphDynamicParam) input;
+            input =
                     ((GraphRexBuilder) builder.getRexBuilder())
                             .makeGraphDynamicParam(
                                     builder.getCluster()
@@ -183,13 +182,13 @@ public class GraphBuilderVisitor extends CypherGSBaseVisitor<GraphBuilder> {
                                     param.getName(),
                                     param.getIndex());
         }
-        DataSource source = new DataSource.Location(location);
+        DataSource source = new DataSource.External(input, createFormat(ctx));
         String aliasName = ctx.oC_Variable() != null ? ctx.oC_Variable().getText() : null;
         TableScan tableScan =
                 new LoadCSVTableScan(
                         (GraphOptCluster) builder.getCluster(),
                         ImmutableList.of(),
-                        new LoadCSVTable(source, createFormat(ctx), null),
+                        new LoadCSVTable(source, null),
                         aliasName);
         return builder.push(tableScan);
     }
