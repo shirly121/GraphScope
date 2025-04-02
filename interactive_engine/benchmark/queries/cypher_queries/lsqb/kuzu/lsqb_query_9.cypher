@@ -1,0 +1,4 @@
+MATCH (person1:PERSON)-[:PERSON_KNOWS_PERSON]->(person2:PERSON)-[:PERSON_KNOWS_PERSON]->(person3:PERSON)-[:PERSON_HASINTEREST_TAG]->(tag:TAG) 
+  WHERE NOT EXISTS {MATCH (person1)-[:PERSON_KNOWS_PERSON]->(person3)} 
+  AND person1 <> person3
+RETURN count(person1) AS count

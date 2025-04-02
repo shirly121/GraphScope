@@ -1,0 +1,4 @@
+MATCH 
+  (person1:PERSON)-[:PERSON_KNOWS_PERSON]->(person2:PERSON), 
+  (person1)<-[:COMMENT_HASCREATOR_PERSON]-(comment:COMMENT)-[:COMMENT_REPLYOF_POST]->(Post:POST)-[:POST_HASCREATOR_PERSON]->(person2) 
+RETURN count(person1) AS count
