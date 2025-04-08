@@ -84,6 +84,12 @@ public abstract class FlatJoinRule extends GraphShuttle {
         return joinVars.size() == 1 ? joinVars.get(0) : null;
     }
 
+    static List<RexGraphVariable> joinByTwoColumns(RexNode condition, List<RexNode> others) {
+        List<RexGraphVariable> joinVars = Lists.newArrayList();
+        classifyJoinCondition(condition, joinVars, others);
+        return joinVars.size() == 2 ? joinVars : ImmutableList.of();
+    }
+
     /**
      * analyze the join condition, separate the join condition by the same tag and other conditions
      * @param joinVars
@@ -112,6 +118,19 @@ public abstract class FlatJoinRule extends GraphShuttle {
                         others.add(c);
                     }
                 });
+    }
+
+    static boolean hasNodeFilter(RelNode top) {
+        if (top instanceof GraphLogicalSource) {
+            GraphLogicalSource source = (GraphLogicalSource) top;
+            if (source.getUniqueKeyFilters() != null || ObjectUtils.isNotEmpty(source.getFilters()))
+                return true;
+        }
+        if (top instanceof GraphLogicalGetV) {
+            GraphLogicalGetV getV = (GraphLogicalGetV) top;
+            if (ObjectUtils.isNotEmpty(getV.getFilters())) return true;
+        }
+        return top.getInputs().stream().anyMatch(k -> hasNodeFilter(k));
     }
 
     static boolean hasNodeEqualFilter(RelNode top) {
