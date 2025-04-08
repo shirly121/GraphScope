@@ -1,4 +1,4 @@
-MATCH (:TAG)<-[:HASTAG]-(message:POST|COMMENT)-[:HASCREATOR]->(creator:PERSON) 
-OPTIONAL MATCH (message)<-[:LIKES]-(liker:PERSON) 
-OPTIONAL MATCH (message)<-[:REPLYOF]-(comment:COMMENT) 
-RETURN count(comment) AS count
+MATCH (:TAG)<-[:HASTAG]-(message:POST|COMMENT)-[:HASCREATOR]->(:PERSON) 
+OPTIONAL MATCH (message)<-[:LIKES]-(:PERSON) 
+OPTIONAL MATCH (message)<-[:REPLYOF]-(:COMMENT) 
+RETURN count(message) AS count
