@@ -43,7 +43,7 @@ def main(db_path, schema_path, dataloading_path):
     # Execute Cypher query
     response = conn.execute(
         """
-        MATCH (a:NAME)
+        MATCH (a)
         RETURN count(a)
         """
     )
