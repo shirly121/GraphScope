@@ -1,0 +1,1 @@
+MATCH (a:User) RETURN COUNT(DISTINCT a.name)

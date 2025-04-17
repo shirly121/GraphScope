@@ -1,0 +1,1 @@
+MATCH (a:User) RETURN a.born, COUNT(DISTINCT a.name)

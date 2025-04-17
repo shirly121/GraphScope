@@ -1,4 +1,20 @@
-# test_cypher_queries.py
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Copyright 2020 Alibaba Group Holding Limited. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
 import pytest
 from neo4j import GraphDatabase
@@ -17,16 +33,9 @@ def execute_cypher_query(driver, query):
         result = session.run(query)
         return [record.values() for record in result]
 
-def test_match_users(neo4j_connection):
-    query = "MATCH (n:User) RETURN count(n) AS user_count"
-    expected_output = [[7]]
-    result = execute_cypher_query(neo4j_connection, query)
-    assert result == expected_output, f"Expected {expected_output}, but got {result}"
-
 def test_cypher_queries(neo4j_connection, dataset, case, log, query, expected_output, check_order):
     result = execute_cypher_query(neo4j_connection, query)
     result_str = [list(map(str, record)) for record in result]
-    print(f"Result: {result_str}")
 
     if check_order:
         assert result_str == expected_output, f"Test dataset '{dataset}', case '{case}', log '{log}' failed: Expected {expected_output}, but got {result_str}"
