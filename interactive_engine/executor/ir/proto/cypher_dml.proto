@@ -57,6 +57,10 @@ message Set {
 // LOAD CSV FROM $csv_file AS row FIELDTERMINATOR '|'
 // WITH toInteger(row[1]) AS id
 // MATCH (forum:Forum {id: id});
+
+// Example3:
+// COPY User FROM "user.csv";
+// If explicit column mappings are not provided, the compiler will infer according to the ordinal positions of properties in the schema.
 message Load {
     // define the specific way to init the data source.
     // `Match` only matches existing node patterns in the graph and binds them, outputting only when vertices/edges specified in external files exist,
