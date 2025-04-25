@@ -160,11 +160,15 @@ message ValueMapping {
     common.Property property = 2;
 }
 
+// Examples:
+// CREATE (n:Person {name: 'Tom Hanks', age: 63});
 message CreateVertex {
     common.NameOrId type_name = 1;
     repeated ValueMapping value_mappings = 2;
 }
 
+// Examples:
+// CREATE (n:Person {name: 'Tom Hanks', age: 63})-[r:ACTED_IN {role: 'actor'}]->(m:Movie {title: 'Forrest Gump'});
 message CreateEdge {
     TypeTriplet type_triplet = 1;
     repeated ValueMapping source_vertex_mappings = 2;

@@ -1,0 +1,95 @@
+/**
+ * Copyright 2020 Alibaba Group Holding Limited.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+ syntax = "proto3";
+ package cypher;
+ 
+ import "basic_type.proto";
+
+ message Property {
+    string name = 1;
+    common.DataType type = 2;
+ }
+
+ message PrimaryKey {
+    repeated string properties = 1;
+ }
+
+ message TypeNameTriplet {
+    string type_name = 1;
+    string src_type_name = 2;
+    string dst_type_name = 3;
+ }
+ // Example:
+ // CREATE NODE TABLE User (name STRING, age INT64 DEFAULT 0, reg_date DATE, PRIMARY KEY (name))
+ message CreateVertexSchema {
+    string type_name = 1;
+    repeated Property properties = 2;
+    PrimaryKey primary_key = 3;
+    bool allow_exists = 4;
+ }
+
+ // Example:
+ // CREATE REL TABLE Follows(FROM User TO User, since DATE);
+ message CreateEdgeSchema {
+    TypeNameTriplet type_name = 1;
+    repeated Property properties = 2;
+    PrimaryKey primary_key = 3;
+    bool allow_exists = 4;
+ }
+
+ // Example:
+ // DROP TABLE User;
+ message DropVertexSchema {
+    string type_name = 1;
+    bool allow_non_exists = 2;
+ }
+
+ // Example:
+ // DROP TABLE Follows IF EXISTS;
+ message DropEdgeSchema {
+    TypeNameTriplet type_name = 1;
+    bool allow_non_exists = 2;
+ }
+
+ // Example:
+ // ALTER TABLE User ADD age INT64;
+ message CreatePropertySchema {
+    string type_name = 1;
+    repeated Property properties = 2;
+    bool allow_exists = 3;
+ }
+
+ // Example:
+ // ALTER TABLE User DROP age;
+ message DropPropertySchema {
+    string type_name = 1;
+    repeated Property properties = 2;
+    bool allow_non_exists = 3;
+ }
+
+ // Example:
+ // ALTER TABLE User RENAME age TO grade;
+ message AlterPropertySchema {
+    message Mapping {
+        Property src_property = 1;
+        Property dst_property = 2;
+    }
+
+    string type_name = 1;
+    repeated Mapping mappings = 2;
+    bool allow_non_exists = 3;
+ }
