@@ -16,166 +16,121 @@
 
 syntax = "proto3";
 package cypher;
-option java_package = "com.alibaba.graphscope.gaia.proto";
-option java_outer_classname = "GraphAlgebraCypherWrite";
 
 import "common.proto";
 import "expr.proto";
 
-// Examples:
-// SET p.name = 'marko'; set property 'name' of node p to 'marko', if not exist, create it.
-// SET p = {name: 'Peter Smith', position: 'Entrepreneur'}; after replacing, the node p will extactly have two properties with the provided values.
-// SET p += {name: 'Peter Smith', position: 'Entrepreneur'}; after mutating, the original properties still exist, and two new properties are added.
-// SET n:PERSON; after mutating, the original labels still exist, and a new label is added.
-message Set {
-    message Item {
-        enum Kind {
-            // replace all existing properties on a node or relationship with those values provided in a literal or a map.
-            REPLACE_PROPERTY = 0;
-            // mutate properties from a map in a fine-grained fashion, it functions as follows:
-            // Any properties in the map that are not on the node or relationship will be added.
-            // Any properties not in the map that are on the node or relationship will be left as is.
-            // Any properties that are in both the map and the node or relationship will be replaced in the node or relationship.
-            MUTATE_PROPERTY = 1;
-            // mutate a label on a node
-            MUTATE_LABEL = 2;
-        }
-        Kind kind = 1;
-        common.Variable key = 2;
-        common.Expression value = 3;
-    }
-    repeated Item items = 1;
+message FileInfo {
+    string path = 1;
 }
 
-// Init data source from external input files.
-// Example1:
-// LOAD CSV FROM $csv_file AS row FIELDTERMINATOR '|'
-// WITH toInteger(row[1]) AS commentId,
-// CREATE (comment:Comment {commentId: commentId});
-
-// Example2:
-// LOAD CSV FROM $csv_file AS row FIELDTERMINATOR '|'
-// WITH toInteger(row[1]) AS id
-// MATCH (forum:Forum {id: id});
-
-// Example3:
-// COPY User FROM "user.csv";
-// If explicit column mappings are not provided, the compiler will infer according to the ordinal positions of properties in the schema.
-message Load {
-    // define the specific way to init the data source.
-    // `Match` only matches existing node patterns in the graph and binds them, outputting only when vertices/edges specified in external files exist,
-    // while `CREATE` always creates new vertices/edges.
-    enum Kind {
-        MATCH = 0;
-        CREATE = 1;
-        // TODO: MERGE
+message ReadCSV {
+    message options {
+        string delimiter = 1; // Character that separates different columns in a lines, default is ','
+        bool header = 2; // Whether the first line of the CSV file is the header. Can be true or false, default is false 
+        uint64_t skip_num = 3; // Number of rows to skip from the input file, default is 0
+        string quote_char = 4; // Character to start a string quote, default is '"'
+        string escape_char = 5; // Character within string quotes to escape QUOTE and other characters, default is '\'
+        bool ignore_errors = 6; // Skips malformed rows in CSV files if set to true, default is false
+        bool auto_detection = 7; // Automatically detect HEADER, DELIM, QUOTE, ESCAPE if not manually set, default is true
+        boolean parallel = 8; // Whether to read the CSV file in parallel, default is true
     }
 
-    // denote mappings between columns in the input data and the properties of the node or relationship
-    // follow data import specification in gs-interactive (https://graphscope.io/docs/flex/interactive/data_import)
-    message ColumnMappings {
-        message LoadingConfig {
-            message DataSource {
-                string scheme = 1;
-                string location = 2;
-            }
+    FileInfo file_info = 1;
+    options csv_options = 2;
+}
 
-            message Format {
-                message Metadata {
-                    string delimiter = 1;
-                    bool header_row = 2;
-                    bool quoting = 3;
-                    string quote_char = 4;
-                    bool double_quote = 5;
-                    string escape_char = 6;
-                    string block_size = 7;
-                }
-                Metadata metadata = 1;
-            }
 
-            DataSource data_source = 1;
-            Format format = 2;
-        }
-
-        LoadingConfig load_config = 1;
-
-        message ColumnMapping {
-            message Column {
-                int32 index = 1;
-                string name = 2;
-            }
-
-            Column column = 1;
-            common.Property property = 2;
-        }
-
-        message Input {
-            oneof input {
-                string path = 1;
-                common.DynamicParam dyn_path = 2;
-            }
-        }
-
-        message VertexMapping {
-            common.NameOrId type_name = 1;
-            repeated Input inputs = 2;
-            repeated ColumnMapping column_mappings = 3;
-        }
-
-        repeated VertexMapping vertex_mappings = 2;
-
-        message EdgeMapping {
-            TypeTriplet type_triplet = 1;
-            repeated Input inputs = 2;
-            repeated ColumnMapping source_vertex_mappings = 3;
-            repeated ColumnMapping destination_vertex_mappings = 4;
-            repeated ColumnMapping column_mappings = 5;
-        }
-
-        repeated EdgeMapping edge_mappings = 3;
+message DataSource {
+    oneof source {
+        ReadCSV read_csv = 1;
     }
-
-    Kind kind = 1;
-    ColumnMappings mappings = 2;
 }
 
-// Examples:
-// MATCH (n:Person {name: 'Tom Hanks'}) DETACH DELETE n;
-// MATCH (n:Person {name: 'Laurence Fishburne'})-[r:ACTED_IN]->() DELETE r;
-message Delete {
-    // when deleting a node, delete all relationships connected to it if `detached` is true, otherwise only delete the node itself.
-    bool detached = 1;
-    repeated common.Expression keys = 2;
-}
-
-message TypeTriplet {
-    common.NameOrId edge = 1;
-    common.NameOrId source_vertex = 2;
-    common.NameOrId destination_vertex = 3;
-}
-
-message ValueMapping {
-    message Value {
-        common.Value literal = 1;
-        // todo: support other types of value, i.e. dynamic param
+message ColumnMapping {
+    message Column {
+        int32 index = 1;
+        string name = 2;
     }
-
-    Value value = 1;
-    common.Property property = 2;
+    common.Property property = 1;
+    Column column = 2;
 }
 
-// Examples:
-// CREATE (n:Person {name: 'Tom Hanks', age: 63});
-message CreateVertex {
-    common.NameOrId type_name = 1;
-    repeated ValueMapping value_mappings = 2;
+message BatchInsertVertex {
+    VertexType vertex_type = 1;
+    repeated ColumnMapping column_mappings = 2;
 }
 
-// Examples:
-// CREATE (n:Person {name: 'Tom Hanks', age: 63})-[r:ACTED_IN {role: 'actor'}]->(m:Movie {title: 'Forrest Gump'});
-message CreateEdge {
-    TypeTriplet type_triplet = 1;
-    repeated ValueMapping source_vertex_mappings = 2;
-    repeated ValueMapping destination_vertex_mappings = 3;
-    repeated ValueMapping value_mappings = 4;
+message BatchInsertEdge {
+    EdgeType edge_type = 1;
+    repeated ColumnMapping source_vertex_binding = 2;
+    repeated ColumnMapping destination_vertex_binding = 3;
+    repeated ColumnMapping property_mappings = 4;
+}
+
+message DataMapping {
+    common.Property property = 1;
+    common.Expression dataExpr = 2;
+}
+
+message InsertVertex {
+    VertexType vertex_type = 1;
+    repeated DataMapping property_mappings = 2;
+    common.NameOrId tag = 3;
+    ConflictAction conflict_action = 4;
+}
+
+message InsertEdge {
+    EdgeType edge_type = 1;
+    common.NameOrId source_vertex_binding = 2;
+    common.NameOrId destination_vertex_binding = 3;
+    repeated DataMapping property_mappings = 4;
+    common.NameOrId tag = 5;
+    ConflictAction conflict_action = 6;
+}
+
+message MultiInsertVertex {
+    repeated InsertVertex insert_vertices = 1;
+}
+
+message MultiInsertEdge {
+    repeated InsertEdge insert_edges = 1;
+}
+
+message SetVertexProperty {
+    common.NameOrId vertex_binding = 1;
+    DataMapping property_mapping = 2;
+}
+
+message SetEdgeProperty {
+    common.NameOrId edge_binding = 1;
+    DataMapping property_mapping = 2;
+}
+
+message MultiSetVertexProperty {
+    repeated SetVertexProperty set_vertex_properties = 1;
+}
+
+message MultiSetEdgeProperty {
+    repeated SetEdgeProperty set_edge_properties = 1;
+}
+
+message DeleteVertex {
+    enum type {
+        DELETE = 0;
+        DETACH_DELETE = 1;
+    }
+    common.NameOrId vertex_binding = 1;
+}
+
+message DeleteEdge {
+    common.NameOrId edge_binding = 1;
+}
+
+message MultiDeleteVertex {
+    repeated DeleteVertex delete_vertices = 1;
+}
+
+message MultiDeleteEdge {
+    repeated DeleteEdge delete_edges = 1;
 }
