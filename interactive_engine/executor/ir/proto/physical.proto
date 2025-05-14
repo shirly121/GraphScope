@@ -336,7 +336,14 @@ message PhysicalOpr {
 }
 
 message QueryPlan {
-  repeated PhysicalOpr plan = 1;
+  enum Mode {
+    READ_ONLY = 0;
+    WRITE_ONLY = 1;
+    READ_WRITE = 2;
+  }
+
+  Mode mode = 1;
+  repeated PhysicalOpr plan = 2;
 }
 
 // A single Cypher query ending with a semicolon (;)
