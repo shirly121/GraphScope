@@ -26,6 +26,8 @@ import "type.proto";
 import "algebra.proto";
 import "stored_procedure.proto";
 import "google/protobuf/wrappers.proto";
+import "cypher_dml.proto";
+import "cypher_ddl.proto";
 
 // To project a relation on certain attributes or further their properties
 message Project {
@@ -311,6 +313,16 @@ message PhysicalOpr {
       EdgeExpand edge = 31;
       PathExpand path = 32;
       ProcedureCall procedure_call = 33;
+      // DML operators
+      DataSource source = 34;
+      BatchInsertVertex load_vertex = 35;
+      BatchInsertEdge load_edge = 36;
+      InsertVertex create_vertex = 37;
+      InsertEdge create_edge = 38;
+      SetVertexProperty set_vertex = 39;
+      SetEdgeProperty set_edge = 40;
+      DeleteVertex delete_vertex = 41;
+      DeleteEdge delete_edge = 42;
     }
   }
   message MetaData {
@@ -323,7 +335,21 @@ message PhysicalOpr {
   repeated MetaData meta_data = 2;
 }
 
+message QueryPlan {
+  repeated PhysicalOpr plan = 1;
+}
+
+// A single Cypher query ending with a semicolon (;)
 message PhysicalPlan {
   int32 plan_id = 1;
-  repeated PhysicalOpr plan = 2;
+  oneof plan {
+    DDLPlan ddl_plan = 2;
+    QueryPlan query_plan = 3;
+  }
+}
+
+
+// Multiple queries in a single `execute` function
+message PhysicalPlans {
+  repeated PhysicalPlan plans = 1;
 }

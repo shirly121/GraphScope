@@ -15,7 +15,7 @@
  */
 
 syntax = "proto3";
-package cypher;
+package physical;
 
 import "common.proto";
 import "expr.proto";
