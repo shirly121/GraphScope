@@ -46,6 +46,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalUnion;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rules.MultiJoin;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -153,8 +154,14 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setScan(scanBuilder));
         oprBuilder.addAllMetaData(Utils.physicalProtoRowType(source.getRowType(), isColumnId));
+        setCard(source, oprBuilder);
         physicalBuilder.addPlan(oprBuilder.build());
         return source;
+    }
+
+    private void setCard(RelNode rel, GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder) {
+        RelMetadataQuery mq = rel.getCluster().getMetadataQuery();
+        oprBuilder.setCard(mq.getRowCount(rel).longValue());
     }
 
     @Override
@@ -169,6 +176,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         if (isPartitioned) {
             addRepartitionToAnother(expand.getStartAlias().getAliasId());
         }
+        setCard(expand, oprBuilder);
         physicalBuilder.addPlan(oprBuilder.build());
         return expand;
     }
@@ -186,6 +194,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             oprBuilder.setOpr(
                     GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setVertex(getVertex));
             oprBuilder.addAllMetaData(Utils.physicalProtoRowType(getV.getRowType(), isColumnId));
+            setCard(getV, oprBuilder);
             physicalBuilder.addPlan(oprBuilder.build());
             return getV;
         } else {
@@ -232,6 +241,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             if (isPartitioned) {
                 addRepartitionToAnother(getV.getAliasId());
             }
+            setCard(getV, adjOprBuilder);
             physicalBuilder.addPlan(auxiliaOprBuilder.build());
             return getV;
         }
@@ -373,6 +383,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         if (isPartitioned) {
             addRepartitionToAnother(physicalExpand.getStartAlias().getAliasId());
         }
+        setCard(physicalExpand, oprBuilder);
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalExpand;
     }
@@ -390,6 +401,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         if (isPartitioned) {
             addRepartitionToAnother(physicalGetV.getStartAlias().getAliasId());
         }
+        setCard(physicalGetV, oprBuilder);
         physicalBuilder.addPlan(oprBuilder.build());
         return physicalGetV;
     }
@@ -865,6 +877,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         joinBuilder.setRightPlan(rightPlanBuilder);
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setJoin(joinBuilder));
+        setCard(join, oprBuilder);
         physicalBuilder.addPlan(oprBuilder.build());
         return join;
     }

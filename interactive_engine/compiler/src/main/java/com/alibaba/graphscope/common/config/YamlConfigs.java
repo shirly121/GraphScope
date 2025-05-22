@@ -53,6 +53,12 @@ public class YamlConfigs extends Configs {
                             return rules;
                         })
                 .put(
+                        "graph.planner.join.min.pattern.size",
+                        (Configs configs) -> configs.get("compiler.planner.join_min_pattern_size"))
+                .put(
+                        "graph.planner.intersect.max.pattern.size",
+                        (Configs configs) -> configs.get("compiler.planner.intersect_max_pattern_size"))
+                .put(
                         "graph.schema",
                         (Configs configs) -> {
                             // if System.properties contains graph.schema, use it

@@ -134,11 +134,13 @@ public class GraphRelOptimizer implements Closeable, IrMetaTracker {
         private final RelOptPlanner matchPlanner;
         // record the common rel(s) which has been optimized
         private final Map<String, RelNode> commonTableToOpt;
+        private final PlannerConfig config;
 
-        public MatchOptimizer(GraphIOProcessor ioProcessor, RelOptPlanner matchPlanner) {
+        public MatchOptimizer(GraphIOProcessor ioProcessor, RelOptPlanner matchPlanner, PlannerConfig config) {
             this.ioProcessor = ioProcessor;
             this.matchPlanner = matchPlanner;
             this.commonTableToOpt = Maps.newHashMap();
+            this.config = config;
         }
 
         @Override
@@ -170,7 +172,7 @@ public class GraphRelOptimizer implements Closeable, IrMetaTracker {
         public RelNode visit(LogicalJoin join) {
             List<RelNode> matchList = Lists.newArrayList();
             List<RelNode> filterList = Lists.newArrayList();
-            if (!decomposeJoin(join, matchList, filterList)) {
+            if (!config.isDecomposeJoinEnabled() || !decomposeJoin(join, matchList, filterList)) {
                 return super.visit(join);
             } else {
                 matchPlanner.setRoot(ioProcessor.processInput(matchList));

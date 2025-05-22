@@ -308,7 +308,7 @@ public class JoinDecompositionRule<C extends JoinDecompositionRule.Config> exten
 
         @Override
         public void addDecompositions() {
-            if (getMaxEdgeNum(graphPattern.getPattern()) > 2) {
+            if (getMaxEdgeNum(graphPattern.getPattern()) >= 2) {
                 List<GraphJoinDecomposition> queues = initDecompositions();
                 while (!queues.isEmpty()) {
                     List<GraphJoinDecomposition> nextCompositions =

@@ -16,20 +16,22 @@
 
 package com.alibaba.graphscope.common.ir.planner.rules;
 
+import com.alibaba.graphscope.common.config.PlannerConfig;
 import com.alibaba.graphscope.common.ir.meta.glogue.CountHandler;
 import com.alibaba.graphscope.common.ir.meta.glogue.ExtendWeightEstimator;
 import com.alibaba.graphscope.common.ir.meta.glogue.Utils;
 import com.alibaba.graphscope.common.ir.meta.glogue.calcite.GraphRelMetadataQuery;
 import com.alibaba.graphscope.common.ir.rel.GraphExtendIntersect;
 import com.alibaba.graphscope.common.ir.rel.GraphPattern;
-import com.alibaba.graphscope.common.ir.rel.metadata.glogue.*;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendEdge;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.ExtendStep;
+import com.alibaba.graphscope.common.ir.rel.metadata.glogue.GlogueExtendIntersectEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.Pattern;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternEdge;
 import com.alibaba.graphscope.common.ir.rel.metadata.glogue.pattern.PatternVertex;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.tools.RelBuilderFactory;
@@ -47,9 +49,13 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
 
     @Override
     public void onMatch(RelOptRuleCall call) {
+        GraphPattern pattern = call.rel(0);
+        if (pattern.getPattern().getVertexNumber() > config.getPlannerConfig().getIntersectMaxVertexSize()) {
+            return;
+        }
         List<GraphExtendIntersect> edges =
                 getExtendIntersectEdges(
-                        call.rel(0), (GraphRelMetadataQuery) call.getMetadataQuery());
+                        pattern, (GraphRelMetadataQuery) call.getMetadataQuery());
         for (GraphExtendIntersect edge : edges) {
             call.transformTo(edge);
         }
@@ -237,6 +243,7 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
         private RelBuilderFactory builderFactory;
         private int maxPatternSizeInGlogue;
         private boolean labelConstraintsEnabled;
+        private PlannerConfig plannerConfig;
 
         @Override
         public RelRule toRule() {
@@ -272,6 +279,15 @@ public class ExtendIntersectRule<C extends ExtendIntersectRule.Config> extends R
                 boolean labelConstraintsEnabled) {
             this.labelConstraintsEnabled = labelConstraintsEnabled;
             return this;
+        }
+
+        public ExtendIntersectRule.Config withPlannerConfig(PlannerConfig plannerConfig) {
+            this.plannerConfig = plannerConfig;
+            return this;
+        }
+
+        public PlannerConfig getPlannerConfig() {
+            return plannerConfig;
         }
 
         public boolean labelConstraintsEnabled() {

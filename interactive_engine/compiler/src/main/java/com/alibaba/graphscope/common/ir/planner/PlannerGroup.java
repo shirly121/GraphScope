@@ -64,7 +64,7 @@ public class PlannerGroup {
             if (config.getOpt() == PlannerConfig.Opt.CBO) {
                 relOptimized =
                         relOptimized.accept(
-                                new GraphRelOptimizer.MatchOptimizer(ioProcessor, matchPlanner));
+                                new GraphRelOptimizer.MatchOptimizer(ioProcessor, matchPlanner, config));
             }
             // apply rules of 'FieldTrim' after the match optimization
             if (config.getRules().contains(FieldTrimRule.class.getSimpleName())) {
@@ -117,7 +117,8 @@ public class PlannerGroup {
                                                     .withMaxPatternSizeInGlogue(
                                                             config.getGlogueSize())
                                                     .withLabelConstraintsEnabled(
-                                                            config.labelConstraintsEnabled());
+                                                            config.labelConstraintsEnabled())
+                                                    .withPlannerConfig(config);
                                 } else if (k.equals(JoinDecompositionRule.class.getSimpleName())) {
                                     ruleConfig =
                                             JoinDecompositionRule.Config.DEFAULT

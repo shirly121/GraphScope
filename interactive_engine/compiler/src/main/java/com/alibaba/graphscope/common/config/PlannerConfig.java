@@ -16,6 +16,8 @@ public class PlannerConfig {
             Config.intConfig("graph.planner.cbo.glogue.size", 2);
     public static final Config<Integer> JOIN_MIN_PATTERN_SIZE =
             Config.intConfig("graph.planner.join.min.pattern.size", 5);
+    public static final Config<Integer> INTERSECT_MAX_PATTERN_SIZE =
+            Config.intConfig("graph.planner.intersect.max.pattern.size", 2147483647);
     public static final Config<Integer> JOIN_COST_FACTOR_1 =
             Config.intConfig("graph.planner.join.cost.factor.1", 1);
     public static final Config<Integer> JOIN_COST_FACTOR_2 =
@@ -42,6 +44,8 @@ public class PlannerConfig {
             Config.stringConfig(
                     "graph.planner.trim.class.names",
                     "GraphLogicalExpand, GraphLogicalSource, GraphLogicalGetV");
+    public static final Config<Boolean> DECOMPOSE_JOIN_ENABLED =
+            Config.boolConfig("graph.planner.decompose.join.enabled", true);
 
     private final Configs configs;
     private final List<String> rules;
@@ -116,6 +120,14 @@ public class PlannerConfig {
 
     public int getPlannerGroupClearIntervalMinutes() {
         return GRAPH_PLANNER_GROUP_CLEAR_INTERVAL_MINUTES.get(configs);
+    }
+
+    public boolean isDecomposeJoinEnabled() {
+        return DECOMPOSE_JOIN_ENABLED.get(configs);
+    }
+
+    public int getIntersectMaxVertexSize() {
+        return INTERSECT_MAX_PATTERN_SIZE.get(configs);
     }
 
     @Override

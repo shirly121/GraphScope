@@ -321,6 +321,7 @@ message PhysicalOpr {
   Operator opr = 1;
   // The meta data of outputs of operator
   repeated MetaData meta_data = 2;
+  int64 card = 3;
 }
 
 message PhysicalPlan {
