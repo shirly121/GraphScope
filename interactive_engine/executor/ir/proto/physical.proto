@@ -330,7 +330,21 @@ message PhysicalOpr {
   repeated MetaData meta_data = 2;
 }
 
+message QueryPlan {
+  enum Mode {
+    READ_ONLY = 0;
+    WRITE_ONLY = 1;
+    READ_WRITE = 2;
+  }
+
+  Mode mode = 1;
+  repeated PhysicalOpr plan = 2;
+}
+
+// A single Cypher query ending with a semicolon (;)
 message PhysicalPlan {
   int32 plan_id = 1;
-  repeated PhysicalOpr plan = 2;
+  oneof plan {
+    QueryPlan query_plan = 3;
+  }
 }

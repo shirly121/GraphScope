@@ -23,13 +23,24 @@ import com.alibaba.graphscope.common.ir.Utils;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
 import com.alibaba.graphscope.common.ir.planner.GraphIOProcessor;
 import com.alibaba.graphscope.common.ir.planner.GraphRelOptimizer;
+import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
+import com.alibaba.graphscope.common.ir.runtime.proto.GraphRelProtoPhysicalBuilder;
 import com.alibaba.graphscope.common.ir.tools.GraphBuilder;
+import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.rel.RelNode;
+import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.stream.Stream;
 
 public class CSRBITest {
     private static Configs configs;
@@ -55,6 +66,49 @@ public class CSRBITest {
                         "schema/ldbc_schema_csr.yaml",
                         "statistics/ldbc_statistics_csr.json",
                         optimizer.getGlogueHolder());
+    }
+
+    @Test
+    public void run_test() throws Exception {
+        String cypherDir = System.getProperty("queries", "/tmp/queries");
+        String outDir = System.getProperty("physical", "/tmp/physical");
+        try (Stream<Path> paths = Files.walk(Paths.get(cypherDir))) {
+            paths.filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".cypher"))
+                    .forEach(
+                            path -> {
+                                try {
+                                    String cypher =
+                                            FileUtils.readFileToString(
+                                                    new File(path.toString()),
+                                                    StandardCharsets.UTF_8);
+                                    GraphBuilder builder =
+                                            Utils.mockGraphBuilder(optimizer, irMeta);
+                                    RelNode before =
+                                            com.alibaba.graphscope.cypher.antlr4.Utils.eval(
+                                                            cypher, builder, irMeta)
+                                                    .getRegularQuery();
+                                    RelNode after =
+                                            optimizer.optimize(
+                                                    before, new GraphIOProcessor(builder, irMeta));
+                                    GraphRelProtoPhysicalBuilder builder1 =
+                                            new GraphRelProtoPhysicalBuilder(
+                                                    configs, irMeta, new LogicalPlan(after));
+                                    PhysicalPlan<byte[]> physicalPlan = builder1.build();
+                                    String baseName =
+                                            path.getFileName().toString().replace(".cypher", "");
+
+                                    Path outJson = Paths.get(outDir, baseName + ".bytes");
+                                    FileUtils.writeByteArrayToFile(
+                                            new File(outJson.toString()),
+                                            physicalPlan.getContent());
+
+                                    System.out.println("Processed: " + path.getFileName());
+                                } catch (Exception e) {
+                                    throw new RuntimeException(
+                                            "Failed: " + path.getFileName() + ". Cause: ", e);
+                                }
+                            });
+        }
     }
 
     @Test
@@ -142,6 +196,9 @@ public class CSRBITest {
                     + " COMMENT]}], alias=[message], fusedFilter=[[AND(<(_.creationDate, ?0),"
                     + " >(_.length, 0))]], opt=[VERTEX])",
                 after.explain().trim());
+        GraphRelProtoPhysicalBuilder builder1 =
+                new GraphRelProtoPhysicalBuilder(configs, irMeta, new LogicalPlan(after));
+        System.out.println(builder1.build().explain());
     }
 
     @Test
@@ -1477,6 +1534,9 @@ public class CSRBITest {
                     + " tables=[PLACE]}], alias=[city2Id], opt=[VERTEX], uniqueKeyFilters=[=(_.id,"
                     + " ?1)])",
                 after.explain().trim());
+        GraphRelProtoPhysicalBuilder builder1 =
+                new GraphRelProtoPhysicalBuilder(configs, irMeta, new LogicalPlan(after));
+        System.out.println(builder1.build().explain());
     }
 
     @Test

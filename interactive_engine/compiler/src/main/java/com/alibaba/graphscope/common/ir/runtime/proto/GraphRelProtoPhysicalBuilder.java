@@ -54,6 +54,7 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
     private static final Logger logger =
             LoggerFactory.getLogger(GraphRelProtoPhysicalBuilder.class);
     private final GraphShuttle relShuttle;
+    private final GraphAlgebraPhysical.QueryPlan.Builder queryBuilder;
     private final GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder;
     // map each rel (union/join...) to its corresponding common sub-plans, i.e. in query
     // `g.V().out().union(out(), out())`,
@@ -71,12 +72,13 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
             Configs graphConfig, IrMeta irMeta, LogicalPlan logicalPlan, boolean skipSinkColumns) {
         super(logicalPlan);
         this.physicalBuilder = GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+        this.queryBuilder = GraphAlgebraPhysical.QueryPlan.newBuilder();
         this.relToCommons = createRelToCommons(logicalPlan);
         this.relShuttle =
                 new GraphRelToProtoConverter(
                         irMeta.getSchema().isColumnId(),
                         graphConfig,
-                        this.physicalBuilder,
+                        this.queryBuilder,
                         this.relToCommons,
                         createExtraParams(irMeta));
         this.skipSinkColumns = skipSinkColumns;
@@ -88,11 +90,12 @@ public class GraphRelProtoPhysicalBuilder extends PhysicalBuilder {
         try {
             RelNode regularQuery = this.logicalPlan.getRegularQuery();
             regularQuery.accept(this.relShuttle);
-            physicalBuilder.addPlan(
+            queryBuilder.addPlan(
                     GraphAlgebraPhysical.PhysicalOpr.newBuilder()
                             .setOpr(
                                     GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
                                             .setSink(getSinkByColumns(regularQuery))));
+            physicalBuilder.setQueryPlan(this.queryBuilder);
             plan = getPlanAsJson(physicalBuilder.build());
             int planId = Objects.hash(logicalPlan);
             physicalBuilder.setPlanId(planId);

@@ -64,18 +64,14 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang3.ObjectUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class GraphRelToProtoConverter extends GraphShuttle {
     private final boolean isColumnId;
     private final RexBuilder rexBuilder;
     private final Configs graphConfig;
-    private GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder;
+    private GraphAlgebraPhysical.QueryPlan.Builder physicalBuilder;
     private final boolean isPartitioned;
     private boolean preCacheEdgeProps;
     private final IdentityHashMap<RelNode, List<CommonTableScan>> relToCommons;
@@ -85,7 +81,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     public GraphRelToProtoConverter(
             boolean isColumnId,
             Configs configs,
-            GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder,
+            GraphAlgebraPhysical.QueryPlan.Builder physicalBuilder,
             IdentityHashMap<RelNode, List<CommonTableScan>> relToCommons,
             HashMap<String, String> extraParams) {
         this(isColumnId, configs, physicalBuilder, relToCommons, extraParams, 0);
@@ -94,7 +90,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     public GraphRelToProtoConverter(
             boolean isColumnId,
             Configs configs,
-            GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder,
+            GraphAlgebraPhysical.QueryPlan.Builder physicalBuilder,
             IdentityHashMap<RelNode, List<CommonTableScan>> relToCommons,
             HashMap<String, String> extraParams,
             int depth) {
@@ -102,6 +98,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         this.rexBuilder = GraphPlanner.rexBuilderFactory.apply(configs);
         this.graphConfig = configs;
         this.physicalBuilder = physicalBuilder;
+        this.physicalBuilder.setMode(GraphAlgebraPhysical.QueryPlan.Mode.READ_ONLY);
         this.isPartitioned =
                 !(PegasusConfig.PEGASUS_HOSTS.get(configs).split(",").length == 1
                         && PegasusConfig.PEGASUS_WORKER_NUM.get(configs) == 1);
@@ -657,8 +654,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
 
     private GraphAlgebraPhysical.Apply.Builder buildApply(
             RexSubQuery query, GraphAlgebraPhysical.Join.JoinKind joinKind, int aliasId) {
-        GraphAlgebraPhysical.PhysicalPlan.Builder applyPlanBuilder =
-                GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+        GraphAlgebraPhysical.QueryPlan.Builder applyPlanBuilder =
+                GraphAlgebraPhysical.QueryPlan.newBuilder();
         query.rel.accept(
                 new GraphRelToProtoConverter(
                         isColumnId,
@@ -669,7 +666,9 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                         depth + 1));
         GraphAlgebraPhysical.Apply.Builder applyBuilder =
                 GraphAlgebraPhysical.Apply.newBuilder()
-                        .setSubPlan(applyPlanBuilder)
+                        .setSubPlan(
+                                GraphAlgebraPhysical.PhysicalPlan.newBuilder()
+                                        .setQueryPlan(applyPlanBuilder))
                         .setJoinKind(joinKind);
         if (aliasId != AliasInference.DEFAULT_ID) {
             applyBuilder.setAlias(Utils.asAliasId(aliasId));
@@ -925,8 +924,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         List<CommonTableScan> commons = relToCommons.get(join);
         if (ObjectUtils.isNotEmpty(commons)) {
             // add commons before union
-            GraphAlgebraPhysical.PhysicalPlan.Builder commonPlanBuilder =
-                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            GraphAlgebraPhysical.QueryPlan.Builder commonPlanBuilder =
+                    GraphAlgebraPhysical.QueryPlan.newBuilder();
             for (int i = commons.size() - 1; i >= 0; --i) {
                 RelNode commonRel = ((CommonOptTable) commons.get(i).getTable()).getCommon();
                 commonRel.accept(
@@ -950,10 +949,15 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         GraphAlgebraPhysical.PhysicalOpr.Builder oprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Join.Builder joinBuilder = GraphAlgebraPhysical.Join.newBuilder();
-        joinBuilder.setJoinKind(Utils.protoJoinKind(join.getJoinType()));
+
         List<RexNode> conditions = RelOptUtil.conjunctions(join.getCondition());
-        Preconditions.checkArgument(
-                !conditions.isEmpty(), "join condition in physical should not be empty");
+        if (conditions.isEmpty()) {
+            joinBuilder.setJoinKind(GraphAlgebraPhysical.Join.JoinKind.TIMES);
+        } else {
+            joinBuilder.setJoinKind(Utils.protoJoinKind(join.getJoinType()));
+        }
+        //        Preconditions.checkArgument(
+        //                !conditions.isEmpty(), "join condition in physical should not be empty");
         List<RexNode> leftKeys = Lists.newArrayList();
         List<RexNode> rightKeys = Lists.newArrayList();
         for (RexNode condition : conditions) {
@@ -980,10 +984,10 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             joinBuilder.addRightKeys(rightVar);
         }
 
-        GraphAlgebraPhysical.PhysicalPlan.Builder leftPlanBuilder =
-                GraphAlgebraPhysical.PhysicalPlan.newBuilder();
-        GraphAlgebraPhysical.PhysicalPlan.Builder rightPlanBuilder =
-                GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+        GraphAlgebraPhysical.QueryPlan.Builder leftPlanBuilder =
+                GraphAlgebraPhysical.QueryPlan.newBuilder();
+        GraphAlgebraPhysical.QueryPlan.Builder rightPlanBuilder =
+                GraphAlgebraPhysical.QueryPlan.newBuilder();
 
         RelNode left = join.getLeft();
         left.accept(
@@ -1020,8 +1024,10 @@ public class GraphRelToProtoConverter extends GraphShuttle {
             lazyPropertyFetching(leftPlanBuilder, leftTagColumns, false);
             lazyPropertyFetching(rightPlanBuilder, rightTagColumns, false);
         }
-        joinBuilder.setLeftPlan(leftPlanBuilder);
-        joinBuilder.setRightPlan(rightPlanBuilder);
+        joinBuilder.setLeftPlan(
+                GraphAlgebraPhysical.PhysicalPlan.newBuilder().setQueryPlan(leftPlanBuilder));
+        joinBuilder.setRightPlan(
+                GraphAlgebraPhysical.PhysicalPlan.newBuilder().setQueryPlan(rightPlanBuilder));
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setJoin(joinBuilder));
         physicalBuilder.addPlan(oprBuilder.build());
@@ -1033,8 +1039,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         List<CommonTableScan> commons = relToCommons.get(union);
         if (ObjectUtils.isNotEmpty(commons)) {
             // add commons before union
-            GraphAlgebraPhysical.PhysicalPlan.Builder commonPlanBuilder =
-                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            GraphAlgebraPhysical.QueryPlan.Builder commonPlanBuilder =
+                    GraphAlgebraPhysical.QueryPlan.newBuilder();
             for (int i = commons.size() - 1; i >= 0; --i) {
                 RelNode commonRel = ((CommonOptTable) commons.get(i).getTable()).getCommon();
                 commonRel.accept(
@@ -1059,8 +1065,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Union.Builder unionBuilder = GraphAlgebraPhysical.Union.newBuilder();
         for (RelNode input : union.getInputs()) {
-            GraphAlgebraPhysical.PhysicalPlan.Builder inputPlanBuilder =
-                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            GraphAlgebraPhysical.QueryPlan.Builder inputPlanBuilder =
+                    GraphAlgebraPhysical.QueryPlan.newBuilder();
             input.accept(
                     new GraphRelToProtoConverter(
                             isColumnId,
@@ -1069,7 +1075,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                             this.relToCommons,
                             this.extraParams,
                             depth + 1));
-            unionBuilder.addSubPlans(inputPlanBuilder);
+            unionBuilder.addSubPlans(
+                    GraphAlgebraPhysical.PhysicalPlan.newBuilder().setQueryPlan(inputPlanBuilder));
         }
         oprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder().setUnion(unionBuilder));
@@ -1083,8 +1090,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
         List<CommonTableScan> commons = relToCommons.get(multiJoin);
         if (ObjectUtils.isNotEmpty(commons)) {
             // add commons before intersect
-            GraphAlgebraPhysical.PhysicalPlan.Builder commonPlanBuilder =
-                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            GraphAlgebraPhysical.QueryPlan.Builder commonPlanBuilder =
+                    GraphAlgebraPhysical.QueryPlan.newBuilder();
             for (int i = commons.size() - 1; i >= 0; --i) {
                 RelNode commonRel = ((CommonOptTable) commons.get(i).getTable()).getCommon();
                 commonRel.accept(
@@ -1126,8 +1133,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
 
         // then, build subplans for intersect
         for (RelNode input : multiJoin.getInputs()) {
-            GraphAlgebraPhysical.PhysicalPlan.Builder subPlanBuilder =
-                    GraphAlgebraPhysical.PhysicalPlan.newBuilder();
+            GraphAlgebraPhysical.QueryPlan.Builder subPlanBuilder =
+                    GraphAlgebraPhysical.QueryPlan.newBuilder();
             input.accept(
                     new GraphRelToProtoConverter(
                             isColumnId,
@@ -1136,7 +1143,8 @@ public class GraphRelToProtoConverter extends GraphShuttle {
                             this.relToCommons,
                             this.extraParams,
                             depth + 1));
-            intersectBuilder.addSubPlans(subPlanBuilder);
+            intersectBuilder.addSubPlans(
+                    GraphAlgebraPhysical.PhysicalPlan.newBuilder().setQueryPlan(subPlanBuilder));
         }
         intersectOprBuilder.setOpr(
                 GraphAlgebraPhysical.PhysicalOpr.Operator.newBuilder()
@@ -1325,7 +1333,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     }
 
     private void addRepartitionToAnother(
-            GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder, int repartitionKey) {
+            GraphAlgebraPhysical.QueryPlan.Builder physicalBuilder, int repartitionKey) {
         GraphAlgebraPhysical.PhysicalOpr.Builder repartitionOprBuilder =
                 GraphAlgebraPhysical.PhysicalOpr.newBuilder();
         GraphAlgebraPhysical.Repartition repartition =
@@ -1336,7 +1344,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     }
 
     private void addAuxilia(
-            GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder,
+            GraphAlgebraPhysical.QueryPlan.Builder physicalBuilder,
             Integer tag,
             Set<GraphNameOrId> columns) {
         GraphAlgebraPhysical.PhysicalOpr.Builder auxiliaOprBuilder =
@@ -1366,7 +1374,7 @@ public class GraphRelToProtoConverter extends GraphShuttle {
     }
 
     private void lazyPropertyFetching(
-            GraphAlgebraPhysical.PhysicalPlan.Builder physicalBuilder,
+            GraphAlgebraPhysical.QueryPlan.Builder physicalBuilder,
             Map<Integer, Set<GraphNameOrId>> tagColumns,
             boolean optimizedNoCaching) {
         if (tagColumns.isEmpty()) {
