@@ -312,12 +312,13 @@ message PhysicalOpr {
       EdgeExpand edge = 31;
       PathExpand path = 32;
 
-      // write operators
-      cypher.Set set = 33;
-      cypher.Load load = 34;
-      cypher.Delete delete = 35;
+      ProcedureCall procedure_call = 33;
 
-      ProcedureCall procedure_call = 36;
+      // write operators
+      cypher.Set set = 34;
+      cypher.Load load = 35;
+      cypher.Delete delete = 36;
+
     }
   }
   message MetaData {
