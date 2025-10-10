@@ -36,9 +36,9 @@ public class CompilePlanTest {
     @Test
     public void compile_plan_test() throws Exception {
         int qps = Integer.valueOf(System.getProperty("qps", "50"));
-        String configPath = System.getProperty("config", "/Users/zhouxiaoli/Downloads/interactive_config.yaml");
-        String schemaPath = System.getProperty("schema", "/Users/zhouxiaoli/Downloads/o11y-integration-cn-hongkong__cypher_schema.yaml");
-        String statsPath = System.getProperty("stats", "/Users/zhouxiaoli/Downloads/o11y-integration-cn-hongkong__cypher_statistics.json");
+        String configPath = System.getProperty("config", "src/test/resources/interactive_config.yaml");
+        String schemaPath = System.getProperty("schema", "src/test/resources/o11y-integration-cn-hongkong__cypher_schema.yaml");
+        String statsPath = System.getProperty("stats", "src/test/resources/o11y-integration-cn-hongkong__cypher_statistics.json");
         String schemaYaml = FileUtils.readFileToString(new File(schemaPath), StandardCharsets.UTF_8);
         String statsJson = FileUtils.readFileToString(new File(statsPath), StandardCharsets.UTF_8);
         String queryPath = System.getProperty("queries", "src/test/resources/queries");
