@@ -65,7 +65,7 @@ namespace gs
         "com.alibaba.graphscope.sdk.PlanUtils";
     static constexpr const char *kGraphPlannerMethod = "compilePlan";
     static constexpr const char *kGraphPlannerMethodSignature =
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/alibaba/graphscope/sdk/GraphPlan;";
+        "(Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;)Lcom/alibaba/graphscope/sdk/GraphPlan;";
 
     /**
      * @brief Constructs a new GraphPlannerWrapper object
@@ -136,6 +136,7 @@ namespace gs
      */
     Plan CompilePlan(const std::string &compiler_config_path,
                      const std::string &cypher_query_string,
+                     long version,
                      const std::string &graph_schema_yaml,
                      const std::string &graph_statistic_json);
 

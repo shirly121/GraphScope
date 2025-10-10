@@ -251,6 +251,7 @@ namespace gs
                       jmethodID graph_planner_method_id_, JNIEnv *env,
                       const std::string &compiler_config_path,
                       const std::string &cypher_query_string,
+                      long version,
                       const std::string &graph_schema_yaml,
                       const std::string &graph_statistic_json)
   {
@@ -264,12 +265,13 @@ namespace gs
     }
     jstring param1 = env->NewStringUTF(compiler_config_path.c_str());
     jstring param2 = env->NewStringUTF(cypher_query_string.c_str());
-    jstring param3 = env->NewStringUTF(graph_schema_yaml.c_str());
-    jstring param4 = env->NewStringUTF(graph_statistic_json.c_str());
+    jlong param3 = static_cast<jlong>(version);
+    jstring param4 = env->NewStringUTF(graph_schema_yaml.c_str());
+    jstring param5 = env->NewStringUTF(graph_statistic_json.c_str());
 
     // invoke jvm static function to get results as Object[]
     jobject jni_plan = (jobject)env->CallStaticObjectMethod(
-        graph_planner_clz_, graph_planner_method_id_, param1, param2, param3, param4);
+        graph_planner_clz_, graph_planner_method_id_, param1, param2, param3, param4, param5);
 
     if (env->ExceptionCheck())
     {
@@ -480,13 +482,14 @@ namespace gs
    */
   Plan GraphPlannerWrapper::CompilePlan(const std::string &compiler_config_path,
                                         const std::string &cypher_query_string,
+                                        long version,
                                         const std::string &graph_schema_yaml,
                                         const std::string &graph_statistic_json)
   {
 #if (GRAPH_PLANNER_JNI_INVOKER)
     return compilePlanJNI(graph_planner_clz_, graph_planner_method_id_,
                           jni_wrapper_.env(), compiler_config_path,
-                          cypher_query_string, graph_schema_yaml, graph_statistic_json);
+                          cypher_query_string, long version, graph_schema_yaml, graph_statistic_json);
 #else
     return compilePlanSubprocess(class_path_, jna_path_, graph_schema_yaml_,
                                  graph_statistic_json_, compiler_config_path,

@@ -66,4 +66,7 @@ public class FrontendConfig {
 
     public static final Config<Long> METRICS_TOOL_INTERVAL_MS =
             Config.longConfig("metrics.tool.interval.ms", 5 * 60 * 1000L);
+
+    public static final Config<Integer> IR_META_CACHE_SIZE =
+            Config.intConfig("ir.meta.cache.size", 100);
 }

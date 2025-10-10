@@ -20,32 +20,21 @@ package com.alibaba.graphscope.sdk;
 
 import com.alibaba.graphscope.common.config.Configs;
 import com.alibaba.graphscope.common.exception.FrontendException;
-import com.alibaba.graphscope.common.ir.meta.GraphId;
 import com.alibaba.graphscope.common.ir.meta.IrMeta;
-import com.alibaba.graphscope.common.ir.meta.fetcher.IrMetaFetcher;
-import com.alibaba.graphscope.common.ir.meta.fetcher.StaticIrMetaFetcher;
-import com.alibaba.graphscope.common.ir.meta.procedure.GraphStoredProcedures;
+import com.alibaba.graphscope.common.ir.meta.IrMetaCache;
 import com.alibaba.graphscope.common.ir.meta.procedure.StoredProcedureMeta;
-import com.alibaba.graphscope.common.ir.meta.reader.IrMetaReader;
 import com.alibaba.graphscope.common.ir.meta.schema.IrGraphSchema;
-import com.alibaba.graphscope.common.ir.meta.schema.IrGraphStatistics;
-import com.alibaba.graphscope.common.ir.meta.schema.SchemaInputStream;
-import com.alibaba.graphscope.common.ir.meta.schema.SchemaSpec;
 import com.alibaba.graphscope.common.ir.runtime.PhysicalPlan;
 import com.alibaba.graphscope.common.ir.tools.GraphPlanner;
 import com.alibaba.graphscope.common.ir.tools.LogicalPlan;
 import com.alibaba.graphscope.groot.common.schema.api.GraphElement;
-import com.alibaba.graphscope.groot.common.schema.api.GraphStatistics;
 import com.alibaba.graphscope.proto.frontend.Code;
 import com.google.common.collect.ImmutableMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public class PlanUtils {
@@ -61,16 +50,21 @@ public class PlanUtils {
      * @throws Exception
      */
     public static GraphPlan compilePlan(
-            String configPath, String query, String schemaYaml, String statsJson) {
+            String configPath, String query, long version, String schemaYaml, String statsJson) {
         StringBuilder msgBuilder = new StringBuilder();
         try {
             long startTime = System.currentTimeMillis();
             Configs configs = Configs.Factory.create(configPath);
             GraphPlanner graphPlanner = GraphPlanerInstance.getInstance(configs);
-            IrMetaReader reader = new StringMetaReader(schemaYaml, statsJson, configs);
-            IrMetaFetcher metaFetcher =
-                    new StaticIrMetaFetcher(reader, graphPlanner.getOptimizer().getGlogueHolder());
-            IrMeta irMeta = metaFetcher.fetch().get();
+            IrMetaCache metaCache = IrMetaCache.getInstance(configs);
+            IrMeta irMeta =
+                    metaCache.get(
+                            new IrMetaCache.Key(
+                                    version,
+                                    configs,
+                                    schemaYaml,
+                                    statsJson,
+                                    graphPlanner.getOptimizer().getGlogueHolder()));
             msgBuilder.append("\nparamLabels: [ " + printLabels(irMeta.getSchema()) + " ]\n");
             GraphPlanner.PlannerInstance plannerInstance =
                     graphPlanner.instance(query, irMeta, null, msgBuilder);
@@ -108,6 +102,11 @@ public class PlanUtils {
         }
     }
 
+    public static GraphPlan compilePlan(
+            String configPath, String query, String schemaYaml, String statsJson) {
+        return compilePlan(configPath, query, 0, schemaYaml, statsJson);
+    }
+
     public static Map<String, Object> printLabels(IrGraphSchema schema) {
         try {
             GraphElement process = schema.getElement("process");
@@ -125,45 +124,6 @@ public class PlanUtils {
                     servers.getLabelId());
         } catch (Exception e) {
             return ImmutableMap.of();
-        }
-    }
-
-    static class StringMetaReader implements IrMetaReader {
-        private final String schemaYaml;
-        private final String statsJson;
-        private final Configs configs;
-
-        public StringMetaReader(String schemaYaml, String statsJson, Configs configs) {
-            this.schemaYaml = schemaYaml;
-            this.statsJson = statsJson;
-            this.configs = configs;
-        }
-
-        @Override
-        public IrMeta readMeta() throws IOException {
-            IrGraphSchema graphSchema =
-                    new IrGraphSchema(
-                            configs,
-                            new SchemaInputStream(
-                                    new ByteArrayInputStream(
-                                            schemaYaml.getBytes(StandardCharsets.UTF_8)),
-                                    SchemaSpec.Type.FLEX_IN_YAML));
-            return new IrMeta(
-                    graphSchema,
-                    new GraphStoredProcedures(
-                            new ByteArrayInputStream(schemaYaml.getBytes(StandardCharsets.UTF_8)),
-                            this));
-        }
-
-        @Override
-        public GraphStatistics readStats(GraphId graphId) throws IOException {
-            return new IrGraphStatistics(
-                    new ByteArrayInputStream(statsJson.getBytes(StandardCharsets.UTF_8)));
-        }
-
-        @Override
-        public boolean syncStatsEnabled(GraphId graphId) throws IOException {
-            return false;
         }
     }
 }
