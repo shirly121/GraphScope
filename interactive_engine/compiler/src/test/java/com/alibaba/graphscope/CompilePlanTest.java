@@ -74,8 +74,8 @@ public class CompilePlanTest {
                                 GraphPlan plan =
                                         PlanUtils.compilePlan(
                                                 configPath,
-                                                version.getAndIncrement(),
                                                 query,
+                                                version.getAndIncrement(),
                                                 schemaYaml,
                                                 statsJson);
                                 if (version.get() >= 10) {

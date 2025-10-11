@@ -50,7 +50,7 @@ public class PlanUtils {
      * @throws Exception
      */
     public static GraphPlan compilePlan(
-            String configPath, long version, String query, String schemaYaml, String statsJson) {
+            String configPath, String query, long version, String schemaYaml, String statsJson) {
         StringBuilder msgBuilder = new StringBuilder();
         try {
             long startTime = System.currentTimeMillis();
@@ -104,7 +104,7 @@ public class PlanUtils {
 
     public static GraphPlan compilePlan(
             String configPath, String query, String schemaYaml, String statsJson) {
-        return compilePlan(configPath, 0, query, schemaYaml, statsJson);
+        return compilePlan(configPath, query, 0, schemaYaml, statsJson);
     }
 
     public static Map<String, Object> printLabels(IrGraphSchema schema) {
