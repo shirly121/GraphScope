@@ -13,6 +13,7 @@ compute_engine:
 compiler:
   type_inference_enabled: false # 关闭 type inference 避免大 Schema plan 超慢问题
   query_max_iterations: 5 # 最大 hop 限制。包括 [*1..5] 和 ()-[]-()-[]-() 的写法。这里最大限制是15，如果设置超过15，也会被Compiler内部限制。
+  ir_meta_cache_size: 100 # metadata cache size, default value is 100
   physical:
     opt:
       config: proto

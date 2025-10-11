@@ -216,7 +216,10 @@ public class YamlConfigs extends Configs {
                         (Configs configs) -> configs.get("compiler.calcite_default_charset"))
                 .put(
                         "gremlin.script.language.name",
-                        (Configs configs) -> configs.get("compiler.gremlin_script_language_name"));
+                        (Configs configs) -> configs.get("compiler.gremlin_script_language_name"))
+                .put(
+                        "ir.meta.cache.size",
+                        (Configs configs) -> configs.get("compiler.ir_meta_cache_size"));
         valueGetterMap = mapBuilder.build();
     }
 

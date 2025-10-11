@@ -128,11 +128,13 @@ namespace gs
     }
 
     /**
-     * @brief Invoker GraphPlanner to generate a physical plan from a cypher
-     * query.
+     * @brief Compile a cypher query to a physical plan by JNI invocation.
      * @param compiler_config_path The path of compiler config file.
      * @param cypher_query_string The cypher query string.
-     * @return physical plan in string.
+     * @param version The version of graph schema
+     * @param graph_schema_yaml Content of the graph schema in YAML format
+     * @param graph_statistic_json Content of the graph statistics in JSON format
+     * @return The physical plan in bytes and result schema in yaml.
      */
     Plan CompilePlan(const std::string &compiler_config_path,
                      const std::string &cypher_query_string,
