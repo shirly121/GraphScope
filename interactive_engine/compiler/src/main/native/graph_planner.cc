@@ -489,7 +489,7 @@ namespace gs
 #if (GRAPH_PLANNER_JNI_INVOKER)
     return compilePlanJNI(graph_planner_clz_, graph_planner_method_id_,
                           jni_wrapper_.env(), compiler_config_path,
-                          cypher_query_string, long version, graph_schema_yaml, graph_statistic_json);
+                          cypher_query_string, version, graph_schema_yaml, graph_statistic_json);
 #else
     return compilePlanSubprocess(class_path_, jna_path_, graph_schema_yaml_,
                                  graph_statistic_json_, compiler_config_path,

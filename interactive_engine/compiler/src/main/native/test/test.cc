@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     std::string cypher_query_string = argv[5];
     std::string config_path = argv[6];
     auto plan =
-        graph_planner_wrapper.CompilePlan(config_path, cypher_query_string, schema_content, statistic_content);
+        graph_planner_wrapper.CompilePlan(config_path, cypher_query_string, 0l, schema_content, statistic_content);
 
     // auto end = std::chrono::high_resolution_clock::now();
     // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
