@@ -18,6 +18,7 @@ package com.alibaba.graphscope;
 
 import com.alibaba.graphscope.sdk.GraphPlan;
 import com.alibaba.graphscope.sdk.PlanUtils;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 
@@ -36,10 +37,18 @@ public class CompilePlanTest {
     @Test
     public void compile_plan_test() throws Exception {
         int qps = Integer.valueOf(System.getProperty("qps", "50"));
-        String configPath = System.getProperty("config", "src/test/resources/interactive_config.yaml");
-        String schemaPath = System.getProperty("schema", "src/test/resources/o11y-integration-cn-hongkong__cypher_schema.yaml");
-        String statsPath = System.getProperty("stats", "src/test/resources/o11y-integration-cn-hongkong__cypher_statistics.json");
-        String schemaYaml = FileUtils.readFileToString(new File(schemaPath), StandardCharsets.UTF_8);
+        String configPath =
+                System.getProperty("config", "src/test/resources/interactive_config.yaml");
+        String schemaPath =
+                System.getProperty(
+                        "schema",
+                        "src/test/resources/o11y-integration-cn-hongkong__cypher_schema.yaml");
+        String statsPath =
+                System.getProperty(
+                        "stats",
+                        "src/test/resources/o11y-integration-cn-hongkong__cypher_statistics.json");
+        String schemaYaml =
+                FileUtils.readFileToString(new File(schemaPath), StandardCharsets.UTF_8);
         String statsJson = FileUtils.readFileToString(new File(statsPath), StandardCharsets.UTF_8);
         String queryPath = System.getProperty("queries", "src/test/resources/queries");
         List<String> queries = Files.readAllLines(Paths.get(queryPath));
@@ -54,17 +63,30 @@ public class CompilePlanTest {
         AtomicInteger statsCount = new AtomicInteger(0);
         long lastStatsTime = System.currentTimeMillis();
 
-        Runnable submitTasks = () -> {
-            queryPool.submit(() -> {
-                String query = queries.get(pos.getAndIncrement() % queries.size());
-                statsCount.getAndIncrement();
-                GraphPlan plan = PlanUtils.compilePlan(configPath, query, schemaYaml, statsJson);
-                if (!"OK".equals(plan.errorCode)) {
-                    throw new RuntimeException("failed to compile...");
-                }
-                // System.out.println("query plan is ok");
-            });
-        };
+        AtomicInteger version = new AtomicInteger(0);
+
+        Runnable submitTasks =
+                () -> {
+                    queryPool.submit(
+                            () -> {
+                                String query = queries.get(pos.getAndIncrement() % queries.size());
+                                statsCount.getAndIncrement();
+                                GraphPlan plan =
+                                        PlanUtils.compilePlan(
+                                                configPath,
+                                                version.getAndIncrement(),
+                                                query,
+                                                schemaYaml,
+                                                statsJson);
+                                if (version.get() >= 10) {
+                                    version.set(0);
+                                }
+                                if (!"OK".equals(plan.errorCode)) {
+                                    throw new RuntimeException("failed to compile...");
+                                }
+                                // System.out.println("query plan is ok");
+                            });
+                };
 
         long intervalMillis = 1000 / qps;
         scheduler.scheduleAtFixedRate(submitTasks, 0, intervalMillis, TimeUnit.MILLISECONDS);
@@ -77,6 +99,5 @@ public class CompilePlanTest {
                 lastStatsTime = now;
             }
         }
-
     }
 }

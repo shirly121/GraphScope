@@ -49,8 +49,8 @@ public class JNICompilePlanTest {
         //            for (int i = 0; i < 20; ++i) {
         String query =
                 " MATCH(s:`process` {__entity_id__: 'ce850d64618c01b9cdb148af1afe2809'})-[e]->(d)"
-                    + " \n"
-                    + "    RETURN e;";
+                        + " \n"
+                        + "    RETURN e;";
         GraphPlan plan = PlanUtils.compilePlan(configPath, query, schemaYaml, statsJson);
         System.out.println(plan.errorCode);
         System.out.println(plan.fullMessage);
